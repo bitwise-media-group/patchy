@@ -1,0 +1,14 @@
+{
+    "action": "created",
+    "issue": { "number": 101, "state": "open" },
+    "comment": {
+        "body": "/approve",
+        "author_association": "MEMBER",
+        "user": { "login": "octocat" }
+    },
+    "repository": {
+        "name": "shop",
+        "full_name": "acme/shop",
+        "owner": { "login": "acme" }
+    }
+}

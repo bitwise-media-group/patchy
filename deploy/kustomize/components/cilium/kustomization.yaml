@@ -1,0 +1,17 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Optional component: FQDN egress policy for the agent sandbox, for Cilium
+# clusters. Enable it from an overlay with
+#
+#     components:
+#         - ../../components/cilium
+#
+# The prod overlay does. The dev overlay does not (kind ships kindnet, not
+# Cilium, and a CiliumNetworkPolicy CRD that does not exist would fail the
+# apply).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+    - networkpolicy-cilium.yaml

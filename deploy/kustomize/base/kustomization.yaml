@@ -1,0 +1,41 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Namespaces are created here, so nothing sets a global `namespace:` — each
+# resource names its own (patchy or patchy-agents).
+resources:
+    - namespace.yaml
+    - serviceaccount.yaml
+    - rbac.yaml
+    - configmap.yaml
+    - deployment-source-controller.yaml
+    - deployment-context-controller.yaml
+    - deployment-remediation-controller.yaml
+    - service.yaml
+    - networkpolicy.yaml
+    # secrets.example.yaml is documentation, not a resource — see the file.
+
+labels:
+    - includeSelectors: false
+      pairs:
+          app.kubernetes.io/part-of: patchy
+          app.kubernetes.io/managed-by: kustomize
+
+# Overlays pin tags/digests by patching these entries.
+#
+# NOTE: the agent-runner image appears TWICE in the rendered output — here (so
+# the transformer knows it) and as the PATCHY_AGENT_IMAGE value in
+# configmap.yaml, which is the string the remediation-controller stamps into
+# the Jobs it creates. `images:` does not rewrite ConfigMap values, so an
+# overlay that pins agent-runner must patch BOTH.
+images:
+    - name: ghcr.io/bitwise-media-group/patchy/source-controller
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/context-controller
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/agent-runner
+      newTag: latest

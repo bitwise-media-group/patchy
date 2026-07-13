@@ -1,0 +1,117 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-remediation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: remediation-controller
+        app.kubernetes.io/part-of: patchy
+        app.kubernetes.io/component: controller
+spec:
+    # Singleton, Recreate: see deployment-source-controller.yaml. This one is
+    # the most important to keep at one replica — the pickup gate is
+    # time-based, so two replicas would create two agent Jobs for the same
+    # issue attempt (the Job name is deterministic, so the loser would get an
+    # AlreadyExists, but the wasted work and the double GitHub side effects
+    # are not worth the race).
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: remediation-controller
+            app.kubernetes.io/part-of: patchy
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: remediation-controller
+                app.kubernetes.io/part-of: patchy
+                app.kubernetes.io/component: controller
+        spec:
+            # The only controller with a mounted token: it creates the agent
+            # Jobs and reads their pod logs (see rbac.yaml).
+            serviceAccountName: patchy-remediation-controller
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: controller
+                  # deploy/docker/Dockerfile.controller,
+                  # --build-arg TARGET=remediation-controller RUNTIME=git.
+                  # This one CANNOT be distroless/static: internal/gitpush
+                  # execs the `git` binary to push the agent's changeset.
+                  image: ghcr.io/bitwise-media-group/patchy/remediation-controller:latest
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: patchy-config
+                  env:
+                      - name: PATCHY_GITHUB_APP_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: patchy-github-app
+                                key: app-id
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: http
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: http
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  resources:
+                      requests:
+                          # Higher than its siblings: git clone + bundle fetch
+                          # of a real repository happens in this pod.
+                          cpu: 100m
+                          memory: 256Mi
+                      limits:
+                          cpu: "1"
+                          memory: 1Gi
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: webhook-secret
+                        mountPath: /etc/patchy/webhook
+                        readOnly: true
+                      - name: github-app
+                        mountPath: /etc/patchy/github-app
+                        readOnly: true
+                      # gitpush.Push does os.MkdirTemp("") -> $TMPDIR -> /tmp,
+                      # and clones the repository into it. With a read-only
+                      # root filesystem this emptyDir is what makes the push
+                      # path work at all; size it for the largest repo patchy
+                      # remediates.
+                      - name: tmp
+                        mountPath: /tmp
+            volumes:
+                - name: webhook-secret
+                  secret:
+                      secretName: patchy-webhook-secret
+                - name: github-app
+                  secret:
+                      secretName: patchy-github-app
+                      defaultMode: 0400
+                - name: tmp
+                  emptyDir:
+                      sizeLimit: 2Gi

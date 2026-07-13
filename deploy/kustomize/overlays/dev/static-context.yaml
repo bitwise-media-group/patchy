@@ -1,0 +1,33 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The fake CMDB. internal/enhancers.StaticFile parses this shape (strictly —
+# KnownFields is on, so an unknown key is a startup error) and the
+# context-controller comments the matching entry onto the issue before
+# flipping it to security-finding: context-enhanced.
+#
+# In a real deployment this is where a CMDB/service-catalogue enhancer would
+# plug in instead (pkg/enhance is the seam).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: patchy-static-context
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: context-controller
+        app.kubernetes.io/part-of: patchy
+data:
+    cmdb.yaml: |
+        repos:
+            bitwise-media-group/patchy:
+                owners: [dmccaffery]
+                attributes:
+                    system: patchy
+                    tier: "2"
+                    environment: dev
+            acme/shop:
+                owners: [octocat, hubot]
+                attributes:
+                    system: storefront
+                    tier: "1"

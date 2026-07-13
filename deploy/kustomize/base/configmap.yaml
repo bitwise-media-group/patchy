@@ -1,0 +1,93 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The one settings surface for all three controllers, consumed with envFrom.
+#
+# Every key is a PATCHY_* environment variable, which internal/cli/options.go
+# maps back onto a cobra flag: prefix PATCHY, dashes become underscores
+# (--agent-image -> PATCHY_AGENT_IMAGE). Precedence is flag > env > default,
+# and the Deployments pass no flags other than the `serve` subcommand, so what
+# is here is what runs.
+#
+# A key a given binary does not bind is simply ignored by that binary, which
+# is why one ConfigMap can serve all three (PATCHY_ACCUMULATION_WINDOW is inert
+# in the remediation-controller, and so on).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: patchy-config
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: patchy
+        app.kubernetes.io/part-of: patchy
+data:
+    # ---- shared (internal/cli.Options, every binary) ------------------------
+    PATCHY_LISTEN_ADDR: ":8080"
+    PATCHY_RECONCILE_INTERVAL: "60s"
+    # Files projected from Secrets; see the volumeMounts in each Deployment.
+    PATCHY_WEBHOOK_SECRET_FILE: /etc/patchy/webhook/secret
+    PATCHY_GITHUB_APP_PRIVATE_KEY_FILE: /etc/patchy/github-app/private-key.pem
+    # PATCHY_GITHUB_APP_ID is NOT here: it comes from the patchy-github-app
+    # Secret (app-id key) so App identity lives in one object.
+    # PATCHY_GITHUB_BASE_URL: https://ghes.example.com/api/v3  # GHES only
+
+    # ---- source-controller -------------------------------------------------
+    # DESIGN.md requirement 2: alerts of one advisory type accumulate into a
+    # single issue for an hour.
+    PATCHY_ACCUMULATION_WINDOW: 1h
+
+    # ---- context-controller ------------------------------------------------
+    # How old an "opened" issue must be before the reconcile pass enhances it
+    # (the webhook path is immediate; this is the catch-up path).
+    PATCHY_ENHANCE_GRACE: 2m
+    # PATCHY_STATIC_CONTEXT_FILE: unset in base -> the Noop enhancer (the CMDB
+    # placeholder). The dev overlay points it at a mounted YAML file.
+
+    # ---- remediation-controller --------------------------------------------
+    # DESIGN.md requirement 5: only findings older than an hour are picked up.
+    PATCHY_ISSUE_MIN_AGE: 1h
+    PATCHY_MAX_ATTEMPTS: "2"
+    # DESIGN.md requirement 6: below this, a human is assigned instead.
+    PATCHY_CONFIDENCE_THRESHOLD: "0.75"
+    PATCHY_AGENT_NAMESPACE: patchy-agents
+    PATCHY_AGENT_SERVICE_ACCOUNT: patchy-agent
+    # Required. The image is also pinned by the `images:` block in
+    # kustomization.yaml for the Deployments; this string is what the
+    # controller stamps into the Job it creates, so overlays must keep the two
+    # in step.
+    PATCHY_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/agent-runner:latest
+    PATCHY_ANTHROPIC_SECRET: patchy-anthropic
+    PATCHY_ANTHROPIC_SECRET_KEY: api-key
+    PATCHY_JOB_DEADLINE: 1h
+    PATCHY_JOB_TTL: 1h
+
+    # ---- the agent stages --------------------------------------------------
+    # The controller passes these through to every agent pod, where
+    # agentrun.FromEnv reads them. The two stages are configured symmetrically
+    # and independently (DESIGN.md: the classification harness may differ from
+    # the remediation one).
+    #
+    # The CLASSIFY_* limits are absolute — that stage runs on exactly these.
+    # The REMEDIATE_* limits are CEILINGS: the classification report requests
+    # its own model, max_turns and token_budget for the remediation stage, and
+    # the runner clamps those requests to these bounds (and to the allowlist),
+    # so a compromised or over-eager classification cannot spend more than an
+    # operator permits.
+    #
+    # The token budgets are enforced by the runner watching the harness's
+    # streamed usage events and killing the process group when the cumulative
+    # output-token count is exceeded — the claude CLI has no such flag itself.
+    PATCHY_MODEL_ALLOWLIST: claude-sonnet-5,claude-opus-4-8
+
+    PATCHY_CLASSIFY_HARNESS: claude
+    PATCHY_CLASSIFY_MODEL: claude-sonnet-5
+    PATCHY_CLASSIFY_TIMEOUT: 15m
+    PATCHY_CLASSIFY_MAX_TURNS: "25"
+    PATCHY_CLASSIFY_TOKEN_BUDGET: "150000"
+
+    PATCHY_REMEDIATE_HARNESS: claude
+    PATCHY_REMEDIATE_MODEL: claude-sonnet-5
+    PATCHY_REMEDIATE_TIMEOUT: 45m
+    PATCHY_REMEDIATE_MAX_TURNS: "80"
+    PATCHY_REMEDIATE_TOKEN_BUDGET: "400000"

@@ -1,0 +1,14 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# kind has no load balancer. NodePort + `extraPortMappings` in the kind config
+# is how a webhook delivery (from a tunnel — smee.io, ngrok, `gh webhook
+# forward`) reaches a controller. The nodePort numbers are set per-Service in
+# kustomization.yaml: 30080 source, 30081 context, 30082 remediation.
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: placeholder # replaced by the patch target
+spec:
+    type: NodePort

@@ -1,0 +1,38 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: patchy-config
+    namespace: patchy
+data:
+    # DESIGN.md requirements 2 and 5, literally: accumulate for an hour, pick
+    # up only what is older than an hour.
+    PATCHY_ACCUMULATION_WINDOW: 1h
+    PATCHY_ISSUE_MIN_AGE: 1h
+    PATCHY_RECONCILE_INTERVAL: 60s
+    PATCHY_ENHANCE_GRACE: 2m
+
+    # The real harness. (These two keys are the agent's configuration and are
+    # not currently propagated into the Job — see the note in the dev
+    # overlay's configmap-patch.yaml. "claude" is also agent-runner's default,
+    # so production behaviour is correct today either way.)
+    PATCHY_CLASSIFY_HARNESS: claude
+    PATCHY_REMEDIATE_HARNESS: claude
+
+    PATCHY_CLASSIFY_MODEL: claude-sonnet-5
+    PATCHY_REMEDIATE_MODEL: claude-sonnet-5
+    PATCHY_MODEL_ALLOWLIST: claude-sonnet-5,claude-opus-4-8
+    PATCHY_CONFIDENCE_THRESHOLD: "0.75"
+    PATCHY_MAX_ATTEMPTS: "2"
+
+    # An agent Job that has not finished in 90 minutes is not going to.
+    PATCHY_JOB_DEADLINE: 90m
+    # Keep finished Jobs around long enough to debug a bad run.
+    PATCHY_JOB_TTL: 6h
+
+    # PIN ME. Must be the same digest as the agent-runner entry in
+    # kustomization.yaml's `images:` block — this string is copied verbatim
+    # into every Job the controller creates.
+    PATCHY_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/agent-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000

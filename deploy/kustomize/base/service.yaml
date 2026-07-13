@@ -1,0 +1,67 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# One Service per controller. Each binary serves the same three endpoints on
+# :8080 (internal/webhook): POST /webhook, GET /healthz, GET /readyz — so each
+# controller needs its own webhook URL from GitHub (see deploy/README.md).
+#
+# ClusterIP only. Exposing them to GitHub is the cluster's business: put an
+# Ingress / Gateway in front of these Services in your own environment overlay.
+# The dev overlay patches them to NodePort for kind.
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-source-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: source-controller
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: source-controller
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-context-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: context-controller
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: context-controller
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-remediation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: remediation-controller
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: remediation-controller
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
+          protocol: TCP

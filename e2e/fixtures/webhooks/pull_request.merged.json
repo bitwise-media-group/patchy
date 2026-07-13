@@ -1,0 +1,14 @@
+{
+    "action": "closed",
+    "pull_request": {
+        "number": 901,
+        "merged": true,
+        "head": { "ref": "patchy/issue-101" },
+        "base": { "ref": "main" }
+    },
+    "repository": {
+        "name": "shop",
+        "full_name": "acme/shop",
+        "owner": { "login": "acme" }
+    }
+}

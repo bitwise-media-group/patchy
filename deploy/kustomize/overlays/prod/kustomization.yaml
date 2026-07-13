@@ -1,0 +1,39 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Production overlay: DESIGN.md's real intervals, the claude harness, digest-
+# pinned images, and the Cilium FQDN policy on top of the base NetworkPolicies.
+#
+# The three Secrets (patchy-github-app, patchy-webhook-secret in `patchy`;
+# patchy-anthropic in `patchy-agents`) are NOT created here — see
+# base/secrets.example.yaml. Bring them with SOPS or external-secrets and add
+# the resource to this list.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+    - ../../base
+
+components:
+    # FQDN egress for the agent sandbox. Requires Cilium with DNS policy; drop
+    # this line on any other CNI (base/networkpolicy.yaml still applies, and
+    # is then the whole of the L3/L4 story).
+    - ../../components/cilium
+
+# Digest pinning. PLACEHOLDERS — replace every sha256 below with the digest
+# the release pipeline published (`crane digest ghcr.io/...:vX.Y.Z`), and keep
+# PATCHY_AGENT_IMAGE in configmap-patch.yaml in step with the agent-runner
+# digest: kustomize rewrites container images, not ConfigMap values.
+images:
+    - name: ghcr.io/bitwise-media-group/patchy/source-controller
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    - name: ghcr.io/bitwise-media-group/patchy/context-controller
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    - name: ghcr.io/bitwise-media-group/patchy/agent-runner
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+    - path: configmap-patch.yaml
+    - path: deployment-remediation-controller-patch.yaml

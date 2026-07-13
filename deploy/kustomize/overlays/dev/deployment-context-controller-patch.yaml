@@ -1,0 +1,23 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Mount the fake CMDB where PATCHY_STATIC_CONTEXT_FILE points.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-context-controller
+    namespace: patchy
+spec:
+    template:
+        spec:
+            containers:
+                - name: controller
+                  volumeMounts:
+                      - name: static-context
+                        mountPath: /etc/patchy/context
+                        readOnly: true
+            volumes:
+                - name: static-context
+                  configMap:
+                      name: patchy-static-context

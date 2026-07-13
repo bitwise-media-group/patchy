@@ -1,0 +1,22 @@
+{
+    "action": "created",
+    "alert": {
+        "number": 7,
+        "state": "open",
+        "html_url": "https://github.com/acme/shop/security/code-scanning/7",
+        "rule": {
+            "id": "js/reflected-xss",
+            "name": "js/reflected-xss",
+            "description": "Reflected cross-site scripting",
+            "severity": "error",
+            "security_severity_level": "high",
+            "tags": ["security", "external/cwe/cwe-079"]
+        }
+    },
+    "repository": {
+        "name": "shop",
+        "full_name": "acme/shop",
+        "owner": { "login": "acme" }
+    },
+    "sender": { "login": "github-advanced-security" }
+}

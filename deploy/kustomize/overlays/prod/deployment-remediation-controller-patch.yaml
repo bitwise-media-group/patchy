@@ -1,0 +1,29 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The remediation-controller carries the heaviest load of the three: it clones
+# the target repository into /tmp to replay the agent's bundle and push it.
+# Size the scratch volume and the memory limit for the largest repository
+# patchy is pointed at, not the average one.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-remediation-controller
+    namespace: patchy
+spec:
+    template:
+        spec:
+            containers:
+                - name: controller
+                  resources:
+                      requests:
+                          cpu: 200m
+                          memory: 512Mi
+                      limits:
+                          cpu: "2"
+                          memory: 2Gi
+            volumes:
+                - name: tmp
+                  emptyDir:
+                      sizeLimit: 8Gi

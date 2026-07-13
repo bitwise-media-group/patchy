@@ -1,0 +1,82 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Controller image. One Dockerfile, three images — select the binary with
+# TARGET:
+#
+#   docker build -f deploy/docker/Dockerfile.controller \
+#     --build-arg TARGET=source-controller \
+#     --build-arg VERSION=v0.1.0 --build-arg COMMIT=abc1234 \
+#     --build-arg BUILD_DATE=2026-07-13T00:00:00Z \
+#     -t ghcr.io/bitwise-media-group/patchy/source-controller:v0.1.0 .
+#
+# RUNTIME selects the final base:
+#
+#   RUNTIME=static (default) — gcr.io/distroless/static-debian12:nonroot.
+#     Correct for source-controller and context-controller: pure Go, CGO off,
+#     no external process is ever executed.
+#   RUNTIME=git — debian:12-slim with git + ca-certificates.
+#     REQUIRED for remediation-controller: internal/gitpush shells out to the
+#     `git` binary (clone / fetch bundle / push) when it publishes an agent's
+#     changeset, so a static distroless image would fail at push time with
+#     "exec: git: executable file not found". Build it with:
+#       --build-arg TARGET=remediation-controller --build-arg RUNTIME=git
+#
+# Both runtimes run as uid 65532 ("nonroot"), matching internal/jobs'
+# runAsUser, and both work under readOnlyRootFilesystem provided /tmp is an
+# emptyDir — gitpush uses os.MkdirTemp for its scratch clone.
+
+# ---- builder ---------------------------------------------------------------
+FROM golang:1.26 AS builder
+
+WORKDIR /src
+
+# Dependencies first: this layer is invalidated only by go.mod / go.sum.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG TARGET
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+# Same ldflags contract as tasks.toml and .goreleaser.yaml: build metadata is
+# stamped into internal/version.
+RUN test -n "${TARGET}" \
+    && test -d "./cmd/${TARGET}" \
+    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+    go build -trimpath \
+    -ldflags "-s -w \
+    -X github.com/bitwise-media-group/patchy/internal/version.Version=${VERSION} \
+    -X github.com/bitwise-media-group/patchy/internal/version.Commit=${COMMIT} \
+    -X github.com/bitwise-media-group/patchy/internal/version.BuildDate=${BUILD_DATE}" \
+    -o /out/controller "./cmd/${TARGET}"
+
+# ---- runtime: static (source-controller, context-controller) ---------------
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime-static
+
+# ---- runtime: git (remediation-controller) ---------------------------------
+FROM debian:12-slim AS runtime-git
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates git \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --create-home --home-dir /home/nonroot --shell /sbin/nologin nonroot
+
+# ---- final -----------------------------------------------------------------
+ARG RUNTIME=static
+FROM runtime-${RUNTIME}
+
+# The binary lands at a fixed path so ENTRYPOINT need not interpolate TARGET
+# (exec-form ENTRYPOINT cannot expand build args). The Deployment supplies the
+# subcommand: args: ["serve"].
+COPY --from=builder /out/controller /usr/local/bin/controller
+
+USER 65532:65532
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/controller"]

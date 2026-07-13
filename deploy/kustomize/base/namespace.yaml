@@ -1,0 +1,29 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+---
+# The controllers. Long-lived Deployments with GitHub credentials.
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: patchy
+    labels:
+        app.kubernetes.io/name: patchy
+        app.kubernetes.io/part-of: patchy
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+---
+# The agent sandbox. Ephemeral Jobs created at runtime by
+# remediation-controller (internal/jobs). Nothing here holds a GitHub
+# credential except the per-Job Secret the init container consumes, and that
+# Secret is garbage-collected with its Job.
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: patchy-agents
+    labels:
+        app.kubernetes.io/name: patchy-agents
+        app.kubernetes.io/part-of: patchy
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted

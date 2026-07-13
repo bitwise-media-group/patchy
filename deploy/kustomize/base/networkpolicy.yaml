@@ -1,0 +1,143 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# ===========================================================================
+# READ THIS BEFORE TRUSTING THE SANDBOX
+#
+# A plain Kubernetes NetworkPolicy is an L3/L4 object. It selects peers by IP
+# block, pod label and namespace label — and by port. It CANNOT match a
+# hostname: there is no way to write "allow api.anthropic.com, deny
+# github.com" here, because by the time a packet exists the name is gone.
+#
+# So the agent egress rule below reads "TCP 443 to anywhere outside the
+# cluster". That permits api.anthropic.com. It also permits github.com, and
+# every other host on the internet that answers on 443.
+#
+# Two things carry the isolation, in this order:
+#
+#   1. CREDENTIAL ABSENCE (the real control). The agent container gets no
+#      GitHub token — internal/jobs puts the token only in the init
+#      container's env, resets the clone's remote URL afterwards, and lists
+#      GITHUB_TOKEN in reservedEnv so no configuration can smuggle one in.
+#      An agent that reaches github.com reaches it unauthenticated, as the
+#      public internet does.
+#   2. FQDN policy (defence in depth, CNI-dependent). See
+#      ../components/cilium/networkpolicy-cilium.yaml — a CiliumNetworkPolicy
+#      that narrows this same egress to toFQDNs. Enable it wherever the CNI
+#      supports it (the prod overlay does).
+#
+# DESIGN.md says the agent gets "no internet access". Taken literally that is
+# impossible: `claude -p` is a network client of api.anthropic.com. What is
+# actually delivered is "no network except the model API", and — with a plain
+# CNI — "no CREDENTIALS for anything except the model API".
+# ===========================================================================
+---
+# ---- patchy namespace: the controllers ------------------------------------
+# Ingress: webhook + probes on 8080 only.
+#
+# ASSUMPTION: the ingress controller / load balancer that fronts these
+# Services may live in any namespace, and kubelet probes arrive from the node
+# IP, which no pod selector can match. Rather than guess at your ingress
+# controller's labels this rule allows 8080 from anywhere — in-cluster pods,
+# the node, an ingress controller — and relies on the HMAC signature check in
+# internal/webhook for authentication. Tighten the `from:` block to your own
+# ingress namespace if you want L3 on top of the HMAC.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-controllers
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/component: controller
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 8080
+    egress:
+        # DNS.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        # GitHub (api.github.com, codeload, the git push), the Kubernetes API
+        # server (remediation-controller), and any OTLP collector reached over
+        # TLS. Port 6443 is here because kind/kubeadm clusters serve the API
+        # there; managed clusters usually use 443.
+        - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+---
+# ---- patchy-agents namespace: default deny --------------------------------
+# Applies to every pod in the namespace (empty podSelector), both directions.
+# Nothing may reach an agent pod, and an agent pod may reach nothing, except
+# what the rule below re-permits.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-agents-default-deny
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector: {}
+    policyTypes: [Ingress, Egress]
+    # No ingress rules at all: the agent Job serves nothing. The
+    # remediation-controller does not connect to it — it reads its output from
+    # the pod log through the API server.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-agents-egress
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+    policyTypes: [Egress]
+    egress:
+        # DNS, so the names below resolve at all.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        # TCP 443, and nothing else. Needed by:
+        #   - the init container: `git clone` from github.com (this container
+        #     alone holds the scoped token);
+        #   - the agent container: `claude -p` -> api.anthropic.com.
+        # NetworkPolicy is a pod-level object: it cannot tell those two
+        # containers apart, so the union of their needs is what gets allowed.
+        # Explicitly excluded: the cluster-internal ranges, so an agent cannot
+        # reach the API server, kubelet, or another workload. Adjust the
+        # except: blocks to your cluster's pod/service/node CIDRs.
+        - to:
+              - ipBlock:
+                    cidr: 0.0.0.0/0
+                    except:
+                        - 10.0.0.0/8
+                        - 172.16.0.0/12
+                        - 192.168.0.0/16
+                        - 169.254.0.0/16 # link-local: cloud metadata (169.254.169.254)
+          ports:
+              - protocol: TCP
+                port: 443

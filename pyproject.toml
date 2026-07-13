@@ -1,0 +1,18 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Python is only here for the documentation site: uv provisions zensical (the
+# static-site generator) for the archetype's sync/docs-build/serve tasks.
+
+[project]
+name = "patchy"
+version = "0.1.0" # x-release-please-version
+description = "Automated triage and remediation of security findings, using GitHub issues as the state machine."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "BitWise Media Group Ltd.", email = "oss@bitwisemedia.uk" }]
+dependencies = [
+  "zensical>=0.0.46",
+]

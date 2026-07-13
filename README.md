@@ -18,7 +18,9 @@ attempted automatically and opened as pull requests for human review.
 | `agent-runner`           | In-pod coding-agent runtime: classify, then remediate via `claude -p`   |
 
 See [DESIGN.md](DESIGN.md) for the full requirements and label taxonomy, and [AGENTS.md](AGENTS.md) for a map of the
-repository.
+repository. Full documentation — getting started, the label state machine, configuration and deployment references —
+lives at [oss.bitwisemedia.uk/patchy](https://oss.bitwisemedia.uk/patchy/) (source under [`docs/`](docs/); build locally
+with `mise run serve`).
 
 ## Building
 

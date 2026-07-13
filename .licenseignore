@@ -3,3 +3,5 @@ dist/**
 bin/**
 deploy/**
 commit.sh
+docs/**
+site/**

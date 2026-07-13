@@ -10,6 +10,9 @@ config:
     # DESIGN.md uses multiple top-level headings.
     MD025: false
     MD041: false
+    # docs/ uses raw HTML (md_in_html table wrappers) and admonition-indented fences.
+    MD033: false
+    MD046: false
 globs:
     - "**/*.md"
 
@@ -24,3 +27,6 @@ ignores:
     - "CHANGELOG.md"
     # Shared toolchain submodule — linted in its own repo.
     - ".mise/**"
+    # Docs site build output (zensical) + the uv-managed python env.
+    - "site/**"
+    - ".venv/**"

@@ -1,0 +1,189 @@
+# Patchy documentation — Zensical configuration
+# https://zensical.org/docs/setup/basics/
+#
+# Zensical can also read mkdocs.yml, but new projects should use zensical.toml.
+# All settings currently live under the [project] scope.
+
+[project]
+site_name = "Patchy"
+site_description = "Automated triage and remediation of security findings, using GitHub issues as the state machine."
+site_url = "https://oss.bitwisemedia.uk/patchy/"
+repo_url = "https://github.com/bitwise-media-group/patchy"
+repo_name = "bitwise-media-group/patchy"
+# The `#__consent` link re-opens the cookie consent dialog so visitors can
+# change their choice at any time (see [project.extra.consent] below).
+copyright = '© 2026 Bitwise Media Group Ltd — <a href="#__consent">Change cookie settings</a>'
+
+# Paths are relative to docs_dir (default: "docs")
+extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/codecolor.js"]
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    { "Overview" = "getting-started/index.md" },
+    { "Create the GitHub App" = "getting-started/github-app.md" },
+    { "Install with Helm" = "getting-started/install.md" },
+    { "Verify the pipeline" = "getting-started/verify.md" },
+  ] },
+  { "How it works" = "how-it-works.md" },
+  { "Labels & state machine" = "labels.md" },
+  { "Configuration" = [
+    { "Overview" = "configuration/index.md" },
+    { "source-controller" = "configuration/source-controller.md" },
+    { "context-controller" = "configuration/context-controller.md" },
+    { "remediation-controller" = "configuration/remediation-controller.md" },
+    { "agent-runner" = "configuration/agent-runner.md" },
+  ] },
+  { "Deployment" = [
+    { "Helm chart" = "deployment/helm.md" },
+    { "Kustomize" = "deployment/kustomize.md" },
+    { "Isolation model" = "deployment/isolation.md" },
+  ] },
+  { "Observability" = "observability.md" },
+  { "Extending" = "extending.md" },
+]
+
+[project.theme]
+name = "material"
+custom_dir = "overrides"
+features = [
+  "navigation.instant",
+  "navigation.tracking",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.footer",
+  "content.code.copy",
+  "content.code.annotate",
+  "search.suggest",
+  "search.highlight",
+  "toc.follow",
+]
+
+[project.theme.font]
+text = "Hanken Grotesk"
+code = "JetBrains Mono"
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+# Palette toggle for automatic mode
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+# Palette toggle for light mode
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+# Palette toggle for dark mode
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+# Preference storage (the cookie-consent choice, colour palette, …) is keyed
+# by this scope, which defaults to the site's own subpath. Every site under
+# oss.bitwisemedia.uk sets "/" so one consent answer applies domain-wide.
+[project.extra]
+scope = "/"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/bitwise-media-group/patchy"
+
+# Google Analytics 4. https://zensical.org/docs/setup/analytics/#configuration
+# The analytics snippet only renders when `property` is non-empty, so the build
+# stays clean until the measurement ID is available. Loading is also gated on
+# the visitor accepting the `analytics` cookie in the consent dialog below.
+[project.extra.analytics]
+provider = "google"
+property = ""
+
+# Cookie consent / GDPR. https://zensical.org/docs/setup/data-privacy/
+# Re-openable any time via the "Change cookie settings" footer link (copyright,
+# above). The `analytics` toggle controls Google Analytics; `github` controls
+# the repo/social API calls Material makes for the GitHub integration.
+[project.extra.consent]
+title = "Cookie consent"
+description = """
+We use cookies to recognise your repeated visits and preferences, and to \
+measure whether visitors find what they're looking for. With your consent, \
+you're helping us make this site better.
+"""
+actions = ["accept", "reject", "manage"]
+
+[project.extra.consent.cookies]
+analytics = "Google Analytics"
+github = "GitHub"
+
+# Markdown extensions. Declaring this section replaces Zensical's built-in
+# defaults wholesale, so the block below mirrors them verbatim and adds
+# pymdownx.snippets, which lets pages include other files with the
+# `--8<-- "path"` marker (base_path is relative to docs_dir).
+# https://zensical.org/docs/setup/extensions/
+[project.markdown_extensions.abbr]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.def_list]
+
+[project.markdown_extensions.footnotes]
+
+[project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions.toc]
+permalink = true
+
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+
+[project.markdown_extensions.pymdownx.betterem]
+
+[project.markdown_extensions.pymdownx.caret]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.keys]
+
+[project.markdown_extensions.pymdownx.magiclink]
+
+[project.markdown_extensions.pymdownx.mark]
+
+[project.markdown_extensions.pymdownx.smartsymbols]
+
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["docs"]
+check_paths = true
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+
+[project.markdown_extensions.pymdownx.tilde]

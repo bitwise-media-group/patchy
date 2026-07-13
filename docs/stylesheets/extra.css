@@ -1,0 +1,1150 @@
+/* ============================================================
+   Patchy docs — turf & soil theme for Zensical / Material
+   Palette: design-system/tokens/themes.css (.theme-patchy /
+   .theme-patchy-light). Turf green means healthy progress and
+   repaired ground; soil brown marks the original hole; amber and
+   red are reserved for human attention and critical findings.
+   Dark  -> Material "slate" scheme
+   Light -> Material "default" scheme
+   ============================================================ */
+
+/* ---------- DARK (slate) — damp soil at night, bright new turf ---------- */
+[data-md-color-scheme="slate"] {
+    --md-default-bg-color: #0c140e;
+    --md-default-bg-color--light: #121d15;
+    --md-default-fg-color: #edf7ee;
+    --md-default-fg-color--light: #c4d2c6;
+    --md-default-fg-color--lighter: #98ab9b;
+    --md-default-fg-color--lightest: rgba(237, 247, 238, 0.09);
+
+    --md-primary-fg-color: #0c140e;
+    --md-primary-fg-color--light: #121d15;
+    --md-primary-fg-color--dark: #071009;
+    --md-primary-bg-color: #edf7ee;
+    --md-primary-bg-color--light: #c4d2c6;
+
+    --md-accent-fg-color: #9be66a;
+    --md-accent-fg-color--transparent: rgba(155, 230, 106, 0.1);
+    --md-typeset-a-color: #8de05d;
+
+    --md-code-bg-color: #071009;
+    --md-code-fg-color: #d8e5d9;
+    --md-code-hl-comment-color: #697c6d;
+    --md-code-hl-keyword-color: #9be66a;
+    --md-code-hl-string-color: #c7f28a;
+    --md-code-hl-number-color: #e7b75f;
+    --md-code-hl-function-color: #78d64b;
+    --md-code-hl-constant-color: #a47a55;
+    --md-code-hl-name-color: #d8e5d9;
+    --md-code-hl-operator-color: #8de05d;
+    --md-code-hl-punctuation-color: #98ab9b;
+
+    --md-footer-bg-color: #071009;
+    --md-footer-bg-color--dark: #050b06;
+
+    /* patchy garden ramp */
+    --pt-green: #78d64b;
+    --pt-green-2: #9be66a;
+    --pt-moss: #46a653;
+    --pt-seedling: #c7f28a;
+    --pt-ink: #8de05d;
+    --pt-soil: #a47a55;
+    --pt-amber: #e7b75f;
+    --pt-red: #ef716a;
+    --pt-on-accent: #10200d;
+    --pt-bg: #0c140e;
+    --pt-alt: #121d15;
+    --pt-alt-2: #17251a;
+    --pt-code: #071009;
+    --pt-code-2: #0e1811;
+    --pt-fg: #edf7ee;
+    --pt-muted: #98ab9b;
+    --pt-faint: #697c6d;
+    --pt-line: #26372a;
+    --pt-line-2: #354a39;
+    --pt-ic-bg: #1c2b1f;
+    --pt-ic-border: rgba(237, 247, 238, 0.12);
+    --pt-shadow: 0 20px 52px rgba(2, 8, 4, 0.44);
+    --pt-shadow-strong: 0 30px 80px rgba(2, 8, 4, 0.62);
+}
+
+/* ---------- LIGHT (default) — garden paper, deep accessible turf ---------- */
+[data-md-color-scheme="default"] {
+    --md-default-bg-color: #f3f7ef;
+    --md-default-fg-color: #172219;
+    --md-default-fg-color--light: #3e4d41;
+    --md-default-fg-color--lighter: #566859;
+    --md-default-fg-color--lightest: rgba(23, 34, 25, 0.12);
+
+    --md-primary-fg-color: #f3f7ef;
+    --md-primary-fg-color--light: #eaf2e5;
+    --md-primary-fg-color--dark: #e1ebdd;
+    --md-primary-bg-color: #172219;
+    --md-primary-bg-color--light: #3e4d41;
+
+    --md-accent-fg-color: #25672c;
+    --md-accent-fg-color--transparent: rgba(37, 103, 44, 0.1);
+    --md-typeset-a-color: #286f30;
+
+    --md-code-bg-color: #e7efe2;
+    --md-code-fg-color: #172219;
+    --md-code-hl-comment-color: #708073;
+    --md-code-hl-keyword-color: #25672c;
+    --md-code-hl-string-color: #3c7630;
+    --md-code-hl-number-color: #9a6700;
+    --md-code-hl-function-color: #2f7d36;
+    --md-code-hl-constant-color: #77583e;
+    --md-code-hl-name-color: #172219;
+    --md-code-hl-operator-color: #286f30;
+    --md-code-hl-punctuation-color: #566859;
+
+    --md-footer-bg-color: #172219;
+    --md-footer-bg-color--dark: #0c140e;
+
+    --pt-green: #2f7d36;
+    --pt-green-2: #25672c;
+    --pt-moss: #367a3c;
+    --pt-seedling: #3c7630;
+    --pt-ink: #286f30;
+    --pt-soil: #77583e;
+    --pt-amber: #9a6700;
+    --pt-red: #c53b36;
+    --pt-on-accent: #ffffff;
+    --pt-bg: #f3f7ef;
+    --pt-alt: #ffffff;
+    --pt-alt-2: #eaf2e5;
+    --pt-code: #e1ebdd;
+    --pt-code-2: #eaf1e6;
+    --pt-fg: #172219;
+    --pt-muted: #566859;
+    --pt-faint: #708073;
+    --pt-line: #cad8c4;
+    --pt-line-2: #afc2b0;
+    --pt-ic-bg: #eaf2e5;
+    --pt-ic-border: rgba(23, 34, 25, 0.1);
+    --pt-shadow: 0 20px 52px rgba(38, 72, 42, 0.12);
+    --pt-shadow-strong: 0 30px 80px rgba(38, 72, 42, 0.18);
+}
+
+/* ===== Header: flat, with the soil-to-turf underline ===== */
+.md-header {
+    box-shadow: none;
+    border-bottom: 1px solid var(--pt-line);
+    position: relative;
+}
+.md-header[data-md-state="shadow"],
+.md-header--shadow {
+    box-shadow: none;
+}
+.md-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--pt-soil), var(--pt-moss) 35%, var(--pt-green) 70%, var(--pt-seedling));
+}
+.md-header__title {
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+/* Header wordmark: the CSS patch mark + lowercase mono "patchy"
+   (overrides/partials/header.html, nav.html). The mark is the design
+   system's logo — a square of new turf sliding over a small soil hole,
+   two grass blades sprouting behind it. */
+.pt-headmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: inherit;
+}
+.pt-headmark:hover {
+    opacity: 0.85;
+}
+.pt-headmark__name {
+    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    font-weight: 750;
+    font-size: 0.95rem;
+    letter-spacing: -0.03em;
+    text-transform: lowercase;
+}
+.pt-mark {
+    position: relative;
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: var(--pt-alt-2);
+    border: 1px solid var(--pt-line-2);
+    overflow: hidden;
+}
+.pt-mark__hole {
+    position: absolute;
+    width: 48%;
+    height: 30%;
+    left: 18%;
+    bottom: 17%;
+    border-radius: 50%;
+    background: var(--pt-soil);
+    box-shadow: inset 0 3px 0 color-mix(in oklab, var(--pt-code) 35%, transparent);
+}
+.pt-mark__turf {
+    position: absolute;
+    width: 49%;
+    height: 29%;
+    right: 12%;
+    bottom: 27%;
+    border-radius: 2px;
+    background: var(--pt-green);
+    border: 1px solid color-mix(in oklab, var(--pt-green) 70%, var(--pt-fg));
+    transform: rotate(-7deg);
+}
+.pt-mark__blade {
+    position: absolute;
+    width: 2px;
+    height: 22%;
+    border-radius: 2px;
+    background: var(--pt-green-2);
+    transform-origin: bottom;
+}
+.pt-mark__blade--one {
+    right: 32%;
+    bottom: 54%;
+    transform: rotate(-15deg);
+}
+.pt-mark__blade--two {
+    right: 23%;
+    bottom: 52%;
+    transform: rotate(15deg);
+}
+[dir="ltr"] .md-search__input {
+    border-radius: 8px;
+}
+
+/* Active nav + links pick up the turf accent */
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+    color: var(--md-accent-fg-color);
+}
+.md-typeset .md-typeset__table {
+    border-color: var(--pt-line);
+}
+
+/* Admonition flourish: softer 12px panels, like the product surface */
+.md-typeset .admonition,
+.md-typeset details {
+    border-left-width: 2px;
+    border-radius: 8px;
+}
+
+/* ============================================================
+   LANDING PAGE  (.pt) — injected by overrides/home.html
+   ============================================================ */
+.pt {
+    --pt-mono: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    --pt-sans: var(--md-text-font-family, "Hanken Grotesk", system-ui, sans-serif);
+    font-family: var(--pt-sans);
+    color: var(--pt-fg);
+    line-height: 1.55;
+}
+.pt * {
+    box-sizing: border-box;
+}
+.pt a {
+    text-decoration: none;
+}
+
+/* HERO — faint grass-blade geometry behind, product surface in front */
+.pt-hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--pt-line);
+}
+.pt-hero__texture {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.44;
+    background-image:
+        linear-gradient(
+            105deg,
+            transparent 47%,
+            color-mix(in oklab, var(--pt-green) 13%, transparent) 48% 49%,
+            transparent 50%
+        ),
+        linear-gradient(
+            75deg,
+            transparent 47%,
+            color-mix(in oklab, var(--pt-green) 9%, transparent) 48% 49%,
+            transparent 50%
+        );
+    background-size: 38px 30px;
+    -webkit-mask-image: radial-gradient(90% 80% at 75% 32%, #000, transparent 74%);
+    mask-image: radial-gradient(90% 80% at 75% 32%, #000, transparent 74%);
+}
+.pt-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(700px 440px at 83% 30%, color-mix(in oklab, var(--pt-green) 12%, transparent), transparent 70%),
+        radial-gradient(480px 320px at 12% 82%, color-mix(in oklab, var(--pt-soil) 8%, transparent), transparent 72%);
+}
+.pt-hero__inner {
+    position: relative;
+    z-index: 1;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 72px 40px 64px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.02fr) minmax(400px, 0.98fr);
+    align-items: center;
+    gap: 64px;
+}
+.pt-kicker {
+    width: fit-content;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 11px;
+    border: 1px solid color-mix(in oklab, var(--pt-green) 42%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--pt-green) 9%, transparent);
+    color: var(--pt-ink);
+    font-family: var(--pt-mono);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+}
+.pt-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pt-green);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--pt-green) 12%, transparent);
+    animation: pt-pulse 1.7s ease-in-out infinite;
+}
+.pt-headline {
+    max-width: 650px;
+    margin: 23px 0 0;
+    color: var(--pt-fg);
+    font-size: clamp(40px, 4.6vw, 62px);
+    font-weight: 720;
+    letter-spacing: -0.045em;
+    line-height: 1.02;
+}
+.pt-headline span {
+    color: var(--pt-ink);
+}
+.pt-lede {
+    max-width: 600px;
+    margin: 22px 0 0;
+    color: var(--pt-muted);
+    font-size: 18px;
+    line-height: 1.62;
+    text-wrap: pretty;
+}
+
+/* terminal */
+.pt-term {
+    max-width: 620px;
+    margin: 28px 0 0;
+    overflow: hidden;
+    background: var(--pt-code);
+    border: 1px solid var(--pt-line-2);
+    border-radius: 12px;
+    font-family: var(--pt-mono);
+    box-shadow: var(--pt-shadow);
+}
+.pt-term__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--pt-line);
+}
+.pt-term__bar i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+}
+.pt-term__bar i:nth-child(1) {
+    background: var(--pt-red);
+}
+.pt-term__bar i:nth-child(2) {
+    background: var(--pt-amber);
+}
+.pt-term__bar i:nth-child(3) {
+    background: var(--pt-green);
+}
+.pt-term__bar span {
+    margin-left: 8px;
+    font-size: 11.5px;
+    color: var(--pt-faint);
+}
+.pt-term__body {
+    padding: 14px 15px;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-x: auto;
+}
+.pt-term__line code {
+    font-family: var(--pt-mono);
+    color: var(--pt-fg);
+    background: none;
+    white-space: nowrap;
+}
+.pt-term__line .pt-p {
+    color: var(--pt-green);
+}
+.pt-cursor {
+    display: inline-block;
+    width: 9px;
+    height: 16px;
+    background: var(--pt-green);
+    margin-left: 3px;
+    vertical-align: -3px;
+    animation: pt-blink 1.1s step-end infinite;
+}
+
+/* buttons */
+.pt-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 13px;
+    margin-top: 28px;
+}
+.pt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--pt-mono);
+    font-size: 14px;
+    padding: 13px 22px;
+    border-radius: 10px;
+}
+.pt-btn--primary {
+    background: var(--pt-green);
+    color: var(--pt-on-accent);
+    font-weight: 700;
+    box-shadow: 0 6px 20px color-mix(in oklab, var(--pt-green) 28%, transparent);
+}
+.pt-btn--primary:hover {
+    background: var(--pt-green-2);
+    color: var(--pt-on-accent);
+}
+.pt-btn--ghost {
+    background: var(--pt-alt);
+    color: var(--pt-fg);
+    font-weight: 600;
+    border: 1px solid var(--pt-line-2);
+}
+.pt-btn--ghost::before {
+    content: "★";
+    color: var(--pt-amber);
+}
+.pt-proof {
+    display: flex;
+    gap: 19px;
+    margin-top: 22px;
+    color: var(--pt-muted);
+    font-size: 12.5px;
+    flex-wrap: wrap;
+}
+.pt-proof span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+/* issue specimen */
+.pt-issue-wrap {
+    position: relative;
+}
+.pt-hole {
+    position: absolute;
+    border-radius: 50%;
+    background: color-mix(in oklab, var(--pt-soil) 35%, var(--pt-code));
+    border: 1px solid color-mix(in oklab, var(--pt-soil) 55%, transparent);
+    box-shadow: inset 0 9px 16px color-mix(in oklab, var(--pt-code) 72%, transparent);
+}
+.pt-hole--one {
+    width: 100px;
+    height: 42px;
+    right: -24px;
+    top: -33px;
+    transform: rotate(8deg);
+}
+.pt-hole--two {
+    width: 72px;
+    height: 30px;
+    left: -34px;
+    bottom: -18px;
+    transform: rotate(-12deg);
+}
+.pt-issue-card {
+    position: relative;
+    padding: 25px;
+    border: 1px solid var(--pt-line-2);
+    border-radius: 16px;
+    background: color-mix(in oklab, var(--pt-alt) 94%, transparent);
+    box-shadow: var(--pt-shadow-strong);
+}
+.pt-issue-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px auto -1px -1px;
+    width: 4px;
+    border-radius: 16px 0 0 16px;
+    background: var(--pt-green);
+}
+.pt-issue-card__top {
+    display: flex;
+    align-items: center;
+    color: var(--pt-muted);
+    font-size: 12px;
+}
+.pt-repo {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--pt-mono);
+}
+.pt-issue-number {
+    margin-left: auto;
+    font-family: var(--pt-mono);
+    color: var(--pt-faint);
+}
+.pt-issue-card h2 {
+    margin: 14px 0 13px;
+    color: var(--pt-fg);
+    font-size: 19px;
+    font-weight: 680;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+}
+.pt-labels {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+.pt-label {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: var(--pt-ink);
+    background: color-mix(in oklab, var(--pt-green) 10%, transparent);
+    border: 1px solid color-mix(in oklab, var(--pt-green) 28%, transparent);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.pt-label--red {
+    color: var(--pt-red);
+    background: color-mix(in oklab, var(--pt-red) 9%, transparent);
+    border-color: color-mix(in oklab, var(--pt-red) 26%, transparent);
+}
+.pt-label--soil {
+    color: var(--pt-soil);
+    background: color-mix(in oklab, var(--pt-soil) 10%, transparent);
+    border-color: color-mix(in oklab, var(--pt-soil) 28%, transparent);
+}
+.pt-label--amber {
+    color: var(--pt-amber);
+    background: color-mix(in oklab, var(--pt-amber) 9%, transparent);
+    border-color: color-mix(in oklab, var(--pt-amber) 28%, transparent);
+}
+.pt-progress {
+    margin-top: 22px;
+    padding: 17px;
+    background: var(--pt-code);
+    border: 1px solid var(--pt-line);
+    border-radius: 11px;
+}
+.pt-progress__item {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    min-height: 50px;
+}
+.pt-progress__item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 11px;
+    top: 24px;
+    bottom: 0;
+    width: 1px;
+    background: var(--pt-line-2);
+}
+.pt-progress__marker {
+    position: relative;
+    z-index: 1;
+    width: 23px;
+    height: 23px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--pt-alt-2);
+    border: 1px solid var(--pt-line-2);
+    color: var(--pt-muted);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+}
+.pt-progress__item--done .pt-progress__marker {
+    background: var(--pt-green);
+    border-color: var(--pt-green);
+    color: var(--pt-on-accent);
+}
+.pt-progress__item--active .pt-progress__marker {
+    color: var(--pt-on-accent);
+    background: var(--pt-green);
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--pt-green) 12%, transparent);
+}
+.pt-progress__item strong {
+    display: block;
+    color: var(--pt-fg);
+    font-size: 12px;
+    font-weight: 650;
+}
+.pt-progress__item small {
+    display: block;
+    margin-top: 3px;
+    color: var(--pt-muted);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+}
+.pt-issue-card__footer {
+    display: flex;
+    align-items: center;
+    margin-top: 17px;
+    color: var(--pt-muted);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+}
+.pt-issue-card__footer > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.pt-issue-card__footer strong {
+    margin-left: auto;
+    color: var(--pt-ink);
+    font-weight: 650;
+}
+.pt-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--pt-green);
+    animation: pt-pulse 1.7s ease-in-out infinite;
+}
+
+/* stats — flat cells separated by hairlines, like the product surface */
+.pt-stats {
+    border-bottom: 1px solid var(--pt-line);
+    background: var(--pt-alt);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    max-width: 1180px;
+    margin: 0 auto;
+    font-family: var(--pt-mono);
+}
+.pt-stat {
+    min-height: 112px;
+    padding: 25px 28px;
+    border-left: 1px solid var(--pt-line);
+}
+.pt-stat:last-child {
+    border-right: 1px solid var(--pt-line);
+}
+.pt-stat b {
+    display: block;
+    color: var(--pt-ink);
+    font-size: 25px;
+    font-weight: 800;
+}
+.pt-stat small {
+    display: block;
+    font-size: 11px;
+    color: var(--pt-muted);
+    margin-top: 5px;
+    letter-spacing: 0.5px;
+}
+
+/* sections */
+.pt-section {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 40px;
+    border-bottom: 1px solid var(--pt-line);
+}
+.pt-section:last-of-type {
+    border-bottom: 0;
+}
+.pt-eyebrow {
+    font-family: var(--pt-mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--pt-ink);
+    margin: 0 0 6px;
+}
+.pt-lead {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin: 0 0 8px;
+    max-width: 680px;
+}
+.pt-sublead {
+    font-size: 15px;
+    color: var(--pt-muted);
+    margin: 0 0 32px;
+    max-width: 640px;
+}
+
+/* lifecycle pipeline */
+.pt-pipeline {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    margin-top: 20px;
+}
+.pt-state__top {
+    display: flex;
+    align-items: center;
+}
+.pt-state__top > span:first-child {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--pt-green);
+    color: var(--pt-on-accent);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+    font-weight: 750;
+}
+.pt-state:last-child .pt-state__top > span:first-child {
+    box-shadow: 0 0 0 7px color-mix(in oklab, var(--pt-green) 10%, transparent);
+}
+.pt-state__line {
+    height: 1px;
+    flex: 1;
+    margin: 0 9px;
+    background: var(--pt-line-2);
+    position: relative;
+}
+.pt-state__line::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    top: -3px;
+    border: 3.5px solid transparent;
+    border-left-color: var(--pt-line-2);
+}
+.pt-state strong {
+    display: block;
+    margin-top: 16px;
+    padding-right: 10px;
+    color: var(--pt-fg);
+    font-family: var(--pt-mono);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+.pt-state small {
+    display: block;
+    margin-top: 5px;
+    color: var(--pt-muted);
+    font-size: 11px;
+}
+.pt-branch-note {
+    width: calc(33.333% - 8px);
+    margin: 29px 0 0 50%;
+    display: grid;
+    grid-template-columns: 42px 28px 1fr;
+    align-items: start;
+    color: var(--pt-muted);
+}
+.pt-branch-note__line {
+    height: 1px;
+    margin-top: 15px;
+    background: var(--pt-line-2);
+}
+.pt-branch-note__marker {
+    color: var(--pt-amber);
+    font-family: var(--pt-mono);
+    font-size: 20px;
+}
+.pt-branch-note strong {
+    display: block;
+    color: var(--pt-amber);
+    font-family: var(--pt-mono);
+    font-size: 11px;
+}
+.pt-branch-note small {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+/* architecture */
+.pt-architecture {
+    margin-top: 20px;
+}
+.pt-architecture__source {
+    min-height: 74px;
+    padding: 14px 21px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--pt-line-2);
+    border-radius: 12px;
+    background: var(--pt-code);
+}
+.pt-architecture__source > span:first-child {
+    display: flex;
+    flex-direction: column;
+}
+.pt-architecture__source strong {
+    font-size: 14px;
+}
+.pt-architecture__source small {
+    margin-top: 2px;
+    color: var(--pt-muted);
+    font-size: 11px;
+}
+.pt-architecture__source .pt-label {
+    margin-left: auto;
+}
+.pt-architecture__rail {
+    height: 42px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    padding: 0 10%;
+}
+.pt-architecture__rail span {
+    position: relative;
+    border-left: 1px solid var(--pt-line-2);
+}
+.pt-architecture__rail span::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -1px;
+    width: 50%;
+    height: 1px;
+    background: var(--pt-line-2);
+}
+.pt-components {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+.pt-component {
+    position: relative;
+    min-height: 140px;
+    padding: 21px;
+    background: var(--pt-alt);
+    border: 1px solid var(--pt-line);
+    border-top: 2px solid var(--pt-green);
+    border-radius: 12px;
+}
+.pt-component__number {
+    position: absolute;
+    right: 18px;
+    top: 16px;
+    color: var(--pt-faint);
+    font-family: var(--pt-mono);
+    font-size: 10px;
+}
+.pt-component h3 {
+    margin: 0;
+    color: var(--pt-fg);
+    font-family: var(--pt-mono);
+    font-size: 12px;
+    font-weight: 700;
+}
+.pt-component p {
+    margin: 8px 0 0;
+    color: var(--pt-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+/* principle cards */
+.pt-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+.pt-card {
+    background: var(--pt-alt);
+    border: 1px solid var(--pt-line);
+    border-radius: 12px;
+    padding: 24px;
+}
+.pt-card h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--pt-fg);
+}
+.pt-card p {
+    font-size: 13.5px;
+    color: var(--pt-muted);
+    margin: 0;
+    text-wrap: pretty;
+}
+.pt-card p code {
+    font-family: var(--pt-mono);
+    font-size: 12px;
+    color: var(--pt-ink);
+    background: none;
+    padding: 0;
+}
+
+/* quickstart */
+.pt-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+.pt-step {
+    background: var(--pt-alt);
+    border: 1px solid var(--pt-line);
+    border-radius: 12px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+}
+.pt-step__num {
+    font-family: var(--pt-mono);
+    font-weight: 800;
+    font-size: 13px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    color: var(--pt-ink);
+    border: 1px solid color-mix(in oklab, var(--pt-green) 45%, transparent);
+    background: color-mix(in oklab, var(--pt-green) 9%, transparent);
+}
+.pt-step h3 {
+    font-size: 15px;
+    margin: 0 0 6px;
+    color: var(--pt-fg);
+}
+.pt-step p {
+    font-size: 14px;
+    color: var(--pt-muted);
+    margin: 0 0 12px;
+}
+.pt-step code {
+    display: block;
+    margin-top: auto;
+    font-family: var(--pt-mono);
+    font-size: 12px;
+    color: var(--pt-fg);
+    background: var(--pt-code);
+    border: 1px solid var(--pt-line);
+    border-radius: 7px;
+    padding: 8px 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Copy-to-clipboard button reuses zensical's .md-code__nav / .md-code__button
+   styling; the wrapper just provides the positioning context and pins the
+   command to the card bottom (the margin-top:auto moves off the code). */
+.pt-step .pt-cmd {
+    position: relative;
+    margin-top: auto;
+}
+.pt-step .pt-cmd code {
+    margin-top: 0;
+    padding-right: 40px;
+}
+
+/* Shell code-fence accents. codecolor.js cycles a data-pt-accent per `sh`
+   block through the four garden hues; the command text takes the accent
+   while comments stay at zensical's muted comment colour for contrast. */
+.language-sh.highlight[data-pt-accent="green"] code {
+    color: var(--pt-ink);
+}
+.language-sh.highlight[data-pt-accent="seedling"] code {
+    color: var(--pt-seedling);
+}
+.language-sh.highlight[data-pt-accent="amber"] code {
+    color: var(--pt-amber);
+}
+.language-sh.highlight[data-pt-accent="soil"] code {
+    color: var(--pt-soil);
+}
+.language-sh.highlight[data-pt-accent] .c,
+.language-sh.highlight[data-pt-accent] .c1,
+.language-sh.highlight[data-pt-accent] .ch,
+.language-sh.highlight[data-pt-accent] .cm,
+.language-sh.highlight[data-pt-accent] .cs,
+.language-sh.highlight[data-pt-accent] .sd {
+    color: var(--md-code-hl-comment-color);
+}
+
+/* Inline-code chips. Material's default --md-code-bg-color sits *darker* than
+   the page in dark mode, so a bare inline chip nearly vanishes against it;
+   --pt-ic-bg gives it a lighter raised surface with a hairline border instead.
+   Scoped to inline code (a <code> not inside a <pre>) so fenced blocks keep
+   their own sunken panel (--md-code-bg-color). */
+.md-typeset :not(pre) > code {
+    background-color: var(--pt-ic-bg);
+    border: 1px solid var(--pt-ic-border);
+    border-radius: 5px;
+}
+
+/* Inline-code striping. The long label/flag/values tables are otherwise a wall
+   of identical chips; codecolor.js stripes each table's inline <code> by row
+   (every chip in a tbody row shares one hue, rows cycle through the garden
+   accents, reset per table) via a data-pt-ic attribute. Each chip tints its
+   --pt-ic-bg base toward its hue and lights its text with the brand colour —
+   the same move as the sh fences. The --pt-* vars are scheme-aware, so one
+   rule set serves both dark and light. */
+.md-typeset table code[data-pt-ic="green"] {
+    color: var(--pt-ink);
+    background-color: color-mix(in oklab, var(--pt-green) 16%, var(--pt-ic-bg));
+    border-color: color-mix(in oklab, var(--pt-green) 32%, transparent);
+}
+.md-typeset table code[data-pt-ic="seedling"] {
+    color: var(--pt-seedling);
+    background-color: color-mix(in oklab, var(--pt-seedling) 16%, var(--pt-ic-bg));
+    border-color: color-mix(in oklab, var(--pt-seedling) 32%, transparent);
+}
+.md-typeset table code[data-pt-ic="amber"] {
+    color: var(--pt-amber);
+    background-color: color-mix(in oklab, var(--pt-amber) 16%, var(--pt-ic-bg));
+    border-color: color-mix(in oklab, var(--pt-amber) 32%, transparent);
+}
+.md-typeset table code[data-pt-ic="soil"] {
+    color: var(--pt-soil);
+    background-color: color-mix(in oklab, var(--pt-soil) 18%, var(--pt-ic-bg));
+    border-color: color-mix(in oklab, var(--pt-soil) 34%, transparent);
+}
+
+/* Field/key tables: keep the first column on one line. Opt-in per table via a
+   `.nowrap-first` wrapper (md_in_html) so the narrow name/flag/label column
+   never breaks an identifier mid-token — stealing the width from the wide
+   final column instead. Scoped to opted-in tables so wide reference tables
+   keep their natural first-column wrapping. */
+.md-typeset .nowrap-first th:first-child,
+.md-typeset .nowrap-first td:first-child {
+    white-space: nowrap;
+}
+
+/* keyframes */
+@keyframes pt-blink {
+    0%,
+    49% {
+        opacity: 1;
+    }
+    50%,
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes pt-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+        transform: scale(0.8);
+    }
+}
+
+@media (max-width: 980px) {
+    .pt-hero__inner {
+        grid-template-columns: 1fr;
+        gap: 48px;
+    }
+    .pt-issue-wrap {
+        max-width: 620px;
+    }
+    .pt-pipeline {
+        grid-template-columns: repeat(3, 1fr);
+        row-gap: 34px;
+    }
+    .pt-state:nth-child(3) .pt-state__line {
+        display: none;
+    }
+    .pt-branch-note {
+        width: 50%;
+        margin-left: 50%;
+    }
+    .pt-architecture__rail {
+        display: none;
+    }
+    .pt-components {
+        grid-template-columns: repeat(2, 1fr);
+        margin-top: 12px;
+    }
+}
+
+@media (max-width: 680px) {
+    .pt-hero__inner,
+    .pt-section {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+    .pt-headline {
+        font-size: 40px;
+    }
+    .pt-lede {
+        font-size: 16px;
+    }
+    .pt-pipeline {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .pt-state:nth-child(3) .pt-state__line {
+        display: block;
+    }
+    .pt-state:nth-child(2n) .pt-state__line {
+        display: none;
+    }
+    .pt-branch-note {
+        width: 100%;
+        margin-left: 0;
+    }
+    .pt-components {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pt-dot,
+    .pt-pulse,
+    .pt-cursor {
+        animation: none !important;
+    }
+}
+
+/* On the home page, let the injected hero own the width */
+.md-content--home .md-content__inner {
+    display: none;
+}

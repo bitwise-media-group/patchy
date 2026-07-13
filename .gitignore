@@ -2,6 +2,11 @@
 /bin/
 dist/
 
+# Docs site (zensical) build output + python env
+/site/
+/.cache/
+/.venv/
+
 # Coverage (make test)
 coverage/
 

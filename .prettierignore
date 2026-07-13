@@ -21,3 +21,7 @@ CHANGELOG.md
 
 # helm templates are Go templates, not YAML prettier can parse
 helm/chart/templates/
+
+# Docs site build output (zensical)
+/site/
+

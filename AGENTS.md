@@ -37,6 +37,11 @@ helm/chart/         Helm rendering of the same stack, pushed to ghcr OCI on rele
                     Lint/render locally with `mise run helm-lint`.
 e2e/                SEPARATE Go module: fakegithub (in-memory API), recorded webhook fixtures, the
                     replay tool, and the suite that drives the real binaries (`make e2e`).
+docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-branded theme in
+                    docs/stylesheets/extra.css + overrides/). `mise run serve` to preview,
+                    `mise run docs-build` to build; the reusable release workflow publishes it
+                    to GitHub Pages (oss.bitwisemedia.uk/patchy). uv provisions zensical
+                    (pyproject.toml / uv.lock).
 .mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +
                     the go-cli task archetype. Makefile is a one-line forwarder; repo-local tasks
                     (multi-binary build, e2e, replay) live in tasks.toml.

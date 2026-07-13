@@ -58,3 +58,27 @@ helm template patchy helm/chart --set networkPolicy.cilium.enabled=true >/dev/nu
 helm template patchy helm/chart --set networkPolicy.istio.enabled=true >/dev/null
 helm template patchy helm/chart --set networkPolicy.enabled=false --set agent.createNamespace=false >/dev/null
 """
+
+# Redefined gates: the archetype's ci/pr plus the zensical docs build, so a
+# broken site fails CI instead of surfacing at release time (the reusable
+# release workflow's docs job publishes the site, keyed off zensical.toml).
+[ci]
+description = "the gates the reusable CI workflow runs"
+run = [
+  { task = "lint" },
+  { task = "test" },
+  { task = "build" },
+  { task = "docs-build" },
+]
+
+[pr]
+description = "full local gate before a pull request"
+run = [
+  { task = "tidy" },
+  { task = "fmt" },
+  { task = "lint" },
+  { task = "test" },
+  { task = "build" },
+  { task = "docs-build" },
+  { task = "commit" },
+]

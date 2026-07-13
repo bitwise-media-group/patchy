@@ -1,0 +1,25 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The agent sandbox. Ephemeral Jobs created at runtime by the
+# remediation-controller (internal/jobs). Nothing here holds a GitHub
+# credential except the per-Job Secret the init container consumes, and that
+# Secret is garbage-collected with its Job.
+#
+# NOTE: helm uninstall deletes this namespace — and with it any agent Job
+# still running. The controllers' namespace is the release namespace and is
+# never chart-managed.
+{{- if .Values.agent.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+        {{- if .Values.networkPolicy.istio.enabled }}
+        {{ .Values.networkPolicy.istio.injectionLabel }}: {{ .Values.networkPolicy.istio.injectionValue }}
+        {{- end }}
+{{- end }}

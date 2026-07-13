@@ -32,6 +32,9 @@ pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/
                     enhancers). Exported signatures must not reference internal/ types.
 deploy/             kustomize base/overlays; deploy/README.md is the operator doc. The container
                     Dockerfile.* live at the repo root (goreleaser dockers_v2 builds them).
+helm/chart/         Helm rendering of the same stack, pushed to ghcr OCI on release
+                    (.github/workflows/helm.yaml); release-please stamps Chart.yaml versions.
+                    Lint/render locally with `mise run helm-lint`.
 e2e/                SEPARATE Go module: fakegithub (in-memory API), recorded webhook fixtures, the
                     replay tool, and the suite that drives the real binaries (`make e2e`).
 .mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +

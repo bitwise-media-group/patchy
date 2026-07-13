@@ -1,0 +1,110 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Defence in depth for the agent sandbox on Istio meshes: the same egress
+# allowlist as the Cilium component, enforced by the sidecar (REGISTRY_ONLY +
+# ServiceEntries; the proxy matches the client-hello SNI, TLS is not
+# terminated). Sidecar injection is switched on by the namespace label the
+# chart adds when this is enabled (networkPolicy.istio.injectionLabel).
+#
+# REQUIREMENTS — both are hard: native sidecars (Kubernetes >= 1.29, istiod
+# with ENABLE_NATIVE_SIDECARS=true; otherwise the Job never completes and the
+# init container's clone is blackholed) and the Istio CNI node agent (the
+# classic istio-init container needs NET_ADMIN and is rejected by the
+# restricted PSS). Unlike Cilium, the sidecar does not constrain what names
+# the pod may RESOLVE. See deploy/kustomize/components/istio.
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.istio.enabled }}
+{{- $hosts := .Values.networkPolicy.agentHosts }}
+---
+# The agent container: `claude -p` and nothing else. exportTo: "." keeps each
+# entry private to the agent namespace.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+    name: {{ include "patchy.fullname" . }}-agent-anthropic
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    exportTo: ["."]
+    hosts:
+        {{- range $hosts.anthropic }}
+        - {{ . | quote }}
+        {{- end }}
+    location: MESH_EXTERNAL
+    resolution: DNS
+    ports:
+        - number: 443
+          name: tls
+          protocol: TLS
+---
+# The INIT container's clone. Running GHES? Set
+# networkPolicy.agentHosts.github to your GHES hostname.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+    name: {{ include "patchy.fullname" . }}-agent-github
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    exportTo: ["."]
+    hosts:
+        {{- range $hosts.github }}
+        - {{ . | quote }}
+        {{- end }}
+    location: MESH_EXTERNAL
+    resolution: DNS
+    ports:
+        - number: 443
+          name: tls
+          protocol: TLS
+---
+# Drop anything not in the registry; the only registry entries visible to
+# this namespace are the ServiceEntries above.
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+    name: {{ include "patchy.fullname" . }}-agent-egress
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    workloadSelector:
+        labels:
+            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+    outboundTrafficPolicy:
+        mode: REGISTRY_ONLY
+    egress:
+        - hosts:
+              - ./*
+---
+# The mesh's own plumbing, re-permitted through the default-deny: egress
+# 15012 to istiod (XDS + workload certs) and ingress 15021 (kubelet probes
+# the proxy's readiness endpoint; probes arrive from the node IP, which no
+# pod selector can match).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-agents-istio
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    podSelector:
+        matchLabels:
+            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 15021
+    egress:
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: {{ .Values.networkPolicy.istio.istiodNamespace }}
+          ports:
+              - protocol: TCP
+                port: 15012
+{{- end }}

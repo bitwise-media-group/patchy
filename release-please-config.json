@@ -8,6 +8,8 @@
     "bump-patch-for-minor-pre-major": true,
     "draft": true,
     "packages": {
-        ".": {}
+        ".": {
+            "extra-files": ["helm/chart/Chart.yaml"]
+        }
     }
 }

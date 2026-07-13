@@ -1,0 +1,141 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# One Deployment per controller, rendered from a single spec because they
+# differ only in image, resources, and whether the service-account token is
+# mounted (only the remediation-controller talks to the Kubernetes API — it
+# creates the agent Jobs and reads their pod logs).
+#
+# All three are singletons with strategy Recreate, ON PURPOSE. The state
+# machine is GitHub issue labels and there is no leader election in the
+# binaries — two replicas would both act on the same issue (double comments,
+# duplicate accumulation issues, duplicate agent Jobs). Do not scale these.
+{{- range $c := list
+    (dict "name" "source-controller" "binary" "source-controller" "vals" .Values.controllers.source "automount" false)
+    (dict "name" "context-controller" "binary" "context-controller" "vals" .Values.controllers.context "automount" false)
+    (dict "name" "remediation-controller" "binary" "remediation-controller" "vals" .Values.controllers.remediation "automount" true)
+}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" $c.name "component" "controller") | nindent 8 }}
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" $ "name" $c.name) | nindent 12 }}
+    template:
+        metadata:
+            labels:
+                {{- include "patchy.labels" (dict "root" $ "name" $c.name "component" "controller") | nindent 16 }}
+                {{- with $.Values.podLabels }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+            {{- with $.Values.podAnnotations }}
+            annotations:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+        spec:
+            serviceAccountName: {{ include "patchy.fullname" $ }}-{{ $c.name }}
+            {{- if not $c.automount }}
+            automountServiceAccountToken: false
+            {{- end }}
+            {{- with $.Values.imagePullSecrets }}
+            imagePullSecrets:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: controller
+                  image: {{ include "patchy.image" (dict "root" $ "binary" $c.binary "image" $c.vals.image) }}
+                  imagePullPolicy: {{ $.Values.image.pullPolicy }}
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: {{ include "patchy.configMapName" $ }}
+                  env:
+                      - name: PATCHY_GITHUB_APP_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: {{ $.Values.github.appSecret }}
+                                key: app-id
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: http
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: http
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  {{- with $c.vals.resources }}
+                  resources:
+                      {{- toYaml . | nindent 22 }}
+                  {{- end }}
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: webhook-secret
+                        mountPath: /etc/patchy/webhook
+                        readOnly: true
+                      - name: github-app
+                        mountPath: /etc/patchy/github-app
+                        readOnly: true
+                      - name: tmp
+                        mountPath: /tmp
+            {{- with $.Values.nodeSelector }}
+            nodeSelector:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $.Values.tolerations }}
+            tolerations:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $.Values.affinity }}
+            affinity:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            volumes:
+                - name: webhook-secret
+                  secret:
+                      secretName: {{ $.Values.github.webhookSecret }}
+                - name: github-app
+                  secret:
+                      secretName: {{ $.Values.github.appSecret }}
+                      defaultMode: 0400
+                # The root filesystem is read-only; every binary wants a
+                # writable /tmp. The remediation-controller additionally
+                # clones the target repository into it (internal/gitpush), so
+                # that one is sized — see controllers.remediation.tmpSizeLimit.
+                - name: tmp
+                  emptyDir:
+                      {{- if $c.vals.tmpSizeLimit }}
+                      sizeLimit: {{ $c.vals.tmpSizeLimit }}
+                      {{- else }}
+                      {}
+                      {{- end }}
+{{- end }}

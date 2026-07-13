@@ -1,0 +1,115 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The base L3/L4 story. A plain NetworkPolicy cannot match hostnames, so the
+# agent egress rule reads "TCP 443 to anywhere outside the cluster" — that
+# permits api.anthropic.com, and also github.com and every other host on 443.
+# Two things carry the isolation, in this order:
+#
+#   1. CREDENTIAL ABSENCE (the real control): the agent container gets no
+#      GitHub token (internal/jobs puts it only in the init container's env).
+#   2. Hostname policy (defence in depth): enable networkPolicy.cilium or
+#      networkPolicy.istio, whichever your infrastructure supports.
+#
+# See deploy/kustomize/base/networkpolicy.yaml for the full discussion.
+{{- if .Values.networkPolicy.enabled }}
+{{- if and .Values.networkPolicy.cilium.enabled .Values.networkPolicy.istio.enabled }}
+{{- fail "networkPolicy.cilium and networkPolicy.istio are mutually exclusive: enable at most one" }}
+{{- end }}
+---
+# ---- controllers: webhook + probes in, DNS + TLS out -----------------------
+# Ingress allows 8080 from anywhere (kubelet probes arrive from the node IP,
+# which no pod selector can match; your ingress controller may live in any
+# namespace) and relies on the HMAC signature check in internal/webhook for
+# authentication. Tighten the from: block to your ingress namespace if you
+# want L3 on top of the HMAC.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-controllers
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy") | nindent 8 }}
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/component: controller
+            app.kubernetes.io/part-of: patchy
+            app.kubernetes.io/instance: {{ .Release.Name }}
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 8080
+    egress:
+        # DNS.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        # GitHub, the Kubernetes API server (remediation-controller), and any
+        # OTLP collector reached over TLS. 6443 covers kind/kubeadm API
+        # servers; managed clusters usually use 443.
+        - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+---
+# ---- agent namespace: default deny, both directions ------------------------
+# Nothing may reach an agent pod (the controller reads its output from the
+# pod log through the API server, not from the pod), and an agent pod may
+# reach nothing except what the egress rule below re-permits.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-agents-default-deny
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    podSelector: {}
+    policyTypes: [Ingress, Egress]
+---
+# TCP 443 (init container: git clone; agent container: claude -> Anthropic)
+# and DNS, nothing else. The except: blocks keep an agent away from the API
+# server, kubelet, and other workloads — adjust networkPolicy.clusterCIDRs to
+# your cluster's pod/service/node ranges.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-agents-egress
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    podSelector:
+        matchLabels:
+            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+    policyTypes: [Egress]
+    egress:
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        - to:
+              - ipBlock:
+                    cidr: 0.0.0.0/0
+                    except:
+                        {{- range .Values.networkPolicy.clusterCIDRs }}
+                        - {{ . }}
+                        {{- end }}
+          ports:
+              - protocol: TCP
+                port: 443
+{{- end }}

@@ -1,0 +1,21 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+apiVersion: v2
+name: patchy
+description: >-
+    Automated triage and remediation of GHAS/CodeQL security findings — GitHub issues as the state
+    machine, sandboxed coding agents as the fix.
+type: application
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/bitwise-media-group/patchy
+sources:
+    - https://github.com/bitwise-media-group/patchy
+maintainers:
+    - name: Bitwise Media Group
+      url: https://github.com/bitwise-media-group
+
+# Both stamped by release-please (extra-files generic updater, see
+# release-please-config.json): the chart version tracks the app release 1:1,
+# and the default image tag is v<appVersion>.
+version: 0.1.0 # x-release-please-version
+appVersion: 0.1.0 # x-release-please-version

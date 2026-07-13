@@ -48,6 +48,12 @@ the secrets to create, and how the agent's isolation actually works.
 kubectl apply -k deploy/kustomize/overlays/dev
 ```
 
+A Helm chart rendering the same stack is published to OCI on every release — see [`helm/chart`](helm/chart/README.md):
+
+```sh
+helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy --namespace patchy --create-namespace
+```
+
 ## Status
 
 All four components are implemented and tested end to end. The context enhancer is a deliberate placeholder — the plugin

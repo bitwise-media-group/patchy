@@ -1,0 +1,67 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Defence in depth for the agent sandbox on Cilium CNIs: FQDN matching on top
+# of the base "TCP 443 anywhere" NetworkPolicy. Requires Cilium with
+# DNS-based policy enabled (the DNS proxy).
+#
+# A CiliumNetworkPolicy selects PODS, not containers: both containers of the
+# Job share one network namespace, so "github.com for the init container
+# only" is not expressible — the agent container can reach the GitHub hosts
+# too, anonymously, because it holds no credential. Credential absence is the
+# control; this policy is the belt to its braces. See
+# deploy/kustomize/components/cilium for the full discussion.
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.cilium.enabled }}
+{{- $hosts := .Values.networkPolicy.agentHosts }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-agent-egress
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
+spec:
+    endpointSelector:
+        matchLabels:
+            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+    egress:
+        # DNS via Cilium's proxy — this is what makes toFQDNs work at all:
+        # the proxy watches the answers and programs the resolved IPs into
+        # the policy. Only the patterns below may be resolved.
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: kube-system
+                    k8s-app: kube-dns
+          toPorts:
+              - ports:
+                    - port: "53"
+                      protocol: ANY
+                rules:
+                    dns:
+                        {{- range $hosts.dnsPatterns }}
+                        - matchPattern: {{ . | quote }}
+                        {{- end }}
+
+        # The agent container: `claude -p` and nothing else.
+        - toFQDNs:
+              {{- range $hosts.anthropic }}
+              - matchName: {{ . | quote }}
+              {{- end }}
+          toPorts:
+              - ports:
+                    - port: "443"
+                      protocol: TCP
+
+        # The INIT container's clone. github.com serves the git protocol;
+        # codeload/objects serve the pack data a `git clone --depth 1` pulls.
+        # Running GHES? Set networkPolicy.agentHosts.github (and dnsPatterns)
+        # to your GHES hostname.
+        - toFQDNs:
+              {{- range $hosts.github }}
+              - matchName: {{ . | quote }}
+              {{- end }}
+          toPorts:
+              - ports:
+                    - port: "443"
+                      protocol: TCP
+{{- end }}

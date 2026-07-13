@@ -1,0 +1,40 @@
+patchy {{ .Chart.AppVersion }} deployed to namespace {{ .Release.Namespace }}
+(agent sandbox: {{ .Values.agent.namespace }}).
+
+Nothing works until the three out-of-band Secrets exist:
+
+  1. {{ .Values.github.appSecret }} (namespace {{ .Release.Namespace }})
+     keys: app-id, private-key.pem — the GitHub App identity.
+  2. {{ .Values.github.webhookSecret }} (namespace {{ .Release.Namespace }})
+     key: secret — the webhook HMAC secret configured on the App.
+  3. {{ .Values.anthropic.secret }} (namespace {{ .Values.agent.namespace }})
+     key: {{ .Values.anthropic.secretKey }} — the model API key. Without it every
+     agent Job pod fails with CreateContainerConfigError.
+
+See deploy/kustomize/base/secrets.example.yaml in the patchy repository for
+the exact shapes and kubectl one-liners.
+
+Each controller needs its own webhook URL on the GitHub App, all signed with
+the same secret:
+
+  POST http://{{ include "patchy.fullname" . }}-source-controller:{{ .Values.service.port }}/webhook       (code_scanning_alert)
+  POST http://{{ include "patchy.fullname" . }}-context-controller:{{ .Values.service.port }}/webhook      (issues)
+  POST http://{{ include "patchy.fullname" . }}-remediation-controller:{{ .Values.service.port }}/webhook  (issues)
+
+Expose them with your own Ingress/Gateway; the Services are {{ .Values.service.type }}.
+{{- if not (or .Values.networkPolicy.cilium.enabled .Values.networkPolicy.istio.enabled) }}
+
+NOTE: the agent sandbox currently has no hostname-level egress policy — the
+base NetworkPolicy allows TCP 443 to anywhere, and credential absence is the
+control. If your cluster runs Cilium or Istio, enable
+networkPolicy.cilium.enabled or networkPolicy.istio.enabled for defence in
+depth.
+{{- end }}
+
+For the pod-security labels on {{ .Release.Namespace }} (the chart only
+labels the agent namespace it creates):
+
+  kubectl label ns {{ .Release.Namespace }} \
+    pod-security.kubernetes.io/enforce=restricted \
+    pod-security.kubernetes.io/audit=restricted \
+    pod-security.kubernetes.io/warn=restricted

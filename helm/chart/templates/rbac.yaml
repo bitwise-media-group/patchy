@@ -1,0 +1,48 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# RBAC, in full: ONLY the remediation-controller gets Kubernetes API access,
+# and only in the agent namespace. There is deliberately nothing for the
+# source-controller, the context-controller (GitHub only), or the agent pods
+# (api.anthropic.com only; API access would let a prompt-injected agent read
+# the very Secrets the isolation model depends on).
+#
+# The verbs are exactly what internal/jobs and internal/remedctrl use. No
+# secrets "list"/"watch": the controller only ever addresses its own per-Job
+# Secret by name.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: {{ include "patchy.fullname" . }}-remediation-controller
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "remediation-controller") | nindent 8 }}
+rules:
+    - apiGroups: ["batch"]
+      resources: ["jobs"]
+      verbs: ["create", "get", "list", "watch", "delete"]
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["pods/log"]
+      verbs: ["get"]
+    - apiGroups: [""]
+      resources: ["secrets", "configmaps"]
+      verbs: ["create", "get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-remediation-controller
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "remediation-controller") | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: {{ include "patchy.fullname" . }}-remediation-controller
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.fullname" . }}-remediation-controller
+      namespace: {{ .Release.Namespace }}

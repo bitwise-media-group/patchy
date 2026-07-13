@@ -1,0 +1,70 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Helm chart publishing. Runs when goreleaser undrafts the vX.Y.Z release (the
+# `release: published` event), after the container images that version of the
+# chart references are on ghcr. No --version/--app-version overrides are
+# needed: release-please stamps Chart.yaml in the release PR (extra-files in
+# release-please-config.json), so the tagged commit already carries the right
+# version — the checkout below is at that tag for a release event, and at the
+# chosen ref for a manual dispatch.
+#
+# The pushed chart gets the same GitHub build-provenance attestation as the
+# binaries and images. Verify with:
+#   gh attestation verify --owner bitwise-media-group \
+#     oci://ghcr.io/bitwise-media-group/patchy/charts/patchy:X.Y.Z
+#
+# Actions are pinned to full commit SHAs (tag in the comment) so a moved tag
+# can never change what runs; Dependabot keeps the pins fresh.
+name: Helm Chart
+
+on:
+    release:
+        types: [published]
+    # republish by hand (e.g. a publish failure after the release went out)
+    workflow_dispatch:
+
+permissions: {}
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            # helm push to ghcr
+            packages: write
+            # keyless signing for the provenance attestation
+            id-token: write
+            # github build-provenance attestation
+            attestations: write
+            # artifact storage record for the attestation
+            artifact-metadata: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+            - name: Lint
+              run: |
+                  helm lint helm/chart
+                  helm template patchy helm/chart >/dev/null
+
+            - name: Package and push
+              id: push
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  set -euo pipefail
+                  helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin <<<"${GITHUB_TOKEN}"
+                  helm package helm/chart --destination dist/
+                  out="$(helm push dist/patchy-*.tgz "oci://ghcr.io/${GITHUB_REPOSITORY}/charts" 2>&1)"
+                  echo "${out}"
+                  digest="$(sed -n 's/^Digest: //p' <<<"${out}")"
+                  test -n "${digest}"
+                  echo "digest=${digest}" >>"${GITHUB_OUTPUT}"
+
+            - name: Attest build provenance
+              uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+              with:
+                  subject-name: ghcr.io/${{ github.repository }}/charts/patchy
+                  subject-digest: ${{ steps.push.outputs.digest }}
+                  push-to-registry: true

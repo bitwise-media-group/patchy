@@ -1,0 +1,32 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# One Service per controller. Each binary serves the same three endpoints on
+# :8080 (internal/webhook): POST /webhook, GET /healthz, GET /readyz — so each
+# controller needs its own webhook URL from GitHub (see deploy/README.md).
+#
+# ClusterIP by default. Exposing them to GitHub is the cluster's business: put
+# an Ingress / Gateway in front in your own environment. service.type
+# NodePort + service.nodePorts covers the kind/dev case.
+{{- range $key := list "source" "context" "remediation" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: {{ include "patchy.fullname" $ }}-{{ $key }}-controller
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" (printf "%s-controller" $key)) | nindent 8 }}
+spec:
+    type: {{ $.Values.service.type }}
+    selector:
+        {{- include "patchy.selectorLabels" (dict "root" $ "name" (printf "%s-controller" $key)) | nindent 8 }}
+    ports:
+        - name: http
+          port: {{ $.Values.service.port }}
+          targetPort: http
+          protocol: TCP
+          {{- with (get $.Values.service.nodePorts $key) }}
+          nodePort: {{ . }}
+          {{- end }}
+{{- end }}

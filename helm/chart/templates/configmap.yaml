@@ -1,0 +1,65 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The one settings surface for all three controllers, consumed with envFrom.
+# Every key is a PATCHY_* environment variable (internal/cli/options.go maps
+# them back onto flags); a key a given binary does not bind is simply ignored
+# by that binary, which is why one ConfigMap can serve all three.
+#
+# The data is assembled as a dict so .Values.config.extra can override any
+# derived key without rendering it twice.
+{{- $cfg := .Values.config }}
+{{- $data := dict
+    "PATCHY_LISTEN_ADDR" $cfg.listenAddr
+    "PATCHY_RECONCILE_INTERVAL" $cfg.reconcileInterval
+    "PATCHY_WEBHOOK_SECRET_FILE" "/etc/patchy/webhook/secret"
+    "PATCHY_GITHUB_APP_PRIVATE_KEY_FILE" "/etc/patchy/github-app/private-key.pem"
+    "PATCHY_ACCUMULATION_WINDOW" $cfg.accumulationWindow
+    "PATCHY_ENHANCE_GRACE" $cfg.enhanceGrace
+    "PATCHY_ISSUE_MIN_AGE" $cfg.issueMinAge
+    "PATCHY_MAX_ATTEMPTS" $cfg.maxAttempts
+    "PATCHY_CONFIDENCE_THRESHOLD" $cfg.confidenceThreshold
+    "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
+    "PATCHY_AGENT_SERVICE_ACCOUNT" .Values.agent.serviceAccount
+    "PATCHY_ANTHROPIC_SECRET" .Values.anthropic.secret
+    "PATCHY_ANTHROPIC_SECRET_KEY" .Values.anthropic.secretKey
+    "PATCHY_JOB_DEADLINE" $cfg.jobDeadline
+    "PATCHY_JOB_TTL" $cfg.jobTTL
+    "PATCHY_MODEL_ALLOWLIST" $cfg.modelAllowlist
+    "PATCHY_CLASSIFY_HARNESS" $cfg.classify.harness
+    "PATCHY_CLASSIFY_MODEL" $cfg.classify.model
+    "PATCHY_CLASSIFY_TIMEOUT" $cfg.classify.timeout
+    "PATCHY_CLASSIFY_MAX_TURNS" $cfg.classify.maxTurns
+    "PATCHY_CLASSIFY_TOKEN_BUDGET" $cfg.classify.tokenBudget
+    "PATCHY_REMEDIATE_HARNESS" $cfg.remediate.harness
+    "PATCHY_REMEDIATE_MODEL" $cfg.remediate.model
+    "PATCHY_REMEDIATE_TIMEOUT" $cfg.remediate.timeout
+    "PATCHY_REMEDIATE_MAX_TURNS" $cfg.remediate.maxTurns
+    "PATCHY_REMEDIATE_TOKEN_BUDGET" $cfg.remediate.tokenBudget
+}}
+{{/*
+PATCHY_GITHUB_APP_ID is NOT here: it comes from the GitHub App Secret (app-id
+key, env secretKeyRef in each Deployment) so App identity lives in one object.
+
+PATCHY_AGENT_IMAGE is the string the remediation-controller stamps into every
+Job it creates — derived from the same values as the container images, so
+pinning the agent-runner digest is one edit, not kustomize's two.
+*/}}
+{{- $_ := set $data "PATCHY_AGENT_IMAGE" (include "patchy.image" (dict "root" . "binary" "agent-runner" "image" .Values.agentRunner.image)) }}
+{{- with .Values.github.baseURL }}
+{{- $_ := set $data "PATCHY_GITHUB_BASE_URL" . }}
+{{- end }}
+{{- range $k, $v := $cfg.extra }}
+{{- $_ := set $data $k $v }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ include "patchy.configMapName" . }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "patchy") | nindent 8 }}
+data:
+    {{- range $k, $v := $data }}
+    {{ $k }}: {{ $v | toString | quote }}
+    {{- end }}

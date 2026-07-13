@@ -10,6 +10,10 @@ must create, and an honest account of what the agent sandbox does and does not g
 
 For _what the system does_, read [DESIGN.md](../DESIGN.md); for _where the code lives_, read [AGENTS.md](../AGENTS.md).
 
+Prefer Helm? [`helm/chart`](../helm/chart/README.md) renders this same stack (published to
+`oci://ghcr.io/bitwise-media-group/patchy/charts/patchy` on release); everything below about the App, the Secrets, and
+the sandbox applies to both.
+
 ## Layout
 
 ```text

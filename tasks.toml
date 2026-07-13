@@ -42,3 +42,19 @@ for app in source-controller context-controller remediation-controller agent-run
   CGO_ENABLED=0 go build -trimpath -ldflags "$ldflags" -o "bin/$app" "./cmd/$app"
 done
 """
+
+# The helm chart (helm/chart) renders the same stack as deploy/kustomize and
+# is published to oci://ghcr.io/bitwise-media-group/patchy/charts by
+# .github/workflows/helm.yaml on release. This is the local gate: lint plus a
+# render of every component combination the templates branch on.
+[helm-lint]
+description = "lint and render the helm chart"
+dir = "{{cwd}}"
+run = """
+set -eu
+helm lint helm/chart
+helm template patchy helm/chart >/dev/null
+helm template patchy helm/chart --set networkPolicy.cilium.enabled=true >/dev/null
+helm template patchy helm/chart --set networkPolicy.istio.enabled=true >/dev/null
+helm template patchy helm/chart --set networkPolicy.enabled=false --set agent.createNamespace=false >/dev/null
+"""

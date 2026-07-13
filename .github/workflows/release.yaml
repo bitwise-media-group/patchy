@@ -7,8 +7,9 @@
 # vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
 # keyless cosign signatures, and a SLSA build-provenance attestation over
 # everything in checksums.txt. patchy ships Kubernetes services, not a Homebrew
-# CLI, so there is no cask; container images are published by goreleaser from
-# deploy/docker (added as the deployment milestone lands).
+# CLI, so there is no cask; container images are published by goreleaser
+# (dockers_v2 over the repo-root Dockerfile.*) to ghcr, and their digests
+# (dist/digests.txt) get the same build-provenance attestation as the archives.
 #
 # app-client-id/app-private-key author the release-please PR as the "FF Merge" App
 # instead of the GITHUB_TOKEN. A GITHUB_TOKEN-authored push fires no workflow_run,
@@ -44,6 +45,8 @@ jobs:
             pull-requests: write
             # cosign keyless signing (goreleaser)
             id-token: write
+            # push the dockers_v2 container images to ghcr
+            packages: write
             # github build-provenance attestation
             attestations: write
             # artifact storage record for the attestation

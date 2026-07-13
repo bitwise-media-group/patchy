@@ -30,7 +30,8 @@ cmd/<binary>/       package main, thin: build root command, delegate to internal
 internal/           All private code, one package per concern (see "Packages" below).
 pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
                     enhancers). Exported signatures must not reference internal/ types.
-deploy/             Dockerfiles + kustomize base/overlays; deploy/README.md is the operator doc.
+deploy/             kustomize base/overlays; deploy/README.md is the operator doc. The container
+                    Dockerfile.* live at the repo root (goreleaser dockers_v2 builds them).
 e2e/                SEPARATE Go module: fakegithub (in-memory API), recorded webhook fixtures, the
                     replay tool, and the suite that drives the real binaries (`make e2e`).
 .mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +

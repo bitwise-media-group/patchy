@@ -8,8 +8,9 @@
 # publishing via `make snapshot`.
 #
 # Produces cross-platform binary archives + checksums + SBOMs + keyless cosign
-# signatures. patchy ships Kubernetes services (no Homebrew cask); container
-# images are built from deploy/docker as the deployment milestone lands.
+# signatures, and the container images: multi-arch manifests built by buildx
+# from the repo-root Dockerfile.* (dockers_v2 below) and pushed to ghcr on
+# release.
 version: 2
 
 # ^ref: https://goreleaser.com/errors/multiple-tokens/
@@ -99,6 +100,99 @@ archives:
 
 checksum:
     name_template: checksums.txt
+
+# ^ref: https://goreleaser.com/customization/package/dockers_v2/
+# Container images — one per binary, each a linux/amd64 + linux/arm64 manifest.
+# buildx assembles them from the binaries built above: nothing is compiled
+# inside Docker; the Dockerfiles only COPY $TARGETPLATFORM/<binary> out of the
+# generated build context. Image names match deploy/kustomize. `goreleaser
+# release` pushes (the release workflow logs in to ghcr and sets up
+# buildx/QEMU); `make snapshot` builds per-arch local images without pushing —
+# it needs a running docker with buildx.
+dockers_v2:
+    - id: source-controller
+      ids: [source-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/source-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: source-controller
+      labels:
+          # the source label is what links the ghcr package to this repository
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: context-controller
+      ids: [context-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/context-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: context-controller
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: remediation-controller
+      ids: [remediation-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/remediation-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: remediation-controller
+          # gitpush shells out to `git`, so this one image cannot be distroless
+          RUNTIME: git
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: agent-runner
+      ids: [agent-runner]
+      dockerfile: Dockerfile.agent-runner
+      images:
+          - ghcr.io/bitwise-media-group/patchy/agent-runner
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+
+# ^ref: https://goreleaser.com/customization/package/docker_digests/
+# Writes dist/digests.txt — one `<hex digest>  <image:tag>` line per published
+# image/manifest, sha256sum format — which the release workflow feeds to
+# actions/attest so the images get the same GitHub build-provenance
+# attestation as every file in checksums.txt. Verify with:
+#   gh attestation verify --owner bitwise-media-group \
+#     oci://ghcr.io/bitwise-media-group/patchy/<name>:vX.Y.Z
+docker_digest:
+    name_template: digests.txt
 
 # ^ref: https://goreleaser.com/customization/sign/sign/
 # Keyless cosign signatures over each built binary; the reusable release workflow

@@ -19,7 +19,8 @@ resources:
 # you swap the CNI. Base NetworkPolicies are applied and simply have no effect
 # on a stock kind cluster — do not read a green dev apply as a working sandbox.
 
-# Local images: `docker build` them, then `kind load docker-image patchy/...`.
+# Local images: `make snapshot` builds them (per-arch, unpushed — retag the
+# host-arch one as patchy/<name>:dev), then `kind load docker-image patchy/...`.
 images:
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
       newName: patchy/source-controller

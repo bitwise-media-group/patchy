@@ -44,8 +44,8 @@ spec:
                     type: RuntimeDefault
             containers:
                 - name: controller
-                  # Built from deploy/docker/Dockerfile.controller with
-                  # --build-arg TARGET=source-controller (RUNTIME=static).
+                  # Built from Dockerfile.controller (repo root)
+                  # (TARGET=source-controller, RUNTIME=static in .goreleaser.yaml).
                   image: ghcr.io/bitwise-media-group/patchy/source-controller:latest
                   args: ["serve"]
                   envFrom:

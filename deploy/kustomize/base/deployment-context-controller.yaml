@@ -38,8 +38,8 @@ spec:
                     type: RuntimeDefault
             containers:
                 - name: controller
-                  # deploy/docker/Dockerfile.controller,
-                  # --build-arg TARGET=context-controller (RUNTIME=static).
+                  # Dockerfile.controller (repo root)
+                  # (TARGET=context-controller, RUNTIME=static in .goreleaser.yaml).
                   image: ghcr.io/bitwise-media-group/patchy/context-controller:latest
                   args: ["serve"]
                   envFrom:

@@ -14,34 +14,15 @@
 # claude CLI (which needs node) — that rules out distroless; node:22-slim is
 # the smallest sane base.
 #
+# Built by GoReleaser (`dockers_v2` in .goreleaser.yaml): the agent-runner
+# binary is compiled by GoReleaser and arrives in the build context at
+# $TARGETPLATFORM/agent-runner — no Go toolchain or source here.
+#
 # readOnlyRootFilesystem: internal/jobs runs both containers with a read-only
 # root filesystem, uid 65532, all capabilities dropped. The only writable
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir). Nothing in
 # this image may write outside those at runtime: npm's global install happens
 # at build time, and claude keeps its state under $HOME=/workspace.
-FROM golang:1.26 AS builder
-
-WORKDIR /src
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-ARG VERSION=dev
-ARG COMMIT=none
-ARG BUILD_DATE=unknown
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-
-RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
-    go build -trimpath \
-    -ldflags "-s -w \
-    -X github.com/bitwise-media-group/patchy/internal/version.Version=${VERSION} \
-    -X github.com/bitwise-media-group/patchy/internal/version.Commit=${COMMIT} \
-    -X github.com/bitwise-media-group/patchy/internal/version.BuildDate=${BUILD_DATE}" \
-    -o /out/agent-runner ./cmd/agent-runner
-
 FROM node:22-slim
 
 # Pinned claude CLI version. Dependabot/renovate should bump this ARG (npm
@@ -58,7 +39,8 @@ RUN apt-get update \
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
     && npm cache clean --force
 
-COPY --from=builder /out/agent-runner /usr/local/bin/agent-runner
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 
 # uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
 # convention). node:22-slim's own "node" user is uid 1000, so create ours.

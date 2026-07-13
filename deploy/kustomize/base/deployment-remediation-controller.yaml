@@ -43,8 +43,8 @@ spec:
                     type: RuntimeDefault
             containers:
                 - name: controller
-                  # deploy/docker/Dockerfile.controller,
-                  # --build-arg TARGET=remediation-controller RUNTIME=git.
+                  # Dockerfile.controller (repo root)
+                  # (TARGET=remediation-controller, RUNTIME=git in .goreleaser.yaml).
                   # This one CANNOT be distroless/static: internal/gitpush
                   # execs the `git` binary to push the agent's changeset.
                   image: ghcr.io/bitwise-media-group/patchy/remediation-controller:latest

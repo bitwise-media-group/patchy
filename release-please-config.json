@@ -9,7 +9,10 @@
     "draft": true,
     "packages": {
         ".": {
-            "extra-files": ["helm/chart/Chart.yaml", "pyproject.toml"]
+            "extra-files": [
+                { "type": "generic", "path": "helm/chart/Chart.yaml" },
+                { "type": "generic", "path": "pyproject.toml" }
+            ]
         }
     }
 }

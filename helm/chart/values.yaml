@@ -3,10 +3,11 @@
 #
 # Default values mirror deploy/kustomize/base. The layout follows the
 # flux-operator chart convention: everything scoped to one controller — its
-# image, config, scheduling, serviceAccount, service, ingress, httpRoute, and
-# networkPolicy — lives under that controller's top-level key
-# (sourceController, contextController, remediationController); only settings
-# that are genuinely shared stay global. The controllers install into the
+# image, config, scheduling, serviceAccount, service, and networkPolicy —
+# lives under that controller's top-level key (sourceController,
+# contextController, remediationController); only settings that are genuinely
+# shared stay global, including `webhook`, the single external entry point
+# in front of all three controllers. The controllers install into the
 # release namespace; the agent sandbox namespace is created by the chart (see
 # `agent:` below). The three Secrets patchy expects are NOT created here — see
 # the chart README and deploy/kustomize/base/secrets.example.yaml.
@@ -31,7 +32,7 @@ commonLabels: {}
 
 # Extra annotations stamped on every object the chart renders, including the
 # controller pods. Per-object annotations (<controller>.podAnnotations, the
-# service/serviceAccount/ingress/httpRoute annotations) win key-by-key.
+# service/serviceAccount/webhook annotations) win key-by-key.
 commonAnnotations: {}
 
 github:
@@ -69,6 +70,80 @@ config:
     # these.
     extra: {}
 
+# ---- webhook entry point ----------------------------------------------------
+# A GitHub App has exactly ONE webhook URL. The webhook-controller (below) is
+# the only component exposed to serve it: point the App at
+# https://<host>/webhook and it validates each delivery's HMAC signature,
+# then routes it to the controllers that consume its X-GitHub-Event type.
+# Expose it with ONE of the flavours here (see docs/deployment/webhook.md):
+#
+#   ingress — a plain networking.k8s.io/v1 Ingress; works with any ingress
+#   controller.
+#   httpRoute — the Gateway API equivalent; attaches to a Gateway you bring
+#   via parentRefs, and TLS is that Gateway's concern.
+webhook:
+    # The single external hostname GitHub reaches, e.g. patchy.example.com.
+    # Required when either flavour below is enabled.
+    host: ""
+    ingress:
+        enabled: false
+        className: ""
+        annotations: {}
+        tls: []
+        # - secretName: patchy-webhook-tls
+        #   hosts:
+        #       - patchy.example.com
+    httpRoute:
+        enabled: false
+        annotations: {}
+        parentRefs: []
+        # - name: my-gateway
+        #   namespace: gateway-system
+        #   sectionName: https
+
+# ---- webhook-controller -------------------------------------------------------
+# The single internet-facing component: it validates each delivery against
+# the shared HMAC secret and routes it — signature intact, so every
+# controller still authenticates every delivery — to the cluster-internal
+# /webhook receivers that consume its event type; unclaimed event types go to
+# the source-controller (see the routing table in webhook-controller.yaml).
+# It holds no GitHub credential (the webhook secret cannot mint tokens), and
+# unlike the singleton controllers it is stateless, so it runs two replicas
+# by default.
+webhookController:
+    image: {}
+    replicas: 2
+    config:
+        # Per-target forward timeout.
+        forwardTimeout: 10s
+        # Extra PATCHY_* keys for the webhook-controller only; setting
+        # PATCHY_FORWARD_ROUTES here replaces the derived routing table.
+        extra: {}
+    resources:
+        requests:
+            cpu: 25m
+            memory: 32Mi
+        limits:
+            cpu: 250m
+            memory: 128Mi
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    serviceAccount:
+        create: true
+        name: ""
+        annotations: {}
+    service:
+        type: ClusterIP
+        port: 8080
+        nodePort: null
+        annotations: {}
+    # Webhook + probes in; DNS, the controllers' 8080, and TLS (OTLP) out.
+    networkPolicy:
+        create: true
+
 # ---- source-controller ------------------------------------------------------
 # Receives code_scanning_alert webhooks and accumulates them into issues.
 # Every controller block has the same shape; the knobs are commented once,
@@ -105,40 +180,14 @@ sourceController:
         # Defaults to <fullname>-source-controller.
         name: ""
         annotations: {}
-    # Each controller serves POST /webhook plus the probes on one port, so
-    # each needs its own webhook URL on the GitHub App (see the chart README).
+    # Each controller serves POST /webhook plus the probes on one port; the
+    # shared `webhook` entry point above fronts all three.
     service:
         type: ClusterIP
         port: 8080
         # Used only when type is NodePort (the kind/dev setup).
         nodePort: null
         annotations: {}
-    # Ingress in front of this controller's webhook. GitHub only ever POSTs
-    # /webhook — do not expose more than that path.
-    ingress:
-        enabled: false
-        className: ""
-        annotations: {}
-        hosts: []
-        # - host: patchy-source.example.com
-        #   paths:
-        #       - path: /webhook
-        #         pathType: Prefix
-        tls: []
-        # - secretName: patchy-source-tls
-        #   hosts:
-        #       - patchy-source.example.com
-    # Gateway API alternative to `ingress`: one HTTPRoute for /webhook.
-    # Requires the Gateway API CRDs.
-    httpRoute:
-        enabled: false
-        annotations: {}
-        parentRefs: []
-        # - name: my-gateway
-        #   namespace: gateway-system
-        #   sectionName: https
-        hostnames: []
-        # - patchy-source.example.com
     # The controller's L3/L4 NetworkPolicy: webhook + probes in, DNS + TLS
     # out. Ingress allows 8080 from anywhere (kubelet probes arrive from the
     # node IP, which no pod selector can match); the HMAC signature check in
@@ -178,17 +227,6 @@ contextController:
         port: 8080
         nodePort: null
         annotations: {}
-    ingress:
-        enabled: false
-        className: ""
-        annotations: {}
-        hosts: []
-        tls: []
-    httpRoute:
-        enabled: false
-        annotations: {}
-        parentRefs: []
-        hostnames: []
     networkPolicy:
         create: true
 
@@ -250,17 +288,6 @@ remediationController:
         port: 8080
         nodePort: null
         annotations: {}
-    ingress:
-        enabled: false
-        className: ""
-        annotations: {}
-        hosts: []
-        tls: []
-    httpRoute:
-        enabled: false
-        annotations: {}
-        parentRefs: []
-        hostnames: []
     networkPolicy:
         create: true
 

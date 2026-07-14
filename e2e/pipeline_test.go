@@ -241,6 +241,42 @@ func TestPipeline(t *testing.T) {
 	}
 }
 
+// TestWebhookControllerRoutes drives a delivery through the
+// webhook-controller — the single entry point GitHub's one webhook URL
+// points at in production — and asserts event-type routing delivers it to
+// the controller that consumes it: the source-controller opens the finding
+// issue (and the context-controller, which the route does NOT name, still
+// enhances it via its reconcile loop). Nothing posts to the controllers
+// directly; if the routing breaks, this test does.
+func TestWebhookControllerRoutes(t *testing.T) {
+	gh := fakegithub.New()
+	t.Cleanup(gh.Close)
+	sf := secretFile(t)
+
+	contextFile := filepath.Join(t.TempDir(), "context.yaml")
+	if err := os.WriteFile(contextFile, []byte(
+		"repos:\n    acme/shop:\n        owners: [octocat]\n        attributes:\n            system: storefront\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	source := controller(t, "source-controller", sf, gh.URL, "--accumulation-window", "1h")
+	enhancer := controller(t, "context-controller", sf, gh.URL,
+		"--static-context-file", contextFile, "--enhance-grace", "100ms")
+	entry := controller(t, "webhook-controller", sf, gh.URL,
+		"--forward-routes", "code_scanning_alert="+source+",issues="+enhancer)
+
+	deliver(t, entry, "code_scanning_alert", "code_scanning_alert.created.json")
+
+	eventually(t, "the finding issue to be opened via the webhook-controller", func() bool {
+		return len(gh.Issues()) == 1
+	})
+	issue := gh.Issues()[0]
+	eventually(t, "the issue to be context-enhanced", func() bool {
+		return slices.Contains(gh.LabelsOf(issue.Number), "security-finding: context-enhanced")
+	})
+}
+
 // TestReplayRejectsForgedSignature is the security check the whole webhook
 // surface rests on: an unsigned or wrongly-signed delivery must never reach a
 // handler.

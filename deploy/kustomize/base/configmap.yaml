@@ -32,6 +32,15 @@ data:
     # Secret (app-id key) so App identity lives in one object.
     # PATCHY_GITHUB_BASE_URL: https://ghes.example.com/api/v3  # GHES only
 
+    # ---- webhook-controller -----------------------------------------------------
+    # Where the webhook-controller routes each validated delivery, by X-GitHub-Event type;
+    # the "*" default catches event types no rule claims (e.g. those
+    # registered by out-of-tree pkg/source plugins) and sends them to the
+    # source-controller, which owns that plugin seam. The controllers do not
+    # bind these keys, so they are inert everywhere else.
+    PATCHY_FORWARD_ROUTES: code_scanning_alert=http://patchy-source-controller:8080/webhook,issues=http://patchy-context-controller:8080/webhook,issue_comment=http://patchy-remediation-controller:8080/webhook,pull_request=http://patchy-remediation-controller:8080/webhook,*=http://patchy-source-controller:8080/webhook
+    PATCHY_FORWARD_TIMEOUT: 10s
+
     # ---- source-controller -------------------------------------------------
     # DESIGN.md requirement 2: alerts of one advisory type accumulate into a
     # single issue for an hour.

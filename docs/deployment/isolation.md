@@ -8,13 +8,13 @@ controls are layered: credential separation, RBAC, pod security, and network egr
 
 The core control is what the agent pod **doesn't** have:
 
-| Credential                      | Where it lives                         | Who sees it                                 |
-| ------------------------------- | -------------------------------------- | ------------------------------------------- |
-| GitHub App private key          | `patchy-github-app` Secret, release ns | Controllers only                            |
-| Webhook HMAC secret             | `patchy-webhook-secret`, release ns    | Controllers only                            |
-| Clone token (read, single repo) | Per-Job Secret, agent ns               | **Init container only** — unset after clone |
-| Push token (write, single repo) | Minted on demand, never stored         | remediation-controller only                 |
-| Anthropic API key               | `patchy-anthropic`, agent ns           | Agent container (`ANTHROPIC_API_KEY`)       |
+| Credential                      | Where it lives                         | Who sees it                                                     |
+| ------------------------------- | -------------------------------------- | --------------------------------------------------------------- |
+| GitHub App private key          | `patchy-github-app` Secret, release ns | Controllers only — never the internet-facing webhook-controller |
+| Webhook HMAC secret             | `patchy-webhook-secret`, release ns    | Controllers + webhook-controller (its only credential)          |
+| Clone token (read, single repo) | Per-Job Secret, agent ns               | **Init container only** — unset after clone                     |
+| Push token (write, single repo) | Minted on demand, never stored         | remediation-controller only                                     |
+| Anthropic API key               | `patchy-anthropic`, agent ns           | Agent container (`ANTHROPIC_API_KEY`)                           |
 
 The remediation-controller mints a short-lived installation token scoped to the one repository with `contents: read`,
 places it in an owner-referenced per-Job Secret (garbage-collected with the Job), and mounts it into the **init

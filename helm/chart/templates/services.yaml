@@ -3,12 +3,11 @@
 #
 # One Service per controller (<controller>.service). Each binary serves the
 # same three endpoints on its port (internal/webhook): POST /webhook, GET
-# /healthz, GET /readyz — so each controller needs its own webhook URL from
-# GitHub (see deploy/README.md).
+# /healthz, GET /readyz.
 #
-# ClusterIP by default. Exposing them to GitHub is the cluster's business:
-# enable <controller>.ingress or <controller>.httpRoute, or put your own
-# Gateway in front. type NodePort + nodePort covers the kind/dev case.
+# ClusterIP by default, and cluster-internal by design: GitHub's deliveries
+# arrive through the webhook-controller (webhook-controller.yaml), which
+# routes each one to the Services that consume its event type. type NodePort + nodePort covers the kind/dev case.
 {{- range $c := list
     (dict "name" "source-controller" "vals" .Values.sourceController)
     (dict "name" "context-controller" "vals" .Values.contextController)

@@ -1,14 +1,20 @@
 # How it works
 
-Patchy is four Go binaries sharing one source of truth: the GitHub issue. Labels carry the state, transitions are
+Patchy is five Go binaries sharing one source of truth: the GitHub issue. Labels carry the state, transitions are
 visible on the issue that caused them, and there is no shadow database or queue. Each component owns a narrow set of
 transitions, and no label key has two writers.
 
+Webhooks enter through one door: the GitHub App's single webhook URL points at the **webhook-controller**, which
+validates the HMAC signature and routes each delivery to the controllers that consume its event type — event types no
+route claims default to the source-controller, and every controller re-validates the signature itself. The
+webhook-controller holds no GitHub credential, so the components carrying the App's key never face the internet.
+
 ```mermaid
 flowchart LR
-    GH[GitHub<br/>issues + alerts] -->|code_scanning_alert| SC[source-controller]
+    GH[GitHub<br/>issues + alerts] -->|one webhook URL| WP[webhook-controller]
+    WP -->|code_scanning_alert| SC[source-controller]
     SC -->|open / accumulate issue| GH
-    GH -->|issues: opened| CC[context-controller]
+    WP -->|issues: opened| CC[context-controller]
     CC -->|enrich + context-enhanced| GH
     GH -->|reconcile: enhanced + 1h old| RC[remediation-controller]
     RC -->|Job| AR[agent-runner<br/>sandboxed pod]
@@ -57,8 +63,8 @@ The Job is the isolation boundary (detailed in [Deployment → Isolation model](
 Inside the pod, `agent-runner` runs a two-stage flow via `claude -p`:
 
 1. **Classify** — is this a false positive? Can it be remediated safely? The agent writes a report with YAML
-   frontmatter: `recommendation` (`ignore` | `remediate` | `intervention`), `priority`, `severity`, `confidence` (0–1),
-   and — for `remediate` — the `model`, `max_turns` and `token_budget` it wants.
+   frontmatter: `recommendation` (`ignore` | `remediate` | `manual`), `priority`, `severity`, `confidence` (0–1), and —
+   for `remediate` — the `model`, `max_turns` and `token_budget` it wants.
 2. **Remediate** — only when the recommendation is `remediate`, confidence clears the threshold (0.75), and no
    breaking-change hold applies. The stage runs under the requested budget (clamped to the controller's ceilings, with a
    live output-token kill switch) and produces a remediation report plus a git bundle of the changeset.
@@ -74,7 +80,7 @@ classification event it stamps the verdict labels (severity, priority, recommend
 | Outcome                                           | Action                                                                    |
 | ------------------------------------------------- | ------------------------------------------------------------------------- |
 | `ignore` (false positive)                         | Dismiss every accumulated GHAS alert as _false positive_, close the issue |
-| `intervention` / `manual`                         | Assign the repository owners                                              |
+| `manual`                                          | Assign the repository owners                                              |
 | `remediate`, confidence < threshold               | Assign owners + `/approve` instructions                                   |
 | `remediate`, a better-but-breaking fix exists     | Hold for `/approve` — a human accepts the compatible fix explicitly       |
 | `remediate`, confidence ≥ threshold               | Continue: the same pod's remediation stage runs                           |

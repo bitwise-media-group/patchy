@@ -81,6 +81,52 @@ spec:
               - protocol: TCP
                 port: 6443
 ---
+# ---- patchy namespace: the webhook-controller -----------------------------------
+# The single internet-facing component. Same ingress posture as the
+# controllers (8080 from anywhere; the HMAC check is the authentication), but
+# its egress is the controllers' 8080 — the routed forwards — plus DNS and
+# TCP 443 for an OTLP collector. No GitHub API access: the
+# webhook-controller holds no credential that could use it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-webhook-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/component: webhook
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 8080
+    egress:
+        # DNS.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        # The controllers' webhook receivers.
+        - to:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/component: controller
+          ports:
+              - protocol: TCP
+                port: 8080
+        # An OTLP collector reached over TLS.
+        - ports:
+              - protocol: TCP
+                port: 443
+---
 # ---- patchy-agents namespace: default deny --------------------------------
 # Applies to every pod in the namespace (empty podSelector), both directions.
 # Nothing may reach an agent pod, and an agent pod may reach nothing, except

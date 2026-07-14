@@ -1,45 +1,38 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Optional Gateway API HTTPRoute per controller (<controller>.httpRoute), the
-# Gateway-flavoured alternative to ingress.yaml. The rule is fixed to /webhook
-# on purpose: that is the only endpoint GitHub needs, and the probes stay
-# cluster-internal. Requires the Gateway API CRDs.
-{{- range $c := list
-    (dict "name" "source-controller" "vals" .Values.sourceController)
-    (dict "name" "context-controller" "vals" .Values.contextController)
-    (dict "name" "remediation-controller" "vals" .Values.remediationController)
-}}
-{{- $route := $c.vals.httpRoute }}
-{{- if $route.enabled }}
----
+# The webhook entry point, Gateway API flavour (webhook.httpRoute): one
+# HTTPRoute on one hostname, in front of the webhook-controller — the only
+# component that faces the internet; it validates each delivery and routes it
+# to the controllers that consume its event type. The path is fixed to /webhook on purpose: that is the
+# only endpoint GitHub needs, and the probes stay cluster-internal. Requires
+# the Gateway API CRDs and a Gateway to attach to via parentRefs — see
+# docs/deployment/webhook.md.
+{{- if .Values.webhook.httpRoute.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-    name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
-    namespace: {{ $.Release.Namespace }}
+    name: {{ include "patchy.fullname" . }}-webhook
+    namespace: {{ .Release.Namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" $ "name" $c.name) | nindent 8 }}
-    {{- with include "patchy.annotations" (dict "root" $ "extra" $route.annotations) }}
+        {{- include "patchy.labels" (dict "root" . "name" "webhook-controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" .Values.webhook.httpRoute.annotations) }}
     annotations:
         {{- . | nindent 8 }}
     {{- end }}
 spec:
-    {{- with $route.parentRefs }}
+    {{- with .Values.webhook.httpRoute.parentRefs }}
     parentRefs:
         {{- toYaml . | nindent 8 }}
     {{- end }}
-    {{- with $route.hostnames }}
     hostnames:
-        {{- toYaml . | nindent 8 }}
-    {{- end }}
+        - {{ required "webhook.host is required when webhook.httpRoute is enabled" .Values.webhook.host | quote }}
     rules:
         - matches:
               - path:
                     type: PathPrefix
                     value: /webhook
           backendRefs:
-              - name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
-                port: {{ $c.vals.service.port }}
-{{- end }}
+              - name: {{ include "patchy.fullname" . }}-webhook-controller
+                port: {{ .Values.webhookController.service.port }}
 {{- end }}

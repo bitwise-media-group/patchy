@@ -16,14 +16,14 @@ Deploying the stack takes three steps, each with its own page:
 
 ## What you need
 
-| Prerequisite         | Why                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| Kubernetes ≥ 1.25    | The chart's `kubeVersion` floor; both namespaces enforce the `restricted` Pod Security Standard. |
-| Helm ≥ 3.8           | OCI registry support for `helm install oci://…`.                                                 |
-| GitHub org admin     | To register the GitHub App and install it on the repositories patchy should watch.               |
-| GHAS / CodeQL        | Code scanning must be enabled on the watched repositories — its alerts are the finding source.   |
-| An Anthropic API key | The agent classifies and remediates via the `claude` CLI inside the sandbox pod.                 |
-| Inbound HTTPS        | GitHub must reach the webhook Services; the chart ships no Ingress, so bring your own.           |
+| Prerequisite         | Why                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| Kubernetes ≥ 1.25    | The chart's `kubeVersion` floor; both namespaces enforce the `restricted` Pod Security Standard.        |
+| Helm ≥ 3.8           | OCI registry support for `helm install oci://…`.                                                        |
+| GitHub org admin     | To register the GitHub App and install it on the repositories patchy should watch.                      |
+| GHAS / CodeQL        | Code scanning must be enabled on the watched repositories — its alerts are the finding source.          |
+| An Anthropic API key | The agent classifies and remediates via the `claude` CLI inside the sandbox pod.                        |
+| Inbound HTTPS        | GitHub must reach the webhook-controller — enable the chart's `webhook.ingress` or `webhook.httpRoute`. |
 
 !!! tip "Hostname-level egress needs Cilium or Istio"
 

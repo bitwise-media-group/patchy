@@ -10,12 +10,13 @@ attempted automatically and opened as pull requests for human review.
 
 ## Components
 
-| Binary                   | Concern                                                                 |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `source-controller`      | Receive findings via webhooks, open + accumulate issues (1-hour window) |
-| `context-controller`     | Enhance new issues with CMDB ownership / infrastructure context         |
-| `remediation-controller` | Run agent Jobs in Kubernetes and apply all GitHub side effects          |
-| `agent-runner`           | In-pod coding-agent runtime: classify, then remediate via `claude -p`   |
+| Binary                   | Concern                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `webhook-controller`     | The one internet-facing entry point: validate the webhook HMAC and route each delivery to the controllers that consume its event type (holds no GitHub credential) |
+| `source-controller`      | Receive findings via webhooks, open + accumulate issues (1-hour window)                                                                                            |
+| `context-controller`     | Enhance new issues with CMDB ownership / infrastructure context                                                                                                    |
+| `remediation-controller` | Run agent Jobs in Kubernetes and apply all GitHub side effects                                                                                                     |
+| `agent-runner`           | In-pod coding-agent runtime: classify, then remediate via `claude -p`                                                                                              |
 
 See [DESIGN.md](DESIGN.md) for the full requirements and label taxonomy, and [AGENTS.md](AGENTS.md) for a map of the
 repository. Full documentation — getting started, the label state machine, configuration and deployment references —
@@ -28,7 +29,7 @@ The toolchain comes from the `.mise/` submodule ([mise](https://mise.jdx.dev) pr
 
 ```sh
 git submodule update --init
-make build   # all four binaries into bin/
+make build   # all five binaries into bin/
 make test    # unit tests with race + coverage
 make lint    # golangci-lint, govulncheck, license headers, prose linters
 make pr      # the full local gate before a pull request

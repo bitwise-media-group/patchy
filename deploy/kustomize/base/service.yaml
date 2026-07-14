@@ -1,13 +1,35 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# One Service per controller. Each binary serves the same three endpoints on
-# :8080 (internal/webhook): POST /webhook, GET /healthz, GET /readyz — so each
-# controller needs its own webhook URL from GitHub (see deploy/README.md).
+# One Service per controller plus one for the webhook-controller. Each binary
+# serves the same three endpoints on :8080 (internal/webhook): POST /webhook,
+# GET /healthz, GET /readyz.
 #
-# ClusterIP only. Exposing them to GitHub is the cluster's business: put an
-# Ingress / Gateway in front of these Services in your own environment overlay.
-# The dev overlay patches them to NodePort for kind.
+# ClusterIP only, and only the webhook-controller is meant to be reachable from
+# outside: GitHub's single webhook URL points at it, and it routes each
+# delivery to the controller Services that consume its event type (see
+# deploy/README.md). Put an Ingress / Gateway in front of patchy-webhook-controller
+# in your own environment overlay. The dev overlay patches the Services to
+# NodePort for kind.
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-webhook-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: webhook-controller
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: webhook-controller
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
+          protocol: TCP
 ---
 apiVersion: v1
 kind: Service

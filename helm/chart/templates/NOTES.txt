@@ -14,15 +14,21 @@ Nothing works until the three out-of-band Secrets exist:
 See deploy/kustomize/base/secrets.example.yaml in the patchy repository for
 the exact shapes and kubectl one-liners.
 
-Each controller needs its own webhook URL on the GitHub App, all signed with
-the same secret:
+{{- if or .Values.webhook.ingress.enabled .Values.webhook.httpRoute.enabled }}
+Set the GitHub App's (single) webhook URL to:
 
-  POST http://{{ include "patchy.fullname" . }}-source-controller:{{ .Values.sourceController.service.port }}/webhook       (code_scanning_alert)
-  POST http://{{ include "patchy.fullname" . }}-context-controller:{{ .Values.contextController.service.port }}/webhook      (issues)
-  POST http://{{ include "patchy.fullname" . }}-remediation-controller:{{ .Values.remediationController.service.port }}/webhook  (issues)
+  https://{{ .Values.webhook.host }}/webhook
 
-Expose them per controller with <controller>.ingress or <controller>.httpRoute
-(scoped to /webhook), or with your own Gateway.
+The webhook-controller behind it validates each delivery and routes it to
+the controllers that consume its event type; it holds no GitHub credential.
+{{- else }}
+No webhook entry point is enabled. Expose the webhook-controller (it validates
+deliveries and routes them to the controllers, holding no GitHub credential)
+with webhook.host plus webhook.ingress.enabled or webhook.httpRoute.enabled —
+or bring your own routing to the {{ include "patchy.fullname" . }}-webhook-controller
+Service — then point the GitHub App's single webhook URL at
+https://<host>/webhook.
+{{- end }}
 {{- if not (or .Values.agent.networkPolicy.cilium.enabled .Values.agent.networkPolicy.istio.enabled) }}
 
 NOTE: the agent sandbox currently has no hostname-level egress policy — the

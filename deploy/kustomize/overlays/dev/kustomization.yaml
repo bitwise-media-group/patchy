@@ -5,7 +5,7 @@
 # hours, the fake-CMDB enhancer, and throwaway credentials.
 #
 #     kind create cluster --config deploy/kind.yaml   # (bring your own; map
-#                                                     #  30080-30082 to host)
+#                                                     #  30079-30082 to host)
 #     kubectl apply -k deploy/kustomize/overlays/dev
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -31,6 +31,9 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       newName: patchy/remediation-controller
       newTag: dev
+    - name: ghcr.io/bitwise-media-group/patchy/webhook-controller
+      newName: patchy/webhook-controller
+      newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/agent-runner
       newName: patchy/agent-runner
       newTag: dev
@@ -38,6 +41,10 @@ images:
 patches:
     - path: configmap-patch.yaml
     - path: deployment-context-controller-patch.yaml
+    - path: services-nodeport-patch.yaml
+      target:
+          kind: Service
+          name: patchy-webhook-controller
     - path: services-nodeport-patch.yaml
       target:
           kind: Service
@@ -50,7 +57,17 @@ patches:
       target:
           kind: Service
           name: patchy-remediation-controller
-    # Distinct nodePorts, one webhook URL each.
+    # Distinct nodePorts. Point your tunnel (smee.io, ngrok, `gh webhook
+    # forward`) at 30079 — the webhook-controller routes deliveries to the right
+    # controllers, exactly as in production. 30080-30082 hit the controllers
+    # directly, which `mise run replay` uses to exercise one in isolation.
+    - target:
+          kind: Service
+          name: patchy-webhook-controller
+      patch: |
+          - op: add
+            path: /spec/ports/0/nodePort
+            value: 30079
     - target:
           kind: Service
           name: patchy-source-controller

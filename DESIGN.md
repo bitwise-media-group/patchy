@@ -33,7 +33,7 @@ state machine.
      - no internet access / no access to github APIs will be granted to claude itself
    - agent should write out its summary in a markdown file. The metadata should be contained in parseable yaml
      frontmatter and contain the following:
-     - recommendation: ignore (false positive), remediate (agentic remediation), intervention (human remediation)
+     - recommendation: ignore (false positive), remediate (agentic remediation), manual (human remediation)
      - priority: low, medium, high
      - severity: low, medium, high
      - confidence: a value between 0-1 that describes how confident you are in the recommendation (for remediate, the likelihood of success)
@@ -47,7 +47,7 @@ state machine.
 6. Coding agent runtime should parse the markdown frontmatter and determine what to do next:
    - Always update the issue with the summary and update labels / issue fields (priority, severity) accordingly
    - If false positive, dismiss the finding in GHAS and close the issue
-   - If intervention: assign the issue to the owner of the repository for triage
+   - If manual: assign the issue to the owner of the repository for triage
    - If remediate and confidence < 0.75, assign the issue to the owner of the repository
      - provide instructions for commenting on the issue to force remediation attempt (/approve comment)
    - If remediate and confidence > 0.75, set the issue label for the state and continue with step 7; otherwise, stop

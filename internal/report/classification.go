@@ -9,16 +9,16 @@ import (
 	"slices"
 )
 
-// Recommendation is the classifier's verdict, in the agent-facing
-// vocabulary. "intervention" is what the labels call "manual"; the mapping
-// happens where labels are written.
+// Recommendation is the classifier's verdict. The values are the same
+// vocabulary internal/labels stamps on the issue
+// (security-recommendation: <value>) — one vocabulary, no mapping.
 type Recommendation string
 
 // The classification verdicts.
 const (
-	RecommendIgnore       Recommendation = "ignore"
-	RecommendRemediate    Recommendation = "remediate"
-	RecommendIntervention Recommendation = "intervention"
+	RecommendIgnore    Recommendation = "ignore"
+	RecommendRemediate Recommendation = "remediate"
+	RecommendManual    Recommendation = "manual"
 )
 
 // Level is a priority or severity value.
@@ -67,9 +67,9 @@ func ParseClassification(data []byte) (*Classification, error) {
 func (c *Classification) validate() error {
 	var errs []error
 	switch c.Recommendation {
-	case RecommendIgnore, RecommendRemediate, RecommendIntervention:
+	case RecommendIgnore, RecommendRemediate, RecommendManual:
 	default:
-		errs = append(errs, fmt.Errorf("recommendation %q is not ignore, remediate, or intervention", c.Recommendation))
+		errs = append(errs, fmt.Errorf("recommendation %q is not ignore, remediate, or manual", c.Recommendation))
 	}
 	if !slices.Contains(validLevels, c.Priority) {
 		errs = append(errs, fmt.Errorf("priority %q is not low, medium, high, or critical", c.Priority))

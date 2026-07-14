@@ -18,5 +18,5 @@ maintainers:
 # Both stamped by release-please (extra-files generic updater, see
 # release-please-config.json): the chart version tracks the app release 1:1,
 # and the default image tag is v<appVersion>.
-version: 0.2.0 # x-release-please-version
-appVersion: 0.2.0 # x-release-please-version
+version: 0.3.0 # x-release-please-version
+appVersion: 0.3.0 # x-release-please-version

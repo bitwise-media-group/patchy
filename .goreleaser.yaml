@@ -176,8 +176,6 @@ dockers_v2:
           - linux/arm64
       build_args:
           TARGET: remediation-controller
-          # gitpush shells out to `git`, so this one image cannot be distroless
-          RUNTIME: git
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT

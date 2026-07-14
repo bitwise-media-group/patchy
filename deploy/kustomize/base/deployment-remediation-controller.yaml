@@ -44,9 +44,9 @@ spec:
             containers:
                 - name: controller
                   # Dockerfile.controller (repo root)
-                  # (TARGET=remediation-controller, RUNTIME=git in .goreleaser.yaml).
-                  # This one CANNOT be distroless/static: internal/gitpush
-                  # execs the `git` binary to push the agent's changeset.
+                  # (TARGET=remediation-controller in .goreleaser.yaml).
+                  # Distroless static like its siblings: the agent's changeset
+                  # is pushed through the GitHub API (internal/ghpush), no git.
                   image: ghcr.io/bitwise-media-group/patchy/remediation-controller:latest
                   args: ["serve"]
                   envFrom:
@@ -76,13 +76,14 @@ spec:
                       periodSeconds: 10
                   resources:
                       requests:
-                          # Higher than its siblings: git clone + bundle fetch
-                          # of a real repository happens in this pod.
+                          # Slightly higher than its siblings: changesets
+                          # (<= ~7 MiB of pod log) are buffered in memory while
+                          # events are applied.
                           cpu: 100m
                           memory: 256Mi
                       limits:
                           cpu: "1"
-                          memory: 1Gi
+                          memory: 512Mi
                   securityContext:
                       allowPrivilegeEscalation: false
                       readOnlyRootFilesystem: true
@@ -97,11 +98,8 @@ spec:
                       - name: github-app
                         mountPath: /etc/patchy/github-app
                         readOnly: true
-                      # gitpush.Push does os.MkdirTemp("") -> $TMPDIR -> /tmp,
-                      # and clones the repository into it. With a read-only
-                      # root filesystem this emptyDir is what makes the push
-                      # path work at all; size it for the largest repo patchy
-                      # remediates.
+                      # The root filesystem is read-only; Go's os.CreateTemp
+                      # and the HTTP stack want a writable /tmp.
                       - name: tmp
                         mountPath: /tmp
             volumes:
@@ -113,5 +111,4 @@ spec:
                       secretName: patchy-github-app
                       defaultMode: 0400
                 - name: tmp
-                  emptyDir:
-                      sizeLimit: 2Gi
+                  emptyDir: {}

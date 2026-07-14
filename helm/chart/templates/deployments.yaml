@@ -132,14 +132,7 @@ spec:
                       secretName: {{ $.Values.github.appSecret }}
                       defaultMode: 0400
                 # The root filesystem is read-only; every binary wants a
-                # writable /tmp. The remediation-controller additionally
-                # clones the target repository into it (internal/gitpush), so
-                # that one is sized — see remediationController.tmpSizeLimit.
+                # writable /tmp.
                 - name: tmp
-                  emptyDir:
-                      {{- if $c.vals.tmpSizeLimit }}
-                      sizeLimit: {{ $c.vals.tmpSizeLimit }}
-                      {{- else }}
-                      {}
-                      {{- end }}
+                  emptyDir: {}
 {{- end }}

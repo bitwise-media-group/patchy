@@ -235,8 +235,7 @@ contextController:
 
 # ---- remediation-controller -------------------------------------------------
 # Runs the agent Jobs and performs all GitHub side effects. Same knobs as
-# sourceController; `config` carries the agent-stage settings and
-# `tmpSizeLimit` sizes the clone scratch space.
+# sourceController; `config` carries the agent-stage settings.
 remediationController:
     image: {}
     config:
@@ -265,18 +264,15 @@ remediationController:
             maxTurns: 80
             tokenBudget: 400000
         extra: {}
-    # Higher than its siblings: git clone + bundle fetch of a real repository
-    # happens in this pod.
+    # Slightly higher than its siblings: changesets (<= ~7 MiB of pod log)
+    # are buffered in memory while events are applied.
     resources:
         requests:
             cpu: 100m
             memory: 256Mi
         limits:
             cpu: "1"
-            memory: 1Gi
-    # The scratch emptyDir the repository is cloned into (the root filesystem
-    # is read-only). Size it for the largest repo patchy remediates.
-    tmpSizeLimit: 2Gi
+            memory: 512Mi
     podAnnotations: {}
     podLabels: {}
     nodeSelector: {}

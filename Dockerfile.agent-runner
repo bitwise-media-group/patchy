@@ -8,7 +8,7 @@
 #     git and the GitHub token; the token never reaches the agent container).
 #   container "agent"       — runs `agent-runner` (must be on PATH under that
 #     exact name: internal/jobs sets Command: []string{"agent-runner"}), which
-#     execs `claude -p ...` (internal/harness) and `git` (bundle creation).
+#     execs `claude -p ...` (internal/harness) and `git` (changeset diffing).
 #
 # So the image must carry: the agent-runner binary, git, /bin/sh, and the
 # claude CLI (which needs node) — that rules out distroless; node:22-slim is

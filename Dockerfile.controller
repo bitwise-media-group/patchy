@@ -9,43 +9,19 @@
 # internal/version by GoReleaser's ldflags, and the same buildx invocation
 # produces the linux/amd64 + linux/arm64 manifest.
 #
-# TARGET selects the binary to copy; RUNTIME selects the final base:
+# All four controllers share the same distroless-static runtime: pure Go,
+# CGO off, no external process is ever executed. The remediation-controller
+# pushes agent changesets through the GitHub API (internal/ghpush), so no git
+# binary is needed anywhere.
 #
-#   RUNTIME=static (default) — gcr.io/distroless/static-debian12:nonroot.
-#     Correct for source-controller, context-controller, and webhook-controller:
-#     pure Go, CGO off, no external process is ever executed.
-#   RUNTIME=git — debian:12-slim with git + ca-certificates.
-#     REQUIRED for remediation-controller: internal/gitpush shells out to the
-#     `git` binary (clone / fetch bundle / push) when it publishes an agent's
-#     changeset, so a static distroless image would fail at push time with
-#     "exec: git: executable file not found".
+# TARGET (the binary to copy) is supplied by the per-image `build_args` in
+# .goreleaser.yaml. Build locally (no publish) with `make snapshot` — needs
+# docker + buildx.
 #
-# Both args are supplied by the per-image `build_args` in .goreleaser.yaml.
-# Build locally (no publish) with `make snapshot` — needs docker + buildx.
-#
-# Both runtimes run as uid 65532 ("nonroot"), matching internal/jobs'
-# runAsUser, and both work under readOnlyRootFilesystem provided /tmp is an
-# emptyDir — gitpush uses os.MkdirTemp for its scratch clone.
+# Runs as uid 65532 ("nonroot"), matching internal/jobs' runAsUser, and works
+# under readOnlyRootFilesystem.
 
-# An ARG interpolated into a FROM must be declared BEFORE the first FROM
-# (global scope); declared any later it belongs to the preceding stage and
-# the FROM sees an empty string.
-ARG RUNTIME=static
-
-# ---- runtime: static (source-controller, context-controller) ---------------
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime-static
-
-# ---- runtime: git (remediation-controller) ----------------------------------
-FROM debian:12-slim AS runtime-git
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates git \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --create-home --home-dir /home/nonroot --shell /sbin/nologin nonroot
-
-# ---- final -----------------------------------------------------------------
-FROM runtime-${RUNTIME}
+FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG TARGETPLATFORM
 ARG TARGET

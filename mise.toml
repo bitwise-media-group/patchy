@@ -12,9 +12,9 @@
 helm = "4.2.3"
 
 [settings]
-# Pin exact versions + artifact checksums of the repo-local tools above in
-# mise.lock (the toolchain's own tools are locked by .mise/mise.lock).
 lockfile = true
+locked = false
+minimum_release_age = "7d"
 
 [vars]
 # patchy is multi-binary (four entrypoints under cmd/), so tasks.toml redefines

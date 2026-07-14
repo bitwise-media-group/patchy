@@ -74,6 +74,22 @@ builds:
       goarch:
           - amd64
           - arm64
+    - id: webhook-controller
+      main: ./cmd/webhook-controller
+      binary: webhook-controller
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+      goarch:
+          - amd64
+          - arm64
     - id: agent-runner
       main: ./cmd/agent-runner
       binary: agent-runner
@@ -162,6 +178,24 @@ dockers_v2:
           TARGET: remediation-controller
           # gitpush shells out to `git`, so this one image cannot be distroless
           RUNTIME: git
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: webhook-controller
+      ids: [webhook-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/webhook-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: webhook-controller
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT

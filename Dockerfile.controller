@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Controller image. One Dockerfile, three images — built by GoReleaser
+# Controller image. One Dockerfile, four images — built by GoReleaser
 # (`dockers_v2` in .goreleaser.yaml), which compiles the binaries first and
 # hands this file a build context containing ONLY those binaries, laid out as
 # $TARGETPLATFORM/<binary> (e.g. linux/amd64/source-controller). There is no
@@ -12,8 +12,8 @@
 # TARGET selects the binary to copy; RUNTIME selects the final base:
 #
 #   RUNTIME=static (default) — gcr.io/distroless/static-debian12:nonroot.
-#     Correct for source-controller and context-controller: pure Go, CGO off,
-#     no external process is ever executed.
+#     Correct for source-controller, context-controller, and webhook-controller:
+#     pure Go, CGO off, no external process is ever executed.
 #   RUNTIME=git — debian:12-slim with git + ca-certificates.
 #     REQUIRED for remediation-controller: internal/gitpush shells out to the
 #     `git` binary (clone / fetch bundle / push) when it publishes an agent's

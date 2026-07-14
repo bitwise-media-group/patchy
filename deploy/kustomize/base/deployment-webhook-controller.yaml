@@ -1,0 +1,95 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-webhook-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: webhook-controller
+        app.kubernetes.io/part-of: patchy
+        app.kubernetes.io/component: webhook
+spec:
+    # Two replicas, ON PURPOSE — the deliberate opposite of the controllers.
+    # The webhook-controller is stateless (validate the HMAC, route the
+    # delivery to its consumers), so it scales freely, and it is the single
+    # internet-facing entry point: its availability IS the webhook path's
+    # availability.
+    #
+    # Note what is absent versus the controller Deployments: no github-app
+    # volume and no PATCHY_GITHUB_APP_ID env. The only internet-facing pod
+    # holds nothing that can mint a GitHub token; the shared webhook HMAC
+    # secret is its only credential.
+    replicas: 2
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: webhook-controller
+            app.kubernetes.io/part-of: patchy
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: webhook-controller
+                app.kubernetes.io/part-of: patchy
+                app.kubernetes.io/component: webhook
+        spec:
+            serviceAccountName: patchy-webhook-controller
+            automountServiceAccountToken: false
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: controller
+                  # Built from Dockerfile.controller (repo root)
+                  # (TARGET=webhook-controller, RUNTIME=static in .goreleaser.yaml).
+                  image: ghcr.io/bitwise-media-group/patchy/webhook-controller:latest
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: patchy-config
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: http
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: http
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  resources:
+                      requests:
+                          cpu: 25m
+                          memory: 32Mi
+                      limits:
+                          cpu: 250m
+                          memory: 128Mi
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: webhook-secret
+                        mountPath: /etc/patchy/webhook
+                        readOnly: true
+                      - name: tmp
+                        mountPath: /tmp
+            volumes:
+                - name: webhook-secret
+                  secret:
+                      secretName: patchy-webhook-secret
+                - name: tmp
+                  emptyDir: {}

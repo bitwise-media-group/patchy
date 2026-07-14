@@ -60,8 +60,8 @@ const (
 	LevelCritical Level = "critical"
 )
 
-// Recommendation is the classifier's verdict. The agent frontmatter value
-// "intervention" is canonicalised to RecommendationManual.
+// Recommendation is the classifier's verdict — the same vocabulary the
+// agent writes in its report frontmatter (internal/report.Recommendation).
 type Recommendation string
 
 // The classifier verdicts.

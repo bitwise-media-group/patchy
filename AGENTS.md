@@ -12,8 +12,11 @@ state store. GHAS/CodeQL alerts arrive via webhook, accumulate into issues for a
 sandboxed `claude -p` run classifies each issue and, at high confidence, remediates it into a pull request; everything
 else routes to humans.
 
-Four binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Five binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
+- `cmd/webhook-controller` — the single internet-facing entry point for the GitHub App's one webhook URL: validates the
+  HMAC signature and routes each delivery to the controllers that consume its event type (signature intact — they
+  re-validate); unclaimed event types default to the source-controller. Holds no GitHub credential.
 - `cmd/source-controller` — receives `code_scanning_alert` webhooks, opens/accumulates issues (1-hour window keyed on
   the `security-advisory` label), flips accumulation state on age.
 - `cmd/context-controller` — reacts to `security-finding: opened` issues, runs the enhancer chain (CMDB placeholder),
@@ -57,6 +60,8 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
 - `webhook`, `reconcile`, `telemetry`, `cli`, `version` — the shared service plumbing every controller composes.
 - `ghas`, `enhancers` — the built-in `pkg/source` and `pkg/enhance` implementations.
 - `sourcectrl`, `contextctrl`, `remedctrl` — one engine per controller; the binaries are thin wiring over these.
+- `webhookctrl` — the webhook-controller's routing engine: re-signs each validated delivery and forwards it to the targets
+  its event type maps to, best-effort (the controllers' reconcile loops are the retry mechanism).
 - `harness`, `runner` — adapted from evolve: harness builds argv, runner executes (observe-and-collect with a
   token-budget kill switch), harness parses stdout. Keep that separation.
 - `agentrun` — the in-pod two-stage flow; `report`/`envelope` are its contracts (frontmatter schemas in, JSONL

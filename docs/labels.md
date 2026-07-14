@@ -111,15 +111,15 @@ with the early states, gated on issue age against the accumulation window.
 ## Classification taxonomy and routing
 
 The agent's report frontmatter speaks a three-word vocabulary — `ignore` (false positive), `remediate` (automated fix
-likely to succeed), `intervention` (real, but a human must handle it). On the issue, `intervention` is canonicalised to
-the `manual` label value. Confidence is the probability the finding can be fully remediated **without breaking
-functionality**; backwards-compatible fixes are always preferred, and when a better-but-breaking fix exists the
-compatible one waits for an explicit `/approve`.
+likely to succeed), `manual` (real, but a human must handle it) — the same values the `security-recommendation` label
+carries, so the report and the issue never need translating. Confidence is the probability the finding can be fully
+remediated **without breaking functionality**; backwards-compatible fixes are always preferred, and when a
+better-but-breaking fix exists the compatible one waits for an explicit `/approve`.
 
 | Classification result             | Route                                                               |
 | --------------------------------- | ------------------------------------------------------------------- |
 | `ignore`                          | Dismiss all accumulated GHAS alerts (_false positive_), close issue |
-| `intervention` → `manual`         | Assign repository owners                                            |
+| `manual`                          | Assign repository owners                                            |
 | `remediate`, confidence < 0.75    | Assign owners + `/approve` instructions                             |
 | `remediate`, breaking-change hold | Assign owners + `/approve` instructions                             |
 | `remediate`, confidence ≥ 0.75    | Remediation stage runs in the same pod                              |

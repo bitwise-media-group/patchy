@@ -40,21 +40,33 @@ global.
 Per-component image overrides win key-by-key, and a `digest` pins over any tag: `<controller>.image` and `agent.image` —
 the latter is the agent-runner image the remediation-controller stamps into every agent Job (`PATCHY_AGENT_IMAGE`).
 
+### The webhook entry point
+
+A GitHub App has one webhook URL, so exposure is chart-level, not per-controller: the webhook-controller validates each
+delivery and routes it to the controllers that consume it — see [Webhook exposure](webhook.md).
+
+| Key                                                                          | Default            | Purpose                                                           |
+| ---------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `webhook.host`                                                               | `""`               | The single external hostname (required when a flavour is enabled) |
+| `webhook.ingress.{enabled,className,annotations,tls}`                        | `false`, …         | Plain-Ingress flavour, scoped to `/webhook`                       |
+| `webhook.httpRoute.{enabled,annotations,parentRefs}`                         | `false`, …         | Gateway API flavour; TLS is the Gateway's concern                 |
+| `webhookController.replicas`                                                 | `2`                | Stateless, unlike the controllers — scale freely                  |
+| `webhookController.config.forwardTimeout`                                    | `10s`              | Per-target forward timeout                                        |
+| `webhookController.{image,resources,serviceAccount,service,networkPolicy,…}` | as the controllers | Same shape as a controller block                                  |
+
 ### Per-controller blocks
 
 Each of `sourceController`, `contextController`, and `remediationController` has the same shape:
 
-| Key                                                                          | Default                                            | Purpose                                       |
-| ---------------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
-| `image`                                                                      | `{}`                                               | Key-by-key override; `digest` pins            |
-| `config`                                                                     | see below                                          | The `PATCHY_*` keys this binary binds         |
-| `resources`                                                                  | src/ctx 50m/96Mi–500m/256Mi; rem 100m/256Mi–1/1Gi  |                                               |
-| `serviceAccount.{create,name,annotations}`                                   | `true` / `""` (= `<fullname>-<controller>`) / `{}` |                                               |
-| `service.{type,port,nodePort,annotations}`                                   | `ClusterIP` / `8080` / `null` / `{}`               | `nodePort` for the kind/dev flow              |
-| `ingress.{enabled,className,annotations,hosts,tls}`                          | `false`, …                                         | Ingress for this controller's `/webhook`      |
-| `httpRoute.{enabled,annotations,parentRefs,hostnames}`                       | `false`, …                                         | Gateway API alternative (fixed to `/webhook`) |
-| `networkPolicy.create`                                                       | `true`                                             | Webhook + probes in, DNS + TLS out            |
-| `podAnnotations` / `podLabels` / `nodeSelector` / `tolerations` / `affinity` | `{}`/`[]`                                          | Per-controller scheduling                     |
+| Key                                                                          | Default                                            | Purpose                               |
+| ---------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------- |
+| `image`                                                                      | `{}`                                               | Key-by-key override; `digest` pins    |
+| `config`                                                                     | see below                                          | The `PATCHY_*` keys this binary binds |
+| `resources`                                                                  | src/ctx 50m/96Mi–500m/256Mi; rem 100m/256Mi–1/1Gi  |                                       |
+| `serviceAccount.{create,name,annotations}`                                   | `true` / `""` (= `<fullname>-<controller>`) / `{}` |                                       |
+| `service.{type,port,nodePort,annotations}`                                   | `ClusterIP` / `8080` / `null` / `{}`               | `nodePort` for the kind/dev flow      |
+| `networkPolicy.create`                                                       | `true`                                             | Webhook + probes in, DNS + TLS out    |
+| `podAnnotations` / `podLabels` / `nodeSelector` / `tolerations` / `affinity` | `{}`/`[]`                                          | Per-controller scheduling             |
 
 `remediationController` additionally has `tmpSizeLimit` (default `2Gi`), the scratch emptyDir the repository is cloned
 into; its NetworkPolicy alone also allows egress to the Kubernetes API server.

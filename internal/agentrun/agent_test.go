@@ -311,7 +311,7 @@ analysis
 		{"below threshold holds", frontmatter("remediate", 0.74, false), false, false},
 		{"breaking change holds", frontmatter("remediate", 0.95, true), false, true},
 		{"ignore stops", frontmatter("ignore", 0.99, false), false, false},
-		{"intervention stops", frontmatter("intervention", 0.9, false), false, false},
+		{"manual stops", frontmatter("manual", 0.9, false), false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -31,9 +31,11 @@ one-liners:
 | `patchy-webhook-secret` | release namespace | `secret`                    | The webhook HMAC secret              |
 | `patchy-anthropic`      | `patchy-agents`   | `api-key`                   | The model API key for the agent Jobs |
 
-Each controller then needs its own webhook URL configured on the GitHub App (`POST /webhook` on its Service), all signed
-with the same secret. Expose each one with `<controller>.ingress` or `<controller>.httpRoute` (scoped to `/webhook`), or
-bring your own Gateway.
+The GitHub App has exactly one webhook URL; point it at `https://<webhook.host>/webhook` and enable one flavour of the
+chart's entry point — `webhook.ingress` (plain Ingress, works anywhere) or `webhook.httpRoute` (Gateway API). Both front
+the **webhook-controller**, the only internet-facing component: it validates each delivery's HMAC signature and routes
+it to the controllers that consume its event type, and it holds no GitHub credential. See the
+[webhook exposure docs](../../docs/deployment/webhook.md) for details and per-platform (EKS, AKS, GKE) notes.
 
 ## Values worth knowing
 
@@ -48,14 +50,18 @@ block has the same shape:
   ConfigMap. `config.*` holds the shared keys (log level, reconcile interval), each overridable per controller by
   repeating it under `<controller>.config`; `config.extra` and `<controller>.config.extra` render arbitrary `PATCHY_*`
   keys and win over anything the chart derives.
-- `<controller>.serviceAccount` / `service` / `ingress` / `httpRoute` / `networkPolicy` — that controller's identity,
-  Service (NodePort covers the kind/dev flow), optional webhook exposure, and L3/L4 policy.
+- `<controller>.serviceAccount` / `service` / `networkPolicy` — that controller's identity, Service (NodePort covers the
+  kind/dev flow), and L3/L4 policy.
 - `<controller>.resources`, `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity` — per-controller
   pod tuning.
 
 The genuinely shared settings stay global:
 
 - `image.*` — repository prefix (registry included), tag (default `v<appVersion>`), pull policy, pull secrets.
+- `webhook.*` — the single external entry point (`host`, plus one of `ingress` / `httpRoute`) in front of the
+  webhook-controller; a GitHub App has one webhook URL, so exposure is a chart-level concern, not a per-controller one.
+- `webhookController.*` — the routing entry point itself: image override, `replicas` (default 2 — it is stateless,
+  unlike the controllers), `config.forwardTimeout`, and the usual serviceAccount/service/networkPolicy/scheduling knobs.
 - `commonLabels` / `commonAnnotations` — stamped on every object the chart renders (annotations reach the pods too;
   per-object annotations win key-by-key).
 - `agent.*` — the sandbox: namespace (created by the chart with the `restricted` Pod Security labels; `helm uninstall`

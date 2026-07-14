@@ -330,8 +330,9 @@ func (c *Controller) issue(ctx context.Context, st Stores, ref issueRef) (*ghcli
 	return nil, fmt.Errorf("%s: issue not found or closed", ref)
 }
 
-// recommendationOf maps the agent's vocabulary onto the label vocabulary
-// ("intervention" is what the labels call "manual").
+// recommendationOf converts the report's verdict to the label value. The two
+// vocabularies are identical (ignore, remediate, manual); anything
+// unrecognised falls back to manual, the route-to-humans safe default.
 func recommendationOf(s string) labels.Recommendation {
 	switch s {
 	case "ignore":

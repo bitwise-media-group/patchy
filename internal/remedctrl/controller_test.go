@@ -317,8 +317,12 @@ func TestRoutesToHumans(t *testing.T) {
 		wantApprove bool
 	}{
 		{
-			name:  "intervention assigns the owner",
-			event: classificationEvent("intervention", 0.9, false, false),
+			name:  "manual assigns the owner",
+			event: classificationEvent("manual", 0.9, false, false),
+		},
+		{
+			name:  "an unknown recommendation falls back to manual",
+			event: classificationEvent("escalate", 0.9, false, false),
 		},
 		{
 			name:        "low confidence offers /approve",

@@ -45,19 +45,18 @@ Subscribe to these four events:
 
 ## The webhook URL
 
-Each controller runs its own webhook receiver (`POST /webhook` on port 8080), but a GitHub App has exactly **one**
-webhook URL. All three controllers validate the same HMAC secret, so the standard pattern is a single external hostname
-fanned out by your Ingress:
+A GitHub App has exactly **one** webhook URL. Point it at the **webhook-controller** — the only patchy component exposed
+to the internet:
 
 ```text
-https://patchy.example.com/source       → patchy-source-controller:8080/webhook
-https://patchy.example.com/context      → patchy-context-controller:8080/webhook
-https://patchy.example.com/remediation  → patchy-remediation-controller:8080/webhook
+https://patchy.example.com/webhook
 ```
 
-Point the App's webhook URL at the fan-out entry point. Controllers ignore event types they don't handle, so duplicated
-deliveries are harmless — the simplest working setup delivers every event to all three paths. The chart deliberately
-ships no Ingress; exposing the Services to GitHub is your cluster's business.
+The webhook-controller validates each delivery's HMAC signature and routes it to the controllers that consume its event
+type. It holds no GitHub credential, so the controllers carrying the App's private key never face the internet directly.
+Enable the exposure with the chart's `webhook.host` plus `webhook.ingress` or `webhook.httpRoute` — see
+[Deployment → Webhook exposure](../deployment/webhook.md) for both flavours and the managed-platform (EKS, AKS, GKE)
+notes.
 
 ## Collect the credentials
 

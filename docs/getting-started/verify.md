@@ -10,9 +10,10 @@ kubectl -n patchy get pods
 kubectl -n patchy logs deploy/patchy-source-controller
 ```
 
-All three pods should be `Running` and logging to stderr. Each serves `GET /healthz` (liveness) and `GET /readyz`
-(readiness) on port 8080. In the GitHub App's **Advanced → Recent Deliveries**, the `ping` delivery should show `204` —
-a `401` means the webhook secret in the App and in `patchy-webhook-secret` disagree.
+The three controller pods and the two webhook-controller replicas should be `Running` and logging to stderr. Each serves
+`GET /healthz` (liveness) and `GET /readyz` (readiness) on port 8080. In the GitHub App's **Advanced → Recent
+Deliveries**, the `ping` delivery should show `204` (answered by the webhook-controller) — a `401` means the webhook
+secret in the App and in `patchy-webhook-secret` disagree.
 
 ## 2. Produce a finding
 

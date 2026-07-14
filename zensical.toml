@@ -30,6 +30,7 @@ nav = [
   { "Labels & state machine" = "labels.md" },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },
+    { "webhook-controller" = "configuration/webhook-controller.md" },
     { "source-controller" = "configuration/source-controller.md" },
     { "context-controller" = "configuration/context-controller.md" },
     { "remediation-controller" = "configuration/remediation-controller.md" },
@@ -37,6 +38,7 @@ nav = [
   ] },
   { "Deployment" = [
     { "Helm chart" = "deployment/helm.md" },
+    { "Webhook exposure" = "deployment/webhook.md" },
     { "Kustomize" = "deployment/kustomize.md" },
     { "Isolation model" = "deployment/isolation.md" },
   ] },

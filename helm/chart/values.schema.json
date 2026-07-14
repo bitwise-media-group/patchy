@@ -64,54 +64,6 @@
                 "annotations": { "type": "object" }
             }
         },
-        "ingress": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["enabled"],
-            "properties": {
-                "enabled": { "type": "boolean" },
-                "className": { "type": "string" },
-                "annotations": { "type": "object" },
-                "hosts": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["host", "paths"],
-                        "properties": {
-                            "host": { "type": "string" },
-                            "paths": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "required": ["path", "pathType"],
-                                    "properties": {
-                                        "path": { "type": "string" },
-                                        "pathType": {
-                                            "type": "string",
-                                            "enum": ["Prefix", "Exact", "ImplementationSpecific"]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "tls": { "type": "array", "items": { "type": "object" } }
-            }
-        },
-        "httpRoute": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["enabled"],
-            "properties": {
-                "enabled": { "type": "boolean" },
-                "annotations": { "type": "object" },
-                "parentRefs": { "type": "array", "items": { "type": "object" } },
-                "hostnames": { "type": "array", "items": { "type": "string" } }
-            }
-        },
         "controllerNetworkPolicy": {
             "type": "object",
             "additionalProperties": false,
@@ -167,10 +119,68 @@
                 "secretKey": { "type": "string" }
             }
         },
+        "webhook": {
+            "type": "object",
+            "description": "The single external entry point for the GitHub App's one webhook URL, fronting the webhook-controller",
+            "additionalProperties": false,
+            "required": ["ingress", "httpRoute"],
+            "properties": {
+                "host": { "type": "string" },
+                "ingress": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["enabled"],
+                    "properties": {
+                        "enabled": { "type": "boolean" },
+                        "className": { "type": "string" },
+                        "annotations": { "type": "object" },
+                        "tls": { "type": "array", "items": { "type": "object" } }
+                    }
+                },
+                "httpRoute": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["enabled"],
+                    "properties": {
+                        "enabled": { "type": "boolean" },
+                        "annotations": { "type": "object" },
+                        "parentRefs": { "type": "array", "items": { "type": "object" } }
+                    }
+                }
+            }
+        },
+        "webhookController": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["replicas", "config", "serviceAccount", "service", "networkPolicy"],
+            "properties": {
+                "image": { "$ref": "#/definitions/imageOverride" },
+                "replicas": { "type": "integer", "minimum": 0 },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["forwardTimeout"],
+                    "properties": {
+                        "forwardTimeout": { "$ref": "#/definitions/duration" },
+                        "logLevel": { "$ref": "#/definitions/logLevel" },
+                        "extra": { "$ref": "#/definitions/extraEnv" }
+                    }
+                },
+                "resources": { "type": "object" },
+                "podAnnotations": { "type": "object" },
+                "podLabels": { "type": "object" },
+                "nodeSelector": { "type": "object" },
+                "tolerations": { "type": "array", "items": { "type": "object" } },
+                "affinity": { "type": "object" },
+                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
+                "service": { "$ref": "#/definitions/service" },
+                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+            }
+        },
         "sourceController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "ingress", "httpRoute", "networkPolicy"],
+            "required": ["config", "serviceAccount", "service", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
                 "config": {
@@ -192,15 +202,13 @@
                 "affinity": { "type": "object" },
                 "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
                 "service": { "$ref": "#/definitions/service" },
-                "ingress": { "$ref": "#/definitions/ingress" },
-                "httpRoute": { "$ref": "#/definitions/httpRoute" },
                 "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
             }
         },
         "contextController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "ingress", "httpRoute", "networkPolicy"],
+            "required": ["config", "serviceAccount", "service", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
                 "config": {
@@ -222,15 +230,13 @@
                 "affinity": { "type": "object" },
                 "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
                 "service": { "$ref": "#/definitions/service" },
-                "ingress": { "$ref": "#/definitions/ingress" },
-                "httpRoute": { "$ref": "#/definitions/httpRoute" },
                 "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
             }
         },
         "remediationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "ingress", "httpRoute", "networkPolicy"],
+            "required": ["config", "serviceAccount", "service", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
                 "config": {
@@ -269,8 +275,6 @@
                 "affinity": { "type": "object" },
                 "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
                 "service": { "$ref": "#/definitions/service" },
-                "ingress": { "$ref": "#/definitions/ingress" },
-                "httpRoute": { "$ref": "#/definitions/httpRoute" },
                 "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
             }
         },

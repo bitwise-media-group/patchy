@@ -62,7 +62,7 @@ helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy \
 ```
 
 The chart's `appVersion` is stamped 1:1 with each release, and the default image tag is derived from it — installing
-chart `X.Y.Z` runs images `vX.Y.Z`. The rendered `NOTES.txt` recaps the webhook URLs and the Secrets it expects.
+chart `X.Y.Z` runs images `vX.Y.Z`. The rendered `NOTES.txt` recaps the webhook URL and the Secrets it expects.
 
 Common values to override — see the [Helm chart reference](../deployment/helm.md) for the full surface:
 
@@ -92,12 +92,25 @@ helm upgrade --install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/pa
   --version <X.Y.Z> --namespace patchy -f values.yaml
 ```
 
-## Expose the webhooks
+## Expose the webhook
 
-Enable `<controller>.ingress` or `<controller>.httpRoute` per controller (scoped to `/webhook`), or front the three
-Services with your own Gateway, and point the GitHub App's webhook URL at it, fanning out as described in
-[Create the GitHub App](github-app.md#the-webhook-url). All three Services are `ClusterIP` on port 8080 with `/healthz`
-and `/readyz` probes.
+Expose the **webhook-controller** — the single internet-facing component, which validates each delivery and routes it to
+the controllers that consume its event type — and point the GitHub App's webhook URL at
+`https://<webhook.host>/webhook`:
+
+```yaml
+webhook:
+  host: patchy.example.com
+  ingress: # or httpRoute — see the webhook exposure page
+    enabled: true
+    className: nginx
+    tls:
+      - secretName: patchy-webhook-tls
+        hosts: [patchy.example.com]
+```
+
+Flavours, TLS, and the EKS / AKS / GKE notes live in [Deployment → Webhook exposure](../deployment/webhook.md). The
+controllers themselves stay `ClusterIP`-only; every component serves `/healthz` and `/readyz` probes on port 8080.
 
 ## The kustomize alternative
 

@@ -38,7 +38,7 @@ ldflags="${LDFLAGS:--s -w \
   -X $module/internal/version.Commit=$commit \
   -X $module/internal/version.BuildDate=$date}"
 mkdir -p bin
-for app in source-controller context-controller remediation-controller agent-runner; do
+for app in source-controller context-controller remediation-controller webhook-controller agent-runner; do
   CGO_ENABLED=0 go build -trimpath -ldflags "$ldflags" -o "bin/$app" "./cmd/$app"
 done
 """
@@ -62,8 +62,9 @@ helm template patchy helm/chart \
   --set contextController.networkPolicy.create=false \
   --set remediationController.networkPolicy.create=false >/dev/null
 helm template patchy helm/chart \
-  --set-json 'sourceController.ingress={"enabled":true,"className":"nginx","hosts":[{"host":"patchy.example.com","paths":[{"path":"/webhook","pathType":"Prefix"}]}]}' \
-  --set-json 'contextController.httpRoute={"enabled":true,"parentRefs":[{"name":"gw","namespace":"gateway-system"}],"hostnames":["patchy.example.com"]}' >/dev/null
+  --set webhook.host=patchy.example.com \
+  --set webhook.ingress.enabled=true --set webhook.ingress.className=nginx \
+  --set-json 'webhook.httpRoute={"enabled":true,"parentRefs":[{"name":"gw","namespace":"gateway-system"}]}' >/dev/null
 """
 
 # Redefined gates: the archetype's ci/pr plus the zensical docs build, so a

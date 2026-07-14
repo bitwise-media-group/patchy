@@ -13,7 +13,7 @@ and callers. Do **not** modify any repository file in this stage; your only outp
   on your word.
 - **remediate** — the finding is real and an automated fix is likely to succeed. Prefer this whenever a safe,
   backwards-compatible fix exists.
-- **intervention** — the finding is real but a human must handle it (the fix needs domain judgement, coordination,
+- **manual** — the finding is real but a human must handle it (the fix needs domain judgement, coordination,
   or is too risky to automate).
 
 Rules:
@@ -34,7 +34,7 @@ no extra fields; the three remediation fields only when recommending remediate):
 
 ```markdown
 ---
-recommendation: ignore | remediate | intervention
+recommendation: ignore | remediate | manual
 priority: low | medium | high | critical
 severity: low | medium | high | critical
 confidence: <number between 0.0 and 1.0>

@@ -36,6 +36,7 @@ Two namespaces, and the split between them is the security boundary.
 | Namespace       | Workload                                                               | Credentials it holds                                                |
 | --------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `patchy`        | `source-controller`, `context-controller`, `remediation-controller`    | GitHub App key, webhook HMAC secret                                 |
+| `patchy`        | `webhook-controller` (the only internet-facing workload)               | webhook HMAC secret only — nothing that can mint a GitHub token     |
 | `patchy-agents` | ephemeral agent `Job`s, created at runtime by `remediation-controller` | the model API key — and, in the init container only, a scoped token |
 
 Each controller is a **single replica** with `strategy: Recreate`. There is no leader election in the binaries: the
@@ -87,19 +88,22 @@ Register one App for the whole pipeline and install it on the repositories patch
 
 **Webhook events to subscribe:** `code_scanning_alert`, `issues`, `issue_comment`, `pull_request`.
 
-**Webhook URLs — one per controller.** Each binary runs its own `internal/webhook` server on `:8080` (`POST /webhook`,
-`GET /healthz`, `GET /readyz`) and ignores the events it does not care about, so point three webhooks at the same App:
+**Webhook URL — exactly one, pointed at the webhook-controller.** Each binary runs its own `internal/webhook` server on
+`:8080` (`POST /webhook`, `GET /healthz`, `GET /readyz`) and ignores the events it does not care about:
 
-| Controller               | Path       | Consumes                                                                |
-| ------------------------ | ---------- | ----------------------------------------------------------------------- |
-| `source-controller`      | `/webhook` | `code_scanning_alert`                                                   |
-| `context-controller`     | `/webhook` | `issues`                                                                |
-| `remediation-controller` | `/webhook` | `issue_comment` (`/approve`), `pull_request` (close the issue on merge) |
+| Component                | Path       | Consumes                                                                 |
+| ------------------------ | ---------- | ------------------------------------------------------------------------ |
+| `webhook-controller`     | `/webhook` | everything — validates the HMAC, routes each event type to its consumers |
+| `source-controller`      | `/webhook` | `code_scanning_alert`                                                    |
+| `context-controller`     | `/webhook` | `issues`                                                                 |
+| `remediation-controller` | `/webhook` | `issue_comment` (`/approve`), `pull_request` (close the issue on merge)  |
 
-A GitHub App supports one webhook URL, so in practice you either register three Apps' worth of webhooks via a fan-out
-(an ingress path per controller in front of one URL), or front the three Services with an Ingress that routes `/source`,
-`/context`, `/remediation` to them. The base ships ClusterIP Services and no Ingress: routing is your cluster's
-business. All three validate the **same** HMAC secret, so a fan-out needs no extra configuration.
+A GitHub App supports one webhook URL, so the webhook-controller is the router: point the App at it and each delivery
+reaches the controllers that consume its event type (`PATCHY_FORWARD_ROUTES`; the `*` route sends unclaimed event types
+to the source-controller, which owns the `pkg/source` plugin seam), signature intact — all four validate the **same**
+HMAC secret. It holds no GitHub credential — it is the only component meant to face the internet. The base ships
+ClusterIP Services and no Ingress: put your Ingress or Gateway in front of `patchy-webhook-controller` in your own
+overlay.
 
 Note that remediation pickup is **not** webhook-driven — the gate is "older than an hour", which no event can announce.
 The reconcile loop (`PATCHY_RECONCILE_INTERVAL`) drives it. The webhook path is the human-in-the-loop one.
@@ -187,10 +191,11 @@ kubectl apply -k deploy/kustomize/overlays/dev
 
 ### dev (kind)
 
-Local `patchy/*:dev` images (`make snapshot`, retag, then `kind load docker-image`), NodePort Services (30080 source,
-30081 context, 30082 remediation — map them with `extraPortMappings` in your kind config and tunnel deliveries in with
-`gh webhook forward` or smee.io), minutes instead of hours (2m accumulation, 2m pickup, 10s reconcile), the static-file
-fake CMDB enhancer mounted from a ConfigMap, and tiny resource requests with no limits.
+Local `patchy/*:dev` images (`make snapshot`, retag, then `kind load docker-image`), NodePort Services (30079
+webhook-controller — point your tunnel, `gh webhook forward` or smee.io, at this one; 30080 source, 30081 context, 30082
+remediation for hitting a controller directly — map them with `extraPortMappings` in your kind config), minutes instead
+of hours (2m accumulation, 2m pickup, 10s reconcile), the static-file fake CMDB enhancer mounted from a ConfigMap, and
+tiny resource requests with no limits.
 
 Two things to know about dev:
 

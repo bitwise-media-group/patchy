@@ -13,6 +13,7 @@ resources:
     - deployment-source-controller.yaml
     - deployment-context-controller.yaml
     - deployment-remediation-controller.yaml
+    - deployment-webhook-controller.yaml
     - service.yaml
     - networkpolicy.yaml
     # secrets.example.yaml is documentation, not a resource — see the file.
@@ -36,6 +37,8 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/webhook-controller
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/agent-runner
       newTag: latest

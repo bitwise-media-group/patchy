@@ -64,6 +64,27 @@ one of two optional layers:
 
 Enabling both fails the chart render.
 
+### Why Cilium is preferred
+
+Both layers render the same four-host allowlist, but they are not equivalent, and the prod overlay picks Cilium
+deliberately:
+
+- **DNS exfiltration.** Istio enforces at the TCP/TLS layer — the `Sidecar` + `ServiceEntry` pair matches HTTPS flows by
+  SNI — but the pod still needs UDP/53 to the cluster resolver, and the proxy does not constrain what names it may
+  resolve. A prompt-injected agent can encode data into query names (`<chunk>.attacker.example`) and walk it out through
+  the resolver with every other route blocked. Cilium's transparent DNS proxy answers only the allowlisted names and
+  drops everything else, closing that channel; the learned IPs then bound the L3/L4 rules, so skipping DNS and dialling
+  a raw address is blocked too.
+- **Enforcement point.** The sidecar and its traffic redirection live inside the pod's own network namespace, where a
+  sufficiently privileged process could bypass them. Cilium enforces in eBPF on the node, outside anything the workload
+  can touch.
+- **Job friction.** The native-sidecar and CNI-node-agent requirements above exist purely to make the mesh coexist with
+  a short-lived Job; Cilium adds nothing to the pod.
+
+Use Istio only when the cluster already runs the mesh and Cilium is not an option, and treat its allowlist as the weaker
+fence: it narrows HTTPS egress but leaves DNS open. Either way, the boundary remains the missing credential (see
+[credential separation](#credential-separation)), not the egress layer.
+
 !!! warning "kind is not a sandbox"
 
     kind's default CNI (kindnet) ignores NetworkPolicy entirely. The dev overlay applying cleanly does not mean the

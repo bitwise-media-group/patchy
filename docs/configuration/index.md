@@ -12,8 +12,9 @@ uppercased, `PATCHY_` prefix). Precedence, highest first:
 2. The `PATCHY_*` environment variable
 3. The built-in default
 
-The Helm chart renders everything under `config.*` into a single ConfigMap of `PATCHY_*` variables consumed by all three
-Deployments via `envFrom` — in Kubernetes you configure patchy with values, not flags.
+The Helm chart renders a ConfigMap of `PATCHY_*` variables per controller — the shared `config.*` values plus that
+controller's `<controller>.config` block — consumed by its Deployment via `envFrom` — in Kubernetes you configure patchy
+with values, not flags.
 
 The **agent-runner** has no flags at all: it reads only `PATCHY_*` environment variables, injected into the Job pod by
 the remediation-controller. See [agent-runner](agent-runner.md).
@@ -33,7 +34,7 @@ Registered as persistent flags on every controller's `serve` command:
 | `--github-token`                | `PATCHY_GITHUB_TOKEN`                | —       | PAT dev fallback; **wins over App auth** if set       |
 | `--github-base-url`             | `PATCHY_GITHUB_BASE_URL`             | —       | GitHub API base URL (GHES); empty = api.github.com    |
 | `--reconcile-interval`          | `PATCHY_RECONCILE_INTERVAL`          | `1m`    | Reconcile loop interval                               |
-| `--verbose`, `-v`               | `PATCHY_VERBOSE`                     | `false` | Debug logging                                         |
+| `--log-level`                   | `PATCHY_LOG_LEVEL`                   | `warn`  | Log level: `debug`, `info`, `warn`, or `error`        |
 
 </div>
 

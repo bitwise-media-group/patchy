@@ -43,7 +43,7 @@ type Options struct {
 	// Log is the process logger; main constructs it, telemetry may replace
 	// it with a fanout after Init.
 	Log *slog.Logger
-	// LogLevel is toggled to debug by --verbose before any command runs.
+	// LogLevel is set from --log-level before any command runs.
 	LogLevel *slog.LevelVar
 
 	// ListenAddr is the webhook/health HTTP listen address.
@@ -62,8 +62,8 @@ type Options struct {
 	GitHubBaseURL string
 	// ReconcileInterval paces the controller's reconcile loop.
 	ReconcileInterval time.Duration
-	// Verbose raises the log level to debug.
-	Verbose bool
+	// LogLevelName is the configured level: debug, info, warn, or error.
+	LogLevelName string
 
 	viper *viper.Viper
 }
@@ -80,7 +80,7 @@ func (o *Options) Bind(cmd *cobra.Command) {
 	pf.StringVar(&o.GitHubToken, "github-token", "", "personal access token (dev fallback; wins over App auth)")
 	pf.StringVar(&o.GitHubBaseURL, "github-base-url", "", "GitHub API base URL (default api.github.com)")
 	pf.DurationVar(&o.ReconcileInterval, "reconcile-interval", time.Minute, "reconcile loop interval")
-	pf.BoolVarP(&o.Verbose, "verbose", "v", false, "enable debug logging")
+	pf.StringVar(&o.LogLevelName, "log-level", "warn", "log level: debug, info, warn, or error")
 
 	o.viper = viper.New()
 	o.viper.SetEnvPrefix(envPrefix)
@@ -103,9 +103,13 @@ func (o *Options) Load(cmd *cobra.Command) error {
 	o.GitHubToken = o.viper.GetString("github-token")
 	o.GitHubBaseURL = o.viper.GetString("github-base-url")
 	o.ReconcileInterval = o.viper.GetDuration("reconcile-interval")
-	o.Verbose = o.viper.GetBool("verbose")
-	if o.Verbose && o.LogLevel != nil {
-		o.LogLevel.Set(slog.LevelDebug)
+	o.LogLevelName = o.viper.GetString("log-level")
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(o.LogLevelName)); err != nil {
+		return fmt.Errorf("log level: %q is not debug, info, warn, or error", o.LogLevelName)
+	}
+	if o.LogLevel != nil {
+		o.LogLevel.Set(level)
 	}
 	return nil
 }

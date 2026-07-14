@@ -33,7 +33,7 @@ OTEL_LOGS_EXPORTER              OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
                                 OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
 ```
 
-Point the controllers at a collector by adding the variables to the ConfigMap via `config.extra`:
+Point the controllers at a collector by adding the variables to the ConfigMaps via `config.extra`:
 
 ```yaml
 config:
@@ -57,5 +57,6 @@ Baggage propagators are installed. Logs are bridged — every `slog` record fans
 
 ## Verbosity
 
-`--verbose` / `PATCHY_VERBOSE=true` switches the stderr handler (and the log bridge) to debug level. The webhook
-server's dedup, queue, and signature decisions all log there — the first place to look when deliveries seem to vanish.
+`--log-level` / `PATCHY_LOG_LEVEL` sets the stderr handler (and the log bridge) level: `debug`, `info`, `warn` (the
+default), or `error`. At `debug`, the webhook server's dedup, queue, and signature decisions all log — the first place
+to look when deliveries seem to vanish.

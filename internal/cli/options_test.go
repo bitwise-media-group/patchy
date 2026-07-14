@@ -72,17 +72,38 @@ func TestLoadEnvBeatsDefault(t *testing.T) {
 	}
 }
 
-func TestVerboseRaisesLevel(t *testing.T) {
-	o, cmd := newBound(t)
-	cmd.SetArgs([]string{"--verbose"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
+func TestLogLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		env     map[string]string
+		want    slog.Level
+		wantErr bool
+	}{
+		{"default is warn", nil, nil, slog.LevelWarn, false},
+		{"flag sets level", []string{"--log-level", "error"}, nil, slog.LevelError, false},
+		{"env sets level", nil, map[string]string{"PATCHY_LOG_LEVEL": "info"}, slog.LevelInfo, false},
+		{"debug via flag", []string{"--log-level", "debug"}, nil, slog.LevelDebug, false},
+		{"unknown level errors", []string{"--log-level", "loud"}, nil, 0, true},
 	}
-	if err := o.Load(cmd); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if o.LogLevel.Level() != slog.LevelDebug {
-		t.Errorf("LogLevel = %v, want debug", o.LogLevel.Level())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			o, cmd := newBound(t)
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			err := o.Load(cmd)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Load: error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && o.LogLevel.Level() != tt.want {
+				t.Errorf("LogLevel = %v, want %v", o.LogLevel.Level(), tt.want)
+			}
+		})
 	}
 }
 

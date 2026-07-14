@@ -59,18 +59,17 @@ delivery and routes it to the controllers that consume it — see [Webhook expos
 
 Each of `sourceController`, `contextController`, and `remediationController` has the same shape:
 
-| Key                                                                          | Default                                            | Purpose                               |
-| ---------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------- |
-| `image`                                                                      | `{}`                                               | Key-by-key override; `digest` pins    |
-| `config`                                                                     | see below                                          | The `PATCHY_*` keys this binary binds |
-| `resources`                                                                  | src/ctx 50m/96Mi–500m/256Mi; rem 100m/256Mi–1/1Gi  |                                       |
-| `serviceAccount.{create,name,annotations}`                                   | `true` / `""` (= `<fullname>-<controller>`) / `{}` |                                       |
-| `service.{type,port,nodePort,annotations}`                                   | `ClusterIP` / `8080` / `null` / `{}`               | `nodePort` for the kind/dev flow      |
-| `networkPolicy.create`                                                       | `true`                                             | Webhook + probes in, DNS + TLS out    |
-| `podAnnotations` / `podLabels` / `nodeSelector` / `tolerations` / `affinity` | `{}`/`[]`                                          | Per-controller scheduling             |
+| Key                                                                          | Default                                             | Purpose                               |
+| ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------- |
+| `image`                                                                      | `{}`                                                | Key-by-key override; `digest` pins    |
+| `config`                                                                     | see below                                           | The `PATCHY_*` keys this binary binds |
+| `resources`                                                                  | src/ctx 50m/96Mi–500m/256Mi; rem 100m/256Mi–1/512Mi |                                       |
+| `serviceAccount.{create,name,annotations}`                                   | `true` / `""` (= `<fullname>-<controller>`) / `{}`  |                                       |
+| `service.{type,port,nodePort,annotations}`                                   | `ClusterIP` / `8080` / `null` / `{}`                | `nodePort` for the kind/dev flow      |
+| `networkPolicy.create`                                                       | `true`                                              | Webhook + probes in, DNS + TLS out    |
+| `podAnnotations` / `podLabels` / `nodeSelector` / `tolerations` / `affinity` | `{}`/`[]`                                           | Per-controller scheduling             |
 
-`remediationController` additionally has `tmpSizeLimit` (default `2Gi`), the scratch emptyDir the repository is cloned
-into; its NetworkPolicy alone also allows egress to the Kubernetes API server.
+`remediationController`'s NetworkPolicy alone also allows egress to the Kubernetes API server.
 
 ### Pipeline configuration
 

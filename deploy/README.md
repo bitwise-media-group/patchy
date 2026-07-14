@@ -26,7 +26,7 @@ deploy/
 └── README.md
 ```
 
-The Dockerfiles live at the repo root: `Dockerfile.controller` (all three controllers, ARG `TARGET` + `RUNTIME`) and
+The Dockerfiles live at the repo root: `Dockerfile.controller` (all four controllers, ARG `TARGET`) and
 `Dockerfile.agent-runner` (the agent image: agent-runner + git + claude CLI).
 
 ## What gets deployed where
@@ -59,14 +59,11 @@ directly from the repo. To build images locally, run `make snapshot` (needs dock
 also uploads `digests.txt` and attests every image digest in it; verify with
 `gh attestation verify --owner bitwise-media-group oci://ghcr.io/bitwise-media-group/patchy/<name>:vX.Y.Z`.
 
-One Dockerfile builds all three controllers; the per-image `build_args` in `.goreleaser.yaml` set `TARGET` to pick the
-binary and `RUNTIME` to pick the base.
-
-**`remediation-controller` must be built with `RUNTIME=git`.** `internal/gitpush` shells out to the `git` binary to
-clone the target repository and push the agent's bundle, so that one image cannot be `distroless/static` — `RUNTIME=git`
-gives it a `debian:12-slim` base with `git` and `ca-certificates`. The other two are pure Go with no subprocesses and
-use the distroless default. Everything runs as uid 65532 with a read-only root filesystem; `/tmp` is an `emptyDir` in
-every pod, which is what makes the read-only rootfs survive `os.MkdirTemp`.
+One Dockerfile builds all four controllers on the same `distroless/static` base; the per-image `build_args` in
+`.goreleaser.yaml` set `TARGET` to pick the binary. Every controller is pure Go with no subprocesses — the
+remediation-controller pushes the agent's changeset through the GitHub API (`internal/ghpush`), so no image carries a
+`git` binary. Everything runs as uid 65532 with a read-only root filesystem; `/tmp` is an `emptyDir` in every pod, which
+is what keeps the Go runtime's temp-file users working.
 
 The agent image is `node:22-slim` because it must carry the `claude` CLI (`@anthropic-ai/claude-code`, pinned by
 `ARG CLAUDE_VERSION` — Dependabot/renovate should bump it), plus `git` and `/bin/sh` for the init container's clone, and
@@ -151,11 +148,10 @@ unachievable: `claude -p` **is** a network client of `api.anthropic.com`. What i
 
 **1. Credential absence — the real control.** The agent container has no GitHub credential. `internal/jobs` puts the
 short-lived scoped token in the init container's environment only, assembles the auth header inside the shell so the
-token never appears in the container command, resets the clone's remote URL afterwards so nothing persists in the
-working tree the agent sees, and lists `GITHUB_TOKEN` in `reservedEnv` so no configuration can smuggle one in. All
-GitHub side effects — labels, comments, alert dismissal, branch push, PRs — are performed by the remediation-controller,
-which receives the agent's work as a git bundle over stdout. An agent that reaches `github.com` reaches it as an
-anonymous member of the public.
+token never appears in the container command or any config that persists into the working tree the agent sees, and lists
+`GITHUB_TOKEN` in `reservedEnv` so no configuration can smuggle one in. All GitHub side effects — labels, comments,
+alert dismissal, branch push, PRs — are performed by the remediation-controller, which receives the agent's work as a
+structured changeset over stdout. An agent that reaches `github.com` reaches it as an anonymous member of the public.
 
 **2. NetworkPolicy — the floor.** `patchy-agents` is default-deny in both directions. Egress is re-permitted for DNS and
 TCP 443 only, with the cluster's own ranges and the cloud metadata endpoint (169.254.169.254) excluded. **A plain

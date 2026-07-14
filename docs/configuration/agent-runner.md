@@ -19,7 +19,6 @@ a Job spec or running the runtime standalone.
 | `PATCHY_ISSUE`          | — (**required**, >0) | The finding's issue number                                  |
 | `PATCHY_PHASE`          | `classify+remediate` | `classify+remediate` or `remediate` (the `/approve` re-run) |
 | `PATCHY_WORKSPACE`      | `/workspace`         | Pod workspace root (the clone, reports, handoff files)      |
-| `PATCHY_DEFAULT_BRANCH` | `main`               | Branch the init container cloned                            |
 
 </div>
 
@@ -36,10 +35,10 @@ Two knobs exist only here:
 
 <div class="nowrap-first" markdown>
 
-| Env                       | Default           | Purpose                                                             |
-| ------------------------- | ----------------- | ------------------------------------------------------------------- |
-| `PATCHY_BUNDLE_MAX_BYTES` | `5242880` (5 MiB) | Size cap on the git bundle carrying the changeset out of the pod    |
-| `PATCHY_FAKE_FIXTURE`     | —                 | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
+| Env                          | Default           | Purpose                                                             |
+| ---------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `PATCHY_CHANGESET_MAX_BYTES` | `5242880` (5 MiB) | Size cap on the changeset's file contents carried out of the pod    |
+| `PATCHY_FAKE_FIXTURE`        | —                 | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
 
 </div>
 
@@ -65,5 +64,5 @@ by `claude` automatically. The `fake` harness needs no credentials.
 
 Progress and results are emitted as one JSON object per line, prefixed `PATCHY-EVENT:`, on stdout; the
 remediation-controller tails the pod log and applies them. Stage outcomes are `ok`, `runtime_error`, `timeout`,
-`budget_exceeded`, `report_missing`, `report_invalid`, `commit_failed`, and `bundle_too_large` — anything but `ok`
+`budget_exceeded`, `report_missing`, `report_invalid`, `commit_failed`, and `changeset_too_large` — anything but `ok`
 routes the finding to humans.

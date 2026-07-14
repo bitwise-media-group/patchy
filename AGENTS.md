@@ -68,7 +68,8 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
   events out).
 - `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here: the clone token reaches only the
   init container.
-- `gitpush` — unpacks the agent's bundle and pushes the branch; the only place a write credential exists.
+- `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref) to create
+  the branch; the only place a write credential exists. No git binary anywhere controller-side.
 - `ghfake` — the in-memory issue store the controller tests share.
 
 ## Conventions

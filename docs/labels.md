@@ -126,6 +126,6 @@ better-but-breaking fix exists the compatible one waits for an explicit `/approv
 | Stage outcome not `ok`            | `manual`, assign owners — a partial report is never trusted         |
 
 Stage outcomes other than `ok` — `runtime_error`, `timeout`, `budget_exceeded`, `report_missing`, `report_invalid`,
-`commit_failed`, `bundle_too_large` — always route to humans.
+`commit_failed`, `changeset_too_large` — always route to humans.
 
 `/approve` is honoured from comment authors whose association is `OWNER`, `MEMBER`, or `COLLABORATOR`.

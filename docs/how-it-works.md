@@ -55,8 +55,9 @@ launch, the label reverts to `context-enhanced` and the next pass retries, up to
 
 The Job is the isolation boundary (detailed in [Deployment → Isolation model](deployment/isolation.md)):
 
-- An **init container** clones the repository using a short-lived, single-repo, read-only token from a per-Job Secret —
-  then unsets it. The credential never survives into the agent container.
+- An **init container** clones the repository — a tag-free, depth-1 fetch pinned to the exact default-branch commit the
+  controller resolved — using a short-lived, single-repo, read-only token from a per-Job Secret, then unsets it. The
+  credential never survives into the agent container.
 - The **agent container** runs `agent-runner` with no GitHub credentials and no Kubernetes API access; network egress is
   limited to the model API. Its inputs are the cloned repo, a templated `issue.md`, and `PATCHY_*` env config.
 
@@ -67,7 +68,8 @@ Inside the pod, `agent-runner` runs a two-stage flow via `claude -p`:
    for `remediate` — the `model`, `max_turns` and `token_budget` it wants.
 2. **Remediate** — only when the recommendation is `remediate`, confidence clears the threshold (0.75), and no
    breaking-change hold applies. The stage runs under the requested budget (clamped to the controller's ceilings, with a
-   live output-token kill switch) and produces a remediation report plus a git bundle of the changeset.
+   live output-token kill switch) and produces a remediation report plus a structured changeset — the changed files'
+   contents, diffed against the pinned base commit.
 
 The runtime never talks to GitHub. Results leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout, which the
 remediation-controller tails from the pod log.
@@ -86,9 +88,10 @@ classification event it stamps the verdict labels (severity, priority, recommend
 | `remediate`, confidence ≥ threshold               | Continue: the same pod's remediation stage runs                           |
 | Stage failed (timeout, budget, invalid report, …) | Route to humans (`manual`), never trust a partial report                  |
 
-On remediation success it unpacks the bundle, pushes branch `patchy/issue-<n>` with a scoped write token, opens the pull
-request, and sets `in-review`. A maintainer's `/approve` comment on a held issue re-runs a remediate-only Job, reusing
-the classification report from the issue comment.
+On remediation success it replays the changeset through the GitHub API (blob → tree → commit → ref) with a scoped write
+token — no git binary, no clone — creating branch `patchy/issue-<n>`, opens the pull request, and sets `in-review`. A
+maintainer's `/approve` comment on a held issue re-runs a remediate-only Job, reusing the classification report from the
+issue comment.
 
 ## 6. Humans close the loop
 

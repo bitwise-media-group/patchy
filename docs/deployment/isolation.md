@@ -18,9 +18,10 @@ The core control is what the agent pod **doesn't** have:
 
 The remediation-controller mints a short-lived installation token scoped to the one repository with `contents: read`,
 places it in an owner-referenced per-Job Secret (garbage-collected with the Job), and mounts it into the **init
-container** only. The init script clones, unsets `GITHUB_TOKEN`, and resets the remote URL — no GitHub credential exists
-anywhere in the agent container's environment or filesystem. The branch push happens later, controller-side, with a
-separately minted `contents: write` token.
+container** only. The init script fetches the pinned base commit (depth 1, no tags) with the token in a per-invocation
+header and unsets `GITHUB_TOKEN` — no GitHub credential exists anywhere in the agent container's environment or
+filesystem. The branch push happens later, controller-side, through the GitHub API with a separately minted
+`contents: write` token.
 
 ## RBAC
 
@@ -92,7 +93,8 @@ fence: it narrows HTTPS egress but leaves DNS open. Either way, the boundary rem
 
 ## What leaves the pod
 
-The agent's only output channels are the `PATCHY-EVENT:` JSONL stream on stdout (parsed by the controller from the pod
-log) and a size-capped git bundle (`PATCHY_BUNDLE_MAX_BYTES`, 5 MiB) carrying the changeset. The controller — not the
-agent — unpacks the bundle, pushes the branch, and opens the pull request, so every GitHub side effect passes through
-code that validates the state machine first.
+The agent's only output channel is the `PATCHY-EVENT:` JSONL stream on stdout (parsed by the controller from the pod
+log), which carries the remediation as a size-capped structured changeset (`PATCHY_CHANGESET_MAX_BYTES`, 5 MiB) — the
+changed files' contents, not git objects. The controller — not the agent — replays that changeset through the GitHub API
+to create the branch and opens the pull request, so every GitHub side effect passes through code that validates the
+state machine first.

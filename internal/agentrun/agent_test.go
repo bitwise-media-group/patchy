@@ -6,6 +6,7 @@ package agentrun
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -171,8 +172,7 @@ func newConfig(t *testing.T, ws string, out io.Writer) Config {
 		RemediateTokenBudget: 400000,
 		ClassifyTimeout:      time.Minute, RemediateTimeout: time.Minute,
 		ConfidenceThreshold: 0.75,
-		DefaultBranch:       "main",
-		BundleMaxBytes:      5 << 20,
+		ChangesetMaxBytes:   5 << 20,
 		Out:                 out,
 		Log:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -193,8 +193,8 @@ func events(t *testing.T, out string) []envelope.Event {
 // commitScript is a well-behaved commit.sh honoring the documented contract.
 const commitScript = "#!/bin/sh\nset -e\ngit add app.js\ngit commit -m 'fix(security): escape sink'\n"
 
-// fullRun drives the happy path — classify, remediate, commit, bundle — and
-// returns the workspace and the two events it emitted.
+// fullRun drives the happy path — classify, remediate, commit, changeset —
+// and returns the workspace and the two events it emitted.
 func fullRun(t *testing.T) (string, envelope.Event, envelope.Event) {
 	t.Helper()
 	ws := newWorkspace(t)
@@ -273,15 +273,51 @@ func TestFullRunPackagesChangeset(t *testing.T) {
 	if rem.Branch != "patchy/issue-123" {
 		t.Errorf("Branch = %q, want patchy/issue-123", rem.Branch)
 	}
-	if rem.BundleB64 == "" {
-		t.Error("BundleB64 is empty; the controller has nothing to push")
-	}
 	if rem.Confidence != 0.88 {
 		t.Errorf("Confidence = %v, want 0.88", rem.Confidence)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "out", "changeset.bundle")); err != nil {
-		t.Errorf("bundle not written to the workspace: %v", err)
+
+	cs := rem.Changeset
+	if cs == nil {
+		t.Fatal("Changeset is nil; the controller has nothing to push")
 	}
+	if want := headOf(t, filepath.Join(ws, "repo"), "main"); cs.BaseSHA != want {
+		t.Errorf("BaseSHA = %q, want the pinned clone head %q", cs.BaseSHA, want)
+	}
+	if !strings.Contains(cs.CommitMessage, "fix(security): escape sink") {
+		t.Errorf("CommitMessage = %q, want the agent's commit message", cs.CommitMessage)
+	}
+	if len(cs.Upserts) != 1 || len(cs.Deletes) != 0 {
+		t.Fatalf("changeset = %d upserts / %d deletes, want 1/0", len(cs.Upserts), len(cs.Deletes))
+	}
+	up := cs.Upserts[0]
+	if up.Path != "app.js" || up.Mode != "100644" {
+		t.Errorf("upsert = %s (%s), want app.js (100644)", up.Path, up.Mode)
+	}
+	if got := decodeB64(t, up.ContentB64); got != "escaped();\n" {
+		t.Errorf("content = %q, want the fixed file", got)
+	}
+}
+
+// headOf resolves a ref in a test repository.
+func headOf(t *testing.T, repo, ref string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", ref)
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s: %v", ref, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func decodeB64(t *testing.T, s string) string {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		t.Fatalf("base64: %v", err)
+	}
+	return string(raw)
 }
 
 func TestClassificationDecisions(t *testing.T) {
@@ -475,7 +511,7 @@ func TestRemediationReportsFailureHonestly(t *testing.T) {
 	if rem.Outcome != envelope.OutcomeOK || rem.Success {
 		t.Errorf("remediation = %+v, want outcome ok with success=false", rem)
 	}
-	if rem.BundleB64 != "" {
+	if rem.Changeset != nil {
 		t.Error("a failed remediation must not carry a changeset")
 	}
 }

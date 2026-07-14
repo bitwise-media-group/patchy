@@ -47,7 +47,7 @@ func testSpec() Spec {
 		Attempt:       1,
 		Phase:         "classify+remediate",
 		CloneURL:      "https://github.com/octo/repo.git",
-		Ref:           "main",
+		BaseSHA:       "0123456789abcdef0123456789abcdef01234567",
 		Token:         "ghs_secret_token_value",
 		IssueMarkdown: "# Issue 42\n",
 	}
@@ -166,6 +166,49 @@ func TestCreateJobShape(t *testing.T) {
 	}
 }
 
+func TestCreatePinnedClone(t *testing.T) {
+	cs := fake.NewClientset()
+	c := New(cs, testConfig(), nil)
+	spec := testSpec()
+
+	name, err := c.Create(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	job, err := cs.BatchV1().Jobs("patchy-agents").Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	prepare := job.Spec.Template.Spec.InitContainers[0]
+	script := strings.Join(prepare.Command, " ")
+
+	// The clone is pinned: a tag-free depth-1 fetch of the exact base SHA,
+	// never a moving branch ref.
+	if !strings.Contains(script, `fetch -q --depth 1 --no-tags origin "$PATCHY_BASE_SHA"`) {
+		t.Errorf("prepare script does not fetch the pinned base SHA:\n%s", script)
+	}
+	if strings.Contains(script, "--branch") || strings.Contains(script, "git clone") {
+		t.Errorf("prepare script still clones a branch ref:\n%s", script)
+	}
+	if !strings.Contains(script, "checkout -q --detach FETCH_HEAD") {
+		t.Errorf("prepare script does not check out FETCH_HEAD:\n%s", script)
+	}
+
+	envs := map[string]string{}
+	for _, env := range prepare.Env {
+		envs[env.Name] = env.Value
+	}
+	if envs["PATCHY_BASE_SHA"] != spec.BaseSHA {
+		t.Errorf("init PATCHY_BASE_SHA = %q, want %q", envs["PATCHY_BASE_SHA"], spec.BaseSHA)
+	}
+	// The agent recovers the base from HEAD; the SHA env stays init-only.
+	for _, env := range job.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == "PATCHY_BASE_SHA" {
+			t.Error("agent container carries PATCHY_BASE_SHA; it must be init-only")
+		}
+	}
+}
+
 func TestCreateTokenIsolation(t *testing.T) {
 	cs := fake.NewClientset()
 	c := New(cs, testConfig(), nil)
@@ -252,7 +295,6 @@ func TestCreateAgentEnv(t *testing.T) {
 		"PATCHY_REPO":             "octo/repo",
 		"PATCHY_ISSUE":            "42",
 		"PATCHY_PHASE":            "classify+remediate",
-		"PATCHY_DEFAULT_BRANCH":   "main",
 		"PATCHY_CLASSIFY_MODEL":   "claude-sonnet-5",
 		"PATCHY_CLASSIFY_TIMEOUT": "15m",
 	}

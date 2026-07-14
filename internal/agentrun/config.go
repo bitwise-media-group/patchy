@@ -53,9 +53,9 @@ type Config struct {
 	RemediateTimeout     time.Duration
 
 	ConfidenceThreshold float64
-	// DefaultBranch is the clone's base branch (bundle base).
-	DefaultBranch  string
-	BundleMaxBytes int
+	// ChangesetMaxBytes caps the cumulative raw content of the changeset the
+	// remediation stage may emit.
+	ChangesetMaxBytes int
 
 	// Out receives the envelope events (stdout in the pod).
 	Out io.Writer
@@ -77,8 +77,6 @@ func (c Config) remediationPath() string {
 	return filepath.Join(c.Workspace, "reports", "remediation.md")
 }
 func (c Config) commitScript() string { return filepath.Join(c.Workspace, "commit.sh") }
-func (c Config) outDir() string       { return filepath.Join(c.Workspace, "out") }
-func (c Config) bundlePath() string   { return filepath.Join(c.outDir(), "changeset.bundle") }
 func (c Config) branch() string       { return fmt.Sprintf("patchy/issue-%d", c.Issue) }
 
 // FromEnv builds the pod configuration from PATCHY_* environment variables,
@@ -99,7 +97,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		RemediateHarness: get("REMEDIATE_HARNESS", "claude"),
 		ClassifyModel:    get("CLASSIFY_MODEL", "claude-sonnet-5"),
 		RemediateModel:   get("REMEDIATE_MODEL", "claude-sonnet-5"),
-		DefaultBranch:    get("DEFAULT_BRANCH", "main"),
 	}
 	if list := get("MODEL_ALLOWLIST", cfg.RemediateModel); list != "" {
 		for m := range strings.SplitSeq(list, ",") {
@@ -140,7 +137,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	cfg.ClassifyTokenBudget = number("CLASSIFY_TOKEN_BUDGET", "150000")
 	cfg.RemediateMaxTurns = number("REMEDIATE_MAX_TURNS", "80")
 	cfg.RemediateTokenBudget = number("REMEDIATE_TOKEN_BUDGET", "400000")
-	cfg.BundleMaxBytes = number("BUNDLE_MAX_BYTES", strconv.Itoa(5<<20))
+	cfg.ChangesetMaxBytes = number("CHANGESET_MAX_BYTES", strconv.Itoa(5<<20))
 	cfg.ClassifyTimeout = duration("CLASSIFY_TIMEOUT", "15m")
 	cfg.RemediateTimeout = duration("REMEDIATE_TIMEOUT", "45m")
 	cfg.ConfidenceThreshold = float("CONFIDENCE_THRESHOLD", "0.75")

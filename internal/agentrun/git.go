@@ -14,14 +14,28 @@ import (
 
 // git runs one git command in dir, returning trimmed stdout.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := gitRaw(ctx, dir, args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// gitRaw runs one git command in dir, returning stdout byte-exact (blob
+// contents must not be trimmed).
+func gitRaw(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(out.String()), nil
+	return out.Bytes(), nil
+}
+
+// headSHA resolves the clone's current commit. Captured before the
+// remediation branch is created, it is the pinned base the changeset is
+// diffed against and the pushed commit's parent.
+func headSHA(ctx context.Context, dir string) (string, error) {
+	return git(ctx, dir, "rev-parse", "HEAD")
 }
 
 // ensureIdentity configures a commit identity when the clone has none, so
@@ -62,10 +76,4 @@ func verifyCommitted(ctx context.Context, dir, base, branch string) error {
 		return fmt.Errorf("branch %s carries no commits over %s", branch, base)
 	}
 	return nil
-}
-
-// bundle writes a git bundle of base..branch to path.
-func bundle(ctx context.Context, dir, base, branch, path string) error {
-	_, err := git(ctx, dir, "bundle", "create", path, base+".."+branch)
-	return err
 }

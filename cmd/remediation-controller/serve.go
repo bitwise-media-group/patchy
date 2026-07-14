@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
-	"github.com/bitwise-media-group/patchy/internal/gitpush"
+	"github.com/bitwise-media-group/patchy/internal/ghpush"
 	"github.com/bitwise-media-group/patchy/internal/harness"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/reconcile"
@@ -140,7 +140,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Env:                agentEnv(opts),
 	}, log)
 
-	ctrl := remedctrl.New(log, clients{resolver}, runner, gitpush.New(), remedctrl.Config{
+	ctrl := remedctrl.New(log, clients{resolver}, runner, ghpush.New(opts.GitHubBaseURL), remedctrl.Config{
 		MinAge:      opts.Duration("issue-min-age"),
 		MaxAttempts: opts.Int("max-attempts"),
 	})

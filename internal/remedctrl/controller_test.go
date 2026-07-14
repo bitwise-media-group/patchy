@@ -56,6 +56,10 @@ func (s *stores) DismissAlert(_ context.Context, _ ghclient.Repo, number int, re
 
 func (s *stores) DefaultBranch(context.Context, ghclient.Repo) (string, error) { return "main", nil }
 
+func (s *stores) HeadSHA(context.Context, ghclient.Repo, string) (string, error) {
+	return "abc123", nil
+}
+
 func (s *stores) CreatePR(_ context.Context, _ ghclient.Repo, req ghclient.PRRequest) (*ghclient.PR, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,19 +114,19 @@ func (f *fakeRunner) Status(context.Context, string) (jobs.Status, error) {
 func (f *fakeRunner) List(context.Context) ([]jobs.Owned, error) { return f.owned, nil }
 func (f *fakeRunner) Delete(context.Context, string) error       { return nil }
 
-// fakePusher records pushes instead of touching git.
+// fakePusher records pushes instead of touching the API.
 type fakePusher struct {
-	pushed  []string
-	bundles [][]byte
-	err     error
+	pushed     []string
+	changesets []*envelope.Changeset
+	err        error
 }
 
-func (p *fakePusher) Push(_ context.Context, _ ghclient.Repo, _, _, branch string, bundle []byte) error {
+func (p *fakePusher) Push(_ context.Context, _ ghclient.Repo, _, branch string, cs *envelope.Changeset) error {
 	if p.err != nil {
 		return p.err
 	}
 	p.pushed = append(p.pushed, branch)
-	p.bundles = append(p.bundles, bundle)
+	p.changesets = append(p.changesets, cs)
 	return nil
 }
 
@@ -201,7 +205,7 @@ func classificationEvent(rec string, confidence float64, willRemediate, awaitApp
 	}
 }
 
-func remediationEvent(success bool, bundle []byte) envelope.Event {
+func remediationEvent(success bool) envelope.Event {
 	rem := &envelope.Remediation{
 		Stage: envelope.Stage{
 			Outcome: envelope.OutcomeOK, Harness: "claude", Model: "claude-sonnet-5",
@@ -215,7 +219,13 @@ func remediationEvent(success bool, bundle []byte) envelope.Event {
 	}
 	if success {
 		rem.Branch = "patchy/issue-101"
-		rem.BundleB64 = base64.StdEncoding.EncodeToString(bundle)
+		rem.Changeset = &envelope.Changeset{
+			BaseSHA:       "abc123",
+			CommitMessage: "fix(security): escape sink",
+			Upserts: []envelope.FileChange{
+				{Path: "app.js", Mode: "100644", ContentB64: base64.StdEncoding.EncodeToString([]byte("escaped();\n"))},
+			},
+		}
 	}
 	return envelope.Event{Type: envelope.TypeRemediation, Remediation: rem}
 }
@@ -228,7 +238,7 @@ func TestRemediatesEndToEnd(t *testing.T) {
 	pusher := &fakePusher{}
 	runner := &fakeRunner{events: []envelope.Event{
 		classificationEvent("remediate", 0.9, true, false),
-		remediationEvent(true, []byte("BUNDLE")),
+		remediationEvent(true),
 	}}
 
 	if err := newController(st, runner, pusher).Reconcile(context.Background()); err != nil {
@@ -246,13 +256,16 @@ func TestRemediatesEndToEnd(t *testing.T) {
 	if spec.Token != "clone-token" || !strings.Contains(spec.IssueMarkdown, "XSS") {
 		t.Errorf("job spec inputs = token:%q markdown:%q", spec.Token, spec.IssueMarkdown)
 	}
+	if spec.BaseSHA != "abc123" {
+		t.Errorf("job spec BaseSHA = %q, want the resolved branch head", spec.BaseSHA)
+	}
 
 	// The branch was pushed and the PR opened.
 	if !slices.Equal(pusher.pushed, []string{"patchy/issue-101"}) {
 		t.Errorf("pushed = %v, want the agent's branch", pusher.pushed)
 	}
-	if string(pusher.bundles[0]) != "BUNDLE" {
-		t.Errorf("pushed bundle = %q, want the decoded changeset", pusher.bundles[0])
+	if cs := pusher.changesets[0]; cs.BaseSHA != "abc123" || len(cs.Upserts) != 1 {
+		t.Errorf("pushed changeset = %+v, want the agent's changeset", cs)
 	}
 	if len(st.prs) != 1 {
 		t.Fatalf("PRs = %d, want 1", len(st.prs))
@@ -379,7 +392,7 @@ func TestApproveForcesRemediation(t *testing.T) {
 
 	// A maintainer approves.
 	pusher := &fakePusher{}
-	runner2 := &fakeRunner{events: []envelope.Event{remediationEvent(true, []byte("BUNDLE"))}}
+	runner2 := &fakeRunner{events: []envelope.Event{remediationEvent(true)}}
 	c2 := newController(st, runner2, pusher)
 	payload := fmt.Appendf(nil, `{"action":"created","issue":{"number":%d,"state":"open"},
 		"comment":{"body":"/approve","author_association":"MEMBER","user":{"login":"octocat"}},
@@ -435,7 +448,7 @@ func TestPullRequestMergedClosesIssue(t *testing.T) {
 	issue := seedIssue(t, st)
 	runner := &fakeRunner{events: []envelope.Event{
 		classificationEvent("remediate", 0.9, true, false),
-		remediationEvent(true, []byte("BUNDLE")),
+		remediationEvent(true),
 	}}
 	c := newController(st, runner, &fakePusher{})
 	if err := c.Reconcile(context.Background()); err != nil {
@@ -461,7 +474,7 @@ func TestPullRequestClosedUnmergedHandsBack(t *testing.T) {
 	issue := seedIssue(t, st)
 	runner := &fakeRunner{events: []envelope.Event{
 		classificationEvent("remediate", 0.9, true, false),
-		remediationEvent(true, []byte("BUNDLE")),
+		remediationEvent(true),
 	}}
 	c := newController(st, runner, &fakePusher{})
 	if err := c.Reconcile(context.Background()); err != nil {
@@ -489,7 +502,7 @@ func TestFailedRemediationHandsBack(t *testing.T) {
 	issue := seedIssue(t, st)
 	runner := &fakeRunner{events: []envelope.Event{
 		classificationEvent("remediate", 0.9, true, false),
-		remediationEvent(false, nil),
+		remediationEvent(false),
 	}}
 
 	if err := newController(st, runner, &fakePusher{}).Reconcile(context.Background()); err != nil {
@@ -550,7 +563,7 @@ func TestFallsBackToJobResultWhenFollowBreaks(t *testing.T) {
 		followErr: fmt.Errorf("log stream broke"),
 		events: []envelope.Event{
 			classificationEvent("remediate", 0.9, true, false),
-			remediationEvent(true, []byte("BUNDLE")),
+			remediationEvent(true),
 		},
 	}
 	pusher := &fakePusher{}

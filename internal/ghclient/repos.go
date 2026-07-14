@@ -19,6 +19,15 @@ func (c *Client) DefaultBranch(ctx context.Context, repo Repo) (string, error) {
 	return r.GetDefaultBranch(), nil
 }
 
+// HeadSHA resolves the current commit SHA of refs/heads/<branch>.
+func (c *Client) HeadSHA(ctx context.Context, repo Repo, branch string) (string, error) {
+	ref, _, err := c.gh.Git.GetRef(ctx, repo.Owner, repo.Name, "heads/"+branch)
+	if err != nil {
+		return "", fmt.Errorf("ghclient: resolve %s head of %s: %w", branch, repo, err)
+	}
+	return ref.GetObject().GetSHA(), nil
+}
+
 // CreatePR opens a pull request.
 func (c *Client) CreatePR(ctx context.Context, repo Repo, req PRRequest) (*PR, error) {
 	pr, _, err := c.gh.PullRequests.Create(ctx, repo.Owner, repo.Name, &github.NewPullRequest{

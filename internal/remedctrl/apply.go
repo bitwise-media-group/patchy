@@ -187,19 +187,17 @@ func (c *Controller) applyRemediation(ctx context.Context, st Stores, ref issueR
 	return nil
 }
 
-// openPR pushes the agent's branch from its bundle and opens the PR.
+// openPR pushes the agent's branch from its changeset and opens the PR.
 func (c *Controller) openPR(ctx context.Context, st Stores, ref issueRef,
 	rem *envelope.Remediation) (*ghclient.PR, error) {
-	bundle, err := decodeBundle(rem.BundleB64)
-	if err != nil {
-		return nil, err
+	if rem.Changeset == nil {
+		return nil, fmt.Errorf("%s: remediation succeeded without a changeset", ref)
 	}
 	token, err := c.clients.PushToken(ctx, ref.repo)
 	if err != nil {
 		return nil, err
 	}
-	cloneURL := fmt.Sprintf("https://github.com/%s.git", ref.repo)
-	if err := c.pusher.Push(ctx, ref.repo, cloneURL, token, rem.Branch, bundle); err != nil {
+	if err := c.pusher.Push(ctx, ref.repo, token, rem.Branch, rem.Changeset); err != nil {
 		return nil, fmt.Errorf("%s: push remediation branch: %w", ref, err)
 	}
 

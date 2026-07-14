@@ -3,8 +3,9 @@
 
 // Package fakegithub is an in-memory GitHub REST API good enough to run the
 // patchy controllers against: code-scanning alerts, issues, labels,
-// comments, and search. It exists so the e2e suite can drive the real
-// binaries end to end with no network and no credentials.
+// comments, search, and the Git Data surface (refs, blobs, trees, commits)
+// the API push uses. It exists so the e2e suite can drive the real binaries
+// end to end with no network and no credentials.
 package fakegithub
 
 import (
@@ -56,6 +57,7 @@ type Server struct {
 	issues    map[int]*Issue
 	comments  map[int][]comment
 	dismissed map[int]string
+	git       gitData
 	next      int
 	// Now stamps created_at; tests override it to age issues instantly.
 	Now func() time.Time
@@ -68,6 +70,7 @@ func New() *Server {
 		issues:    make(map[int]*Issue),
 		comments:  make(map[int][]comment),
 		dismissed: make(map[int]string),
+		git:       newGitData(),
 		next:      100,
 		Now:       time.Now,
 	}
@@ -151,6 +154,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /repos/{owner}/{repo}/issues/{number}/assignees", s.addAssignees)
 	mux.HandleFunc("GET /repos/{owner}/{repo}", s.getRepo)
 	mux.HandleFunc("GET /search/issues", s.searchIssues)
+	s.gitRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("fakegithub: unhandled %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 	})

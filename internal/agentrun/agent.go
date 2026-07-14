@@ -6,6 +6,7 @@ package agentrun
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -112,10 +113,8 @@ func (a *Agent) prepare() error {
 	if _, err := os.Stat(a.cfg.issuePath()); err != nil {
 		return fmt.Errorf("workspace: issue handoff missing: %w", err)
 	}
-	for _, dir := range []string{filepath.Dir(a.cfg.classificationPath()), a.cfg.outDir()} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("workspace: %w", err)
-		}
+	if err := os.MkdirAll(filepath.Dir(a.cfg.classificationPath()), 0o755); err != nil {
+		return fmt.Errorf("workspace: %w", err)
 	}
 	return nil
 }
@@ -216,6 +215,14 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		ev.Detail = err.Error()
 		return ev
 	}
+	// HEAD at startup is the pinned base the init container fetched; the
+	// changeset is diffed against it and the pushed commit parents it.
+	baseSHA, err := headSHA(ctx, a.cfg.repoDir())
+	if err != nil {
+		ev.Outcome = envelope.OutcomeRuntimeError
+		ev.Detail = err.Error()
+		return ev
+	}
 	if err := checkoutBranch(ctx, a.cfg.repoDir(), a.cfg.branch()); err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
 		ev.Detail = err.Error()
@@ -276,7 +283,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 	}
 	// The agent claims success; the repository decides. commit.sh must run
 	// cleanly and leave real commits, else the claim is downgraded.
-	if outcome, detail := a.packageChangeset(ctx, ev); outcome != envelope.OutcomeOK {
+	if outcome, detail := a.packageChangeset(ctx, baseSHA, ev); outcome != envelope.OutcomeOK {
 		ev.Outcome, ev.Detail = outcome, detail
 		return ev
 	}
@@ -339,8 +346,10 @@ func (a *Agent) clamp(cls *report.Classification) remediationParams {
 }
 
 // packageChangeset runs commit.sh, verifies the repository state, and
-// bundles the branch.
-func (a *Agent) packageChangeset(ctx context.Context, ev *envelope.Remediation) (envelope.Outcome, string) {
+// expresses base..branch as the changeset the controller pushes via the
+// GitHub API.
+func (a *Agent) packageChangeset(ctx context.Context, baseSHA string,
+	ev *envelope.Remediation) (envelope.Outcome, string) {
 	script := a.cfg.commitScript()
 	if _, err := os.Stat(script); err != nil {
 		return envelope.OutcomeCommitFailed, "commit.sh missing despite success report"
@@ -348,21 +357,17 @@ func (a *Agent) packageChangeset(ctx context.Context, ev *envelope.Remediation) 
 	if out, err := runScript(ctx, a.cfg.repoDir(), script); err != nil {
 		return envelope.OutcomeCommitFailed, fmt.Sprintf("commit.sh failed: %v: %s", err, out)
 	}
-	if err := verifyCommitted(ctx, a.cfg.repoDir(), a.cfg.DefaultBranch, a.cfg.branch()); err != nil {
+	if err := verifyCommitted(ctx, a.cfg.repoDir(), baseSHA, a.cfg.branch()); err != nil {
 		return envelope.OutcomeCommitFailed, err.Error()
 	}
-	if err := bundle(ctx, a.cfg.repoDir(), a.cfg.DefaultBranch, a.cfg.branch(), a.cfg.bundlePath()); err != nil {
-		return envelope.OutcomeCommitFailed, err.Error()
-	}
-	raw, err := os.ReadFile(a.cfg.bundlePath())
+	cs, err := buildChangeset(ctx, a.cfg.repoDir(), baseSHA, a.cfg.branch(), a.cfg.ChangesetMaxBytes)
 	if err != nil {
+		if errors.Is(err, errChangesetTooLarge) {
+			return envelope.OutcomeChangesetTooLarge, err.Error()
+		}
 		return envelope.OutcomeCommitFailed, err.Error()
 	}
-	if len(raw) > a.cfg.BundleMaxBytes {
-		return envelope.OutcomeBundleTooLarge,
-			fmt.Sprintf("changeset bundle is %d bytes (cap %d)", len(raw), a.cfg.BundleMaxBytes)
-	}
-	ev.BundleB64 = encodeB64(raw)
+	ev.Changeset = cs
 	return envelope.OutcomeOK, ""
 }
 

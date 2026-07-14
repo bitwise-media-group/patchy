@@ -77,7 +77,8 @@ func TestDecodeRejects(t *testing.T) {
 		{"plain log line", "level=INFO msg=hello"},
 		{"prefix with bad json", Prefix + "{nope"},
 		{"wrong version", Prefix + `{"v":99,"type":"classification"}`},
-		{"missing type", Prefix + `{"v":1}`},
+		{"superseded v1", Prefix + `{"v":1,"type":"remediation"}`},
+		{"missing type", Prefix + `{"v":2}`},
 		{"empty", ""},
 	}
 	for _, tt := range tests {
@@ -86,6 +87,40 @@ func TestDecodeRejects(t *testing.T) {
 				t.Error("Decode() ok = true, want false")
 			}
 		})
+	}
+}
+
+func TestRemediationChangesetRoundTrip(t *testing.T) {
+	want := Event{
+		Type:  TypeRemediation,
+		Repo:  "acme/shop",
+		Issue: 123,
+		Remediation: &Remediation{
+			Stage:   Stage{Outcome: OutcomeOK, Harness: "claude", Model: "claude-sonnet-5"},
+			Success: true,
+			Branch:  "patchy/issue-123",
+			Changeset: &Changeset{
+				BaseSHA:       "0123456789abcdef0123456789abcdef01234567",
+				CommitMessage: "fix(security): escape sink",
+				Upserts: []FileChange{
+					{Path: "app/handler.go", Mode: "100644", ContentB64: "cGF5bG9hZA=="},
+					{Path: "tools/run.sh", Mode: "100755", ContentB64: "IyEvYmluL3No"},
+				},
+				Deletes: []string{"app/legacy.go"},
+			},
+		},
+	}
+	line, err := want.Encode()
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	got, ok := Decode([]byte(line))
+	if !ok {
+		t.Fatal("Decode() ok = false")
+	}
+	want.V = Version
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("round-trip = %+v, want %+v", got, want)
 	}
 }
 

@@ -21,8 +21,8 @@ import (
 const jobNameLabel = "batch.kubernetes.io/job-name"
 
 // maxEventLine bounds one log line while scanning for events: a remediation
-// event carries the base64 git bundle (5 MiB cap → ~7 MiB encoded), so allow
-// generous headroom.
+// event carries the changeset's base64 file contents (5 MiB cap → ~7 MiB
+// encoded), so allow generous headroom.
 const maxEventLine = 32 << 20
 
 // podPollInterval paces waiting for the Job controller to create the pod.

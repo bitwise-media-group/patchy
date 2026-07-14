@@ -5,7 +5,6 @@ package remedctrl
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -93,6 +92,14 @@ func (c *Controller) launch(ctx context.Context, st Stores, issue *ghclient.Issu
 	if err != nil {
 		return "", err
 	}
+	// Pin the Job to the branch head as of now: the clone, the agent's diff
+	// base, and the pushed commit's parent are all this SHA, so the base
+	// advancing mid-run just surfaces as a normal behind/conflicted PR — the
+	// push itself never touches the default branch.
+	baseSHA, err := st.HeadSHA(ctx, issue.Repo, branch)
+	if err != nil {
+		return "", err
+	}
 	token, err := c.clients.CloneToken(ctx, issue.Repo)
 	if err != nil {
 		return "", err
@@ -122,7 +129,7 @@ func (c *Controller) launch(ctx context.Context, st Stores, issue *ghclient.Issu
 		Attempt:       attempt,
 		Phase:         phase,
 		CloneURL:      fmt.Sprintf("https://github.com/%s.git", issue.Repo),
-		Ref:           branch,
+		BaseSHA:       baseSHA,
 		Token:         token,
 		IssueMarkdown: handoff,
 	}
@@ -155,15 +162,6 @@ func (c *Controller) applyEvent(ctx context.Context, st Stores, ref issueRef, e 
 		return c.failAttempt(ctx, st, ref, e.Error)
 	}
 	return nil
-}
-
-// decodeBundle recovers the git bundle from a remediation event.
-func decodeBundle(b64 string) ([]byte, error) {
-	raw, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return nil, fmt.Errorf("decode changeset bundle: %w", err)
-	}
-	return raw, nil
 }
 
 // findClassificationReport recovers the classification report from the issue

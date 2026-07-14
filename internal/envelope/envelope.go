@@ -13,8 +13,9 @@ import (
 // Prefix marks an event line on the agent-runner's stdout.
 const Prefix = "PATCHY-EVENT: "
 
-// Version is the current envelope schema version.
-const Version = 1
+// Version is the current envelope schema version. Version 2 replaced the
+// git-bundle payload with the structured Changeset.
+const Version = 2
 
 // Type discriminates events.
 type Type string
@@ -33,14 +34,14 @@ type Outcome string
 // Stage outcomes. Only OutcomeOK carries a trusted report; every other
 // outcome routes the issue to humans.
 const (
-	OutcomeOK             Outcome = "ok"
-	OutcomeRuntimeError   Outcome = "runtime_error"
-	OutcomeTimeout        Outcome = "timeout"
-	OutcomeBudgetExceeded Outcome = "budget_exceeded"
-	OutcomeReportMissing  Outcome = "report_missing"
-	OutcomeReportInvalid  Outcome = "report_invalid"
-	OutcomeCommitFailed   Outcome = "commit_failed"
-	OutcomeBundleTooLarge Outcome = "bundle_too_large"
+	OutcomeOK                Outcome = "ok"
+	OutcomeRuntimeError      Outcome = "runtime_error"
+	OutcomeTimeout           Outcome = "timeout"
+	OutcomeBudgetExceeded    Outcome = "budget_exceeded"
+	OutcomeReportMissing     Outcome = "report_missing"
+	OutcomeReportInvalid     Outcome = "report_invalid"
+	OutcomeCommitFailed      Outcome = "commit_failed"
+	OutcomeChangesetTooLarge Outcome = "changeset_too_large"
 )
 
 // Usage is the stage's agent accounting (all fields concrete: the envelope
@@ -86,16 +87,39 @@ type Classification struct {
 	AwaitApproval bool `json:"await_approval"`
 }
 
+// FileChange is one file created or modified on the remediation branch.
+type FileChange struct {
+	Path string `json:"path"`
+	// Mode is the git file mode: "100644", "100755", or "120000".
+	Mode string `json:"mode"`
+	// ContentB64 is the base64-encoded blob; for a symlink ("120000") it is
+	// the encoded link target.
+	ContentB64 string `json:"content_b64"`
+}
+
+// Changeset expresses the agent's committed change as file contents so the
+// controller can push it through the GitHub API without git.
+type Changeset struct {
+	// BaseSHA is the commit the clone was pinned to; the pushed commit's
+	// parent.
+	BaseSHA string `json:"base_sha"`
+	// CommitMessage carries the agent's commit message(s); multiple local
+	// commits squash into one API commit.
+	CommitMessage string       `json:"commit_message"`
+	Upserts       []FileChange `json:"upserts,omitempty"`
+	Deletes       []string     `json:"deletes,omitempty"`
+}
+
 // Remediation is the stage-2 event payload.
 type Remediation struct {
 	Stage
 	ReportMarkdown string  `json:"report_markdown,omitempty"`
 	Success        bool    `json:"success"`
 	Confidence     float64 `json:"confidence,omitempty"`
-	// Branch is the local branch carrying the fix; BundleB64 is the
-	// base64-encoded git bundle of default..branch.
-	Branch    string `json:"branch,omitempty"`
-	BundleB64 string `json:"bundle_b64,omitempty"`
+	// Branch is the local branch carrying the fix; Changeset is its content
+	// diffed against Changeset.BaseSHA.
+	Branch    string     `json:"branch,omitempty"`
+	Changeset *Changeset `json:"changeset,omitempty"`
 }
 
 // Event is one envelope line.

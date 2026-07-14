@@ -47,11 +47,11 @@ type Runner interface {
 	Delete(ctx context.Context, job string) error
 }
 
-// Pusher applies an agent's changeset to GitHub: it fetches the bundle into
-// a scratch clone and pushes the branch with a short-lived write token.
-// Kept behind an interface so the controller stays testable without git.
+// Pusher applies an agent's changeset to GitHub through the API with a
+// short-lived write token. Kept behind an interface so the controller stays
+// testable without the network.
 type Pusher interface {
-	Push(ctx context.Context, repo ghclient.Repo, cloneURL, token, branch string, bundle []byte) error
+	Push(ctx context.Context, repo ghclient.Repo, token, branch string, cs *envelope.Changeset) error
 }
 
 // Config tunes the controller.

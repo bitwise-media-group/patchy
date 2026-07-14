@@ -41,6 +41,8 @@ type AlertStore interface {
 type RepoStore interface {
 	// DefaultBranch returns the repository's default branch name.
 	DefaultBranch(ctx context.Context, repo Repo) (string, error)
+	// HeadSHA resolves the current commit SHA of refs/heads/<branch>.
+	HeadSHA(ctx context.Context, repo Repo, branch string) (string, error)
 	// CreatePR opens a pull request.
 	CreatePR(ctx context.Context, repo Repo, req PRRequest) (*PR, error)
 	// SearchIssues runs an issue search query (cross-repo reconcile

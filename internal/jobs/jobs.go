@@ -62,15 +62,22 @@ const runAsUser = 65532
 // prepareScript is the init container's shell. The GitHub token arrives only
 // as $GITHUB_TOKEN (secretKeyRef env); the auth header is assembled inside
 // the shell so the plaintext token never appears in the container command,
-// and the remote URL is reset after cloning so no credential persists in the
-// clone the agent container sees. Clone URL and ref arrive as env too, so
-// nothing from the issue is interpolated into the script.
+// and the credential never touches the remote URL or any config that
+// persists into the clone the agent container sees. Clone URL and base SHA
+// arrive as env too, so nothing from the issue is interpolated into the
+// script. The fetch is pinned to the exact base SHA the controller resolved
+// (tag-free, depth 1), so the agent's diff base is deterministic no matter
+// how the default branch moves.
 const prepareScript = `set -eu
 auth=$(printf '%s' "x-access-token:$GITHUB_TOKEN" | base64 | tr -d '\n')
+mkdir -p /workspace/repo
+cd /workspace/repo
+git init -q
+git remote add origin "$PATCHY_CLONE_URL"
 git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-  clone --depth 1 --branch "$PATCHY_REF" "$PATCHY_CLONE_URL" /workspace/repo
+  fetch -q --depth 1 --no-tags origin "$PATCHY_BASE_SHA"
+git checkout -q --detach FETCH_HEAD
 unset auth GITHUB_TOKEN
-git -C /workspace/repo remote set-url origin "$PATCHY_CLONE_URL"
 mkdir -p /workspace/input
 cp /patchy/input/issue.md /workspace/input/issue.md
 if [ -f /patchy/input/classification.md ]; then
@@ -105,7 +112,9 @@ type Spec struct {
 	Attempt  int
 	Phase    string // agentrun phase: "classify+remediate" | "remediate"
 	CloneURL string // https URL of the repo
-	Ref      string // default branch to clone
+	// BaseSHA is the default branch's head at Job creation; the clone is
+	// pinned to it and the agent's commit parents it.
+	BaseSHA string
 	// Token is the short-lived scoped GitHub token; it reaches the init
 	// container only, via the per-Job Secret.
 	Token         string
@@ -268,7 +277,7 @@ func (c *Client) prepareContainer(secretName string, spec Spec, res corev1.Resou
 		Env: []corev1.EnvVar{
 			{Name: "HOME", Value: workspaceDir},
 			{Name: "PATCHY_CLONE_URL", Value: spec.CloneURL},
-			{Name: "PATCHY_REF", Value: spec.Ref},
+			{Name: "PATCHY_BASE_SHA", Value: spec.BaseSHA},
 			{Name: "GITHUB_TOKEN", ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
@@ -314,7 +323,6 @@ var reservedEnv = map[string]bool{
 	"PATCHY_REPO":             true,
 	"PATCHY_ISSUE":            true,
 	"PATCHY_PHASE":            true,
-	"PATCHY_DEFAULT_BRANCH":   true,
 	"ANTHROPIC_API_KEY":       true,
 	"CLAUDE_CODE_OAUTH_TOKEN": true,
 	"ANTHROPIC_AUTH_TOKEN":    true,
@@ -322,15 +330,14 @@ var reservedEnv = map[string]bool{
 }
 
 func (c *Client) agentEnv(spec Spec) []corev1.EnvVar {
-	env := make([]corev1.EnvVar, 0, len(c.cfg.Env)+7)
+	env := make([]corev1.EnvVar, 0, len(c.cfg.Env)+6)
 	env = append(env,
 		// HOME must be writable under readOnlyRootFilesystem.
 		corev1.EnvVar{Name: "HOME", Value: workspaceDir},
 		corev1.EnvVar{Name: "PATCHY_WORKSPACE", Value: workspaceDir},
 		corev1.EnvVar{Name: "PATCHY_REPO", Value: spec.Repo},
 		corev1.EnvVar{Name: "PATCHY_ISSUE", Value: strconv.Itoa(spec.Issue)},
-		corev1.EnvVar{Name: "PATCHY_PHASE", Value: spec.Phase},
-		corev1.EnvVar{Name: "PATCHY_DEFAULT_BRANCH", Value: spec.Ref})
+		corev1.EnvVar{Name: "PATCHY_PHASE", Value: spec.Phase})
 
 	keys := make([]string, 0, len(c.cfg.Env))
 	for k := range c.cfg.Env {

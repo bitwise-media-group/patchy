@@ -15,19 +15,32 @@ The [dev overlay](kustomize.md) assumes a local [kind](https://kind.sigs.k8s.io/
 That last point is also why Colima supports the piece kind makes awkward: a real **Ingress in front of the
 webhook-controller**, the same shape production uses, instead of a bare NodePort.
 
+!!! tip "One command"
+
+    The next three sections — start the cluster, build the images, apply the dev overlay — are wrapped in a single
+    task: `mise run dev-colima` (or `make dev-colima`). Re-run it after code changes to rebuild the images and
+    redeploy; it restarts the deployments so the fresh build actually rolls out. Override the VM size on first start
+    with `COLIMA_CPU` / `COLIMA_MEMORY` (defaults 4 / 8), and pass a PAT with `GITHUB_TOKEN` so the controllers can
+    actually reach GitHub — see [GitHub credentials](#github-credentials). It starts colima with the bundled Traefik
+    enabled, so when it finishes the webhook is reachable through the
+    [Ingress](#ingress-for-the-webhook-controller) at `http://localhost/webhook` as well as the NodePort at
+    `http://localhost:30079`. The manual steps below remain the explanation of what it does.
+
 ## Start the cluster
 
 ```sh
 brew install colima kubectl
-colima start --kubernetes --cpu 4 --memory 8
+colima start --kubernetes --cpu 4 --memory 8 --k3s-arg=--tls-san=localhost
 ```
 
 `--kubernetes` boots k3s inside the VM (pin it with `--kubernetes-version`, which must match a k3s release tag) and
 switches your Docker and kubeconfig contexts to `colima`. Two k3s defaults matter here:
 
-- Colima passes `--disable=traefik` to k3s, so the bundled Traefik ingress controller is **not** running — install
-  ingress-nginx below (or override `--k3s-arg` at start time if you prefer the bundled Traefik and
-  `className: traefik`).
+- Colima's _default_ `--k3s-arg` is `--disable=traefik`, which would leave the bundled Traefik ingress controller off.
+  Passing any explicit `--k3s-arg` replaces that default — the inert `--tls-san=localhost` above exists purely to
+  displace it — so Traefik **is** running, and the [dev overlay's Ingress](#ingress-for-the-webhook-controller) works
+  out of the box. (An instance started without this flag needs `colima stop` and a restart with it; colima persists the
+  k3s args and reinstalls the cluster when they change.)
 - k3s's `servicelb` (klipper-lb) **is** running: a `LoadBalancer` Service gets the VM's node address and binds its ports
   on the node, which is what lets Colima's port forwarding put an ingress controller on `localhost`.
 
@@ -73,43 +86,49 @@ curl -s http://localhost:30079/healthz   # webhook-controller, the routing entry
 At this point you can stop and use the kind flow verbatim: point a tunnel (`gh webhook forward`, smee.io) at
 `http://localhost:30079/webhook`.
 
+## GitHub credentials
+
+The dev overlay ships **placeholder** GitHub App credentials (`app-id: "0"`), which fail the auth check at boot —
+without real credentials the source, context, and remediation controllers crash-loop with
+`github auth: set --github-token, or --github-app-id with --github-app-private-key-file`. The webhook-controller is
+unaffected: it holds no GitHub credential by design.
+
+The dev shortcut is a personal access token: `--github-token` [wins over App auth](../configuration/index.md), and the
+dev overlay wires `PATCHY_GITHUB_TOKEN` into the three GitHub-facing controllers from an _optional_
+`patchy-github-token` Secret. `dev-colima` creates that Secret for you when `GITHUB_TOKEN` is set:
+
+```sh
+GITHUB_TOKEN="$(gh auth token)" make dev-colima    # or export a PAT yourself
+```
+
+Re-running the task with a (new) `GITHUB_TOKEN` updates the Secret, and the rollout restart it already performs puts the
+token into the pods. Without `GITHUB_TOKEN` the task prints a note and deploys anyway — pods start, GitHub auth fails,
+and you can add the Secret later by re-running with the variable set (or by hand:
+`kubectl -n patchy create secret generic patchy-github-token --from-literal=token=<pat>` followed by a
+`kubectl -n patchy rollout restart deployment`).
+
+To use real GitHub App credentials instead, overwrite `patchy-github-app` as described in
+`deploy/kustomize/overlays/dev/secret-dev.yaml` — the token Secret simply stays absent.
+
 ## Ingress for the webhook-controller
 
-The NodePort works, but Colima can also run the production shape: an ingress controller in front of the
-`patchy-webhook-controller` Service, exposing only `/webhook`. Install ingress-nginx — the class the examples across
-these docs use:
+The NodePort works, but Colima also runs the production shape: an ingress controller in front of the
+`patchy-webhook-controller` Service, exposing only `/webhook`. With Traefik enabled at start (above), this is already
+done — the **dev overlay ships a host-less, class-less Ingress** (`overlays/dev/ingress-webhook.yaml`) for exactly this.
+Class-less on purpose: a dev cluster has one ingress controller, and the cluster's default IngressClass is assigned on
+admission — k3s marks its bundled Traefik as the default, and on stock kind the object is simply inert.
+
+The plumbing that makes it reach `localhost`: k3s's Traefik is a `LoadBalancer` Service, servicelb gives it the node's
+address, and Colima forwards the listening 80/443 to `localhost` (macOS allows unprivileged binds below 1024, so no sudo
+is involved).
+
+Prefer ingress-nginx? Install it as the default class and the same Ingress is satisfied without Traefik:
 
 ```sh
 helm upgrade --install ingress-nginx ingress-nginx \
   --repo https://kubernetes.github.io/ingress-nginx \
-  --namespace ingress-nginx --create-namespace
-```
-
-servicelb gives its `LoadBalancer` Service the node's address, and Colima forwards the listening 80/443 to `localhost`
-(macOS allows unprivileged binds below 1024, so no sudo is involved).
-
-Then put an Ingress in front of the webhook-controller. With the **dev overlay**, apply one directly (or add it to an
-overlay of your own) — host-less, so plain `localhost` matches:
-
-```yaml
-# webhook-ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: patchy-webhook
-  namespace: patchy
-spec:
-  ingressClassName: nginx
-  rules:
-    - http:
-        paths:
-          - path: /webhook
-            pathType: Prefix
-            backend:
-              service:
-                name: patchy-webhook-controller
-                port:
-                  number: 8080
+  --namespace ingress-nginx --create-namespace \
+  --set controller.ingressClassResource.default=true
 ```
 
 With the **Helm chart**, use the built-in flavour instead — `webhook.host` is required, and an

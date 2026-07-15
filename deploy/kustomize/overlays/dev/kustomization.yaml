@@ -14,6 +14,7 @@ resources:
     - ../../base
     - static-context.yaml
     - secret-dev.yaml
+    - ingress-webhook.yaml
 
 # No Cilium component: kind runs kindnet, which honours NetworkPolicy only if
 # you swap the CNI. Base NetworkPolicies are applied and simply have no effect
@@ -41,6 +42,20 @@ images:
 patches:
     - path: configmap-patch.yaml
     - path: deployment-context-controller-patch.yaml
+    # Optional PAT auth for the GitHub-facing controllers (not the
+    # webhook-controller, which holds no GitHub credential by design).
+    - path: deployment-github-token-patch.yaml
+      target:
+          kind: Deployment
+          name: patchy-source-controller
+    - path: deployment-github-token-patch.yaml
+      target:
+          kind: Deployment
+          name: patchy-context-controller
+    - path: deployment-github-token-patch.yaml
+      target:
+          kind: Deployment
+          name: patchy-remediation-controller
     - path: services-nodeport-patch.yaml
       target:
           kind: Service

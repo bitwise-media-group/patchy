@@ -191,10 +191,15 @@ Local `patchy/*:dev` images (`make snapshot`, retag, then `kind load docker-imag
 webhook-controller — point your tunnel, `gh webhook forward` or smee.io, at this one; 30080 source, 30081 context, 30082
 remediation for hitting a controller directly — map them with `extraPortMappings` in your kind config), minutes instead
 of hours (2m accumulation, 2m pickup, 10s reconcile), the static-file fake CMDB enhancer mounted from a ConfigMap, and
-tiny resource requests with no limits.
+tiny resource requests with no limits. On [Colima](https://oss.bitwisemedia.uk/patchy/deployment/colima/) the whole
+snapshot → retag → apply flow is one command, `make dev-colima`, and no image loading is needed.
 
-Two things to know about dev:
+Three things to know about dev:
 
+- **The placeholder GitHub App creds fail auth at boot** — the source, context, and remediation controllers crash-loop
+  until real credentials arrive. The dev shortcut is a PAT: the overlay wires `PATCHY_GITHUB_TOKEN` from an optional
+  `patchy-github-token` Secret (`GITHUB_TOKEN=<pat> make dev-colima` creates it; see `overlays/dev/secret-dev.yaml` for
+  the by-hand equivalent). The webhook-controller needs no GitHub credential.
 - **kind runs kindnet, which ignores NetworkPolicy.** The policies apply cleanly and do nothing. A green dev apply is
   not evidence of a working sandbox.
 - **The fake harness still needs the `patchy-anthropic` Secret to exist.** `PATCHY_CLASSIFY_HARNESS=fake` reaches the

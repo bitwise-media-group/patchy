@@ -17,11 +17,13 @@
 #   jobs      create (Create), get/list/watch (status + orphan sweep), delete
 #   pods      get/list/watch (find the Job's pod)
 #   pods/log  get (read the PATCHY-EVENT: stream)
-#   secrets   create/get/delete (the per-Job Secret carrying the scoped GitHub
-#             token and the issue/classification markdown; it is
-#             owner-referenced to the Job, but the controller must also be
-#             able to delete it on the create-Job-failed rollback path)
-#   configmaps create/get/delete (reserved for the same handoff mechanism)
+#   secrets   create/get/update/delete (the per-Job Secret carrying the scoped
+#             GitHub token and the issue/classification markdown; update
+#             owner-references it to its Job after the Job exists, and the
+#             controller must also be able to delete it on the
+#             create-Job-failed rollback path)
+#   configmaps create/get/update/delete (reserved for the same handoff
+#             mechanism)
 #
 # No secrets "list"/"watch": the controller only ever addresses its own
 # per-Job Secret by name.
@@ -46,7 +48,7 @@ rules:
       verbs: ["get"]
     - apiGroups: [""]
       resources: ["secrets", "configmaps"]
-      verbs: ["create", "get", "delete"]
+      verbs: ["create", "get", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -33,7 +33,9 @@ rules:
       verbs: ["get"]
     - apiGroups: [""]
       resources: ["secrets", "configmaps"]
-      verbs: ["create", "get", "delete"]
+      # update: Create owner-references the per-Job Secret to its Job after
+      # the Job exists.
+      verbs: ["create", "get", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

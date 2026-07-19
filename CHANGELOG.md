@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/bitwise-media-group/patchy/compare/v0.3.2...v0.3.3) (2026-07-19)
+
+
+### Bug Fixes
+
+* **jobs:** wait for the agent container before reading its logs ([3a5d213](https://github.com/bitwise-media-group/patchy/commit/3a5d2135f5b4a4809166982851ed113e7c69602d))
+
 ## [0.3.2](https://github.com/bitwise-media-group/patchy/compare/v0.3.1...v0.3.2) (2026-07-17)
 
 

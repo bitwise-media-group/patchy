@@ -71,6 +71,18 @@
             "properties": {
                 "create": { "type": "boolean" }
             }
+        },
+        "customResource": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "spec"],
+            "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "spec": {
+                    "type": "object",
+                    "description": "Rendered verbatim; validated server-side by the CRD schema"
+                }
+            }
         }
     },
     "properties": {
@@ -78,10 +90,12 @@
         "config": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["logLevel", "reconcileInterval"],
+            "required": ["logLevel", "maxAttempts", "priorityAgingInterval", "priorityAgingCap"],
             "properties": {
                 "logLevel": { "$ref": "#/definitions/logLevel" },
-                "reconcileInterval": { "$ref": "#/definitions/duration" },
+                "maxAttempts": { "type": "integer", "minimum": 1 },
+                "priorityAgingInterval": { "$ref": "#/definitions/duration" },
+                "priorityAgingCap": { "type": "integer", "minimum": 0 },
                 "extra": { "$ref": "#/definitions/extraEnv" }
             }
         },
@@ -109,16 +123,6 @@
         },
         "commonLabels": { "type": "object" },
         "commonAnnotations": { "type": "object" },
-        "github": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["appSecret", "webhookSecret"],
-            "properties": {
-                "appSecret": { "type": "string" },
-                "webhookSecret": { "type": "string" },
-                "baseURL": { "type": "string" }
-            }
-        },
         "anthropic": {
             "type": "object",
             "additionalProperties": false,
@@ -132,9 +136,19 @@
                 }
             }
         },
+        "integrations": {
+            "type": "array",
+            "description": "Integration custom resources rendered into the release namespace",
+            "items": { "$ref": "#/definitions/customResource" }
+        },
+        "forges": {
+            "type": "array",
+            "description": "Forge custom resources rendered into the release namespace",
+            "items": { "$ref": "#/definitions/customResource" }
+        },
         "webhook": {
             "type": "object",
-            "description": "The single external entry point for the GitHub App's one webhook URL, fronting the webhook-controller",
+            "description": "The single external entry point for the provider webhook URL, fronting the integration-controller (path /github/webhooks)",
             "additionalProperties": false,
             "required": ["ingress", "httpRoute"],
             "properties": {
@@ -162,19 +176,18 @@
                 }
             }
         },
-        "webhookController": {
+        "integrationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["replicas", "config", "serviceAccount", "service", "networkPolicy"],
+            "required": ["config", "serviceAccount", "service", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
-                "replicas": { "type": "integer", "minimum": 0 },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["forwardTimeout"],
+                    "required": ["accumulationWindow"],
                     "properties": {
-                        "forwardTimeout": { "$ref": "#/definitions/duration" },
+                        "accumulationWindow": { "$ref": "#/definitions/duration" },
                         "logLevel": { "$ref": "#/definitions/logLevel" },
                         "extra": { "$ref": "#/definitions/extraEnv" }
                     }
@@ -199,11 +212,8 @@
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["accumulationWindow"],
                     "properties": {
-                        "accumulationWindow": { "$ref": "#/definitions/duration" },
                         "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "reconcileInterval": { "$ref": "#/definitions/duration" },
                         "extra": { "$ref": "#/definitions/extraEnv" }
                     }
                 },
@@ -221,17 +231,14 @@
         "contextController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "networkPolicy"],
+            "required": ["config", "serviceAccount", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["enhanceGrace"],
                     "properties": {
-                        "enhanceGrace": { "$ref": "#/definitions/duration" },
                         "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "reconcileInterval": { "$ref": "#/definitions/duration" },
                         "extra": { "$ref": "#/definitions/extraEnv" }
                     }
                 },
@@ -242,40 +249,57 @@
                 "tolerations": { "type": "array", "items": { "type": "object" } },
                 "affinity": { "type": "object" },
                 "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "service": { "$ref": "#/definitions/service" },
+                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+            }
+        },
+        "investigationController": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["config", "serviceAccount", "networkPolicy"],
+            "properties": {
+                "image": { "$ref": "#/definitions/imageOverride" },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["findingMinAge", "maxConcurrentInvestigations", "confidenceThreshold"],
+                    "properties": {
+                        "findingMinAge": { "$ref": "#/definitions/duration" },
+                        "maxConcurrentInvestigations": { "type": "integer", "minimum": 1 },
+                        "confidenceThreshold": { "type": ["string", "number"] },
+                        "logLevel": { "$ref": "#/definitions/logLevel" },
+                        "maxAttempts": { "type": "integer", "minimum": 1 },
+                        "priorityAgingInterval": { "$ref": "#/definitions/duration" },
+                        "priorityAgingCap": { "type": "integer", "minimum": 0 },
+                        "extra": { "$ref": "#/definitions/extraEnv" }
+                    }
+                },
+                "resources": { "type": "object" },
+                "podAnnotations": { "type": "object" },
+                "podLabels": { "type": "object" },
+                "nodeSelector": { "type": "object" },
+                "tolerations": { "type": "array", "items": { "type": "object" } },
+                "affinity": { "type": "object" },
+                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
                 "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
             }
         },
         "remediationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "networkPolicy"],
+            "required": ["config", "serviceAccount", "networkPolicy"],
             "properties": {
                 "image": { "$ref": "#/definitions/imageOverride" },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": [
-                        "issueMinAge",
-                        "maxAttempts",
-                        "confidenceThreshold",
-                        "jobDeadline",
-                        "jobTTL",
-                        "modelAllowlist",
-                        "classify",
-                        "remediate"
-                    ],
+                    "required": ["maxConcurrentRemediations", "findingTTL"],
                     "properties": {
-                        "issueMinAge": { "$ref": "#/definitions/duration" },
-                        "maxAttempts": { "type": "integer", "minimum": 1 },
-                        "confidenceThreshold": { "type": ["string", "number"] },
-                        "jobDeadline": { "$ref": "#/definitions/duration" },
-                        "jobTTL": { "$ref": "#/definitions/duration" },
-                        "modelAllowlist": { "type": "string" },
-                        "classify": { "$ref": "#/definitions/agentStage" },
-                        "remediate": { "$ref": "#/definitions/agentStage" },
+                        "maxConcurrentRemediations": { "type": "integer", "minimum": 1 },
+                        "findingTTL": { "$ref": "#/definitions/duration" },
                         "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "reconcileInterval": { "$ref": "#/definitions/duration" },
+                        "maxAttempts": { "type": "integer", "minimum": 1 },
+                        "priorityAgingInterval": { "$ref": "#/definitions/duration" },
+                        "priorityAgingCap": { "type": "integer", "minimum": 0 },
                         "extra": { "$ref": "#/definitions/extraEnv" }
                     }
                 },
@@ -286,19 +310,32 @@
                 "tolerations": { "type": "array", "items": { "type": "object" } },
                 "affinity": { "type": "object" },
                 "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "service": { "$ref": "#/definitions/service" },
                 "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
             }
         },
         "agent": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["namespace", "serviceAccount", "networkPolicy"],
+            "required": [
+                "namespace",
+                "serviceAccount",
+                "jobDeadline",
+                "jobTTL",
+                "modelAllowlist",
+                "investigate",
+                "remediate",
+                "networkPolicy"
+            ],
             "properties": {
                 "namespace": { "type": "string" },
                 "createNamespace": { "type": "boolean" },
                 "serviceAccount": { "type": "string" },
                 "image": { "$ref": "#/definitions/imageOverride" },
+                "jobDeadline": { "$ref": "#/definitions/duration" },
+                "jobTTL": { "$ref": "#/definitions/duration" },
+                "modelAllowlist": { "type": "string" },
+                "investigate": { "$ref": "#/definitions/agentStage" },
+                "remediate": { "$ref": "#/definitions/agentStage" },
                 "networkPolicy": {
                     "type": "object",
                     "additionalProperties": false,
@@ -311,7 +348,6 @@
                             "additionalProperties": false,
                             "properties": {
                                 "anthropic": { "type": "array", "items": { "type": "string" } },
-                                "github": { "type": "array", "items": { "type": "string" } },
                                 "dnsPatterns": { "type": "array", "items": { "type": "string" } }
                             }
                         },

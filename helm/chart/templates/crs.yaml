@@ -1,0 +1,46 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The pipeline switch-on: the Integration and Forge custom resources rendered
+# from the `integrations` / `forges` values arrays. The controllers idle
+# until at least one of each exists — an Integration says where findings come
+# from and where the tracking issues go; a Forge says how repositories are
+# cloned and pushed. Each entry's `spec` is rendered verbatim (the CRD
+# schemas in templates/crds/ validate it server-side); the referenced Secrets
+# are created out of band — see deploy/kustomize/base/secrets.example.yaml.
+#
+# Installing CRDs and CRs in one release works because Helm sorts CRDs first;
+# on the very first install the CRs still race the controllers' cache warmup
+# harmlessly (the reconcilers retry).
+{{- range .Values.integrations }}
+---
+apiVersion: patchy.bitwisemedia.uk/v1alpha1
+kind: Integration
+metadata:
+    name: {{ required "integrations[].name is required" .name }}
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" "integration-controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    {{- required (printf "integrations[%s].spec is required" .name) .spec | toYaml | nindent 4 }}
+{{- end }}
+{{- range .Values.forges }}
+---
+apiVersion: patchy.bitwisemedia.uk/v1alpha1
+kind: Forge
+metadata:
+    name: {{ required "forges[].name is required" .name }}
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" "source-controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    {{- required (printf "forges[%s].spec is required" .name) .spec | toYaml | nindent 4 }}
+{{- end }}

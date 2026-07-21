@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT
 #
 # The webhook entry point, plain-Ingress flavour (webhook.ingress): one
-# Ingress on one hostname, in front of the webhook-controller — the only
-# component that faces the internet; it validates each delivery and routes it
-# to the controllers that consume its event type. GitHub only POSTs /webhook and the HMAC signature check in
-# internal/webhook is the authentication, so the rule is scoped to /webhook
-# rather than exposing the probes too. See docs/deployment/webhook.md.
+# Ingress on one hostname, in front of the integration-controller — the only
+# component that faces the internet; it validates each delivery against the
+# matching Integration's webhookSecret. GitHub only POSTs /github/webhooks
+# and the HMAC signature check is the authentication, so the rule is scoped
+# to /github/webhooks rather than exposing the probes too. See
+# docs/deployment/webhook.md.
 {{- if .Values.webhook.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -14,7 +15,7 @@ metadata:
     name: {{ include "patchy.fullname" . }}-webhook
     namespace: {{ .Release.Namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "webhook-controller") | nindent 8 }}
+        {{- include "patchy.labels" (dict "root" . "name" "integration-controller") | nindent 8 }}
     {{- with include "patchy.annotations" (dict "root" . "extra" .Values.webhook.ingress.annotations) }}
     annotations:
         {{- . | nindent 8 }}
@@ -31,11 +32,11 @@ spec:
         - host: {{ required "webhook.host is required when webhook.ingress is enabled" .Values.webhook.host | quote }}
           http:
               paths:
-                  - path: /webhook
+                  - path: /github/webhooks
                     pathType: Prefix
                     backend:
                         service:
-                            name: {{ include "patchy.fullname" . }}-webhook-controller
+                            name: {{ include "patchy.fullname" . }}-integration-controller
                             port:
                                 name: http
 {{- end }}

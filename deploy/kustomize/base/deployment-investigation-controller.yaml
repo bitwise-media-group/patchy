@@ -4,33 +4,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    name: patchy-source-controller
+    name: patchy-investigation-controller
     namespace: patchy
     labels:
-        app: source-controller
-        app.kubernetes.io/name: source-controller
+        app: investigation-controller
+        app.kubernetes.io/name: investigation-controller
         app.kubernetes.io/part-of: patchy
         app.kubernetes.io/component: controller
 spec:
-    # One replica + Recreate: the artifact store is local state (the emptyDir
-    # below), so two replicas would serve two disjoint artifact sets. Leader
-    # election is additional insurance during rollouts.
     replicas: 1
     strategy:
         type: Recreate
     selector:
         matchLabels:
-            app.kubernetes.io/name: source-controller
+            app.kubernetes.io/name: investigation-controller
             app.kubernetes.io/part-of: patchy
     template:
         metadata:
             labels:
-                app: source-controller
-                app.kubernetes.io/name: source-controller
+                app: investigation-controller
+                app.kubernetes.io/name: investigation-controller
                 app.kubernetes.io/part-of: patchy
                 app.kubernetes.io/component: controller
         spec:
-            serviceAccountName: patchy-source-controller
+            serviceAccountName: patchy-investigation-controller
             securityContext:
                 runAsNonRoot: true
                 runAsUser: 65532
@@ -41,8 +38,8 @@ spec:
             containers:
                 - name: controller
                   # Built from Dockerfile.controller (repo root)
-                  # (TARGET=source-controller in .goreleaser.yaml).
-                  image: ghcr.io/bitwise-media-group/patchy/source-controller:latest
+                  # (TARGET=investigation-controller in .goreleaser.yaml).
+                  image: ghcr.io/bitwise-media-group/patchy/investigation-controller:latest
                   args: ["serve"]
                   envFrom:
                       - configMapRef:
@@ -53,9 +50,6 @@ spec:
                             fieldRef:
                                 fieldPath: metadata.namespace
                   ports:
-                      - name: artifact
-                        containerPort: 9790
-                        protocol: TCP
                       - name: health
                         containerPort: 8081
                         protocol: TCP
@@ -77,7 +71,7 @@ spec:
                           memory: 96Mi
                       limits:
                           cpu: 500m
-                          memory: 512Mi
+                          memory: 256Mi
                   securityContext:
                       allowPrivilegeEscalation: false
                       readOnlyRootFilesystem: true
@@ -86,19 +80,10 @@ spec:
                       seccompProfile:
                           type: RuntimeDefault
                   volumeMounts:
-                      - name: data
-                        mountPath: /data
                       - name: tmp
                         mountPath: /tmp
             volumes:
-                # Artifact storage (PATCHY_ARTIFACT_DIR=/data/artifacts).
-                # Artifacts are reproducible — a re-fetch at the pinned SHA
-                # rebuilds them — so an emptyDir is acceptable; swap in a PVC
-                # in your overlay if repository archives are large or the API
-                # quota is tight.
-                - name: data
-                  emptyDir: {}
-                # The root filesystem is read-only; Go's os.CreateTemp and the
-                # HTTP stack want a writable /tmp.
+                # The root filesystem is read-only; Go's os.CreateTemp wants a
+                # writable /tmp.
                 - name: tmp
                   emptyDir: {}

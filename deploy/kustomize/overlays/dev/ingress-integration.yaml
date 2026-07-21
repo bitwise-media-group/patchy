@@ -1,0 +1,31 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Host-less, class-less Ingress in front of the integration-controller — the
+# production shape (only the provider webhook paths exposed) on a dev
+# cluster. No ingressClassName on purpose: a dev cluster has exactly one
+# ingress controller, and the cluster's default IngressClass is assigned on
+# admission (k3s marks its bundled traefik as default; `mise run dev-colima`
+# starts colima with traefik enabled). On stock kind this object is inert —
+# no controller satisfies it — and the NodePort (30079) keeps working either
+# way. No TLS: GitHub's HTTPS leg terminates at the tunnel (see
+# docs/deployment/colima.md).
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+    name: patchy-integration
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    rules:
+        - http:
+              paths:
+                  - path: /github/webhooks
+                    pathType: Prefix
+                    backend:
+                        service:
+                            name: patchy-integration-controller
+                            port:
+                                number: 8080

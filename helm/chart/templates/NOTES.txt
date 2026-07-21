@@ -1,39 +1,56 @@
 patchy {{ .Chart.AppVersion }} deployed to namespace {{ .Release.Namespace }}
 (agent sandbox: {{ .Values.agent.namespace }}).
 
-Nothing works until the three out-of-band Secrets exist:
+The CRs are the state machine: findings, investigations, and remediations
+live as patchy.bitwisemedia.uk custom resources in {{ .Release.Namespace }}
+(kubectl get patchy -n {{ .Release.Namespace }}).
 
-  1. {{ .Values.github.appSecret }} (namespace {{ .Release.Namespace }})
-     keys: app-id, private-key.pem — the GitHub App identity.
-  2. {{ .Values.github.webhookSecret }} (namespace {{ .Release.Namespace }})
-     key: secret — the webhook HMAC secret configured on the App.
-  3. {{ .Values.anthropic.secret }} (namespace {{ .Values.agent.namespace }})
-     key: {{ .Values.anthropic.secretKey }} — the model credential, injected as
-     {{ .Values.anthropic.secretEnv }}. Without it every agent Job pod fails
-     with CreateContainerConfigError.
+The pipeline idles until two things exist:
 
-See deploy/kustomize/base/secrets.example.yaml in the patchy repository for
-the exact shapes and kubectl one-liners.
+  1. An Integration and a Forge custom resource (render them with the
+     `integrations:` / `forges:` values arrays, or apply your own). The
+     Integration validates webhooks and projects tracking issues; the Forge
+     clones and pushes repositories.
+  2. The Secrets they reference, created out of band:
+       * the forge/provider credential (keys: appID + privateKey, or token,
+         plus webhookSecret on Integration secrets) in namespace
+         {{ .Release.Namespace }}, named by each CR's spec.secretRef.
+       * {{ .Values.anthropic.secret }} (namespace {{ .Values.agent.namespace }})
+         key: {{ .Values.anthropic.secretKey }} — the model credential,
+         injected as {{ .Values.anthropic.secretEnv }}. Without it every
+         agent Job pod fails with CreateContainerConfigError.
+     See deploy/kustomize/base/secrets.example.yaml in the patchy repository
+     for the exact shapes and kubectl one-liners.
+{{- if not (and .Values.integrations .Values.forges) }}
+
+NOTE: {{ if not .Values.integrations }}`integrations` is empty{{ if not .Values.forges }} and {{ end }}{{ end }}{{ if not .Values.forges }}`forges` is empty{{ end }} — no findings will be
+ingested{{ if not .Values.forges }} and no repository can be cloned{{ end }} until the missing CR(s) exist.
+{{- end }}
 
 {{- if or .Values.webhook.ingress.enabled .Values.webhook.httpRoute.enabled }}
+
 Set the GitHub App's (single) webhook URL to:
 
-  https://{{ .Values.webhook.host }}/webhook
+  https://{{ .Values.webhook.host }}/github/webhooks
 
-The webhook-controller behind it validates each delivery and routes it to
-the controllers that consume its event type; it holds no GitHub credential.
+The integration-controller behind it validates each delivery against the
+matching Integration's webhookSecret.
 {{- else }}
-No webhook entry point is enabled. Expose the webhook-controller (it validates
-deliveries and routes them to the controllers, holding no GitHub credential)
-with webhook.host plus webhook.ingress.enabled or webhook.httpRoute.enabled —
-or bring your own routing to the {{ include "patchy.fullname" . }}-webhook-controller
+
+No webhook entry point is enabled. Expose the integration-controller (the
+only internet-facing component; it validates each delivery against the
+matching Integration's webhookSecret) with webhook.host plus
+webhook.ingress.enabled or webhook.httpRoute.enabled — or bring your own
+routing to the {{ include "patchy.fullname" . }}-integration-controller
 Service — then point the GitHub App's single webhook URL at
-https://<host>/webhook.
+https://<host>/github/webhooks.
 {{- end }}
 {{- if not (or .Values.agent.networkPolicy.cilium.enabled .Values.agent.networkPolicy.istio.enabled) }}
 
 NOTE: the agent sandbox currently has no hostname-level egress policy — the
-base NetworkPolicy allows TCP 443 to anywhere, and credential absence is the
+base NetworkPolicy allows TCP 443 to anywhere, and credential absence (the
+agent pod holds no forge credential; the repository arrives as a
+digest-verified tarball from source-controller's artifact server) is the
 control. If your cluster runs Cilium or Istio, enable
 agent.networkPolicy.cilium.enabled or agent.networkPolicy.istio.enabled for
 defence in depth.

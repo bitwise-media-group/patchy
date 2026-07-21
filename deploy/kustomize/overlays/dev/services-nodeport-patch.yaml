@@ -3,8 +3,8 @@
 #
 # kind has no load balancer. NodePort + `extraPortMappings` in the kind config
 # is how a webhook delivery (from a tunnel — smee.io, ngrok, `gh webhook
-# forward`) reaches a controller. The nodePort numbers are set per-Service in
-# kustomization.yaml: 30080 source, 30081 context, 30082 remediation.
+# forward`) reaches the integration-controller. The nodePort number (30079)
+# is set in kustomization.yaml.
 ---
 apiVersion: v1
 kind: Service

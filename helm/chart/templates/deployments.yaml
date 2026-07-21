@@ -2,18 +2,27 @@
 # SPDX-License-Identifier: MIT
 #
 # One Deployment per controller, rendered from a single spec because they
-# differ only in image, resources, config, and whether the service-account
-# token is mounted (only the remediation-controller talks to the Kubernetes
-# API — it creates the agent Jobs and reads their pod logs).
+# differ only in image, resources, config, and ports: the
+# integration-controller additionally serves the provider webhook receivers
+# on 8080, the source-controller the artifact tarballs on 9790 (backed by a
+# /data emptyDir); every controller serves healthz/readyz on 8081. All five
+# are CRD controllers, so every pod mounts its service-account token —
+# rbac.yaml pins verb-by-verb what each identity may do.
 #
-# All three are singletons with strategy Recreate, ON PURPOSE. The state
-# machine is GitHub issue labels and there is no leader election in the
-# binaries — two replicas would both act on the same issue (double comments,
-# duplicate accumulation issues, duplicate agent Jobs). Do not scale these.
+# All five are singletons with strategy Recreate, ON PURPOSE. The binaries do
+# run leader election (a coordination.k8s.io Lease), but that is insurance
+# against a botched rollout racing two replicas — singleton-by-construction
+# stays the deployment model. Do not scale these.
+#
+# No credential is mounted anywhere here: provider and forge credentials live
+# in Secrets referenced by the Integration and Forge custom resources
+# (spec.secretRef), read on demand through the API.
 {{- range $c := list
-    (dict "name" "source-controller" "vals" .Values.sourceController "automount" false)
-    (dict "name" "context-controller" "vals" .Values.contextController "automount" false)
-    (dict "name" "remediation-controller" "vals" .Values.remediationController "automount" true)
+    (dict "name" "integration-controller" "vals" .Values.integrationController)
+    (dict "name" "source-controller" "vals" .Values.sourceController)
+    (dict "name" "context-controller" "vals" .Values.contextController)
+    (dict "name" "investigation-controller" "vals" .Values.investigationController)
+    (dict "name" "remediation-controller" "vals" .Values.remediationController)
 }}
 ---
 apiVersion: apps/v1
@@ -47,9 +56,6 @@ spec:
             {{- end }}
         spec:
             serviceAccountName: {{ include "patchy.serviceAccountName" (dict "root" $ "name" $c.name "vals" $c.vals) }}
-            {{- if not $c.automount }}
-            automountServiceAccountToken: false
-            {{- end }}
             {{- with $.Values.image.pullSecrets }}
             imagePullSecrets:
                 {{- toYaml . | nindent 16 }}
@@ -71,25 +77,33 @@ spec:
                       - configMapRef:
                             name: {{ include "patchy.configMapName" (dict "root" $ "name" $c.name) }}
                   env:
-                      - name: PATCHY_GITHUB_APP_ID
+                      - name: POD_NAMESPACE
                         valueFrom:
-                            secretKeyRef:
-                                name: {{ $.Values.github.appSecret }}
-                                key: app-id
+                            fieldRef:
+                                fieldPath: metadata.namespace
                   ports:
+                      {{- if eq $c.name "integration-controller" }}
                       - name: http
                         containerPort: 8080
+                        protocol: TCP
+                      {{- else if eq $c.name "source-controller" }}
+                      - name: artifact
+                        containerPort: 9790
+                        protocol: TCP
+                      {{- end }}
+                      - name: health
+                        containerPort: 8081
                         protocol: TCP
                   livenessProbe:
                       httpGet:
                           path: /healthz
-                          port: http
+                          port: health
                       initialDelaySeconds: 5
                       periodSeconds: 20
                   readinessProbe:
                       httpGet:
                           path: /readyz
-                          port: http
+                          port: health
                       initialDelaySeconds: 2
                       periodSeconds: 10
                   {{- with $c.vals.resources }}
@@ -104,12 +118,10 @@ spec:
                       seccompProfile:
                           type: RuntimeDefault
                   volumeMounts:
-                      - name: webhook-secret
-                        mountPath: /etc/patchy/webhook
-                        readOnly: true
-                      - name: github-app
-                        mountPath: /etc/patchy/github-app
-                        readOnly: true
+                      {{- if eq $c.name "source-controller" }}
+                      - name: data
+                        mountPath: /data
+                      {{- end }}
                       - name: tmp
                         mountPath: /tmp
             {{- with $c.vals.nodeSelector }}
@@ -125,13 +137,13 @@ spec:
                 {{- toYaml . | nindent 16 }}
             {{- end }}
             volumes:
-                - name: webhook-secret
-                  secret:
-                      secretName: {{ $.Values.github.webhookSecret }}
-                - name: github-app
-                  secret:
-                      secretName: {{ $.Values.github.appSecret }}
-                      defaultMode: 0400
+                {{- if eq $c.name "source-controller" }}
+                # Artifact storage (PATCHY_ARTIFACT_DIR=/data/artifacts).
+                # Artifacts are reproducible — a re-fetch at the pinned SHA
+                # rebuilds them — so an emptyDir is acceptable.
+                - name: data
+                  emptyDir: {}
+                {{- end }}
                 # The root filesystem is read-only; every binary wants a
                 # writable /tmp.
                 - name: tmp

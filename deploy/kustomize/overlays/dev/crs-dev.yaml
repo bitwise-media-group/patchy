@@ -1,0 +1,40 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The dev pipeline switch-on: one GitHub Integration and one GitHub Forge,
+# both referencing the throwaway patchy-github Secret (secret-dev.yaml).
+# With the placeholder token every GitHub call fails until the Secret is
+# replaced — but webhook validation, ingestion, and the CR state machine all
+# run, which is exactly what `mise run replay` exercises.
+---
+apiVersion: patchy.bitwisemedia.uk/v1alpha1
+kind: Integration
+metadata:
+    name: github
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    provider: github
+    secretRef:
+        name: patchy-github
+    interval: 10m
+    github:
+        issues:
+            enabled: true
+            approveComment: "@patchy approve"
+        codeScanningAlerts:
+            enabled: true
+---
+apiVersion: patchy.bitwisemedia.uk/v1alpha1
+kind: Forge
+metadata:
+    name: github
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    provider: github
+    secretRef:
+        name: patchy-github
+    interval: 10m

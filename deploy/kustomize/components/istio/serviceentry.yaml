@@ -1,12 +1,17 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The egress allowlist: the only hosts REGISTRY_ONLY (sidecar.yaml) lets an
-# agent pod reach. Same list as the Cilium component's toFQDNs.
+# The egress allowlist: the only external host REGISTRY_ONLY (sidecar.yaml)
+# lets an agent pod reach. Same list as the Cilium component's toFQDNs.
 #
-# exportTo: "." keeps each entry private to patchy-agents — no other
+# exportTo: "." keeps the entry private to patchy-agents — no other
 # namespace's sidecar config grows an api.anthropic.com route because of the
 # agent sandbox.
+#
+# There is deliberately NO GitHub entry: the repository arrives as a tarball
+# from source-controller's in-cluster artifact server (a mesh-registry
+# Service the Sidecar below already exposes), and the pod holds no forge
+# credential.
 ---
 # The agent container: `claude -p` and nothing else.
 apiVersion: networking.istio.io/v1
@@ -20,29 +25,6 @@ spec:
     exportTo: ["."]
     hosts:
         - api.anthropic.com
-    location: MESH_EXTERNAL
-    resolution: DNS
-    ports:
-        - number: 443
-          name: tls
-          protocol: TLS
----
-# The INIT container's clone. github.com serves the git protocol;
-# codeload/objects serve the pack data a `git clone --depth 1` pulls.
-# If you run GHES, replace these with your GHES hostname.
-apiVersion: networking.istio.io/v1
-kind: ServiceEntry
-metadata:
-    name: patchy-agent-github
-    namespace: patchy-agents
-    labels:
-        app.kubernetes.io/part-of: patchy
-spec:
-    exportTo: ["."]
-    hosts:
-        - github.com
-        - codeload.github.com
-        - objects.githubusercontent.com
     location: MESH_EXTERNAL
     resolution: DNS
     ports:

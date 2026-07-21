@@ -15,29 +15,29 @@ data:
     PATCHY_LOG_LEVEL: info
 
     # Tight loops: a demo should not wait an hour to see anything happen.
-    PATCHY_RECONCILE_INTERVAL: 10s
     PATCHY_ACCUMULATION_WINDOW: 2m
-    PATCHY_ISSUE_MIN_AGE: 2m
-    PATCHY_ENHANCE_GRACE: 30s
+    PATCHY_FINDING_MIN_AGE: 2m
+    # Watch the TTL sweep actually delete findings within a coffee break.
+    PATCHY_FINDING_TTL: 30m
 
     # The fake CMDB (internal/enhancers.StaticFile) instead of the Noop
     # placeholder. The file is mounted from the patchy-static-context
     # ConfigMap; see deployment-context-controller-patch.yaml.
     PATCHY_STATIC_CONTEXT_FILE: /etc/patchy/context/cmdb.yaml
 
-    # Local images loaded into kind. This string is what the controller writes
-    # into the Job spec, so it must match the `images:` rename in
+    # Local images loaded into kind. This string is what the job controllers
+    # write into the Job spec, so it must match the `images:` rename in
     # kustomization.yaml (kustomize does not rewrite ConfigMap values).
     PATCHY_AGENT_IMAGE: patchy/agent-runner:dev
 
     # ---- the fake harness --------------------------------------------------
-    # The remediation-controller reads these as flags/env and passes them
-    # through to every agent pod (cmd/remediation-controller/serve.go:agentEnv),
-    # where agentrun.FromEnv resolves them. "fake" selects internal/harness.Fake:
-    # scripted output, no model call, so no Anthropic key is needed in dev.
-    # (The Job still wires ANTHROPIC_API_KEY from the patchy-anthropic Secret,
-    # so the placeholder in secret-dev.yaml must exist for pods to start.)
-    PATCHY_CLASSIFY_HARNESS: fake
+    # The job controllers pass these through to every agent pod
+    # (cmd/*/serve.go:agentEnv), where agentrun.FromEnv resolves them. "fake"
+    # selects internal/harness.Fake: scripted output, no model call, so no
+    # Anthropic key is needed in dev. (The Job still wires ANTHROPIC_API_KEY
+    # from the patchy-anthropic Secret, so the placeholder in secret-dev.yaml
+    # must exist for pods to start.)
+    PATCHY_INVESTIGATE_HARNESS: fake
     PATCHY_REMEDIATE_HARNESS: fake
 
     # Fail fast in dev rather than burning an hour of wall clock.

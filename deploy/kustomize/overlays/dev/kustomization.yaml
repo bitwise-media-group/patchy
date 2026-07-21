@@ -1,11 +1,11 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# kind-friendly overlay: local images, NodePort webhooks, minutes instead of
-# hours, the fake-CMDB enhancer, and throwaway credentials.
+# kind-friendly overlay: local images, a NodePort webhook, minutes instead of
+# hours, the fake-CMDB enhancer, the fake harness, and throwaway credentials.
 #
 #     kind create cluster --config deploy/kind.yaml   # (bring your own; map
-#                                                     #  30079-30082 to host)
+#                                                     #  30079 to host)
 #     kubectl apply -k deploy/kustomize/overlays/dev
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -14,7 +14,8 @@ resources:
     - ../../base
     - static-context.yaml
     - secret-dev.yaml
-    - ingress-webhook.yaml
+    - crs-dev.yaml
+    - ingress-integration.yaml
 
 # No Cilium component: kind runs kindnet, which honours NetworkPolicy only if
 # you swap the CNI. Base NetworkPolicies are applied and simply have no effect
@@ -23,17 +24,20 @@ resources:
 # Local images: `make snapshot` builds them (per-arch, unpushed — retag the
 # host-arch one as patchy/<name>:dev), then `kind load docker-image patchy/...`.
 images:
+    - name: ghcr.io/bitwise-media-group/patchy/integration-controller
+      newName: patchy/integration-controller
+      newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
       newName: patchy/source-controller
       newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
       newName: patchy/context-controller
       newTag: dev
+    - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
+      newName: patchy/investigation-controller
+      newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       newName: patchy/remediation-controller
-      newTag: dev
-    - name: ghcr.io/bitwise-media-group/patchy/webhook-controller
-      newName: patchy/webhook-controller
       newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/agent-runner
       newName: patchy/agent-runner
@@ -42,68 +46,20 @@ images:
 patches:
     - path: configmap-patch.yaml
     - path: deployment-context-controller-patch.yaml
-    # Optional PAT auth for the GitHub-facing controllers (not the
-    # webhook-controller, which holds no GitHub credential by design).
-    - path: deployment-github-token-patch.yaml
-      target:
-          kind: Deployment
-          name: patchy-source-controller
-    - path: deployment-github-token-patch.yaml
-      target:
-          kind: Deployment
-          name: patchy-context-controller
-    - path: deployment-github-token-patch.yaml
-      target:
-          kind: Deployment
-          name: patchy-remediation-controller
+    # NodePort the integration-controller's webhook receiver. Point your
+    # tunnel (smee.io, ngrok, `gh webhook forward`) at 30079; `mise run
+    # replay` delivers recorded fixtures to the same port.
     - path: services-nodeport-patch.yaml
       target:
           kind: Service
-          name: patchy-webhook-controller
-    - path: services-nodeport-patch.yaml
-      target:
-          kind: Service
-          name: patchy-source-controller
-    - path: services-nodeport-patch.yaml
-      target:
-          kind: Service
-          name: patchy-context-controller
-    - path: services-nodeport-patch.yaml
-      target:
-          kind: Service
-          name: patchy-remediation-controller
-    # Distinct nodePorts. Point your tunnel (smee.io, ngrok, `gh webhook
-    # forward`) at 30079 — the webhook-controller routes deliveries to the right
-    # controllers, exactly as in production. 30080-30082 hit the controllers
-    # directly, which `mise run replay` uses to exercise one in isolation.
+          name: patchy-integration-controller
     - target:
           kind: Service
-          name: patchy-webhook-controller
+          name: patchy-integration-controller
       patch: |
           - op: add
             path: /spec/ports/0/nodePort
             value: 30079
-    - target:
-          kind: Service
-          name: patchy-source-controller
-      patch: |
-          - op: add
-            path: /spec/ports/0/nodePort
-            value: 30080
-    - target:
-          kind: Service
-          name: patchy-context-controller
-      patch: |
-          - op: add
-            path: /spec/ports/0/nodePort
-            value: 30081
-    - target:
-          kind: Service
-          name: patchy-remediation-controller
-      patch: |
-          - op: add
-            path: /spec/ports/0/nodePort
-            value: 30082
     # Laptop-sized. Requests tiny — a kind node has no headroom. Limits stay
     # (kubescape C-0270/C-0271 gate on them) but loose enough to never
     # throttle a dev loop.

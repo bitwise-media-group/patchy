@@ -1,0 +1,632 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+{{- if .Values.crds.install }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: findings.patchy.bitwisemedia.uk
+spec:
+  group: patchy.bitwisemedia.uk
+  names:
+    categories:
+    - patchy
+    kind: Finding
+    listKind: FindingList
+    plural: findings
+    shortNames:
+    - fnd
+    singular: finding
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.repository.name
+      name: Repo
+      type: string
+    - jsonPath: .spec.severity
+      name: Severity
+      type: string
+    - jsonPath: .status.priority
+      name: Priority
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.investigation.recommendation
+      name: Verdict
+      type: string
+    - jsonPath: .status.tracking.url
+      name: Issue
+      priority: 1
+      type: string
+    - jsonPath: .status.pullRequest.url
+      name: PR
+      priority: 1
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Finding is the authoritative state machine for one security finding. The
+          tracking item (e.g. a GitHub issue) is a one-way human-facing projection of
+          this resource.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              FindingSpec is the finding to triage. integration-controller writes it at
+              ingest and during accumulation; humans may set suspend and add related-to
+              edges — nothing else has a second writer.
+            properties:
+              advisories:
+                description: |-
+                  Advisories identify the vulnerability, most authoritative first
+                  (GHSA > CVE > CWE); [0] is the accumulation key.
+                items:
+                  type: string
+                minItems: 1
+                type: array
+              alerts:
+                description: Alerts folded into this finding during accumulation.
+                items:
+                  description: |-
+                    Alert is one scanner alert folded into the finding during accumulation.
+                    IDs are strings — GHAS alert numbers render as decimal, other scanners use
+                    opaque identifiers.
+                  properties:
+                    id:
+                      description: ID of the alert in the source system.
+                      minLength: 1
+                      type: string
+                    locations:
+                      description: Locations the alert points at.
+                      items:
+                        description: Location is one source location an alert points
+                          at.
+                        properties:
+                          endLine:
+                            description: EndLine of the flagged region.
+                            format: int32
+                            type: integer
+                          path:
+                            description: Path of the file, repo-relative.
+                            type: string
+                          snippet:
+                            description: Snippet is the flagged source excerpt.
+                            maxLength: 1024
+                            type: string
+                          startLine:
+                            description: StartLine of the flagged region (1-based).
+                            format: int32
+                            type: integer
+                        required:
+                        - path
+                        type: object
+                      maxItems: 8
+                      type: array
+                    url:
+                      description: URL of the alert in the source system.
+                      type: string
+                  required:
+                  - id
+                  type: object
+                maxItems: 64
+                type: array
+              approval:
+                description: |-
+                  Approval is the recorded human /approve, written by
+                  integration-controller from the tracking system's comment webhook.
+                properties:
+                  at:
+                    description: At is when the approval was received.
+                    format: date-time
+                    type: string
+                  by:
+                    description: By is the approving login.
+                    type: string
+                  note:
+                    description: Note is optional free text following the approve
+                      command.
+                    maxLength: 1024
+                    type: string
+                required:
+                - at
+                - by
+                type: object
+              description:
+                description: Description is the scanner's full description, truncated
+                  at ingest.
+                maxLength: 65536
+                type: string
+              integrationRef:
+                description: IntegrationRef names the Integration that ingested this
+                  finding.
+                properties:
+                  name:
+                    description: Name of the referent.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              overflowAlerts:
+                description: |-
+                  OverflowAlerts counts alerts dropped past the cap (total observed =
+                  len(alerts) + overflowAlerts).
+                format: int32
+                type: integer
+              related:
+                description: Related is the finding's relationship edges.
+                items:
+                  description: |-
+                    RelatedFinding is a directed edge between two findings, stored identically
+                    on both endpoints (one of from/to is the holder's own name). Names may
+                    dangle after the other endpoint's TTL deletion — consumers tolerate that.
+                  properties:
+                    from:
+                      description: From is the edge's source Finding name.
+                      type: string
+                    relationship:
+                      description: Relationship classifies the edge.
+                      enum:
+                      - duplicate-of
+                      - successor-of
+                      - related-to
+                      type: string
+                    to:
+                      description: To is the edge's target Finding name.
+                      type: string
+                  required:
+                  - from
+                  - relationship
+                  - to
+                  type: object
+                maxItems: 32
+                type: array
+              repository:
+                description: Repository the finding belongs to; nil when none could
+                  be identified.
+                properties:
+                  defaultBranch:
+                    description: DefaultBranch of the repository at ingest time.
+                    type: string
+                  name:
+                    description: Name is the human form ("owner/repo"), for display.
+                    type: string
+                  type:
+                    description: Type of forge the repository lives on.
+                    enum:
+                    - github
+                    type: string
+                  url:
+                    description: URL is the normalized https URL of the repository.
+                    minLength: 1
+                    type: string
+                required:
+                - type
+                - url
+                type: object
+              ruleID:
+                description: RuleID is the scanner rule that fired.
+                type: string
+              severity:
+                description: Severity assigned by the scanner.
+                enum:
+                - low
+                - medium
+                - high
+                - critical
+                type: string
+              source:
+                description: Source is the source handler ID (e.g. github-code-scanning).
+                minLength: 1
+                type: string
+              suspend:
+                description: Suspend pauses pipeline progress for this finding (human-written).
+                type: boolean
+              title:
+                description: Title is the human summary line.
+                type: string
+              trackingRef:
+                description: |-
+                  TrackingRef names the Integration that projects this finding to its
+                  tracking system, denormalized at creation (stable if the ingesting
+                  integration later retargets).
+                properties:
+                  name:
+                    description: Name of the referent.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - advisories
+            - integrationRef
+            - source
+            type: object
+          status:
+            description: |-
+              FindingStatus is the finding's observed state. Field writers are noted per
+              field; every field has exactly one writer component.
+            properties:
+              accumulateUntil:
+                description: AccumulateUntil closes the accumulation window (integration).
+                format: date-time
+                type: string
+              activeRun:
+                description: |-
+                  ActiveRun points at the child currently running (respective
+                  controllers).
+                properties:
+                  kind:
+                    description: Kind of the active run.
+                    enum:
+                    - investigation
+                    - remediation
+                    type: string
+                  name:
+                    description: Name of the active child.
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+              attempts:
+                description: Attempts tallies agent runs (respective controllers).
+                properties:
+                  investigation:
+                    description: Investigation attempts so far.
+                    format: int32
+                    type: integer
+                  remediation:
+                    description: Remediation attempts so far.
+                    format: int32
+                    type: integer
+                type: object
+              completedAt:
+                description: |-
+                  CompletedAt is set on terminal-phase entry and cleared on revival; the
+                  TTL contract is completedAt + TTL.
+                format: date-time
+                type: string
+              conditions:
+                description: Conditions of the finding.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              enrichments:
+                description: Enrichments are the enhancer contributions (context).
+                items:
+                  description: |-
+                    Enrichment is one enhancer's contribution, written by context-controller
+                    and projected as a tracking comment by integration-controller.
+                  properties:
+                    appliedAt:
+                      description: AppliedAt is when the enrichment was recorded.
+                      format: date-time
+                      type: string
+                    enhancer:
+                      description: Enhancer is the enhancer ID.
+                      type: string
+                    markdown:
+                      description: Markdown is the enhancer's comment body.
+                      maxLength: 16384
+                      type: string
+                    owners:
+                      description: |-
+                        Owners are code-owner logins the enhancer identified, in preference
+                        order.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - appliedAt
+                  - enhancer
+                  type: object
+                maxItems: 8
+                type: array
+              firstObservedAt:
+                description: FirstObservedAt is when the first alert arrived (integration).
+                format: date-time
+                type: string
+              forge:
+                description: Forge names the resolved Forge, for observability.
+                properties:
+                  name:
+                    description: Name of the referent.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              investigation:
+                description: Investigation summarizes the latest Investigation child
+                  (investigation).
+                properties:
+                  attempt:
+                    description: Attempt ordinal.
+                    format: int32
+                    type: integer
+                  awaitApproval:
+                    description: AwaitApproval marks the breaking-change hold.
+                    type: boolean
+                  completedAt:
+                    description: CompletedAt is when the investigation finished.
+                    format: date-time
+                    type: string
+                  confidence:
+                    description: Confidence decimal string in [0, 1].
+                    pattern: ^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$
+                    type: string
+                  exploitability:
+                    description: Exploitability rating.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  impact:
+                    description: Impact rating.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  likelihood:
+                    description: Likelihood rating.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  name:
+                    description: Name of the Investigation child.
+                    type: string
+                  outcome:
+                    description: Outcome of the stage (envelope vocabulary).
+                    type: string
+                  recommendation:
+                    description: Recommendation verdict.
+                    enum:
+                    - remediate
+                    - ignore
+                    - manual
+                    type: string
+                required:
+                - attempt
+                - name
+                type: object
+              lastFailureReason:
+                description: LastFailureReason explains the most recent failed edge.
+                maxLength: 4096
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the last spec generation acted
+                  on.
+                format: int64
+                type: integer
+              owners:
+                description: Owners are the humans responsible for the finding (context).
+                items:
+                  type: string
+                type: array
+              phase:
+                description: Phase of the lifecycle (see transitions.go for edges
+                  and writers).
+                enum:
+                - Opened
+                - Enhanced
+                - Investigating
+                - Queued
+                - AwaitingApproval
+                - Remediating
+                - InReview
+                - Remediated
+                - Failed
+                - Dismissed
+                - HandedOff
+                type: string
+              phaseTimes:
+                description: PhaseTimes is the append-only phase entry log.
+                items:
+                  description: PhaseTime records when the finding entered a phase
+                    (append-only).
+                  properties:
+                    at:
+                      description: At is the entry time.
+                      format: date-time
+                      type: string
+                    phase:
+                      description: Phase entered.
+                      enum:
+                      - Opened
+                      - Enhanced
+                      - Investigating
+                      - Queued
+                      - AwaitingApproval
+                      - Remediating
+                      - InReview
+                      - Remediated
+                      - Failed
+                      - Dismissed
+                      - HandedOff
+                      type: string
+                  required:
+                  - at
+                  - phase
+                  type: object
+                type: array
+              priority:
+                description: |-
+                  Priority is the scheduling priority derived from investigation results
+                  (investigation) — the remediation queue's sort dimension.
+                enum:
+                - low
+                - medium
+                - high
+                - critical
+                type: string
+              pullRequest:
+                description: |-
+                  PullRequest is the remediation PR (remediation opens; integration owns
+                  state/mergedAt).
+                properties:
+                  mergedAt:
+                    description: MergedAt is when the pull request merged.
+                    format: date-time
+                    type: string
+                  number:
+                    description: Number of the pull request.
+                    format: int64
+                    type: integer
+                  state:
+                    description: State of the pull request.
+                    enum:
+                    - open
+                    - merged
+                    - closed
+                    type: string
+                  url:
+                    description: URL of the pull request.
+                    type: string
+                required:
+                - number
+                type: object
+              remediation:
+                description: Remediation summarizes the latest Remediation child (remediation).
+                properties:
+                  attempt:
+                    description: Attempt ordinal.
+                    format: int32
+                    type: integer
+                  branch:
+                    description: Branch carrying the fix.
+                    type: string
+                  completedAt:
+                    description: CompletedAt is when the remediation finished.
+                    format: date-time
+                    type: string
+                  name:
+                    description: Name of the Remediation child.
+                    type: string
+                  outcome:
+                    description: Outcome of the stage (envelope vocabulary).
+                    type: string
+                  success:
+                    description: Success reports whether the agent produced a fix.
+                    type: boolean
+                required:
+                - attempt
+                - name
+                type: object
+              tracking:
+                description: Tracking links the projected tracking item (integration).
+                properties:
+                  integration:
+                    description: Integration that owns the projection.
+                    type: string
+                  issueNumber:
+                    description: IssueNumber of the tracking item.
+                    format: int64
+                    type: integer
+                  state:
+                    description: State of the tracking item (open/closed).
+                    type: string
+                  url:
+                    description: URL of the tracking item.
+                    type: string
+                required:
+                - integration
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

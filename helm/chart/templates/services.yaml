@@ -1,17 +1,21 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# One Service per controller (<controller>.service). Each binary serves the
-# same three endpoints on its port (internal/webhook): POST /webhook, GET
-# /healthz, GET /readyz.
+# Two Services, because only two things are dialled by anything:
 #
-# ClusterIP by default, and cluster-internal by design: GitHub's deliveries
-# arrive through the webhook-controller (webhook-controller.yaml), which
-# routes each one to the Services that consume its event type. type NodePort + nodePort covers the kind/dev case.
+#   * <fullname>-integration-controller:8080 — the single internet-facing
+#     entry point (the provider webhook receivers, e.g. POST
+#     /github/webhooks). Fronted by `webhook.ingress` / `webhook.httpRoute`.
+#   * <fullname>-source-controller:9790 — the artifact server the agent pods
+#     fetch SHA-pinned repository tarballs from (in-cluster only; the
+#     NetworkPolicies restrict it to the agent namespace).
+#
+# The other controllers serve nothing but kubelet probes on :8081, which hit
+# the pod directly — no Service needed. type NodePort + nodePort covers the
+# kind/dev case.
 {{- range $c := list
-    (dict "name" "source-controller" "vals" .Values.sourceController)
-    (dict "name" "context-controller" "vals" .Values.contextController)
-    (dict "name" "remediation-controller" "vals" .Values.remediationController)
+    (dict "name" "integration-controller" "vals" .Values.integrationController "portName" "http")
+    (dict "name" "source-controller" "vals" .Values.sourceController "portName" "artifact")
 }}
 {{- $svc := $c.vals.service }}
 ---
@@ -31,9 +35,9 @@ spec:
     selector:
         {{- include "patchy.selectorLabels" (dict "root" $ "name" $c.name) | nindent 8 }}
     ports:
-        - name: http
+        - name: {{ $c.portName }}
           port: {{ $svc.port }}
-          targetPort: http
+          targetPort: {{ $c.portName }}
           protocol: TCP
           {{- with $svc.nodePort }}
           nodePort: {{ . }}

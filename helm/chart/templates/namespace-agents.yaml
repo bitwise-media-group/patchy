@@ -1,10 +1,11 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The agent sandbox. Ephemeral Jobs created at runtime by the
-# remediation-controller (internal/jobs). Nothing here holds a GitHub
-# credential except the per-Job Secret the init container consumes, and that
-# Secret is garbage-collected with its Job.
+# The agent sandbox. Ephemeral Jobs created at runtime by the two job
+# controllers (internal/jobs). Nothing here holds a forge credential at all —
+# the per-Job Secret carries only handoff markdown (garbage-collected with
+# its Job), and the repository arrives as a credential-less tarball from
+# source-controller's artifact server.
 #
 # NOTE: helm uninstall deletes this namespace — and with it any agent Job
 # still running. The controllers' namespace is the release namespace and is

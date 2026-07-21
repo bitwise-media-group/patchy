@@ -10,17 +10,18 @@
 # github.com" here, because by the time a packet exists the name is gone.
 #
 # So the agent egress rule below reads "TCP 443 to anywhere outside the
-# cluster". That permits api.anthropic.com. It also permits github.com, and
-# every other host on the internet that answers on 443.
+# cluster". That permits api.anthropic.com. It also permits every other host
+# on the internet that answers on 443.
 #
 # Two things carry the isolation, in this order:
 #
-#   1. CREDENTIAL ABSENCE (the real control). The agent container gets no
-#      GitHub token — internal/jobs puts the token only in the init
-#      container's env, resets the clone's remote URL afterwards, and lists
-#      GITHUB_TOKEN in reservedEnv so no configuration can smuggle one in.
-#      An agent that reaches github.com reaches it unauthenticated, as the
-#      public internet does.
+#   1. CREDENTIAL ABSENCE (the real control). The agent pod holds no forge
+#      credential AT ALL — not even in the init container. The repository
+#      arrives as a digest-verified tarball fetched from source-controller's
+#      artifact server over the cluster network; the only Secret in the pod
+#      is the model credential and the handoff markdown. An agent that
+#      reaches github.com reaches it unauthenticated, as the public internet
+#      does.
 #   2. Hostname policy (defence in depth, infrastructure-dependent). See
 #      ../components/cilium/networkpolicy-cilium.yaml — a CiliumNetworkPolicy
 #      that narrows this same egress to toFQDNs — or ../components/istio/ —
@@ -30,20 +31,26 @@
 #
 # DESIGN.md says the agent gets "no internet access". Taken literally that is
 # impossible: `claude -p` is a network client of api.anthropic.com. What is
-# actually delivered is "no network except the model API", and — with a plain
-# CNI — "no CREDENTIALS for anything except the model API".
+# actually delivered is "no network except the model API and the in-cluster
+# artifact server", and — with a plain CNI — "no CREDENTIALS for anything at
+# all".
 # ===========================================================================
 ---
 # ---- patchy namespace: the controllers ------------------------------------
-# Ingress: webhook + probes on 8080 only.
+# Ingress:
+#   8080  the integration-controller's webhook receivers. The fronting
+#         ingress controller / load balancer may live in any namespace and
+#         kubelet probes arrive from the node IP, so the rule allows the port
+#         from anywhere and relies on the per-Integration HMAC signature
+#         check for authentication. Tighten `from:` to your own ingress
+#         namespace if you want L3 on top of the HMAC.
+#   8081  kubelet probes (every controller).
+#   9790  the artifact server — agent pods only (plus kubelet).
 #
-# ASSUMPTION: the ingress controller / load balancer that fronts these
-# Services may live in any namespace, and kubelet probes arrive from the node
-# IP, which no pod selector can match. Rather than guess at your ingress
-# controller's labels this rule allows 8080 from anywhere — in-cluster pods,
-# the node, an ingress controller — and relies on the HMAC signature check in
-# internal/webhook for authentication. Tighten the `from:` block to your own
-# ingress namespace if you want L3 on top of the HMAC.
+# Egress: DNS, the Kubernetes API server (every controller is a CR
+# controller now), and TCP 443 out (GitHub for integration/source/
+# remediation; an OTLP collector for any of them). Port 6443 is here because
+# kind/kubeadm clusters serve the API there; managed clusters usually use 443.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -60,6 +67,15 @@ spec:
         - ports:
               - protocol: TCP
                 port: 8080
+              - protocol: TCP
+                port: 8081
+        - from:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: patchy-agents
+          ports:
+              - protocol: TCP
+                port: 9790
     egress:
         # DNS.
         - to:
@@ -71,61 +87,12 @@ spec:
                 port: 53
               - protocol: TCP
                 port: 53
-        # GitHub (api.github.com, codeload, the git push), the Kubernetes API
-        # server (remediation-controller), and any OTLP collector reached over
-        # TLS. Port 6443 is here because kind/kubeadm clusters serve the API
-        # there; managed clusters usually use 443.
+        # The Kubernetes API server, GitHub, an OTLP collector.
         - ports:
               - protocol: TCP
                 port: 443
               - protocol: TCP
                 port: 6443
----
-# ---- patchy namespace: the webhook-controller -----------------------------------
-# The single internet-facing component. Same ingress posture as the
-# controllers (8080 from anywhere; the HMAC check is the authentication), but
-# its egress is the controllers' 8080 — the routed forwards — plus DNS and
-# TCP 443 for an OTLP collector. No GitHub API access: the
-# webhook-controller holds no credential that could use it.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-    name: patchy-webhook-controller
-    namespace: patchy
-    labels:
-        app.kubernetes.io/part-of: patchy
-spec:
-    podSelector:
-        matchLabels:
-            app.kubernetes.io/component: webhook
-    policyTypes: [Ingress, Egress]
-    ingress:
-        - ports:
-              - protocol: TCP
-                port: 8080
-    egress:
-        # DNS.
-        - to:
-              - namespaceSelector:
-                    matchLabels:
-                        kubernetes.io/metadata.name: kube-system
-          ports:
-              - protocol: UDP
-                port: 53
-              - protocol: TCP
-                port: 53
-        # The controllers' webhook receivers.
-        - to:
-              - podSelector:
-                    matchLabels:
-                        app.kubernetes.io/component: controller
-          ports:
-              - protocol: TCP
-                port: 8080
-        # An OTLP collector reached over TLS.
-        - ports:
-              - protocol: TCP
-                port: 443
 ---
 # ---- patchy-agents namespace: default deny --------------------------------
 # Applies to every pod in the namespace (empty podSelector), both directions.
@@ -141,9 +108,9 @@ metadata:
 spec:
     podSelector: {}
     policyTypes: [Ingress, Egress]
-    # No ingress rules at all: the agent Job serves nothing. The
-    # remediation-controller does not connect to it — it reads its output from
-    # the pod log through the API server.
+    # No ingress rules at all: the agent Job serves nothing. The job
+    # controllers do not connect to it — they read its output from the pod
+    # log through the API server.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -169,15 +136,23 @@ spec:
                 port: 53
               - protocol: TCP
                 port: 53
-        # TCP 443, and nothing else. Needed by:
-        #   - the init container: `git clone` from github.com (this container
-        #     alone holds the scoped token);
-        #   - the agent container: `claude -p` -> api.anthropic.com.
-        # NetworkPolicy is a pod-level object: it cannot tell those two
-        # containers apart, so the union of their needs is what gets allowed.
-        # Explicitly excluded: the cluster-internal ranges, so an agent cannot
-        # reach the API server, kubelet, or another workload. Adjust the
-        # except: blocks to your cluster's pod/service/node CIDRs.
+        # The artifact server: the init container's credential-less tarball
+        # fetch. This is the ONLY in-cluster destination an agent may dial.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: patchy
+                podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: source-controller
+          ports:
+              - protocol: TCP
+                port: 9790
+        # TCP 443, and nothing else: the agent container's `claude -p` ->
+        # api.anthropic.com. Explicitly excluded: the cluster-internal
+        # ranges, so an agent cannot reach the API server, kubelet, or
+        # another workload. Adjust the except: blocks to your cluster's
+        # pod/service/node CIDRs.
         - to:
               - ipBlock:
                     cidr: 0.0.0.0/0

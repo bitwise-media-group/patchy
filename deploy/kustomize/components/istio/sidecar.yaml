@@ -7,17 +7,17 @@
 # NetworkPolicy can only say "TCP 443 to the internet"; REGISTRY_ONLY makes
 # the sidecar drop any outbound connection whose destination is not in the
 # mesh registry, and the only registry entries visible to this namespace are
-# the ServiceEntries beside this file (api.anthropic.com and the GitHub clone
-# hosts). TLS is not terminated — the proxy matches the SNI in the client
-# hello against those hosts and passes the bytes through or blackholes them.
+# the api.anthropic.com ServiceEntry beside this file plus the patchy
+# namespace's Services (source-controller's artifact server). TLS is not
+# terminated — the proxy matches the SNI in the client hello against those
+# hosts and passes the bytes through or blackholes them.
 #
 # WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
 #
-#   * Same pod-not-container caveat as the Cilium component: GitHub egress is
-#     needed only by the init container, but the proxy serves the whole pod,
-#     so the agent container can reach the GitHub hosts too — anonymously,
-#     because it holds no credential. Credential absence is the control; this
-#     policy is the belt to its braces.
+#   * A Sidecar serves the whole POD, not one container: the model-API
+#     route the agent container needs is reachable from the init container
+#     too, and vice versa for the artifact server. Credential absence is the
+#     control; this policy is the belt to its braces.
 #   * Unlike Cilium's DNS proxy, the sidecar does not constrain what names
 #     the pod may RESOLVE (DNS is UDP 53 straight to kube-dns, allowed by
 #     base/networkpolicy.yaml). A prompt-injected agent can still exfiltrate
@@ -44,8 +44,10 @@ spec:
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
-        # Only this namespace's slice of the registry is visible: the
-        # ServiceEntries in serviceentry.yaml (exportTo: ".") and nothing
-        # else — there are no Services in patchy-agents to widen it.
+        # Two slices of the registry are visible: this namespace's (the
+        # api.anthropic.com ServiceEntry, exportTo: ".") and the patchy
+        # namespace's Services — which is how the init container reaches
+        # source-controller's artifact server.
         - hosts:
               - ./*
+              - patchy/*

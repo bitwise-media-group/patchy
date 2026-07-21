@@ -3,11 +3,13 @@
 #
 # The base L3/L4 story. A plain NetworkPolicy cannot match hostnames, so the
 # agent egress rule reads "TCP 443 to anywhere outside the cluster" — that
-# permits api.anthropic.com, and also github.com and every other host on 443.
-# Two things carry the isolation, in this order:
+# permits api.anthropic.com, and also every other host on 443. Two things
+# carry the isolation, in this order:
 #
-#   1. CREDENTIAL ABSENCE (the real control): the agent container gets no
-#      GitHub token (internal/jobs puts it only in the init container's env).
+#   1. CREDENTIAL ABSENCE (the real control): the agent pod holds no forge
+#      credential AT ALL — not even in the init container. The repository
+#      arrives as a digest-verified tarball fetched from source-controller's
+#      artifact server over the cluster network.
 #   2. Hostname policy (defence in depth): enable agent.networkPolicy.cilium
 #      or agent.networkPolicy.istio, whichever your infrastructure supports.
 #
@@ -16,18 +18,26 @@
 {{- fail "agent.networkPolicy.cilium and agent.networkPolicy.istio are mutually exclusive: enable at most one" }}
 {{- end }}
 {{- range $c := list
-    (dict "name" "source-controller" "vals" .Values.sourceController "apiServer" false)
-    (dict "name" "context-controller" "vals" .Values.contextController "apiServer" false)
-    (dict "name" "remediation-controller" "vals" .Values.remediationController "apiServer" true)
+    (dict "name" "integration-controller" "vals" .Values.integrationController)
+    (dict "name" "source-controller" "vals" .Values.sourceController)
+    (dict "name" "context-controller" "vals" .Values.contextController)
+    (dict "name" "investigation-controller" "vals" .Values.investigationController)
+    (dict "name" "remediation-controller" "vals" .Values.remediationController)
 }}
 {{- if $c.vals.networkPolicy.create }}
 ---
-# ---- {{ $c.name }}: webhook + probes in, DNS + TLS out ----------------------
-# Ingress allows 8080 from anywhere (kubelet probes arrive from the node IP,
-# which no pod selector can match; your ingress controller may live in any
-# namespace) and relies on the HMAC signature check in internal/webhook for
-# authentication. Tighten the from: block to your ingress namespace if you
-# want L3 on top of the HMAC.
+# ---- {{ $c.name }} ----------------------------------------------------------
+# Ingress: 8081 from anywhere (kubelet probes arrive from the node IP, which
+# no pod selector can match){{ if eq $c.name "integration-controller" }}, plus 8080 — the provider webhook
+# receivers; the fronting ingress controller may live in any namespace, and
+# the per-Integration HMAC signature check is the authentication. Tighten the
+# from: to your ingress namespace if you want L3 on top of the HMAC{{ end }}{{ if eq $c.name "source-controller" }}, plus
+# 9790 — the artifact server — from the agent namespace only{{ end }}.
+#
+# Egress: DNS, then TCP 443/6443 — the Kubernetes API server (every
+# controller is a CR controller), the forge API where the controller uses
+# one, and any OTLP collector. 6443 covers kind/kubeadm API servers; managed
+# clusters usually use 443.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -46,8 +56,21 @@ spec:
     policyTypes: [Ingress, Egress]
     ingress:
         - ports:
+              {{- if eq $c.name "integration-controller" }}
               - protocol: TCP
                 port: 8080
+              {{- end }}
+              - protocol: TCP
+                port: 8081
+        {{- if eq $c.name "source-controller" }}
+        - from:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: {{ $.Values.agent.namespace }}
+          ports:
+              - protocol: TCP
+                port: 9790
+        {{- end }}
     egress:
         # DNS.
         - to:
@@ -59,23 +82,19 @@ spec:
                 port: 53
               - protocol: TCP
                 port: 53
-        # GitHub and any OTLP collector reached over TLS. The
-        # remediation-controller alone also talks to the Kubernetes API
-        # server: 6443 covers kind/kubeadm; managed clusters usually use 443.
+        # The Kubernetes API server, the forge, an OTLP collector.
         - ports:
               - protocol: TCP
                 port: 443
-              {{- if $c.apiServer }}
               - protocol: TCP
                 port: 6443
-              {{- end }}
 {{- end }}
 {{- end }}
 {{- if .Values.agent.networkPolicy.create }}
 ---
 # ---- agent namespace: default deny, both directions ------------------------
-# Nothing may reach an agent pod (the controller reads its output from the
-# pod log through the API server, not from the pod), and an agent pod may
+# Nothing may reach an agent pod (the job controllers read its output from
+# the pod log through the API server, not from the pod), and an agent pod may
 # reach nothing except what the egress rule below re-permits.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -92,10 +111,13 @@ spec:
     podSelector: {}
     policyTypes: [Ingress, Egress]
 ---
-# TCP 443 (init container: git clone; agent container: claude -> Anthropic)
-# and DNS, nothing else. The except: blocks keep an agent away from the API
-# server, kubelet, and other workloads — adjust
-# agent.networkPolicy.clusterCIDRs to your cluster's pod/service/node ranges.
+# DNS; source-controller's artifact server (the init container's
+# credential-less, digest-verified tarball fetch — the ONLY in-cluster
+# destination an agent may dial); and TCP 443 externally (the agent
+# container's `claude -p` -> api.anthropic.com), nothing else. The except:
+# blocks keep an agent away from the API server, kubelet, and other
+# workloads — adjust agent.networkPolicy.clusterCIDRs to your cluster's pod/
+# service/node ranges.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -113,6 +135,7 @@ spec:
             {{- include "patchy.agentPodSelector" . | nindent 12 }}
     policyTypes: [Egress]
     egress:
+        # DNS, so the names below resolve at all.
         - to:
               - namespaceSelector:
                     matchLabels:
@@ -122,6 +145,18 @@ spec:
                 port: 53
               - protocol: TCP
                 port: 53
+        # The artifact server.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: {{ .Release.Namespace }}
+                podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: source-controller
+          ports:
+              - protocol: TCP
+                port: 9790
+        # TCP 443 out, cluster-internal ranges excluded.
         - to:
               - ipBlock:
                     cidr: 0.0.0.0/0

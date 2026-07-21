@@ -12,8 +12,6 @@ metadata:
         app.kubernetes.io/part-of: patchy
         app.kubernetes.io/component: controller
 spec:
-    # Singleton, Recreate: see deployment-source-controller.yaml. Two replicas
-    # would double-comment the enhancement on the same issue.
     replicas: 1
     strategy:
         type: Recreate
@@ -30,7 +28,6 @@ spec:
                 app.kubernetes.io/component: controller
         spec:
             serviceAccountName: patchy-context-controller
-            automountServiceAccountToken: false
             securityContext:
                 runAsNonRoot: true
                 runAsUser: 65532
@@ -40,33 +37,32 @@ spec:
                     type: RuntimeDefault
             containers:
                 - name: controller
-                  # Dockerfile.controller (repo root)
-                  # (TARGET=context-controller, RUNTIME=static in .goreleaser.yaml).
+                  # Built from Dockerfile.controller (repo root)
+                  # (TARGET=context-controller in .goreleaser.yaml).
                   image: ghcr.io/bitwise-media-group/patchy/context-controller:latest
                   args: ["serve"]
                   envFrom:
                       - configMapRef:
                             name: patchy-config
                   env:
-                      - name: PATCHY_GITHUB_APP_ID
+                      - name: POD_NAMESPACE
                         valueFrom:
-                            secretKeyRef:
-                                name: patchy-github-app
-                                key: app-id
+                            fieldRef:
+                                fieldPath: metadata.namespace
                   ports:
-                      - name: http
-                        containerPort: 8080
+                      - name: health
+                        containerPort: 8081
                         protocol: TCP
                   livenessProbe:
                       httpGet:
                           path: /healthz
-                          port: http
+                          port: health
                       initialDelaySeconds: 5
                       periodSeconds: 20
                   readinessProbe:
                       httpGet:
                           path: /readyz
-                          port: http
+                          port: health
                       initialDelaySeconds: 2
                       periodSeconds: 10
                   resources:
@@ -84,21 +80,10 @@ spec:
                       seccompProfile:
                           type: RuntimeDefault
                   volumeMounts:
-                      - name: webhook-secret
-                        mountPath: /etc/patchy/webhook
-                        readOnly: true
-                      - name: github-app
-                        mountPath: /etc/patchy/github-app
-                        readOnly: true
                       - name: tmp
                         mountPath: /tmp
             volumes:
-                - name: webhook-secret
-                  secret:
-                      secretName: patchy-webhook-secret
-                - name: github-app
-                  secret:
-                      secretName: patchy-github-app
-                      defaultMode: 0400
+                # The root filesystem is read-only; Go's os.CreateTemp wants a
+                # writable /tmp.
                 - name: tmp
                   emptyDir: {}

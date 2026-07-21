@@ -12,12 +12,6 @@ metadata:
         app.kubernetes.io/part-of: patchy
         app.kubernetes.io/component: controller
 spec:
-    # Singleton, Recreate: see deployment-source-controller.yaml. This one is
-    # the most important to keep at one replica — the pickup gate is
-    # time-based, so two replicas would create two agent Jobs for the same
-    # issue attempt (the Job name is deterministic, so the loser would get an
-    # AlreadyExists, but the wasted work and the double GitHub side effects
-    # are not worth the race).
     replicas: 1
     strategy:
         type: Recreate
@@ -33,8 +27,6 @@ spec:
                 app.kubernetes.io/part-of: patchy
                 app.kubernetes.io/component: controller
         spec:
-            # The only controller with a mounted token: it creates the agent
-            # Jobs and reads their pod logs (see rbac.yaml).
             serviceAccountName: patchy-remediation-controller
             securityContext:
                 runAsNonRoot: true
@@ -45,47 +37,41 @@ spec:
                     type: RuntimeDefault
             containers:
                 - name: controller
-                  # Dockerfile.controller (repo root)
+                  # Built from Dockerfile.controller (repo root)
                   # (TARGET=remediation-controller in .goreleaser.yaml).
-                  # Distroless static like its siblings: the agent's changeset
-                  # is pushed through the GitHub API (internal/ghpush), no git.
                   image: ghcr.io/bitwise-media-group/patchy/remediation-controller:latest
                   args: ["serve"]
                   envFrom:
                       - configMapRef:
                             name: patchy-config
                   env:
-                      - name: PATCHY_GITHUB_APP_ID
+                      - name: POD_NAMESPACE
                         valueFrom:
-                            secretKeyRef:
-                                name: patchy-github-app
-                                key: app-id
+                            fieldRef:
+                                fieldPath: metadata.namespace
                   ports:
-                      - name: http
-                        containerPort: 8080
+                      - name: health
+                        containerPort: 8081
                         protocol: TCP
                   livenessProbe:
                       httpGet:
                           path: /healthz
-                          port: http
+                          port: health
                       initialDelaySeconds: 5
                       periodSeconds: 20
                   readinessProbe:
                       httpGet:
                           path: /readyz
-                          port: http
+                          port: health
                       initialDelaySeconds: 2
                       periodSeconds: 10
                   resources:
                       requests:
-                          # Slightly higher than its siblings: changesets
-                          # (<= ~7 MiB of pod log) are buffered in memory while
-                          # events are applied.
-                          cpu: 100m
-                          memory: 256Mi
+                          cpu: 50m
+                          memory: 96Mi
                       limits:
-                          cpu: "1"
-                          memory: 512Mi
+                          cpu: 500m
+                          memory: 256Mi
                   securityContext:
                       allowPrivilegeEscalation: false
                       readOnlyRootFilesystem: true
@@ -94,23 +80,10 @@ spec:
                       seccompProfile:
                           type: RuntimeDefault
                   volumeMounts:
-                      - name: webhook-secret
-                        mountPath: /etc/patchy/webhook
-                        readOnly: true
-                      - name: github-app
-                        mountPath: /etc/patchy/github-app
-                        readOnly: true
-                      # The root filesystem is read-only; Go's os.CreateTemp
-                      # and the HTTP stack want a writable /tmp.
                       - name: tmp
                         mountPath: /tmp
             volumes:
-                - name: webhook-secret
-                  secret:
-                      secretName: patchy-webhook-secret
-                - name: github-app
-                  secret:
-                      secretName: patchy-github-app
-                      defaultMode: 0400
+                # The root filesystem is read-only; Go's os.CreateTemp wants a
+                # writable /tmp.
                 - name: tmp
                   emptyDir: {}

@@ -5,26 +5,16 @@
 #
 # What this adds over base/networkpolicy.yaml: FQDN matching. A plain
 # NetworkPolicy can only say "TCP 443 to the internet"; Cilium's DNS proxy
-# lets it say "TCP 443 to api.anthropic.com and github.com, and nothing else".
-# Everything else — a package registry the agent tries to reach, an exfil
-# endpoint a prompt-injected agent is talked into — is dropped.
+# lets it say "TCP 443 to api.anthropic.com, and nothing else". Everything
+# else — a package registry the agent tries to reach, an exfil endpoint a
+# prompt-injected agent is talked into — is dropped.
 #
-# WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
+# The agent pod needs exactly two destinations:
 #
-#   * GitHub egress here is needed ONLY by the init container ("prepare"),
-#     which clones the repository with the short-lived token. The agent
-#     container needs api.anthropic.com and nothing else.
-#   * A CiliumNetworkPolicy — like a NetworkPolicy — selects PODS, not
-#     containers. Both containers of the Job share one network namespace, so
-#     "github.com for the init container only" is not expressible. The rule
-#     below therefore lets the agent container reach github.com too.
-#   * That is acceptable because the agent has NO GitHub CREDENTIAL:
-#     internal/jobs passes the token to the init container alone, resets the
-#     clone's remote URL so no credential persists in the working tree, and
-#     refuses to forward GITHUB_TOKEN through Config.Env (reservedEnv). The
-#     agent's reach into github.com is an anonymous reach — the same one any
-#     internet host has. Credential absence is the control; this policy is the
-#     belt to its braces.
+#   * source-controller's artifact server (in-cluster, port 9790): the init
+#     container's credential-less, digest-verified tarball fetch. No forge
+#     host appears in this policy at all — the pod never talks to GitHub.
+#   * api.anthropic.com: the agent container's `claude -p`.
 #
 # Requires: Cilium with DNS-based policy enabled (the DNS proxy). If your CNI
 # is not Cilium, drop this component; base/networkpolicy.yaml still applies
@@ -57,25 +47,23 @@ spec:
                 rules:
                     dns:
                         - matchPattern: "*.anthropic.com"
-                        - matchPattern: "*.github.com"
-                        - matchPattern: github.com
-                        - matchPattern: "*.githubusercontent.com"
+                        - matchPattern: "*.patchy.svc.cluster.local"
+                        - matchPattern: "*.svc.cluster.local"
+
+        # The INIT container's artifact fetch: source-controller's tarball
+        # server, in-cluster, credential-less, digest-verified.
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: patchy
+                    app.kubernetes.io/name: source-controller
+          toPorts:
+              - ports:
+                    - port: "9790"
+                      protocol: TCP
 
         # The agent container: `claude -p` and nothing else.
         - toFQDNs:
               - matchName: api.anthropic.com
-          toPorts:
-              - ports:
-                    - port: "443"
-                      protocol: TCP
-
-        # The INIT container's clone. github.com serves the git protocol;
-        # codeload/objects serve the pack data a `git clone --depth 1` pulls.
-        # If you run GHES, replace these with your GHES hostname.
-        - toFQDNs:
-              - matchName: github.com
-              - matchName: codeload.github.com
-              - matchName: objects.githubusercontent.com
           toPorts:
               - ports:
                     - port: "443"

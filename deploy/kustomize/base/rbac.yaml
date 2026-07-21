@@ -1,60 +1,286 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# RBAC, in full.
+# RBAC, in full. One Role (+ RoleBinding) per controller in the patchy
+# namespace, verb-by-verb what its reconcilers use, plus one Role in
+# patchy-agents for each of the two job controllers.
 #
-# ONLY patchy-remediation-controller gets Kubernetes API access, and only in
-# the patchy-agents namespace. There is deliberately NO Role, ClusterRole,
-# RoleBinding or ClusterRoleBinding for:
+# Conventions the rules encode:
 #
-#   - patchy-source-controller   — talks to GitHub only.
-#   - patchy-context-controller  — talks to GitHub only.
-#   - patchy-agent (the Job pods) — talks to api.anthropic.com only; giving it
-#     API access would let a prompt-injected agent read the very Secrets the
-#     isolation model depends on.
-#
-# The verbs below are exactly what internal/jobs and internal/remedctrl use:
-#   jobs      create (Create), get/list/watch (status + orphan sweep), delete
-#   pods      get/list/watch (find the Job's pod)
-#   pods/log  get (read the PATCHY-EVENT: stream)
-#   secrets   create/get/update/delete (the per-Job Secret carrying the scoped
-#             GitHub token and the issue/classification markdown; update
-#             owner-references it to its Job after the Job exists, and the
-#             controller must also be able to delete it on the
-#             create-Job-failed rollback path)
-#   configmaps create/get/update/delete (reserved for the same handoff
-#             mechanism)
-#
-# No secrets "list"/"watch": the controller only ever addresses its own
-# per-Job Secret by name.
+#   * The CRs are the state machine. Writers are exclusive per field — the
+#     transition table in DESIGN.md says which controller writes which edge —
+#     and the verbs here enforce the split at the API layer as far as RBAC
+#     can (RBAC is per-resource, not per-field; the reviewable writer table
+#     is the finer-grained control).
+#   * secrets get (never list/watch): provider/forge credentials are read on
+#     demand by name through the API reader (internal/kube disables the
+#     Secret cache), so no controller can enumerate Secrets.
+#   * leases + events: controller-runtime leader election. Deployments stay
+#     replicas:1 + Recreate; the lease is insurance against two replicas
+#     racing during a botched rollout.
+#   * The agent pods (patchy-agents) have NO role at all — see
+#     serviceaccount.yaml.
 ---
+# ---- integration-controller ------------------------------------------------
+# Ingests scanner webhooks into Findings (create/fold/duplicate-merge —
+# the one deleter of duplicate Findings), projects Findings to tracking
+# issues (reads the children's reports), and applies human signals
+# (approve/close/PR-merge) to Finding spec + status.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-integration-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: integration-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [create, get, list, watch, update, patch, delete]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations, remediations]
+      verbs: [get, list, watch]
+    - apiGroups: [""]
+      resources: [secrets]
+      verbs: [get]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-integration-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: integration-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-integration-controller
+subjects:
+    - kind: ServiceAccount
+      name: patchy-integration-controller
+      namespace: patchy
+---
+# ---- source-controller -----------------------------------------------------
+# Validates Forge credentials, resolves + pins Repositories, serves the
+# artifact tarballs. Writes only Forge/Repository status.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-source-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: source-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges, repositories]
+      verbs: [get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges/status, repositories/status]
+      verbs: [get, update, patch]
+    - apiGroups: [""]
+      resources: [secrets]
+      verbs: [get]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-source-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: source-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-source-controller
+subjects:
+    - kind: ServiceAccount
+      name: patchy-source-controller
+      namespace: patchy
+---
+# ---- context-controller ----------------------------------------------------
+# The enhancer chain: reads Opened findings, writes enrichments/owners and
+# the Opened→Enhanced edge to status. No secrets, no external credential.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-context-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: context-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings/status]
+      verbs: [get, update, patch]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-context-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: context-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-context-controller
+subjects:
+    - kind: ServiceAccount
+      name: patchy-context-controller
+      namespace: patchy
+---
+# ---- investigation-controller ----------------------------------------------
+# The gate (creates Repository + Investigation, parks repo-less findings) and
+# the analysis scheduler (launches agent Jobs, stamps results, routes the
+# verdict edges on Finding status).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-investigation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: investigation-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations]
+      verbs: [create, get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [repositories]
+      verbs: [create, get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges]
+      verbs: [get, list, watch]
+    - apiGroups: [""]
+      resources: [secrets]
+      verbs: [get]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-investigation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: investigation-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-investigation-controller
+subjects:
+    - kind: ServiceAccount
+      name: patchy-investigation-controller
+      namespace: patchy
+---
+# ---- remediation-controller ------------------------------------------------
+# Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
+# loop. The one deleter of expired Findings (cascade deletes the children);
+# `update` on findings/investigations/remediations (not just status) is the
+# rollup finalizer removal.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
     name: patchy-remediation-controller
-    namespace: patchy-agents
+    namespace: patchy
     labels:
         app.kubernetes.io/name: remediation-controller
         app.kubernetes.io/part-of: patchy
 rules:
-    - apiGroups: ["batch"]
-      resources: ["jobs"]
-      verbs: ["create", "get", "list", "watch", "delete"]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [get, list, watch, update, patch, delete]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [remediations]
+      verbs: [create, get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [remediations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations]
+      verbs: [get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [repositories]
+      verbs: [get, list, watch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findingrollups]
+      verbs: [create, get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findingrollups/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges]
+      verbs: [get, list, watch]
     - apiGroups: [""]
-      resources: ["pods"]
-      verbs: ["get", "list", "watch"]
+      resources: [secrets]
+      verbs: [get]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
     - apiGroups: [""]
-      resources: ["pods/log"]
-      verbs: ["get"]
-    - apiGroups: [""]
-      resources: ["secrets", "configmaps"]
-      verbs: ["create", "get", "update", "delete"]
+      resources: [events]
+      verbs: [create, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
     name: patchy-remediation-controller
-    namespace: patchy-agents
+    namespace: patchy
     labels:
         app.kubernetes.io/name: remediation-controller
         app.kubernetes.io/part-of: patchy
@@ -63,6 +289,58 @@ roleRef:
     kind: Role
     name: patchy-remediation-controller
 subjects:
+    - kind: ServiceAccount
+      name: patchy-remediation-controller
+      namespace: patchy
+---
+# ---- patchy-agents: the two job controllers --------------------------------
+# What internal/jobs uses, and nothing more:
+#   jobs      create (Create), get/list/watch (status + orphan reap), delete
+#   pods      get/list/watch (find the Job's pod)
+#   pods/log  get (read the PATCHY-EVENT: stream at Job completion)
+#   secrets   create/get/update/delete (the per-Job Secret carrying the
+#             handoff markdown — credential-less; update owner-references it
+#             to its Job, delete is the create-Job-failed rollback)
+# No secrets list/watch: each controller only ever addresses its own per-Job
+# Secret by name. The two controllers share the namespace; the
+# patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
+# of each other's way (RBAC cannot express that split).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-agent-jobs
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [batch]
+      resources: [jobs]
+      verbs: [create, get, list, watch, delete]
+    - apiGroups: [""]
+      resources: [pods]
+      verbs: [get, list, watch]
+    - apiGroups: [""]
+      resources: [pods/log]
+      verbs: [get]
+    - apiGroups: [""]
+      resources: [secrets]
+      verbs: [create, get, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-agent-jobs
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-agent-jobs
+subjects:
+    - kind: ServiceAccount
+      name: patchy-investigation-controller
+      namespace: patchy
     - kind: ServiceAccount
       name: patchy-remediation-controller
       namespace: patchy

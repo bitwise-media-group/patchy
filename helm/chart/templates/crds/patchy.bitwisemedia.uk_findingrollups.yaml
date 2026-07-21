@@ -1,0 +1,229 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+{{- if .Values.crds.install }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: findingrollups.patchy.bitwisemedia.uk
+spec:
+  group: patchy.bitwisemedia.uk
+  names:
+    categories:
+    - patchy
+    kind: FindingRollup
+    listKind: FindingRollupList
+    plural: findingrollups
+    shortNames:
+    - fr
+    singular: findingrollup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.scope.type
+      name: Scope
+      type: string
+    - jsonPath: .spec.scope.key
+      name: Key
+      type: string
+    - jsonPath: .status.bucket.findings
+      name: Findings
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          FindingRollup accumulates all-time statistics for one scope value (total,
+          one repository, one harness, or one model). Rollups survive the TTL
+          deletion of the findings they aggregate; they live only in etcd, so a
+          cluster rebuild resets the stats epoch.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FindingRollupSpec pins the scope; it is immutable.
+            properties:
+              scope:
+                description: Scope this rollup aggregates.
+                properties:
+                  key:
+                    description: |-
+                      Key is the dimension value ("" for total, "owner/repo", harness ID,
+                      model ID). The sanitized form appears in labels; this field is truth.
+                    type: string
+                  type:
+                    description: Type of the dimension.
+                    enum:
+                    - total
+                    - repository
+                    - harness
+                    - model
+                    type: string
+                required:
+                - type
+                type: object
+            required:
+            - scope
+            type: object
+            x-kubernetes-validations:
+            - message: spec.scope is immutable
+              rule: self == oldSelf
+          status:
+            description: |-
+              FindingRollupStatus is the accumulated statistics. All data lives in
+              status; the ledger makes application exactly-once per contributing object.
+            properties:
+              bucket:
+                description: Bucket is the all-time aggregate.
+                properties:
+                  attempts:
+                    description: Attempts summed across findings.
+                    format: int64
+                    type: integer
+                  findings:
+                    description: |-
+                      Findings counted (one per finding reaching a terminal phase, corrected
+                      on revival).
+                    format: int64
+                    type: integer
+                  phases:
+                    additionalProperties:
+                      format: int64
+                      type: integer
+                    description: |-
+                      Phases histogram of terminal phases (remediated, failed, dismissed,
+                      handedOff, deleted).
+                    type: object
+                  recommendations:
+                    additionalProperties:
+                      format: int64
+                      type: integer
+                    description: Recommendations histogram of verdicts (remediate,
+                      ignore, manual).
+                    type: object
+                  stages:
+                    additionalProperties:
+                      description: |-
+                        StageAggregate accumulates one stage's runs within a scope. Averages and
+                        rates are computed client-side from sum ÷ count — merge-idempotent and
+                        exact.
+                      properties:
+                        cacheCreationTokens:
+                          description: CacheCreationTokens summed.
+                          format: int64
+                          type: integer
+                        cacheReadTokens:
+                          description: CacheReadTokens summed.
+                          format: int64
+                          type: integer
+                        costMicroUSD:
+                          description: CostMicroUSD summed (micro-USD, exact integer
+                            arithmetic).
+                          format: int64
+                          type: integer
+                        elapsedMilliseconds:
+                          description: ElapsedMilliseconds summed.
+                          format: int64
+                          type: integer
+                        inputTokens:
+                          description: InputTokens summed.
+                          format: int64
+                          type: integer
+                        outcomes:
+                          additionalProperties:
+                            format: int64
+                            type: integer
+                          description: Outcomes histogram (envelope outcome vocabulary
+                            + "aborted").
+                          type: object
+                        outputTokens:
+                          description: OutputTokens summed.
+                          format: int64
+                          type: integer
+                        runs:
+                          description: Runs counted.
+                          format: int64
+                          type: integer
+                        succeeded:
+                          description: Succeeded runs (outcome ok; for remediation,
+                            success=true).
+                          format: int64
+                          type: integer
+                      type: object
+                    description: Stages aggregates per stage ("investigation", "remediation").
+                    type: object
+                type: object
+              firstProcessed:
+                description: FirstProcessed is the stats epoch for this scope.
+                format: date-time
+                type: string
+              lastProcessed:
+                description: LastProcessed is the most recent aggregation.
+                format: date-time
+                type: string
+              monthly:
+                additionalProperties:
+                  description: |-
+                    MonthlyBucket is the slim global trend line (total scope only; ~150 bytes
+                    per month). Deleted findings cannot be re-bucketed later, so this is
+                    written at rollup time.
+                  properties:
+                    costMicroUSD:
+                      description: CostMicroUSD spent in the month.
+                      format: int64
+                      type: integer
+                    findings:
+                      description: Findings completed in the month.
+                      format: int64
+                      type: integer
+                    runs:
+                      description: Runs executed in the month.
+                      format: int64
+                      type: integer
+                  type: object
+                description: Monthly trend line keyed "2026-07" (total scope only).
+                type: object
+              recent:
+                description: |-
+                  Recent is the exactly-once ledger: the last 512 applied delta keys
+                  ("i:<uid>", "r:<uid>", "f:<uid>:<seq>").
+                items:
+                  type: string
+                maxItems: 512
+                type: array
+              schemaVersion:
+                description: SchemaVersion of the bucket layout (starts at 1).
+                format: int32
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

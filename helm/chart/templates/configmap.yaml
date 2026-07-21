@@ -6,68 +6,84 @@
 # the shared keys come from .Values.config — each overridable per controller
 # by repeating the key under <controller>.config — and the
 # controller-specific keys from <controller>.config, so each ConfigMap
-# carries exactly the settings its binary binds.
+# carries exactly the settings its binary binds. The key vocabulary mirrors
+# deploy/kustomize/base/configmap.yaml.
+#
+# NOT here: forge/provider credentials. They live in Secrets referenced by
+# the Integration and Forge custom resources (spec.secretRef) — see crs.yaml
+# and deploy/kustomize/base/secrets.example.yaml.
 #
 # The data is assembled as a dict so the extra maps (config.extra, then
 # <controller>.config.extra) can override any derived key without rendering
 # it twice.
 {{- range $c := list
+    (dict "name" "integration-controller" "vals" .Values.integrationController)
     (dict "name" "source-controller" "vals" .Values.sourceController)
     (dict "name" "context-controller" "vals" .Values.contextController)
+    (dict "name" "investigation-controller" "vals" .Values.investigationController)
     (dict "name" "remediation-controller" "vals" .Values.remediationController)
 }}
 {{- $g := $.Values.config }}
 {{- $own := $c.vals.config }}
 {{/*
-The listen address is fixed: the containerPort, probes, and NetworkPolicy
-ports all say 8080, so a knob here would just let the pieces disagree.
+The health address is fixed: the containerPort, probes, and NetworkPolicy
+ports all say 8081, so a knob here would just let the pieces disagree. Same
+for :8080 (integration) and :9790 (source).
 */}}
 {{- $data := dict
-    "PATCHY_LISTEN_ADDR" ":8080"
-    "PATCHY_RECONCILE_INTERVAL" ($own.reconcileInterval | default $g.reconcileInterval)
+    "PATCHY_HEALTH_ADDR" ":8081"
     "PATCHY_LOG_LEVEL" ($own.logLevel | default $g.logLevel)
-    "PATCHY_WEBHOOK_SECRET_FILE" "/etc/patchy/webhook/secret"
-    "PATCHY_GITHUB_APP_PRIVATE_KEY_FILE" "/etc/patchy/github-app/private-key.pem"
 }}
-{{/*
-PATCHY_GITHUB_APP_ID is NOT here: it comes from the GitHub App Secret (app-id
-key, env secretKeyRef in each Deployment) so App identity lives in one object.
-*/}}
-{{- with $.Values.github.baseURL }}
-{{- $_ := set $data "PATCHY_GITHUB_BASE_URL" . }}
-{{- end }}
-{{- if eq $c.name "source-controller" }}
+{{- if eq $c.name "integration-controller" }}
+{{- $_ := set $data "PATCHY_LISTEN_ADDR" ":8080" }}
 {{- $_ := set $data "PATCHY_ACCUMULATION_WINDOW" $own.accumulationWindow }}
-{{- else if eq $c.name "context-controller" }}
-{{- $_ := set $data "PATCHY_ENHANCE_GRACE" $own.enhanceGrace }}
-{{- else }}
+{{- else if eq $c.name "source-controller" }}
+{{- $_ := set $data "PATCHY_ARTIFACT_ADDR" ":9790" }}
+{{- $_ := set $data "PATCHY_ARTIFACT_DIR" "/data/artifacts" }}
 {{/*
-PATCHY_AGENT_IMAGE is the string the remediation-controller stamps into every
-Job it creates — derived from the same values as the container images, so
-pinning the agent-runner digest is one edit, not kustomize's two.
+The binary's own default base URL assumes the kustomize Service name
+(patchy-source-controller); the chart's Service is <fullname>-source-
+controller, so the URL minted into Repository statuses is pinned here.
 */}}
-{{- $_ := set $data "PATCHY_ISSUE_MIN_AGE" $own.issueMinAge }}
-{{- $_ := set $data "PATCHY_MAX_ATTEMPTS" $own.maxAttempts }}
-{{- $_ := set $data "PATCHY_CONFIDENCE_THRESHOLD" $own.confidenceThreshold }}
-{{- $_ := set $data "PATCHY_JOB_DEADLINE" $own.jobDeadline }}
-{{- $_ := set $data "PATCHY_JOB_TTL" $own.jobTTL }}
-{{- $_ := set $data "PATCHY_MODEL_ALLOWLIST" $own.modelAllowlist }}
-{{- $_ := set $data "PATCHY_CLASSIFY_HARNESS" $own.classify.harness }}
-{{- $_ := set $data "PATCHY_CLASSIFY_MODEL" $own.classify.model }}
-{{- $_ := set $data "PATCHY_CLASSIFY_TIMEOUT" $own.classify.timeout }}
-{{- $_ := set $data "PATCHY_CLASSIFY_MAX_TURNS" $own.classify.maxTurns }}
-{{- $_ := set $data "PATCHY_CLASSIFY_TOKEN_BUDGET" $own.classify.tokenBudget }}
-{{- $_ := set $data "PATCHY_REMEDIATE_HARNESS" $own.remediate.harness }}
-{{- $_ := set $data "PATCHY_REMEDIATE_MODEL" $own.remediate.model }}
-{{- $_ := set $data "PATCHY_REMEDIATE_TIMEOUT" $own.remediate.timeout }}
-{{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS" $own.remediate.maxTurns }}
-{{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET" $own.remediate.tokenBudget }}
+{{- $_ := set $data "PATCHY_ARTIFACT_BASE_URL" (printf "http://%s-source-controller.%s.svc.cluster.local:9790" (include "patchy.fullname" $) $.Release.Namespace) }}
+{{- else if or (eq $c.name "investigation-controller") (eq $c.name "remediation-controller") }}
+{{/*
+The job-controller block, shared by both: how the agent Jobs run, and the
+ceilings the investigation report's remediation requests are clamped to.
+PATCHY_AGENT_IMAGE is the string the controllers stamp into every Job they
+create — derived from the same values as the container images, so pinning
+the agent-runner digest is one edit, not kustomize's two.
+*/}}
+{{- $_ := set $data "PATCHY_MAX_ATTEMPTS" ($own.maxAttempts | default $g.maxAttempts) }}
+{{- $_ := set $data "PATCHY_PRIORITY_AGING_INTERVAL" ($own.priorityAgingInterval | default $g.priorityAgingInterval) }}
+{{- $_ := set $data "PATCHY_PRIORITY_AGING_CAP" ($own.priorityAgingCap | default $g.priorityAgingCap) }}
 {{- $_ := set $data "PATCHY_AGENT_NAMESPACE" $.Values.agent.namespace }}
 {{- $_ := set $data "PATCHY_AGENT_SERVICE_ACCOUNT" $.Values.agent.serviceAccount }}
+{{- $_ := set $data "PATCHY_AGENT_IMAGE" (include "patchy.image" (dict "root" $ "binary" "agent-runner" "image" $.Values.agent.image)) }}
 {{- $_ := set $data "PATCHY_ANTHROPIC_SECRET" $.Values.anthropic.secret }}
 {{- $_ := set $data "PATCHY_ANTHROPIC_SECRET_KEY" $.Values.anthropic.secretKey }}
 {{- $_ := set $data "PATCHY_ANTHROPIC_SECRET_ENV" $.Values.anthropic.secretEnv }}
-{{- $_ := set $data "PATCHY_AGENT_IMAGE" (include "patchy.image" (dict "root" $ "binary" "agent-runner" "image" $.Values.agent.image)) }}
+{{- $_ := set $data "PATCHY_JOB_DEADLINE" $.Values.agent.jobDeadline }}
+{{- $_ := set $data "PATCHY_JOB_TTL" $.Values.agent.jobTTL }}
+{{- $_ := set $data "PATCHY_MODEL_ALLOWLIST" $.Values.agent.modelAllowlist }}
+{{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS" $.Values.agent.remediate.maxTurns }}
+{{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET" $.Values.agent.remediate.tokenBudget }}
+{{- if eq $c.name "investigation-controller" }}
+{{- $_ := set $data "PATCHY_FINDING_MIN_AGE" $own.findingMinAge }}
+{{- $_ := set $data "PATCHY_MAX_CONCURRENT_INVESTIGATIONS" $own.maxConcurrentInvestigations }}
+{{- $_ := set $data "PATCHY_CONFIDENCE_THRESHOLD" $own.confidenceThreshold }}
+{{- $_ := set $data "PATCHY_INVESTIGATE_HARNESS" $.Values.agent.investigate.harness }}
+{{- $_ := set $data "PATCHY_INVESTIGATE_MODEL" $.Values.agent.investigate.model }}
+{{- $_ := set $data "PATCHY_INVESTIGATE_TIMEOUT" $.Values.agent.investigate.timeout }}
+{{- $_ := set $data "PATCHY_INVESTIGATE_MAX_TURNS" $.Values.agent.investigate.maxTurns }}
+{{- $_ := set $data "PATCHY_INVESTIGATE_TOKEN_BUDGET" $.Values.agent.investigate.tokenBudget }}
+{{- else }}
+{{- $_ := set $data "PATCHY_MAX_CONCURRENT_REMEDIATIONS" $own.maxConcurrentRemediations }}
+{{- $_ := set $data "PATCHY_FINDING_TTL" $own.findingTTL }}
+{{- $_ := set $data "PATCHY_REMEDIATE_HARNESS" $.Values.agent.remediate.harness }}
+{{- $_ := set $data "PATCHY_REMEDIATE_MODEL" $.Values.agent.remediate.model }}
+{{- $_ := set $data "PATCHY_REMEDIATE_TIMEOUT" $.Values.agent.remediate.timeout }}
+{{- end }}
 {{- end }}
 {{- range $k, $v := $g.extra }}
 {{- $_ := set $data $k $v }}

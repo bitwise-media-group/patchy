@@ -51,11 +51,11 @@ app.kubernetes.io/part-of: patchy
 Full label set. Context: dict "root" $ "name" <component> ["component" <role>].
 */}}
 {{- define "patchy.labels" -}}
-{{/*
+{{- /*
 The bare `app` duplicates app.kubernetes.io/name for tooling that predates
 the recommended-label set (kubescape C-0076 counts it, some dashboards group
 by it). Not in selectorLabels: selectors are immutable on upgrade.
-*/}}
+*/ -}}
 app: {{ .name }}
 helm.sh/chart: {{ printf "%s-%s" .root.Chart.Name .root.Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 app.kubernetes.io/managed-by: {{ .root.Release.Service }}

@@ -4,10 +4,10 @@
 # Production overlay: DESIGN.md's real intervals, the claude harness, digest-
 # pinned images, and the Cilium FQDN policy on top of the base NetworkPolicies.
 #
-# The three Secrets (patchy-github-app, patchy-webhook-secret in `patchy`;
-# patchy-anthropic in `patchy-agents`) are NOT created here — see
-# base/secrets.example.yaml. Bring them with SOPS or external-secrets and add
-# the resource to this list.
+# The Secrets (patchy-github in `patchy`; patchy-anthropic in `patchy-agents`)
+# and your real Integration/Forge custom resources are NOT created here — see
+# base/secrets.example.yaml and base/crs.example.yaml. Bring them with SOPS or
+# external-secrets and add the resources to this list.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -26,13 +26,15 @@ components:
 # PATCHY_AGENT_IMAGE in configmap-patch.yaml in step with the agent-runner
 # digest: kustomize rewrites container images, not ConfigMap values.
 images:
+    - name: ghcr.io/bitwise-media-group/patchy/integration-controller
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
+    - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    - name: ghcr.io/bitwise-media-group/patchy/webhook-controller
+    - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/agent-runner
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

@@ -3,21 +3,24 @@
 #
 # Defence in depth for the agent sandbox on Istio meshes: the same egress
 # allowlist as the Cilium component, enforced by the sidecar (REGISTRY_ONLY +
-# ServiceEntries; the proxy matches the client-hello SNI, TLS is not
+# a ServiceEntry; the proxy matches the client-hello SNI, TLS is not
 # terminated). Sidecar injection is switched on by the namespace label the
 # chart adds when this is enabled (agent.networkPolicy.istio.injectionLabel).
 #
 # REQUIREMENTS — both are hard: native sidecars (istiod with
 # ENABLE_NATIVE_SIDECARS=true; otherwise the Job never completes and the
-# init container's clone is blackholed) and the Istio CNI node agent (the
-# classic istio-init container needs NET_ADMIN and is rejected by the
+# init container's artifact fetch is blackholed) and the Istio CNI node agent
+# (the classic istio-init container needs NET_ADMIN and is rejected by the
 # restricted PSS). Unlike Cilium, the sidecar does not constrain what names
 # the pod may RESOLVE. See deploy/kustomize/components/istio.
 {{- if and .Values.agent.networkPolicy.create .Values.agent.networkPolicy.istio.enabled }}
 {{- $hosts := .Values.agent.networkPolicy.hosts }}
 ---
-# The agent container: `claude -p` and nothing else. exportTo: "." keeps each
-# entry private to the agent namespace.
+# The agent container: `claude -p` and nothing else. exportTo: "." keeps the
+# entry private to the agent namespace. There is deliberately NO forge
+# (GitHub) entry: the repository arrives as a tarball from source-
+# controller's in-cluster artifact server (a mesh-registry Service the
+# Sidecar below already exposes), and the pod holds no forge credential.
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
@@ -42,34 +45,10 @@ spec:
           name: tls
           protocol: TLS
 ---
-# The INIT container's clone. Running GHES? Set
-# agent.networkPolicy.hosts.github to your GHES hostname.
-apiVersion: networking.istio.io/v1
-kind: ServiceEntry
-metadata:
-    name: {{ include "patchy.fullname" . }}-agent-github
-    namespace: {{ .Values.agent.namespace }}
-    labels:
-        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
-    {{- with include "patchy.annotations" (dict "root" .) }}
-    annotations:
-        {{- . | nindent 8 }}
-    {{- end }}
-spec:
-    exportTo: ["."]
-    hosts:
-        {{- range $hosts.github }}
-        - {{ . | quote }}
-        {{- end }}
-    location: MESH_EXTERNAL
-    resolution: DNS
-    ports:
-        - number: 443
-          name: tls
-          protocol: TLS
----
-# Drop anything not in the registry; the only registry entries visible to
-# this namespace are the ServiceEntries above.
+# Drop anything not in the registry. Two slices of the registry are visible:
+# this namespace's (the api.anthropic.com ServiceEntry, exportTo: ".") and
+# the release namespace's Services — which is how the init container reaches
+# source-controller's artifact server.
 apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
@@ -90,6 +69,7 @@ spec:
     egress:
         - hosts:
               - ./*
+              - {{ .Release.Namespace }}/*
 ---
 # The mesh's own plumbing, re-permitted through the default-deny: egress
 # 15012 to istiod (XDS + workload certs) and ingress 15021 (kubelet probes

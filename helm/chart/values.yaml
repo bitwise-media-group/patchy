@@ -1,16 +1,15 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Default values mirror deploy/kustomize/base. The layout follows the
-# a standard layout convention — its image, config, scheduling, serviceAccount,
-# service, and networkPolicy — lives under that controller's top-level key
-# (sourceController, contextController, remediationController); only settings
-# that are genuinely shared stay global, including `webhook`, the single
-# external entry point in front of all three controllers. The controllers
-# install into the release namespace; the agent sandbox namespace is created by
-# the chart (see `agent:` below). The three Secrets patchy expects are NOT
-# created here — see the chart README and
-# deploy/kustomize/base/secrets.example.yaml.
+# Default values mirror deploy/kustomize/base. Everything specific to one
+# controller — its image, config, scheduling, serviceAccount, service, and
+# networkPolicy — lives under that controller's top-level key
+# (integrationController, sourceController, contextController,
+# investigationController, remediationController); only settings that are
+# genuinely shared stay global. The controllers install into the release
+# namespace; the agent sandbox namespace is created by the chart (see `agent:`
+# below). The Secrets patchy expects are NOT created here — see the chart
+# README and deploy/kustomize/base/secrets.example.yaml.
 
 # Every image is <repository>/<binary>, the names goreleaser publishes. `tag`
 # defaults to v<appVersion>. Per-component overrides live under
@@ -27,10 +26,11 @@ image:
 nameOverride: ""
 fullnameOverride: ""
 
-# The patchy.bitwisemedia.uk CRDs. They render as templates (not the crds/
-# directory) so upgrades track schema changes; `keep` stamps
-# helm.sh/resource-policy: keep so uninstall never deletes the CRDs — and
-# with them the all-time FindingRollup statistics.
+# The patchy.bitwisemedia.uk CRDs — the state machine itself (Finding,
+# Investigation, Remediation, Repository, Forge, Integration, FindingRollup).
+# They render as templates (not the crds/ directory) so upgrades track schema
+# changes; `keep` stamps helm.sh/resource-policy: keep so uninstall never
+# deletes the CRDs — and with them the all-time FindingRollup statistics.
 crds:
     install: true
     keep: true
@@ -43,17 +43,6 @@ commonLabels: {}
 # service/serviceAccount/webhook annotations) win key-by-key.
 commonAnnotations: {}
 
-github:
-    # Secret (in the release namespace) holding the GitHub App identity.
-    # Keys: app-id, private-key.pem. Create it out of band (SOPS,
-    # external-secrets, or kubectl for dev).
-    appSecret: patchy-github-app
-    # Secret (in the release namespace) holding the webhook HMAC secret.
-    # Key: secret. The same value must be configured on the App's webhooks.
-    webhookSecret: patchy-webhook-secret
-    # GHES only: the API base URL, e.g. https://ghes.example.com/api/v3.
-    baseURL: ""
-
 anthropic:
     # Secret in the AGENT namespace (agent.namespace, not the release
     # namespace) holding the model credential. Consumed by the agent Job
@@ -64,37 +53,77 @@ anthropic:
     # key, or CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token.
     secretEnv: ANTHROPIC_API_KEY
 
-# Settings applied to all three controllers. Each controller renders its own
+# Settings shared by more than one controller. Each controller renders its own
 # ConfigMap (consumed with envFrom) holding these plus its `config` block, and
 # may repeat any key here under <controller>.config to override it for that
 # controller alone; every key is the PATCHY_* environment variable minus the
 # prefix — see internal/cli/options.go.
 config:
-    # The listen address is not a value: the chart hardcodes :8080 everywhere
-    # it appears (PATCHY_LISTEN_ADDR, containerPort, probes, NetworkPolicy).
+    # The listen (:8080), health (:8081), and artifact (:9790) addresses are
+    # not values: the chart hardcodes them everywhere they appear
+    # (PATCHY_*_ADDR, containerPorts, probes, Services, NetworkPolicies).
     # debug, info, warn, or error.
     logLevel: warn
-    reconcileInterval: 60s
+    # Agent attempts per finding before it fails (both job controllers).
+    maxAttempts: 2
+    # Long-waiting work gains +1 effective priority per interval, up to the
+    # cap — starvation protection for low-priority findings.
+    priorityAgingInterval: 24h
+    priorityAgingCap: 25
     # Extra PATCHY_* keys rendered verbatim into every controller's ConfigMap
     # (full variable name -> value); wins over anything the chart derives.
     # Per-controller extras live at <controller>.config.extra and win over
     # these.
     extra: {}
 
+# ---- the pipeline switch-on: Integration + Forge custom resources -----------
+# The controllers idle until an Integration (where findings come from, where
+# the tracking issues go) and a Forge (how repositories are cloned and pushed)
+# exist. Each entry below renders one CR in the release namespace; the
+# referenced Secrets are created out of band (see
+# deploy/kustomize/base/secrets.example.yaml — keys: appID + privateKey, or
+# token, plus webhookSecret for Integrations). `spec` is rendered verbatim, so
+# anything the CRD schema accepts is accepted here.
+integrations: []
+# - name: github
+#   spec:
+#       provider: github
+#       secretRef:
+#           name: patchy-github     # appID+privateKey (or token) + webhookSecret
+#       interval: 10m               # credential revalidation
+#       github:
+#           # baseURL: https://ghes.example.com/api/v3   # GHES only
+#           issues:
+#               enabled: true       # tracking projection + human signals
+#               approveComment: /approve
+#           codeScanningAlerts:
+#               enabled: true       # scanner ingestion + alert dismissal
+
+forges: []
+# - name: github
+#   spec:
+#       provider: github
+#       # baseURL: https://ghes.example.com/api/v3       # GHES only
+#       secretRef:
+#           name: patchy-github     # appID+privateKey or token
+#       # orgs: [acme]              # optional org allowlist
+#       # repositories: ["^acme/payments-.*$"]           # optional regexes
+#       interval: 10m
+
 # ---- webhook entry point ----------------------------------------------------
-# A GitHub App has exactly ONE webhook URL. The webhook-controller (below) is
-# the only component exposed to serve it: point the App at
-# https://<host>/webhook and it validates each delivery's HMAC signature,
-# then routes it to the controllers that consume its X-GitHub-Event type.
-# Expose it with ONE of the flavours here (see docs/deployment/webhook.md):
+# Providers deliver webhooks to ONE URL. The integration-controller is the
+# single internet-facing component serving the provider receivers (GitHub:
+# POST /github/webhooks); each delivery is validated against the matching
+# Integration's webhookSecret. Expose it with ONE of the flavours here (see
+# docs/deployment/webhook.md):
 #
 #   ingress — a plain networking.k8s.io/v1 Ingress; works with any ingress
 #   controller.
 #   httpRoute — the Gateway API equivalent; attaches to a Gateway you bring
 #   via parentRefs, and TLS is that Gateway's concern.
 webhook:
-    # The single external hostname GitHub reaches, e.g. patchy.example.com.
-    # Required when either flavour below is enabled.
+    # The single external hostname the provider reaches, e.g.
+    # patchy.example.com. Required when either flavour below is enabled.
     host: ""
     ingress:
         enabled: false
@@ -112,63 +141,22 @@ webhook:
         #   namespace: gateway-system
         #   sectionName: https
 
-# ---- webhook-controller -------------------------------------------------------
-# The single internet-facing component: it validates each delivery against
-# the shared HMAC secret and routes it — signature intact, so every
-# controller still authenticates every delivery — to the cluster-internal
-# /webhook receivers that consume its event type; unclaimed event types go to
-# the source-controller (see the routing table in webhook-controller.yaml).
-# It holds no GitHub credential (the webhook secret cannot mint tokens), and
-# unlike the singleton controllers it is stateless, so it runs two replicas
-# by default.
-webhookController:
-    image: {}
-    replicas: 2
-    config:
-        # Per-target forward timeout.
-        forwardTimeout: 10s
-        # Extra PATCHY_* keys for the webhook-controller only; setting
-        # PATCHY_FORWARD_ROUTES here replaces the derived routing table.
-        extra: {}
-    resources:
-        requests:
-            cpu: 25m
-            memory: 32Mi
-        limits:
-            cpu: 250m
-            memory: 128Mi
-    podAnnotations: {}
-    podLabels: {}
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-    serviceAccount:
-        create: true
-        name: ""
-        annotations: {}
-    service:
-        type: ClusterIP
-        port: 8080
-        nodePort: null
-        annotations: {}
-    # Webhook + probes in; DNS, the controllers' 8080, and TLS (OTLP) out.
-    networkPolicy:
-        create: true
-
-# ---- source-controller ------------------------------------------------------
-# Receives code_scanning_alert webhooks and accumulates them into issues.
-# Every controller block has the same shape; the knobs are commented once,
-# here.
-sourceController:
+# ---- integration-controller -------------------------------------------------
+# The single internet-facing entry point: the provider webhook receivers on
+# :8080 (HMAC-validated per Integration), scanner-alert ingestion into
+# Findings, tracking-issue projection, and the human signals (approve
+# comment, issue close, PR merge) applied back onto the Findings. Every
+# controller block has the same shape; the knobs are commented once, here.
+integrationController:
     # Key-by-key override of the global `image` for this binary; a `digest`
     # pins.
     image: {}
     # This controller's own PATCHY_* settings. Any shared `config` key
-    # (logLevel, reconcileInterval) may be repeated here to override it for
-    # this controller alone.
+    # (logLevel, ...) may be repeated here to override it for this controller
+    # alone.
     config:
         # DESIGN.md requirement 2: alerts of one advisory type accumulate
-        # into a single issue for an hour.
+        # into a single finding for an hour.
         accumulationWindow: 1h
         # Extra PATCHY_* keys for this controller only (full variable name ->
         # value); wins over `config.extra` and anything the chart derives.
@@ -188,34 +176,66 @@ sourceController:
     serviceAccount:
         # Set false to bring your own (and point `name` at it).
         create: true
-        # Defaults to <fullname>-source-controller.
+        # Defaults to <fullname>-integration-controller.
         name: ""
         annotations: {}
-    # Each controller serves POST /webhook plus the probes on one port; the
-    # shared `webhook` entry point above fronts all three.
+    # The webhook receivers' Service, fronted by `webhook` above. type
+    # NodePort + nodePort covers the kind/dev case.
     service:
         type: ClusterIP
         port: 8080
-        # Used only when type is NodePort (the kind/dev setup).
         nodePort: null
         annotations: {}
-    # The controller's L3/L4 NetworkPolicy: webhook + probes in, DNS + TLS
-    # out. Ingress allows 8080 from anywhere (kubelet probes arrive from the
-    # node IP, which no pod selector can match); the HMAC signature check in
-    # internal/webhook is the authentication.
+    # The controller's L3/L4 NetworkPolicy: webhooks + probes in, DNS + TLS +
+    # the Kubernetes API out. Ingress allows 8080 from anywhere (kubelet
+    # probes arrive from the node IP, which no pod selector can match; your
+    # ingress controller may live in any namespace); the per-Integration HMAC
+    # signature check is the authentication.
+    networkPolicy:
+        create: true
+
+# ---- source-controller ------------------------------------------------------
+# The Forge/Repository reconcilers plus the artifact server on :9790: the
+# SHA-pinned repository tarballs the agent pods fetch (credential-less; the
+# URL carries a random id and the Job pins the sha256 digest). Artifacts live
+# in an emptyDir — they are reproducible from the pinned SHA.
+sourceController:
+    image: {}
+    config:
+        extra: {}
+    resources:
+        requests:
+            cpu: 50m
+            memory: 96Mi
+        limits:
+            cpu: 500m
+            memory: 512Mi
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    serviceAccount:
+        create: true
+        name: ""
+        annotations: {}
+    # The artifact server's Service — in-cluster only by design (the
+    # NetworkPolicies restrict it to the agent namespace).
+    service:
+        type: ClusterIP
+        port: 9790
+        nodePort: null
+        annotations: {}
     networkPolicy:
         create: true
 
 # ---- context-controller -----------------------------------------------------
-# Enhances opened issues with context. Same knobs as sourceController; only
-# `config` differs.
+# The enhancer chain over Opened findings (the CMDB placeholder). No external
+# access at all: it reads and writes Finding CRs, nothing else. Set
+# PATCHY_STATIC_CONTEXT_FILE via config.extra to feed the static enhancer.
 contextController:
     image: {}
     config:
-        # How old an "opened" issue must be before the reconcile pass
-        # enhances it (the webhook path is immediate; this is the catch-up
-        # path).
-        enhanceGrace: 2m
         extra: {}
     resources:
         requests:
@@ -233,54 +253,31 @@ contextController:
         create: true
         name: ""
         annotations: {}
-    service:
-        type: ClusterIP
-        port: 8080
-        nodePort: null
-        annotations: {}
     networkPolicy:
         create: true
 
-# ---- remediation-controller -------------------------------------------------
-# Runs the agent Jobs and performs all GitHub side effects. Same knobs as
-# sourceController; `config` carries the agent-stage settings.
-remediationController:
+# ---- investigation-controller -----------------------------------------------
+# The gate (creates Repository + Investigation, parks repo-less findings) and
+# the analysis scheduler: launches the analysis agent Jobs, stamps results,
+# routes the verdict edges on Finding status.
+investigationController:
     image: {}
     config:
         # DESIGN.md requirement 5: only findings older than an hour are
         # picked up.
-        issueMinAge: 1h
-        maxAttempts: 2
-        # DESIGN.md requirement 6: below this, a human is assigned instead.
+        findingMinAge: 1h
+        maxConcurrentInvestigations: 3
+        # DESIGN.md requirement 6: below this, remediation waits for
+        # approval.
         confidenceThreshold: "0.75"
-        jobDeadline: 1h
-        jobTTL: 1h
-        # The agent stages. CLASSIFY_* limits are absolute; REMEDIATE_* limits
-        # are CEILINGS the runner clamps the classification report's requests
-        # to.
-        modelAllowlist: claude-sonnet-5,claude-opus-4-8
-        classify:
-            harness: claude
-            model: claude-sonnet-5
-            timeout: 15m
-            maxTurns: 25
-            tokenBudget: 150000
-        remediate:
-            harness: claude
-            model: claude-sonnet-5
-            timeout: 45m
-            maxTurns: 80
-            tokenBudget: 400000
         extra: {}
-    # Slightly higher than its siblings: changesets (<= ~7 MiB of pod log)
-    # are buffered in memory while events are applied.
     resources:
         requests:
-            cpu: 100m
-            memory: 256Mi
+            cpu: 50m
+            memory: 96Mi
         limits:
-            cpu: "1"
-            memory: 512Mi
+            cpu: 500m
+            memory: 256Mi
     podAnnotations: {}
     podLabels: {}
     nodeSelector: {}
@@ -290,31 +287,81 @@ remediationController:
         create: true
         name: ""
         annotations: {}
-    service:
-        type: ClusterIP
-        port: 8080
-        nodePort: null
+    networkPolicy:
+        create: true
+
+# ---- remediation-controller -------------------------------------------------
+# Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
+# loop — the one deleter of expired Findings.
+remediationController:
+    image: {}
+    config:
+        maxConcurrentRemediations: 1
+        # Completed findings are kept this long, then deleted; the
+        # FindingRollup objects retain the all-time statistics. "0" keeps
+        # findings forever.
+        findingTTL: 336h
+        extra: {}
+    resources:
+        requests:
+            cpu: 50m
+            memory: 96Mi
+        limits:
+            cpu: 500m
+            memory: 256Mi
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    serviceAccount:
+        create: true
+        name: ""
         annotations: {}
     networkPolicy:
         create: true
 
-# The agent sandbox: the namespace and identity the remediation-controller
-# creates its ephemeral Jobs in. Nothing in this namespace holds a GitHub
-# credential except each Job's short-lived init-container Secret.
+# The agent sandbox: the namespace and identity the two job controllers
+# create their ephemeral Jobs in, and the two agent stages' limits. Nothing
+# in this namespace holds a forge credential — the repository arrives as a
+# digest-verified tarball from source-controller's artifact server, and the
+# only Secrets in an agent pod are the model credential and the per-Job
+# handoff markdown.
 agent:
     namespace: patchy-agents
     # Set false if the namespace is managed elsewhere; the chart then still
     # expects it to exist and to carry the restricted Pod Security labels.
     createNamespace: true
     serviceAccount: patchy-agent
-    # The agent-runner image the remediation-controller stamps into every Job
-    # it creates (PATCHY_AGENT_IMAGE). Same override shape as
-    # <controller>.image.
+    # The agent-runner image the job controllers stamp into every Job they
+    # create (PATCHY_AGENT_IMAGE). Same override shape as <controller>.image.
     image: {}
-    # The sandbox policies: default-deny both directions plus a TCP-443-only
-    # egress. A plain NetworkPolicy cannot match hostnames; enforcement at
-    # that level needs `cilium` or `istio` below. Credential absence is the
-    # real control either way — see deploy/kustomize/base/networkpolicy.yaml.
+    # Job execution limits (both job controllers).
+    jobDeadline: 1h
+    jobTTL: 1h
+    # The agent stages. The investigate limits are absolute — that stage runs
+    # on exactly these. The remediate maxTurns/tokenBudget are CEILINGS: the
+    # investigation report requests its own model/turns/budget for the
+    # remediation stage, and both the controller and the runner clamp those
+    # requests to these bounds (and to the allowlist).
+    modelAllowlist: claude-sonnet-5,claude-opus-4-8
+    investigate:
+        harness: claude
+        model: claude-sonnet-5
+        timeout: 15m
+        maxTurns: 25
+        tokenBudget: 150000
+    remediate:
+        harness: claude
+        model: claude-sonnet-5
+        timeout: 45m
+        maxTurns: 80
+        tokenBudget: 400000
+    # The sandbox policies: default-deny both directions plus DNS, the
+    # artifact server, and TCP-443-only external egress. A plain
+    # NetworkPolicy cannot match hostnames; enforcement at that level needs
+    # `cilium` or `istio` below. Credential absence is the real control
+    # either way — see deploy/kustomize/base/networkpolicy.yaml.
     networkPolicy:
         create: true
         # Cluster-internal ranges the agent egress must NOT reach (pod/
@@ -325,27 +372,24 @@ agent:
             - 172.16.0.0/12
             - 192.168.0.0/16
             - 169.254.0.0/16
-        # Hosts the agent sandbox may reach, shared by both components below.
-        # Running GHES? Replace the github list with your GHES hostname.
+        # Hosts the agent sandbox may reach, shared by both components
+        # below. There is deliberately NO forge (GitHub) host: the pod never
+        # talks to it.
         hosts:
             anthropic:
                 - api.anthropic.com
-            github:
-                - github.com
-                - codeload.github.com
-                - objects.githubusercontent.com
-            # Cilium only: what names the agent pod may RESOLVE at all.
+            # Cilium only: what names the agent pod may RESOLVE at all. The
+            # cluster-local pattern is what lets the artifact fetch resolve
+            # source-controller's Service.
             dnsPatterns:
                 - "*.anthropic.com"
-                - "*.github.com"
-                - github.com
-                - "*.githubusercontent.com"
+                - "*.svc.cluster.local"
         # FQDN egress allowlist for Cilium CNIs (requires DNS-based policy).
         # Mutually exclusive with istio.
         cilium:
             enabled: false
-        # The same allowlist as an Istio Sidecar (REGISTRY_ONLY) +
-        # ServiceEntries. Requires native sidecars (istiod with
+        # The same allowlist as an Istio Sidecar (REGISTRY_ONLY) + a
+        # ServiceEntry. Requires native sidecars (istiod with
         # ENABLE_NATIVE_SIDECARS=true) and the Istio CNI node agent — see
         # deploy/kustomize/components/istio.
         istio:

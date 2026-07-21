@@ -1,49 +1,237 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# RBAC, in full: ONLY the remediation-controller gets Kubernetes API access,
-# and only in the agent namespace. There is deliberately nothing for the
-# source-controller, the context-controller (GitHub only), or the agent pods
-# (api.anthropic.com only; API access would let a prompt-injected agent read
-# the very Secrets the isolation model depends on).
+# RBAC, in full: one Role (+ RoleBinding) per controller in the release
+# namespace, verb-by-verb what its reconcilers use (mirroring
+# deploy/kustomize/base/rbac.yaml), plus one shared Role in the agent
+# namespace for the two job controllers.
 #
-# The verbs are exactly what internal/jobs and internal/remedctrl use. No
-# secrets "list"/"watch": the controller only ever addresses its own per-Job
-# Secret by name.
+# Conventions the rules encode:
+#
+#   * The CRs are the state machine. Writers are exclusive per field — the
+#     transition table in DESIGN.md says which controller writes which edge —
+#     and the verbs here enforce the split at the API layer as far as RBAC
+#     can (RBAC is per-resource, not per-field).
+#   * secrets get (never list/watch): provider/forge credentials are read on
+#     demand by name through the API reader, so no controller can enumerate
+#     Secrets.
+#   * leases + events: controller-runtime leader election. Deployments stay
+#     replicas:1 + Recreate; the lease is insurance against two replicas
+#     racing during a botched rollout.
+#   * The agent pods have NO role at all — see serviceaccounts.yaml.
+{{- define "patchy.roleRules" -}}
+{{- if eq . "integration-controller" }}
+{{- /*
+Ingests scanner webhooks into Findings (create/fold/duplicate-merge — the
+one deleter of duplicate Findings), projects Findings to tracking issues
+(reads the children's reports), and applies human signals (approve/close/
+PR-merge) to Finding spec + status.
+*/ -}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings]
+  verbs: [create, get, list, watch, update, patch, delete]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [integrations]
+  verbs: [get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [integrations/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [investigations, remediations]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [get]
+{{- else if eq . "source-controller" }}
+{{- /*
+Validates Forge credentials, resolves + pins Repositories, serves the
+artifact tarballs. Writes only Forge/Repository status.
+*/ -}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [forges, repositories]
+  verbs: [get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [forges/status, repositories/status]
+  verbs: [get, update, patch]
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [get]
+{{- else if eq . "context-controller" }}
+{{- /*
+The enhancer chain: reads Opened findings, writes enrichments/owners and the
+Opened -> Enhanced edge to status. No secrets, no external credential.
+*/ -}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings]
+  verbs: [get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings/status]
+  verbs: [get, update, patch]
+{{- else if eq . "investigation-controller" }}
+{{- /*
+The gate (creates Repository + Investigation, parks repo-less findings) and
+the analysis scheduler (launches agent Jobs, stamps results, routes the
+verdict edges on Finding status).
+*/ -}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings]
+  verbs: [get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [investigations]
+  verbs: [create, get, list, watch, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [investigations/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [repositories]
+  verbs: [create, get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [forges]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [get]
+{{- else if eq . "remediation-controller" }}
+{{- /*
+Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
+loop. The one deleter of expired Findings (cascade deletes the children);
+`update` on findings/investigations/remediations (not just status) is the
+rollup finalizer removal.
+*/ -}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings]
+  verbs: [get, list, watch, update, patch, delete]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findings/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [remediations]
+  verbs: [create, get, list, watch, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [remediations/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [investigations]
+  verbs: [get, list, watch, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [investigations/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [repositories]
+  verbs: [get, list, watch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findingrollups]
+  verbs: [create, get, list, watch, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findingrollups/status]
+  verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [forges]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [get]
+{{- end }}
+- apiGroups: [coordination.k8s.io]
+  resources: [leases]
+  verbs: [get, create, update]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]
+{{- end }}
+{{- range $c := list
+    (dict "name" "integration-controller" "vals" .Values.integrationController)
+    (dict "name" "source-controller" "vals" .Values.sourceController)
+    (dict "name" "context-controller" "vals" .Values.contextController)
+    (dict "name" "investigation-controller" "vals" .Values.investigationController)
+    (dict "name" "remediation-controller" "vals" .Values.remediationController)
+}}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-    name: {{ include "patchy.fullname" . }}-remediation-controller
+    name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" $c.name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+rules:
+    {{- include "patchy.roleRules" $c.name | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
+    namespace: {{ $.Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" $ "name" $c.name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: {{ include "patchy.fullname" $ }}-{{ $c.name }}
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" $ "name" $c.name "vals" $c.vals) }}
+      namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+# ---- agent namespace: the two job controllers -------------------------------
+# What internal/jobs uses, and nothing more:
+#   jobs      create (Create), get/list/watch (status + orphan reap), delete
+#   pods      get/list/watch (find the Job's pod)
+#   pods/log  get (read the PATCHY-EVENT: stream at Job completion)
+#   secrets   create/get/update/delete (the per-Job Secret carrying the
+#             handoff markdown — credential-less; update owner-references it
+#             to its Job, delete is the create-Job-failed rollback)
+# No secrets list/watch: each controller only ever addresses its own per-Job
+# Secret by name. The two controllers share the namespace; the
+# patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
+# of each other's way (RBAC cannot express that split).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: {{ include "patchy.fullname" . }}-agent-jobs
     namespace: {{ .Values.agent.namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "remediation-controller") | nindent 8 }}
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
     {{- with include "patchy.annotations" (dict "root" .) }}
     annotations:
         {{- . | nindent 8 }}
     {{- end }}
 rules:
-    - apiGroups: ["batch"]
-      resources: ["jobs"]
-      verbs: ["create", "get", "list", "watch", "delete"]
+    - apiGroups: [batch]
+      resources: [jobs]
+      verbs: [create, get, list, watch, delete]
     - apiGroups: [""]
-      resources: ["pods"]
-      verbs: ["get", "list", "watch"]
+      resources: [pods]
+      verbs: [get, list, watch]
     - apiGroups: [""]
-      resources: ["pods/log"]
-      verbs: ["get"]
+      resources: [pods/log]
+      verbs: [get]
     - apiGroups: [""]
-      resources: ["secrets", "configmaps"]
-      # update: Create owner-references the per-Job Secret to its Job after
-      # the Job exists.
-      verbs: ["create", "get", "update", "delete"]
+      resources: [secrets]
+      verbs: [create, get, update, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-    name: {{ include "patchy.fullname" . }}-remediation-controller
+    name: {{ include "patchy.fullname" . }}-agent-jobs
     namespace: {{ .Values.agent.namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "remediation-controller") | nindent 8 }}
+        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
     {{- with include "patchy.annotations" (dict "root" .) }}
     annotations:
         {{- . | nindent 8 }}
@@ -51,8 +239,11 @@ metadata:
 roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: Role
-    name: {{ include "patchy.fullname" . }}-remediation-controller
+    name: {{ include "patchy.fullname" . }}-agent-jobs
 subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" "investigation-controller" "vals" .Values.investigationController) }}
+      namespace: {{ .Release.Namespace }}
     - kind: ServiceAccount
       name: {{ include "patchy.serviceAccountName" (dict "root" . "name" "remediation-controller" "vals" .Values.remediationController) }}
       namespace: {{ .Release.Namespace }}

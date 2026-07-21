@@ -1,0 +1,432 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+{{- if .Values.crds.install }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: investigations.patchy.bitwisemedia.uk
+spec:
+  group: patchy.bitwisemedia.uk
+  names:
+    categories:
+    - patchy
+    kind: Investigation
+    listKind: InvestigationList
+    plural: investigations
+    shortNames:
+    - inv
+    singular: investigation
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.findingRef.name
+      name: Finding
+      type: string
+    - jsonPath: .spec.attempt
+      name: Attempt
+      type: integer
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.recommendation
+      name: Verdict
+      type: string
+    - jsonPath: .status.confidence
+      name: Confidence
+      type: string
+    - jsonPath: .status.exploitability.rating
+      name: Exploitability
+      priority: 1
+      type: string
+    - jsonPath: .status.likelihood.rating
+      name: Likelihood
+      priority: 1
+      type: string
+    - jsonPath: .status.impact.rating
+      name: Impact
+      priority: 1
+      type: string
+    - jsonPath: .status.stage.usage.costUSD
+      name: Cost
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Investigation is one analysis attempt on a Finding: an agent job assessing
+          exploitability, likelihood, and impact, and recommending
+          remediate/ignore/manual. One immutable object per attempt, owned by the
+          Finding.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              InvestigationSpec identifies one analysis attempt. It is immutable — a new
+              attempt is a new Investigation (CEL-enforced).
+            properties:
+              attempt:
+                description: Attempt ordinal, 1-based.
+                format: int32
+                minimum: 1
+                type: integer
+              findingRef:
+                description: FindingRef is the owning Finding (UID-pinned).
+                properties:
+                  name:
+                    description: Name of the referent.
+                    minLength: 1
+                    type: string
+                  uid:
+                    description: UID of the referent at the time the reference was
+                      written.
+                    type: string
+                required:
+                - name
+                type: object
+              parameters:
+                description: Parameters bound this run (clamped controller-side).
+                properties:
+                  maxTurns:
+                    description: MaxTurns caps agent turns.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  model:
+                    description: Model the harness runs.
+                    type: string
+                  tokenBudget:
+                    description: TokenBudget caps output tokens (the runner kill switch).
+                    format: int64
+                    minimum: 0
+                    type: integer
+                type: object
+              repositoryRef:
+                description: |-
+                  RepositoryRef names the Repository artifact the agent works from; nil
+                  for repository-less findings.
+                properties:
+                  name:
+                    description: Name of the referent.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - attempt
+            - findingRef
+            type: object
+            x-kubernetes-validations:
+            - message: spec is immutable; create a new Investigation for a new attempt
+              rule: self == oldSelf
+          status:
+            description: |-
+              InvestigationStatus records the analysis results. Written only by
+              investigation-controller.
+            properties:
+              awaitApproval:
+                description: |-
+                  AwaitApproval marks the breaking-change hold: a better-but-breaking fix
+                  exists, so remediation waits for a human approval.
+                type: boolean
+              conditions:
+                description: Conditions of the run (Complete, RolledUp*).
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              confidence:
+                description: Confidence decimal string in [0, 1].
+                pattern: ^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$
+                type: string
+              exploitability:
+                description: 'Exploitability analysis: can the vulnerability actually
+                  be exercised?'
+                properties:
+                  rating:
+                    description: Rating of the dimension.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  summary:
+                    description: Summary is the agent's short justification.
+                    maxLength: 4096
+                    type: string
+                required:
+                - rating
+                type: object
+              impact:
+                description: 'Impact analysis: what is the blast radius if exploited?'
+                properties:
+                  rating:
+                    description: Rating of the dimension.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  summary:
+                    description: Summary is the agent's short justification.
+                    maxLength: 4096
+                    type: string
+                required:
+                - rating
+                type: object
+              jobRef:
+                description: JobRef locates the agent Job in the agents namespace.
+                properties:
+                  name:
+                    description: Name of the Job.
+                    type: string
+                  namespace:
+                    description: Namespace the Job runs in.
+                    type: string
+                  uid:
+                    description: UID of the Job.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              likelihood:
+                description: 'Likelihood analysis: how probable is exploitation in
+                  this deployment?'
+                properties:
+                  rating:
+                    description: Rating of the dimension.
+                    enum:
+                    - none
+                    - low
+                    - medium
+                    - high
+                    - critical
+                    type: string
+                  summary:
+                    description: Summary is the agent's short justification.
+                    maxLength: 4096
+                    type: string
+                required:
+                - rating
+                type: object
+              observedGeneration:
+                description: ObservedGeneration is the last spec generation acted
+                  on.
+                format: int64
+                type: integer
+              phase:
+                description: Phase of the run.
+                enum:
+                - Pending
+                - Running
+                - Complete
+                - Failed
+                type: string
+              priority:
+                description: |-
+                  Priority as assessed by the agent (display; scheduling priority is
+                  computed controller-side).
+                enum:
+                - low
+                - medium
+                - high
+                - critical
+                type: string
+              recommendation:
+                description: Recommendation is the verdict.
+                enum:
+                - remediate
+                - ignore
+                - manual
+                type: string
+              remediationParameters:
+                description: |-
+                  RemediationParameters are the clamped stage-2 parameters the
+                  investigation suggested.
+                properties:
+                  maxTurns:
+                    description: MaxTurns caps agent turns.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  model:
+                    description: Model the harness runs.
+                    type: string
+                  tokenBudget:
+                    description: TokenBudget caps output tokens (the runner kill switch).
+                    format: int64
+                    minimum: 0
+                    type: integer
+                type: object
+              report:
+                description: |-
+                  Report is the full analysis report markdown (single copy — the Finding
+                  mirrors ratings only).
+                maxLength: 65536
+                type: string
+              severity:
+                description: Severity as assessed by the agent (may differ from the
+                  scanner's).
+                enum:
+                - low
+                - medium
+                - high
+                - critical
+                type: string
+              stage:
+                description: Stage is the agent accounting for the run.
+                properties:
+                  detail:
+                    description: Detail explains a non-ok outcome for humans.
+                    maxLength: 4096
+                    type: string
+                  elapsedMilliseconds:
+                    description: ElapsedMilliseconds is the stage's wall-clock duration.
+                    format: int64
+                    type: integer
+                  finishedAt:
+                    description: FinishedAt is when the stage ended.
+                    format: date-time
+                    type: string
+                  harness:
+                    description: Harness that executed the stage.
+                    type: string
+                  model:
+                    description: Model the stage ran on.
+                    type: string
+                  numTurns:
+                    description: NumTurns the agent took.
+                    format: int32
+                    type: integer
+                  outcome:
+                    description: |-
+                      Outcome is the envelope outcome vocabulary (ok, runtime_error, timeout,
+                      budget_exceeded, report_missing, report_invalid, commit_failed,
+                      changeset_too_large) plus "aborted" for a run killed with no envelope.
+                    type: string
+                  sessionID:
+                    description: SessionID of the harness session.
+                    type: string
+                  startedAt:
+                    description: StartedAt is when the stage began.
+                    format: date-time
+                    type: string
+                  usage:
+                    description: Usage accounting for the stage.
+                    properties:
+                      cacheCreationTokens:
+                        description: CacheCreationTokens written to prompt cache.
+                        format: int64
+                        type: integer
+                      cacheReadTokens:
+                        description: CacheReadTokens read from prompt cache.
+                        format: int64
+                        type: integer
+                      costUSD:
+                        description: |-
+                          CostUSD is the harness-reported cost as a decimal string (structural
+                          schemas forbid floats).
+                        pattern: ^[0-9]+(\.[0-9]{1,6})?$
+                        type: string
+                      inputTokens:
+                        description: InputTokens consumed.
+                        format: int64
+                        type: integer
+                      outputTokens:
+                        description: OutputTokens produced.
+                        format: int64
+                        type: integer
+                    type: object
+                required:
+                - outcome
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

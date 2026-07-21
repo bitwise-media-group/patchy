@@ -6,8 +6,9 @@
 # CRD manifests. CRDs land in deploy/kustomize/base/crds/ (kustomize consumes
 # them raw) and are mirrored into helm/chart/templates/crds/ wrapped in the
 # crds.install gate plus the keep policy (uninstall must never delete the
-# all-time FindingRollup data). CI runs this and fails on drift
-# (git diff --exit-code).
+# all-time FindingRollup data). Living in templates/ rather than the chart's
+# crds/ dir is deliberate: helm upgrades templates, while crds/ is
+# install-only. CI runs this and fails on drift (git diff --exit-code).
 set -eu
 
 controller-gen object:headerFile=hack/boilerplate.go.txt paths=./api/...

@@ -36,6 +36,7 @@ nav = [
     { "investigation-controller" = "configuration/investigation-controller.md" },
     { "remediation-controller" = "configuration/remediation-controller.md" },
     { "agent-runner" = "configuration/agent-runner.md" },
+    { "status-server" = "configuration/status-server.md" },
   ] },
   { "Deployment" = [
     { "Helm chart" = "deployment/helm.md" },
@@ -44,6 +45,7 @@ nav = [
     { "Local dev on Colima" = "deployment/colima.md" },
     { "Isolation model" = "deployment/isolation.md" },
   ] },
+  { "The status page" = "status-ui.md" },
   { "Observability" = "observability.md" },
   { "Extending" = "extending.md" },
 ]

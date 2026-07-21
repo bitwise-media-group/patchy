@@ -14,7 +14,7 @@ hour, get context-enhanced, then a sandboxed `claude -p` run investigates each o
 remediated in priority order into pull requests, everything else routes to humans. Completed findings expire on a
 TTL; `FindingRollup` resources keep the all-time statistics.
 
-Six binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Seven binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
   provider webhooks (`/github/webhooks`, per-Integration HMAC secrets), ingests scanner alerts into Findings
@@ -33,6 +33,10 @@ Six binaries, one module. "Not monolithic" means separate binaries/deployments w
 - `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
   Kubernetes API; no credentials beyond the model key.
+- `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
+  SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, and the access-review-gated
+  approve/suspend/resume actions. Rollup statistics are public; the findings surface always requires auth.
+  Writes Finding SPEC only (`spec.approval`, `spec.suspend`) — never status, never a phase.
 
 ## Layout
 
@@ -83,6 +87,12 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
   templates with golden tests.
 - `webhook`, `telemetry`, `cli`, `version` — service plumbing (the webhook server is used by
   integration-controller only).
+- `web` (+ `web/auth`, `web/authz`) — the status-server backend: wire types mirroring the SPA's
+  `ui/src/types.ts` (keep the two in lockstep), the action handlers, SSE broker + cache-informer watcher, and
+  the embedded UI (`internal/web/ui`, Vite/Preact, single-file build embedded behind the `withui` tag; `mise run
+  ui` builds it, bare `go build` compiles a stub). `auth` = who you are (OIDC/none/anonymous/unconfigured,
+  cookie sessions, zero k8s imports); `authz` = what you may do (SubjectAccessReviews for the custom verbs
+  approve/suspend/resume + native get).
 - `ghas`, `enhancers` — the built-in `pkg/source` and `pkg/enhance` implementations.
 - `harness`, `runner` — adapted from evolve: harness builds argv, runner executes (observe-and-collect with a
   token-budget kill switch), harness parses stdout. Keep that separation.

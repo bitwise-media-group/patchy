@@ -4,7 +4,7 @@ remediation; your job is to fix it. You are running in the repository's working 
 Read these first:
 
 1. The finding: `/workspace/input/issue.md`
-2. The triage analysis and remediation approach: `/workspace/reports/classification.md`
+2. The triage analysis and remediation approach: `/workspace/input/investigation.md`
 
 ## The fix
 

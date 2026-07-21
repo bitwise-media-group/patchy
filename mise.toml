@@ -5,8 +5,14 @@
 # .mise/ submodule: pinned tools + the go-cli task archetype come from there,
 # and the Makefile is a thin forwarder (.mise/mise.mk). Structural knobs live
 # in [vars]; repo-local tasks live in tasks.toml (see [task_config] below).
+
+[settings]
+lockfile = true
+locked = false
+minimum_release_age = "7d"
+
 [vars]
-# patchy is multi-binary (four entrypoints under cmd/), so tasks.toml redefines
+# patchy is multi-binary (six entrypoints under cmd/), so tasks.toml redefines
 # the archetype's `build` with a loop; app/app_pkg exist only so the archetype's
 # single-app go-build task stays renderable.
 app = "patchy"

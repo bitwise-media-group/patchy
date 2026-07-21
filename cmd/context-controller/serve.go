@@ -8,32 +8,30 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
-	"github.com/bitwise-media-group/patchy/internal/contextctrl"
+	ctxctrl "github.com/bitwise-media-group/patchy/internal/controller/context"
 	"github.com/bitwise-media-group/patchy/internal/enhancers"
-	"github.com/bitwise-media-group/patchy/internal/ghclient"
-	"github.com/bitwise-media-group/patchy/internal/reconcile"
+	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
-	"github.com/bitwise-media-group/patchy/internal/webhook"
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 )
 
 func newServeCmd(opts *cli.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run the webhook receiver and the enhancement reconcile loop",
+		Short: "Run the enhancer chain over freshly opened findings",
 		RunE:  func(cmd *cobra.Command, _ []string) error { return serve(cmd.Context(), opts) },
 	}
-	cmd.Flags().String("static-context-file", "",
+	f := cmd.Flags()
+	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
+	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
+	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
+	f.String("static-context-file", "",
 		"YAML file mapping repositories to owners/attributes (the fake-CMDB enhancer)")
-	cmd.Flags().Duration("enhance-grace", 2*time.Minute,
-		"how old an opened issue must be before the reconcile pass enhances it")
 	return cmd
 }
 
@@ -50,34 +48,40 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	defer func() { _ = shutdown(context.WithoutCancel(ctx)) }()
 	log := prov.Logger
 
-	secret, err := opts.WebhookSecret()
-	if err != nil {
-		return err
+	namespace := opts.String("namespace")
+	if namespace == "" {
+		namespace = os.Getenv("POD_NAMESPACE")
 	}
-	resolver, err := opts.GitHub()
-	if err != nil {
-		return err
+	if namespace == "" {
+		return errors.New("namespace is required (--namespace or POD_NAMESPACE)")
 	}
 	chain, err := buildChain(opts.String("static-context-file"))
 	if err != nil {
 		return err
 	}
 
-	ctrl := contextctrl.New(log, clients{resolver},
-		contextctrl.Config{Grace: opts.Duration("enhance-grace")}, chain...)
-	srv := webhook.NewServer(webhook.Config{Addr: opts.ListenAddr, Secret: secret}, log, ctrl)
+	mgr, err := kube.NewManager(kube.Options{
+		Kubeconfig:              opts.String("kubeconfig"),
+		LeaderElectionID:        "patchy-context-controller-leader",
+		LeaderElectionNamespace: namespace,
+		Namespaces:              []string{namespace},
+		HealthAddr:              opts.String("health-addr"),
+		Log:                     log,
+	})
+	if err != nil {
+		return err
+	}
+
+	fc := &ctxctrl.FindingReconciler{Client: mgr.GetClient(), Enhancers: chain, Log: log}
+	if err := fc.SetupWithManager(mgr); err != nil {
+		return err
+	}
 
 	log.LogAttrs(ctx, slog.LevelInfo, "context-controller starting",
-		slog.String("addr", opts.ListenAddr),
-		slog.Duration("reconcile_interval", opts.ReconcileInterval),
+		slog.String("namespace", namespace),
 		slog.Int("enhancers", len(chain)))
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return srv.Run(ctx) })
-	g.Go(func() error {
-		return reconcile.Run(ctx, log, "context-controller", opts.ReconcileInterval, ctrl.Reconcile)
-	})
-	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+	if err := mgr.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	return nil
@@ -94,23 +98,4 @@ func buildChain(staticFile string) ([]enhance.Enhancer, error) {
 		return nil, err
 	}
 	return []enhance.Enhancer{static}, nil
-}
-
-// clients adapts ghclient.Resolver to the controller's Clients seam.
-type clients struct{ r ghclient.Resolver }
-
-func (c clients) For(ctx context.Context, repo ghclient.Repo) (contextctrl.Stores, error) {
-	return c.r.For(ctx, repo)
-}
-
-func (c clients) All(ctx context.Context) ([]contextctrl.Searcher, error) {
-	cs, err := c.r.All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]contextctrl.Searcher, len(cs))
-	for i, cl := range cs {
-		out[i] = cl
-	}
-	return out, nil
 }

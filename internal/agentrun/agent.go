@@ -21,17 +21,17 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/templates"
 )
 
-// Tool policies per stage. Classification investigates read-only (plus the
+// Tool policies per stage. Investigation reads the tree read-only (plus the
 // one Write for its report); remediation edits freely — network is denied at
 // the pod layer, not the tool layer.
 var (
-	classifyAllowedTools = []string{
+	investigateAllowedTools = []string{
 		"Read", "Glob", "Grep", "Write",
 		"Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)", "Bash(git diff:*)",
 	}
-	classifyDisallowedTools  = []string{"WebFetch", "WebSearch", "Task"}
-	remediateAllowedTools    = []string{"Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash"}
-	remediateDisallowedTools = []string{"WebFetch", "WebSearch"}
+	investigateDisallowedTools = []string{"WebFetch", "WebSearch", "Task"}
+	remediateAllowedTools      = []string{"Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash"}
+	remediateDisallowedTools   = []string{"WebFetch", "WebSearch"}
 )
 
 // Executor runs harness command specs; *runner.Exec satisfies it, tests
@@ -74,32 +74,21 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 
-	var params remediationParams
-	switch a.cfg.Phase {
-	case PhaseInvestigate:
-		// The split pipeline's analysis stage: one event, no continuation —
-		// the controller routes on the verdict.
+	if a.cfg.Phase == PhaseInvestigate {
+		// The analysis stage: one event, no continuation — the controller
+		// routes on the verdict.
 		ev := a.investigate(ctx)
 		a.emit(envelope.Event{Type: envelope.TypeInvestigation, Investigation: ev})
 		return nil
-	case PhaseFull:
-		ev := a.classify(ctx)
-		a.emit(envelope.Event{Type: envelope.TypeClassification, Classification: ev})
-		if !ev.WillRemediate {
-			return nil
-		}
-		params = remediationParams{model: ev.RemediationModel, maxTurns: ev.MaxTurns, budget: ev.TokenBudget}
-	case PhaseRemediate:
-		// The controller supplies the analysis this run executes — the split
-		// pipeline's investigation.md, or the legacy classification.md on
-		// the /approve re-run. Thresholds and holds are bypassed by fiat.
-		var err error
-		if params, err = a.remediationInput(); err != nil {
-			a.emit(envelope.Event{Type: envelope.TypeFatal, Error: err.Error()})
-			return err
-		}
 	}
 
+	// The controller supplies the analysis this run executes; thresholds and
+	// holds were already applied controller-side.
+	params, err := a.remediationInput()
+	if err != nil {
+		a.emit(envelope.Event{Type: envelope.TypeFatal, Error: err.Error()})
+		return err
+	}
 	rev := a.remediate(ctx, params)
 	a.emit(envelope.Event{Type: envelope.TypeRemediation, Remediation: rev})
 	return nil
@@ -114,88 +103,10 @@ func (a *Agent) prepare() error {
 	if _, err := os.Stat(a.cfg.issuePath()); err != nil {
 		return fmt.Errorf("workspace: issue handoff missing: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(a.cfg.classificationPath()), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(a.cfg.investigationPath()), 0o755); err != nil {
 		return fmt.Errorf("workspace: %w", err)
 	}
 	return nil
-}
-
-// classify runs stage 1 and folds everything into the event payload.
-func (a *Agent) classify(ctx context.Context) *envelope.Classification {
-	ev := &envelope.Classification{Stage: envelope.Stage{
-		Harness: a.cfg.ClassifyHarness,
-		Model:   a.cfg.ClassifyModel,
-	}}
-
-	h, ok := harness.ByID(a.cfg.ClassifyHarness)
-	if !ok {
-		ev.Outcome = envelope.OutcomeRuntimeError
-		ev.Detail = fmt.Sprintf("unknown harness %q", a.cfg.ClassifyHarness)
-		return ev
-	}
-	prompt, err := templates.RenderClassifyPrompt(templates.ClassifyPrompt{
-		IssuePath:          a.cfg.issuePath(),
-		ReportPath:         a.cfg.classificationPath(),
-		AllowedModels:      a.cfg.ModelAllowlist,
-		MaxTurnsCeiling:    a.cfg.RemediateMaxTurns,
-		TokenBudgetCeiling: a.cfg.RemediateTokenBudget,
-	})
-	if err != nil {
-		ev.Outcome = envelope.OutcomeRuntimeError
-		ev.Detail = err.Error()
-		return ev
-	}
-
-	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
-		Prompt:          prompt,
-		Model:           a.cfg.ClassifyModel,
-		MaxTurns:        a.cfg.ClassifyMaxTurns,
-		AllowedTools:    classifyAllowedTools,
-		DisallowedTools: classifyDisallowedTools,
-		SessionID:       a.newSessionID(),
-		AddDirs:         []string{a.cfg.Workspace},
-	}), a.cfg.ClassifyTimeout, a.budgetWatcher(h, a.cfg.ClassifyTokenBudget))
-	a.fillStage(&ev.Stage, h, res)
-
-	if res.Aborted {
-		ev.Outcome = envelope.OutcomeBudgetExceeded
-		ev.Detail = res.AbortReason
-		return ev
-	}
-	if outcome, detail := stageOutcome(h, res, runErr); outcome != envelope.OutcomeOK {
-		ev.Outcome, ev.Detail = outcome, detail
-		return ev
-	}
-
-	raw, err := os.ReadFile(a.cfg.classificationPath())
-	if err != nil {
-		ev.Outcome = envelope.OutcomeReportMissing
-		ev.Detail = err.Error()
-		return ev
-	}
-	cls, err := report.ParseClassification(raw)
-	if err != nil {
-		ev.Outcome = envelope.OutcomeReportInvalid
-		ev.Detail = err.Error()
-		return ev
-	}
-
-	ev.Outcome = envelope.OutcomeOK
-	ev.ReportMarkdown = string(raw)
-	ev.Recommendation = string(cls.Recommendation)
-	ev.Priority = string(cls.Priority)
-	ev.Severity = string(cls.Severity)
-	ev.Confidence = *cls.Confidence
-	ev.AwaitApproval = cls.Recommendation == report.RecommendRemediate && cls.BreakingChangeAvailable
-
-	if cls.Recommendation == report.RecommendRemediate {
-		params := a.clamp(cls)
-		ev.RemediationModel = params.model
-		ev.MaxTurns = params.maxTurns
-		ev.TokenBudget = params.budget
-		ev.WillRemediate = !ev.AwaitApproval && *cls.Confidence >= a.cfg.ConfidenceThreshold
-	}
-	return ev
 }
 
 // remediate runs stage 2 and packages the changeset.
@@ -231,10 +142,10 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 	}
 
 	prompt, err := templates.RenderRemediatePrompt(templates.RemediatePrompt{
-		IssuePath:          a.cfg.issuePath(),
-		ClassificationPath: a.classificationForPrompt(),
-		ReportPath:         a.cfg.remediationPath(),
-		CommitScriptPath:   a.cfg.commitScript(),
+		IssuePath:         a.cfg.issuePath(),
+		InvestigationPath: a.cfg.inputInvestigation(),
+		ReportPath:        a.cfg.remediationPath(),
+		CommitScriptPath:  a.cfg.commitScript(),
 	})
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -293,16 +204,6 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 	return ev
 }
 
-// classificationForPrompt names whichever classification the pod has: the
-// stage-1 output in the full phase, the controller-provided input in the
-// /approve re-run.
-func (a *Agent) classificationForPrompt() string {
-	if _, err := os.Stat(a.cfg.classificationPath()); err == nil {
-		return a.cfg.classificationPath()
-	}
-	return a.cfg.inputClassification()
-}
-
 // budgetWatcher builds the runner's per-line observer enforcing the
 // cumulative output-token budget, when the harness can report usage.
 func (a *Agent) budgetWatcher(h harness.Harness, budget int) func([]byte) (bool, string) {
@@ -324,21 +225,19 @@ func (a *Agent) budgetWatcher(h harness.Harness, budget int) func([]byte) (bool,
 	}
 }
 
-// clamp validates the classification's stage-2 suggestions against the
-// allowlist and the remediation ceilings, logging every correction.
 // investigate runs the analysis stage and folds everything into the event
-// payload. It mirrors classify but parses the investigation contract and
-// never decides continuation.
+// payload. It parses the investigation contract and never decides
+// continuation — the controller routes on the verdict.
 func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	ev := &envelope.Investigation{Stage: envelope.Stage{
-		Harness: a.cfg.ClassifyHarness,
-		Model:   a.cfg.ClassifyModel,
+		Harness: a.cfg.InvestigateHarness,
+		Model:   a.cfg.InvestigateModel,
 	}}
 
-	h, ok := harness.ByID(a.cfg.ClassifyHarness)
+	h, ok := harness.ByID(a.cfg.InvestigateHarness)
 	if !ok {
 		ev.Outcome = envelope.OutcomeRuntimeError
-		ev.Detail = fmt.Sprintf("unknown harness %q", a.cfg.ClassifyHarness)
+		ev.Detail = fmt.Sprintf("unknown harness %q", a.cfg.InvestigateHarness)
 		return ev
 	}
 	prompt, err := templates.RenderInvestigatePrompt(templates.InvestigatePrompt{
@@ -356,13 +255,13 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:          prompt,
-		Model:           a.cfg.ClassifyModel,
-		MaxTurns:        a.cfg.ClassifyMaxTurns,
-		AllowedTools:    classifyAllowedTools,
-		DisallowedTools: classifyDisallowedTools,
+		Model:           a.cfg.InvestigateModel,
+		MaxTurns:        a.cfg.InvestigateMaxTurns,
+		AllowedTools:    investigateAllowedTools,
+		DisallowedTools: investigateDisallowedTools,
 		SessionID:       a.newSessionID(),
 		AddDirs:         []string{a.cfg.Workspace},
-	}), a.cfg.ClassifyTimeout, a.budgetWatcher(h, a.cfg.ClassifyTokenBudget))
+	}), a.cfg.InvestigateTimeout, a.budgetWatcher(h, a.cfg.InvestigateTokenBudget))
 	a.fillStage(&ev.Stage, h, res)
 
 	if res.Aborted {
@@ -409,48 +308,36 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	return ev
 }
 
-// remediationInput reads the controller-provided analysis: the split
-// pipeline's investigation.md when present, else the legacy
-// classification.md.
+// remediationInput reads the controller-provided investigation.md and clamps
+// its suggested stage-2 parameters.
 func (a *Agent) remediationInput() (remediationParams, error) {
-	if raw, err := os.ReadFile(a.cfg.inputInvestigation()); err == nil {
-		inv, err := report.ParseInvestigation(raw)
-		if err != nil {
-			return remediationParams{}, err
-		}
-		return a.clampInvestigation(inv), nil
-	}
-	raw, err := os.ReadFile(a.cfg.inputClassification())
+	raw, err := os.ReadFile(a.cfg.inputInvestigation())
 	if err != nil {
 		return remediationParams{}, fmt.Errorf("input analysis: %w", err)
 	}
-	cls, err := report.ParseClassification(raw)
+	inv, err := report.ParseInvestigation(raw)
 	if err != nil {
 		return remediationParams{}, err
 	}
-	return a.clamp(cls), nil
+	return a.clampInvestigation(inv), nil
 }
 
 // clampInvestigation holds the investigation's suggested stage-2 parameters
-// to the configured ceilings/allowlist.
+// to the configured ceilings/allowlist, logging every correction.
 func (a *Agent) clampInvestigation(inv *report.Investigation) remediationParams {
-	return a.clamp(&report.Classification{Model: inv.Model, MaxTurns: inv.MaxTurns, TokenBudget: inv.TokenBudget})
-}
-
-func (a *Agent) clamp(cls *report.Classification) remediationParams {
-	p := remediationParams{model: cls.Model, maxTurns: cls.MaxTurns, budget: cls.TokenBudget}
+	p := remediationParams{model: inv.Model, maxTurns: inv.MaxTurns, budget: inv.TokenBudget}
 	if !slices.Contains(a.cfg.ModelAllowlist, p.model) {
-		a.cfg.Log.Warn("classification model not allowlisted; using default",
+		a.cfg.Log.Warn("investigation model not allowlisted; using default",
 			"suggested", p.model, "default", a.cfg.RemediateModel)
 		p.model = a.cfg.RemediateModel
 	}
 	if p.maxTurns < 1 || p.maxTurns > a.cfg.RemediateMaxTurns {
-		a.cfg.Log.Warn("classification max_turns clamped",
+		a.cfg.Log.Warn("investigation max_turns clamped",
 			"suggested", p.maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
 		p.maxTurns = a.cfg.RemediateMaxTurns
 	}
 	if p.budget < 1 || p.budget > a.cfg.RemediateTokenBudget {
-		a.cfg.Log.Warn("classification token_budget clamped",
+		a.cfg.Log.Warn("investigation token_budget clamped",
 			"suggested", p.budget, "ceiling", a.cfg.RemediateTokenBudget)
 		p.budget = a.cfg.RemediateTokenBudget
 	}
@@ -525,7 +412,7 @@ func stageOutcome(h harness.Harness, res runner.Result, runErr error) (envelope.
 
 // emit writes one envelope event to the runner's stdout.
 func (a *Agent) emit(e envelope.Event) {
-	e.Repo, e.Issue, e.Finding = a.cfg.Repo, a.cfg.Issue, a.cfg.Finding
+	e.Repo, e.Finding = a.cfg.Repo, a.cfg.Finding
 	line, err := e.Encode()
 	if err != nil {
 		a.cfg.Log.Error("encode envelope event", "error", err)

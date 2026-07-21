@@ -28,10 +28,10 @@ func testConfig() Config {
 		TTL:             2 * time.Hour,
 		AnthropicSecret: "anthropic",
 		Env: map[string]string{
-			"PATCHY_CLASSIFY_MODEL":   "claude-sonnet-5",
-			"PATCHY_CLASSIFY_TIMEOUT": "15m",
-			"GITHUB_TOKEN":            "must-never-pass-through",
-			"CLAUDE_CODE_OAUTH_TOKEN": "must-never-pass-through",
+			"PATCHY_INVESTIGATE_MODEL":   "claude-sonnet-5",
+			"PATCHY_INVESTIGATE_TIMEOUT": "15m",
+			"GITHUB_TOKEN":               "must-never-pass-through",
+			"CLAUDE_CODE_OAUTH_TOKEN":    "must-never-pass-through",
 		},
 		CPURequest:    "500m",
 		MemoryRequest: "1Gi",
@@ -42,64 +42,80 @@ func testConfig() Config {
 
 func testSpec() Spec {
 	return Spec{
-		Repo:          "octo/repo",
-		Issue:         42,
-		Attempt:       1,
-		Phase:         "classify+remediate",
-		CloneURL:      "https://github.com/octo/repo.git",
-		BaseSHA:       "0123456789abcdef0123456789abcdef01234567",
-		Token:         "ghs_secret_token_value",
-		IssueMarkdown: "# Issue 42\n",
+		Repo:           "octo/repo",
+		Attempt:        1,
+		Phase:          "investigate",
+		BaseSHA:        "0123456789abcdef0123456789abcdef01234567",
+		IssueMarkdown:  "# Finding\n",
+		Kind:           "investigation",
+		Owner:          "finding-abc123def0-1-inv-1",
+		Finding:        "finding-abc123def0-1",
+		ArtifactURL:    "http://patchy-source-controller.patchy.svc.cluster.local:9790/artifacts/deadbeef.tar.gz",
+		ArtifactDigest: "aa11bb22cc33dd44ee55ff6600112233445566778899aabbccddeeff00112233",
 	}
 }
 
-func TestName(t *testing.T) {
+func TestNameFor(t *testing.T) {
 	tests := []struct {
-		name           string
-		repoA, repoB   string
-		issueA, issueB int
-		attA, attB     int
-		wantEqual      bool
+		name               string
+		findingA, findingB string
+		kindA, kindB       string
+		attA, attB         int32
+		wantEqual          bool
 	}{
-		{"same inputs", "octo/repo", "octo/repo", 42, 42, 1, 1, true},
-		{"different repo", "octo/repo", "octo/other", 42, 42, 1, 1, false},
-		{"different issue", "octo/repo", "octo/repo", 42, 43, 1, 1, false},
-		{"different attempt", "octo/repo", "octo/repo", 42, 42, 1, 2, false},
+		{"same inputs", "finding-a-1", "finding-a-1", "investigation", "investigation", 1, 1, true},
+		{"different finding", "finding-a-1", "finding-b-1", "investigation", "investigation", 1, 1, false},
+		{"different kind", "finding-a-1", "finding-a-1", "investigation", "remediation", 1, 1, false},
+		{"different attempt", "finding-a-1", "finding-a-1", "remediation", "remediation", 1, 2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := Name(tt.repoA, tt.issueA, tt.attA)
-			b := Name(tt.repoB, tt.issueB, tt.attB)
+			a := NameFor(tt.findingA, tt.kindA, tt.attA)
+			b := NameFor(tt.findingB, tt.kindB, tt.attB)
 			if (a == b) != tt.wantEqual {
-				t.Errorf("Name equality = %v (%q vs %q), want %v", a == b, a, b, tt.wantEqual)
+				t.Errorf("NameFor equality = %v (%q vs %q), want %v", a == b, a, b, tt.wantEqual)
 			}
 		})
 	}
 }
 
-func TestNameShape(t *testing.T) {
-	long := strings.Repeat("a", 300) + "/" + strings.Repeat("b", 300)
+func TestNameForShape(t *testing.T) {
 	tests := []struct {
-		name string
-		repo string
+		name    string
+		finding string
+		kind    string
 	}{
-		{"short repo", "octo/repo"},
-		{"long repo", long},
-		{"uppercase repo", "Octo/RePo"},
+		{"investigation", "finding-abc123def0-1", "investigation"},
+		{"remediation", "finding-abc123def0-1", "remediation"},
+		{"long finding", "finding-" + strings.Repeat("a", 300), "investigation"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Name(tt.repo, 123456, 99)
+			got := NameFor(tt.finding, tt.kind, 99)
 			if len(got) > 63 {
-				t.Errorf("Name(%q) = %q: %d chars, want <= 63", tt.repo, got, len(got))
+				t.Errorf("NameFor(%q) = %q: %d chars, want <= 63", tt.finding, got, len(got))
 			}
 			if !dns1123.MatchString(got) {
-				t.Errorf("Name(%q) = %q is not DNS-1123 safe", tt.repo, got)
+				t.Errorf("NameFor(%q) = %q is not DNS-1123 safe", tt.finding, got)
 			}
 			if !strings.HasPrefix(got, "patchy-") {
-				t.Errorf("Name(%q) = %q, want patchy- prefix", tt.repo, got)
+				t.Errorf("NameFor(%q) = %q, want patchy- prefix", tt.finding, got)
 			}
 		})
+	}
+}
+
+func TestCreateRequiresKindAndFinding(t *testing.T) {
+	c := New(fake.NewClientset(), testConfig(), nil)
+	spec := testSpec()
+	spec.Kind = ""
+	if _, err := c.Create(context.Background(), spec); err == nil {
+		t.Error("Create without Kind succeeded, want error")
+	}
+	spec = testSpec()
+	spec.Finding = ""
+	if _, err := c.Create(context.Background(), spec); err == nil {
+		t.Error("Create without Finding succeeded, want error")
 	}
 }
 
@@ -112,7 +128,7 @@ func TestCreateJobShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if want := Name(spec.Repo, spec.Issue, spec.Attempt); name != want {
+	if want := NameFor(spec.Finding, spec.Kind, int32(spec.Attempt)); name != want {
 		t.Fatalf("Create returned %q, want deterministic %q", name, want)
 	}
 
@@ -122,11 +138,12 @@ func TestCreateJobShape(t *testing.T) {
 	}
 
 	wantLabels := map[string]string{
-		"app.kubernetes.io/name":       "patchy-agent",
-		"app.kubernetes.io/managed-by": "patchy",
-		"patchy.io/issue":              "42",
-		"patchy.io/attempt":            "1",
-		"patchy.io/repo":               "octo-repo",
+		"app.kubernetes.io/name":         "patchy-agent",
+		"app.kubernetes.io/managed-by":   "patchy",
+		"patchy.bitwisemedia.uk/attempt": "1",
+		"patchy.bitwisemedia.uk/kind":    "investigation",
+		"patchy.bitwisemedia.uk/owner":   "finding-abc123def0-1-inv-1",
+		"patchy.bitwisemedia.uk/finding": "finding-abc123def0-1",
 	}
 	for _, lbls := range []map[string]string{job.Labels, job.Spec.Template.Labels} {
 		for k, want := range wantLabels {
@@ -135,8 +152,8 @@ func TestCreateJobShape(t *testing.T) {
 			}
 		}
 	}
-	if got := job.Annotations["patchy.io/repo"]; got != "octo/repo" {
-		t.Errorf("annotation patchy.io/repo = %q, want octo/repo", got)
+	if got := job.Annotations["patchy.bitwisemedia.uk/repo"]; got != "octo/repo" {
+		t.Errorf("annotation patchy.bitwisemedia.uk/repo = %q, want octo/repo", got)
 	}
 
 	if got := *job.Spec.BackoffLimit; got != 0 {
@@ -166,7 +183,7 @@ func TestCreateJobShape(t *testing.T) {
 	}
 }
 
-func TestCreatePinnedClone(t *testing.T) {
+func TestCreateArtifactPrepare(t *testing.T) {
 	cs := fake.NewClientset()
 	c := New(cs, testConfig(), nil)
 	spec := testSpec()
@@ -182,34 +199,34 @@ func TestCreatePinnedClone(t *testing.T) {
 	prepare := job.Spec.Template.Spec.InitContainers[0]
 	script := strings.Join(prepare.Command, " ")
 
-	// The clone is pinned: a tag-free depth-1 fetch of the exact base SHA,
-	// never a moving branch ref.
-	if !strings.Contains(script, `fetch -q --depth 1 --no-tags origin "$PATCHY_BASE_SHA"`) {
-		t.Errorf("prepare script does not fetch the pinned base SHA:\n%s", script)
+	// The tree arrives as a digest-verified tarball; the base commit is
+	// synthetic. No git fetch, no clone, no credential.
+	if !strings.Contains(script, `curl -fsSL --retry 5 --retry-all-errors "$PATCHY_ARTIFACT_URL"`) {
+		t.Errorf("prepare script does not fetch the artifact with retries:\n%s", script)
 	}
-	if strings.Contains(script, "--branch") || strings.Contains(script, "git clone") {
-		t.Errorf("prepare script still clones a branch ref:\n%s", script)
+	if !strings.Contains(script, "sha256sum -c") {
+		t.Errorf("prepare script does not verify the digest:\n%s", script)
 	}
-	if !strings.Contains(script, "checkout -q --detach FETCH_HEAD") {
-		t.Errorf("prepare script does not check out FETCH_HEAD:\n%s", script)
+	if strings.Contains(script, "git fetch") || strings.Contains(script, "git clone") {
+		t.Errorf("prepare script still talks to a remote:\n%s", script)
 	}
 
 	envs := map[string]string{}
 	for _, env := range prepare.Env {
 		envs[env.Name] = env.Value
 	}
+	if envs["PATCHY_ARTIFACT_URL"] != spec.ArtifactURL {
+		t.Errorf("init PATCHY_ARTIFACT_URL = %q, want %q", envs["PATCHY_ARTIFACT_URL"], spec.ArtifactURL)
+	}
+	if envs["PATCHY_ARTIFACT_DIGEST"] != spec.ArtifactDigest {
+		t.Errorf("init PATCHY_ARTIFACT_DIGEST = %q, want %q", envs["PATCHY_ARTIFACT_DIGEST"], spec.ArtifactDigest)
+	}
 	if envs["PATCHY_BASE_SHA"] != spec.BaseSHA {
 		t.Errorf("init PATCHY_BASE_SHA = %q, want %q", envs["PATCHY_BASE_SHA"], spec.BaseSHA)
 	}
-	// The agent recovers the base from HEAD; the SHA env stays init-only.
-	for _, env := range job.Spec.Template.Spec.Containers[0].Env {
-		if env.Name == "PATCHY_BASE_SHA" {
-			t.Error("agent container carries PATCHY_BASE_SHA; it must be init-only")
-		}
-	}
 }
 
-func TestCreateTokenIsolation(t *testing.T) {
+func TestCreateCredentialIsolation(t *testing.T) {
 	cs := fake.NewClientset()
 	c := New(cs, testConfig(), nil)
 	spec := testSpec()
@@ -225,37 +242,17 @@ func TestCreateTokenIsolation(t *testing.T) {
 	prepare := job.Spec.Template.Spec.InitContainers[0]
 	agent := job.Spec.Template.Spec.Containers[0]
 
-	// The init container gets the token via secretKeyRef env only — never
-	// as a literal value or on the command line.
-	var tokenEnv *corev1.EnvVar
-	for i, env := range prepare.Env {
-		if env.Name == "GITHUB_TOKEN" {
-			tokenEnv = &prepare.Env[i]
-		}
-		if strings.Contains(env.Value, spec.Token) {
-			t.Errorf("init env %s carries the token as a literal value", env.Name)
+	// No container gets any GitHub credential in any form; the reserved
+	// GITHUB_TOKEN passthrough in Config.Env must not leak either.
+	for _, ct := range []corev1.Container{prepare, agent} {
+		for _, env := range ct.Env {
+			if env.Name == "GITHUB_TOKEN" {
+				t.Errorf("%s container has a GITHUB_TOKEN env", ct.Name)
+			}
 		}
 	}
-	if tokenEnv == nil {
-		t.Fatal("init container has no GITHUB_TOKEN env")
-	}
-	ref := tokenEnv.ValueFrom.SecretKeyRef
-	if ref == nil || ref.Name != name || ref.Key != "token" {
-		t.Errorf("GITHUB_TOKEN secretKeyRef = %+v, want secret %q key token", tokenEnv.ValueFrom, name)
-	}
-	if cmd := strings.Join(prepare.Command, " "); strings.Contains(cmd, spec.Token) {
-		t.Error("init container command contains the plaintext token")
-	}
-
-	// The agent container gets NO GitHub credential in any form: no token
-	// env, no literal token, and no reference to the per-Job secret.
+	// The agent container must not reference the per-Job secret or mount it.
 	for _, env := range agent.Env {
-		if env.Name == "GITHUB_TOKEN" {
-			t.Error("agent container has a GITHUB_TOKEN env")
-		}
-		if strings.Contains(env.Value, spec.Token) {
-			t.Errorf("agent env %s carries the token", env.Name)
-		}
 		if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil && env.ValueFrom.SecretKeyRef.Name == name {
 			t.Errorf("agent env %s references the per-Job secret", env.Name)
 		}
@@ -290,13 +287,14 @@ func TestCreateAgentEnv(t *testing.T) {
 		envs[env.Name] = env
 	}
 	wantValues := map[string]string{
-		"HOME":                    "/workspace",
-		"PATCHY_WORKSPACE":        "/workspace",
-		"PATCHY_REPO":             "octo/repo",
-		"PATCHY_ISSUE":            "42",
-		"PATCHY_PHASE":            "classify+remediate",
-		"PATCHY_CLASSIFY_MODEL":   "claude-sonnet-5",
-		"PATCHY_CLASSIFY_TIMEOUT": "15m",
+		"HOME":                       "/workspace",
+		"PATCHY_WORKSPACE":           "/workspace",
+		"PATCHY_REPO":                "octo/repo",
+		"PATCHY_PHASE":               "investigate",
+		"PATCHY_FINDING":             "finding-abc123def0-1",
+		"PATCHY_BASE_SHA":            spec.BaseSHA,
+		"PATCHY_INVESTIGATE_MODEL":   "claude-sonnet-5",
+		"PATCHY_INVESTIGATE_TIMEOUT": "15m",
 	}
 	for k, want := range wantValues {
 		if got, ok := envs[k]; !ok || got.Value != want {
@@ -397,19 +395,19 @@ func TestCreateSecurityContexts(t *testing.T) {
 
 func TestCreateSecret(t *testing.T) {
 	tests := []struct {
-		name               string
-		classification     string
-		wantClassification bool
+		name              string
+		investigation     string
+		wantInvestigation bool
 	}{
-		{"classify+remediate has no classification", "", false},
-		{"remediate re-run carries classification", "# Classification\n", true},
+		{"investigation run carries no analysis", "", false},
+		{"remediation run carries the analysis", "# Investigation\n", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cs := fake.NewClientset()
 			c := New(cs, testConfig(), nil)
 			spec := testSpec()
-			spec.ClassificationMarkdown = tt.classification
+			spec.InvestigationMarkdown = tt.investigation
 
 			name, err := c.Create(context.Background(), spec)
 			if err != nil {
@@ -419,14 +417,14 @@ func TestCreateSecret(t *testing.T) {
 			if err != nil {
 				t.Fatalf("get secret: %v", err)
 			}
-			if got := string(secret.Data["token"]); got != spec.Token {
-				t.Errorf("secret token = %q, want %q", got, spec.Token)
+			if _, ok := secret.Data["token"]; ok {
+				t.Error("secret carries a token key — the flow must be credential-less")
 			}
 			if got := string(secret.Data["issue.md"]); got != spec.IssueMarkdown {
 				t.Errorf("secret issue.md = %q, want %q", got, spec.IssueMarkdown)
 			}
-			if _, ok := secret.Data["classification.md"]; ok != tt.wantClassification {
-				t.Errorf("classification.md present = %v, want %v", ok, tt.wantClassification)
+			if _, ok := secret.Data["investigation.md"]; ok != tt.wantInvestigation {
+				t.Errorf("investigation.md present = %v, want %v", ok, tt.wantInvestigation)
 			}
 			if len(secret.OwnerReferences) != 1 {
 				t.Fatalf("secret ownerReferences = %+v, want exactly one", secret.OwnerReferences)
@@ -545,46 +543,6 @@ func TestDelete(t *testing.T) {
 	}
 	if err := c.Delete(context.Background(), name); err == nil {
 		t.Error("Delete of a missing job succeeded, want error")
-	}
-}
-
-func TestList(t *testing.T) {
-	cs := fake.NewClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "unrelated", Namespace: "patchy-agents"},
-	})
-	c := New(cs, testConfig(), nil)
-
-	specs := []Spec{testSpec(), testSpec()}
-	specs[1].Repo = "octo/other"
-	specs[1].Issue = 7
-	specs[1].Attempt = 3
-	for _, spec := range specs {
-		if _, err := c.Create(context.Background(), spec); err != nil {
-			t.Fatalf("Create(%+v): %v", spec, err)
-		}
-	}
-
-	owned, err := c.List(context.Background())
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(owned) != 2 {
-		t.Fatalf("List returned %d jobs, want 2 (unlabelled jobs excluded)", len(owned))
-	}
-	byName := map[string]Owned{}
-	for _, o := range owned {
-		byName[o.Name] = o
-	}
-	for _, spec := range specs {
-		o, ok := byName[Name(spec.Repo, spec.Issue, spec.Attempt)]
-		if !ok {
-			t.Errorf("List is missing job for %s#%d", spec.Repo, spec.Issue)
-			continue
-		}
-		if o.Repo != spec.Repo || o.Issue != spec.Issue || o.Attempt != spec.Attempt {
-			t.Errorf("List round-trip = %+v, want repo %s issue %d attempt %d",
-				o, spec.Repo, spec.Issue, spec.Attempt)
-		}
 	}
 }
 

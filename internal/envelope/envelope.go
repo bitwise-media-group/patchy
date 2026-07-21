@@ -25,12 +25,9 @@ type Type string
 // The event types: one per completed stage, plus fatal for a runner that
 // could not produce a stage result at all.
 const (
-	// TypeClassification survives only for the legacy combined pipeline; the
-	// split pipeline emits TypeInvestigation.
-	TypeClassification Type = "classification"
-	TypeInvestigation  Type = "investigation"
-	TypeRemediation    Type = "remediation"
-	TypeFatal          Type = "fatal"
+	TypeInvestigation Type = "investigation"
+	TypeRemediation   Type = "remediation"
+	TypeFatal         Type = "fatal"
 )
 
 // Outcome describes how a stage ended.
@@ -70,26 +67,6 @@ type Stage struct {
 	ElapsedSeconds float64 `json:"elapsed_seconds"`
 	// Detail explains a non-ok outcome for humans.
 	Detail string `json:"detail,omitempty"`
-}
-
-// Classification is the stage-1 event payload.
-type Classification struct {
-	Stage
-	ReportMarkdown string  `json:"report_markdown,omitempty"`
-	Recommendation string  `json:"recommendation,omitempty"`
-	Priority       string  `json:"priority,omitempty"`
-	Severity       string  `json:"severity,omitempty"`
-	Confidence     float64 `json:"confidence,omitempty"`
-	// RemediationModel/MaxTurns/TokenBudget are the CLAMPED stage-2
-	// parameters (allowlist and ceilings applied), not the raw suggestion.
-	RemediationModel string `json:"remediation_model,omitempty"`
-	MaxTurns         int    `json:"max_turns,omitempty"`
-	TokenBudget      int    `json:"token_budget,omitempty"`
-	// WillRemediate is the runner's local decision to continue to stage 2.
-	WillRemediate bool `json:"will_remediate"`
-	// AwaitApproval marks the breaking-change hold (a better-but-breaking
-	// fix exists): remediation waits for a human /approve.
-	AwaitApproval bool `json:"await_approval"`
 }
 
 // AnalysisResult is one investigation dimension: a rating plus a short
@@ -164,15 +141,13 @@ type Remediation struct {
 type Event struct {
 	V    int  `json:"v"`
 	Type Type `json:"type"`
-	// Issue context so events are self-contained.
-	Repo  string `json:"repo"`
-	Issue int    `json:"issue,omitempty"`
-	// Finding names the owning Finding resource (split pipeline).
+	// Finding context so events are self-contained.
+	Repo string `json:"repo"`
+	// Finding names the owning Finding resource.
 	Finding string `json:"finding,omitempty"`
 
-	Classification *Classification `json:"classification,omitempty"`
-	Investigation  *Investigation  `json:"investigation,omitempty"`
-	Remediation    *Remediation    `json:"remediation,omitempty"`
+	Investigation *Investigation `json:"investigation,omitempty"`
+	Remediation   *Remediation   `json:"remediation,omitempty"`
 	// Error is set on fatal events.
 	Error string `json:"error,omitempty"`
 }

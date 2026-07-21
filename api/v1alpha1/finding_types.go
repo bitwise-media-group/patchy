@@ -150,8 +150,7 @@ type FindingSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
 	Related []RelatedFinding `json:"related,omitempty"`
-	// Suspend pauses pipeline progress for this finding (fluxcd convention;
-	// human-written).
+	// Suspend pauses pipeline progress for this finding (human-written).
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 	// Approval is the recorded human /approve, written by

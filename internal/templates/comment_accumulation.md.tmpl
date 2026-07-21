@@ -1,9 +1,0 @@
-Accumulated alert [#{{.Number}}]({{.HTMLURL}}) into this finding.
-{{- if .Locations}}
-
-| Location |
-| -------- |
-{{- range .Locations}}
-| `{{.Path}}:{{.StartLine}}` |
-{{- end}}
-{{- end}}

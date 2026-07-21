@@ -8,7 +8,16 @@ import (
 	"testing"
 )
 
-const validClassification = `---
+const validInvestigation = `---
+exploitability:
+  rating: high
+  summary: reachable from the request path
+likelihood:
+  rating: medium
+  summary: requires an authenticated caller
+impact:
+  rating: high
+  summary: full table read
 recommendation: remediate
 priority: high
 severity: high
@@ -24,27 +33,43 @@ token_budget: 200000
 The finding is real.
 `
 
-func TestParseClassification(t *testing.T) {
-	c, err := ParseClassification([]byte(validClassification))
+func TestParseInvestigation(t *testing.T) {
+	inv, err := ParseInvestigation([]byte(validInvestigation))
 	if err != nil {
-		t.Fatalf("ParseClassification() error = %v", err)
+		t.Fatalf("ParseInvestigation() error = %v", err)
 	}
-	if c.Recommendation != RecommendRemediate || c.Priority != "high" || c.Severity != "high" {
-		t.Errorf("parsed = %+v", c)
+	if inv.Recommendation != RecommendRemediate || inv.Priority != "high" || inv.Severity != "high" {
+		t.Errorf("parsed = %+v", inv)
 	}
-	if c.Confidence == nil || *c.Confidence != 0.85 {
-		t.Errorf("Confidence = %v, want 0.85", c.Confidence)
+	if inv.Exploitability.Rating != "high" || inv.Likelihood.Rating != "medium" || inv.Impact.Rating != "high" {
+		t.Errorf("dimensions = %s/%s/%s, want high/medium/high",
+			inv.Exploitability.Rating, inv.Likelihood.Rating, inv.Impact.Rating)
 	}
-	if c.Model != "claude-sonnet-5" || c.MaxTurns != 40 || c.TokenBudget != 200000 {
-		t.Errorf("remediation params = %q/%d/%d", c.Model, c.MaxTurns, c.TokenBudget)
+	if inv.Exploitability.Summary == "" {
+		t.Error("exploitability summary lost")
 	}
-	if !strings.Contains(c.Body, "The finding is real.") {
-		t.Errorf("Body = %q", c.Body)
+	if inv.Confidence == nil || *inv.Confidence != 0.85 {
+		t.Errorf("Confidence = %v, want 0.85", inv.Confidence)
+	}
+	if inv.Model != "claude-sonnet-5" || inv.MaxTurns != 40 || inv.TokenBudget != 200000 {
+		t.Errorf("remediation params = %q/%d/%d", inv.Model, inv.MaxTurns, inv.TokenBudget)
+	}
+	if !strings.Contains(inv.Body, "The finding is real.") {
+		t.Errorf("Body = %q", inv.Body)
 	}
 }
 
-func TestParseClassificationIgnoreNeedsNoModel(t *testing.T) {
+func TestParseInvestigationIgnoreNeedsNoModel(t *testing.T) {
 	src := `---
+exploitability:
+  rating: none
+  summary: sink is constant
+likelihood:
+  rating: none
+  summary: not reachable
+impact:
+  rating: low
+  summary: nothing sensitive
 recommendation: ignore
 priority: low
 severity: low
@@ -53,17 +78,17 @@ breaking_change_available: false
 ---
 False positive: the sink is constant.
 `
-	c, err := ParseClassification([]byte(src))
+	inv, err := ParseInvestigation([]byte(src))
 	if err != nil {
-		t.Fatalf("ParseClassification() error = %v", err)
+		t.Fatalf("ParseInvestigation() error = %v", err)
 	}
-	if c.Recommendation != RecommendIgnore {
-		t.Errorf("Recommendation = %q", c.Recommendation)
+	if inv.Recommendation != RecommendIgnore {
+		t.Errorf("Recommendation = %q", inv.Recommendation)
 	}
 }
 
-func TestParseClassificationErrors(t *testing.T) {
-	replace := func(old, new string) string { return strings.Replace(validClassification, old, new, 1) }
+func TestParseInvestigationErrors(t *testing.T) {
+	replace := func(old, new string) string { return strings.Replace(validInvestigation, old, new, 1) }
 	tests := []struct {
 		name string
 		src  string
@@ -74,6 +99,7 @@ func TestParseClassificationErrors(t *testing.T) {
 		{"bad recommendation", replace("recommendation: remediate", "recommendation: dismiss")},
 		{"bad priority", replace("priority: high", "priority: urgent")},
 		{"bad severity", replace("severity: high", "severity: severe")},
+		{"bad rating", replace("rating: medium", "rating: sometimes")},
 		{"missing confidence", replace("confidence: 0.85\n", "")},
 		{"confidence out of range", replace("confidence: 0.85", "confidence: 1.5")},
 		{"remediate without model", replace("model: claude-sonnet-5\n", "")},
@@ -83,8 +109,8 @@ func TestParseClassificationErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := ParseClassification([]byte(tt.src)); err == nil {
-				t.Error("ParseClassification() error = nil, want error")
+			if _, err := ParseInvestigation([]byte(tt.src)); err == nil {
+				t.Error("ParseInvestigation() error = nil, want error")
 			}
 		})
 	}

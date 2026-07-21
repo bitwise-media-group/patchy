@@ -5,7 +5,7 @@ package v1alpha1
 
 // Condition types. Every kind carries Ready; the rest are noted per kind.
 const (
-	// ConditionReady is the fluxcd-style summary condition on every kind.
+	// ConditionReady is the summary condition on every kind.
 	ConditionReady = "Ready"
 	// ConditionStalled marks an object that cannot progress without operator
 	// action (ambiguous forge match, oversized artifact, ambiguous tracking).

@@ -47,23 +47,6 @@ func (p podLogs) Stream(ctx context.Context, pod, container string, follow bool)
 	return p.cs.CoreV1().Pods(p.namespace).GetLogs(pod, opts).Stream(ctx)
 }
 
-// Follow streams the agent container's stdout, decoding envelope events and
-// delivering them to fn as they arrive. It returns when the pod's log stream
-// ends. If the log stream cannot be opened or breaks, the caller falls back
-// to Result.
-func (c *Client) Follow(ctx context.Context, jobName string, fn func(envelope.Event) error) error {
-	pod, err := c.waitForAgent(ctx, jobName, false)
-	if err != nil {
-		return err
-	}
-	stream, err := c.logs.Stream(ctx, pod, agentContainerName, true)
-	if err != nil {
-		return fmt.Errorf("jobs: follow %s: %w", jobName, err)
-	}
-	defer func() { _ = stream.Close() }()
-	return scanEvents(stream, fn)
-}
-
 // Result waits for the agent container to finish, then reads its full logs
 // and returns every envelope event found — the idempotent
 // fallback/reconciliation path. Waiting for termination is what makes the

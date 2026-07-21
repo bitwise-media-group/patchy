@@ -3,21 +3,34 @@
 #
 # ---- repo-local tasks (the long tail the library intentionally omits) -------
 
-# The e2e suite is a separate module: it builds the real controller binaries
-# and drives them with recorded webhook fixtures against an in-memory GitHub.
-# No cluster, no credentials, no network.
+# The e2e suite is a separate module: it boots an envtest kube-apiserver
+# (the CRD state machine), builds the real controller binaries, and drives
+# them with recorded webhook fixtures against an in-memory GitHub. No real
+# cluster, no credentials, no network beyond the envtest asset download.
 [e2e]
-description = "run the end-to-end suite (real binaries, fake GitHub)"
-dir = "{{cwd}}/e2e"
-run = "go test ./... -count=1"
+description = "run the end-to-end suite (envtest, real binaries, fake GitHub)"
+dir = "{{cwd}}"
+run = "./hack/e2e.sh"
 
-# Deliver a recorded webhook fixture to a locally-running controller, signed
-# with its secret — the local stand-in for GitHub.
-# Example: mise run replay -- -secret-file dev.secret e2e/fixtures/webhooks/issues.opened.json
+# Deliver a recorded webhook fixture to a locally-running
+# integration-controller, signed with its secret — the local stand-in for
+# GitHub's webhook leg. -dev-secret signs with the dev overlay's placeholder
+# webhook secret; -secret-file <file> supplies a real one. The task runs in
+# e2e/, so relative fixture paths resolve from there.
+# Example: mise run replay -- -dev-secret fixtures/webhooks/code_scanning_alert.created.json
 [replay]
 description = "sign and deliver a webhook fixture to a running controller"
 dir = "{{cwd}}/e2e"
 run = "go run ./replay"
+
+# The e2e suite's in-memory GitHub API as a standalone dev server. The
+# dev-fake overlay runs the same server in-cluster (nothing on the host
+# needed); this task is for running it directly — poking at the API,
+# developing the fake itself. See docs/deployment/colima.md.
+[fakegithub]
+description = "run the fake GitHub API standalone on the host"
+dir = "{{cwd}}/e2e"
+run = "go run ./fakegithub/cmd"
 
 # Everything derived from api/v1alpha1: deepcopy methods (controller-gen
 # object) and the CRD manifests for both kustomize and helm (hack/codegen.sh).

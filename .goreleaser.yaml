@@ -74,9 +74,25 @@ builds:
       goarch:
           - amd64
           - arm64
-    - id: webhook-controller
-      main: ./cmd/webhook-controller
-      binary: webhook-controller
+    - id: integration-controller
+      main: ./cmd/integration-controller
+      binary: integration-controller
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+      goarch:
+          - amd64
+          - arm64
+    - id: investigation-controller
+      main: ./cmd/investigation-controller
+      binary: investigation-controller
       flags:
           - -trimpath
       ldflags:
@@ -181,11 +197,11 @@ dockers_v2:
           org.opencontainers.image.licenses: MIT
           org.opencontainers.image.revision: "{{ .FullCommit }}"
           org.opencontainers.image.version: "{{ .Version }}"
-    - id: webhook-controller
-      ids: [webhook-controller]
+    - id: integration-controller
+      ids: [integration-controller]
       dockerfile: Dockerfile.controller
       images:
-          - ghcr.io/bitwise-media-group/patchy/webhook-controller
+          - ghcr.io/bitwise-media-group/patchy/integration-controller
       tags:
           - v{{ .Version }}
           - latest
@@ -193,7 +209,25 @@ dockers_v2:
           - linux/amd64
           - linux/arm64
       build_args:
-          TARGET: webhook-controller
+          TARGET: integration-controller
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: investigation-controller
+      ids: [investigation-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/investigation-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: investigation-controller
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT
@@ -233,7 +267,7 @@ docker_digest:
 # ghcr as OCI artifacts next to each image. --use-signing-config=false pins
 # cosign v3 to the legacy signature format (.sig tag + Rekor upload) instead of
 # a bundle attached via the OCI referrers API: kyverno's Cosign verification
-# (flux-manifests verify-platform-signature) only reads the legacy format.
+# only reads the legacy format.
 # Runs only on publish; `make snapshot` additionally skips it via --skip=sign.
 # Verify with:
 #   cosign verify ghcr.io/bitwise-media-group/patchy/<name>:vX.Y.Z \

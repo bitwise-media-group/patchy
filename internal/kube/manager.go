@@ -18,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -35,13 +36,22 @@ type Options struct {
 	// LeaderElectionNamespace holds the Lease; required when running outside
 	// the cluster (in-cluster it defaults to the pod's namespace).
 	LeaderElectionNamespace string
-	// Namespaces scopes the cache; empty watches the manager's default. The
-	// job controllers list both the release and agents namespaces — without
-	// the agents namespace here, their Job watches silently see nothing.
+	// Namespaces scopes the cache; empty watches the manager's default.
 	Namespaces []string
+	// AgentNamespace confines the Job and Pod informers to the agents
+	// namespace instead of Namespaces. The job controllers' RBAC grants
+	// jobs/pods only there (Role patchy-agent-jobs) — caching those kinds in
+	// the release namespace too would need grants the controllers must not
+	// have, and caching the CR kinds in the agents namespace trips forbidden
+	// list/watch errors that keep the cache from ever syncing. Empty leaves
+	// every kind on Namespaces.
+	AgentNamespace string
 	// MetricsAddr for controller-runtime's own metrics server; empty disables
 	// it (patchy's telemetry is OpenTelemetry via internal/telemetry).
 	MetricsAddr string
+	// HealthAddr serves /healthz and /readyz for kubelet probes; empty
+	// disables the endpoint.
+	HealthAddr string
 	// Log is bridged to controller-runtime's logr. nil discards.
 	Log *slog.Logger
 }
@@ -89,8 +99,9 @@ func NewManager(opts Options) (ctrl.Manager, error) {
 	}
 
 	mgrOpts := ctrl.Options{
-		Scheme:  Scheme(),
-		Metrics: metricsserver.Options{BindAddress: bindAddr(opts.MetricsAddr)},
+		Scheme:                 Scheme(),
+		Metrics:                metricsserver.Options{BindAddress: bindAddr(opts.MetricsAddr)},
+		HealthProbeBindAddress: opts.HealthAddr,
 		Client: client.Options{
 			Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.Secret{}}},
 		},
@@ -107,10 +118,25 @@ func NewManager(opts Options) (ctrl.Manager, error) {
 		}
 		mgrOpts.Cache = cache.Options{DefaultNamespaces: nss}
 	}
+	if opts.AgentNamespace != "" {
+		agentNS := map[string]cache.Config{opts.AgentNamespace: {}}
+		mgrOpts.Cache.ByObject = map[client.Object]cache.ByObject{
+			&batchv1.Job{}: {Namespaces: agentNS},
+			&corev1.Pod{}:  {Namespaces: agentNS},
+		}
+	}
 
 	mgr, err := ctrl.NewManager(cfg, mgrOpts)
 	if err != nil {
 		return nil, fmt.Errorf("build manager: %w", err)
+	}
+	if opts.HealthAddr != "" {
+		if err := mgr.AddHealthzCheck("ping", healthz.Ping); err != nil {
+			return nil, fmt.Errorf("add healthz check: %w", err)
+		}
+		if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
+			return nil, fmt.Errorf("add readyz check: %w", err)
+		}
 	}
 	return mgr, nil
 }

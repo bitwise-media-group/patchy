@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
-	"github.com/bitwise-media-group/patchy/internal/integrationctrl"
+	"github.com/bitwise-media-group/patchy/internal/controller/integration"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
@@ -32,6 +32,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 		"how long alerts of one finding family accumulate into a single finding")
 	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
+	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	return cmd
 }
 
@@ -61,21 +62,22 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		LeaderElectionID:        "patchy-integration-controller-leader",
 		LeaderElectionNamespace: namespace,
 		Namespaces:              []string{namespace},
+		HealthAddr:              opts.String("health-addr"),
 		Log:                     log,
 	})
 	if err != nil {
 		return err
 	}
 
-	creds := integrationctrl.NewCreds(mgr.GetAPIReader())
-	ingestor := &integrationctrl.Ingestor{
+	creds := integration.NewCreds(mgr.GetAPIReader())
+	ingestor := &integration.Ingestor{
 		Client:    mgr.GetClient(),
 		Namespace: namespace,
 		Window:    opts.Duration("accumulation-window"),
 		Log:       log,
 	}
-	signals := &integrationctrl.Signals{Client: mgr.GetClient(), Namespace: namespace, Log: log}
-	receiver := &integrationctrl.Receiver{
+	signals := &integration.Signals{Client: mgr.GetClient(), Namespace: namespace, Log: log}
+	receiver := &integration.Receiver{
 		Reader:    mgr.GetClient(),
 		Creds:     creds,
 		Ingest:    ingestor,
@@ -84,11 +86,11 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Log:       log,
 	}
 
-	ic := &integrationctrl.IntegrationReconciler{Client: mgr.GetClient(), Creds: creds, Log: log}
+	ic := &integration.IntegrationReconciler{Client: mgr.GetClient(), Creds: creds, Log: log}
 	if err := ic.SetupWithManager(mgr); err != nil {
 		return err
 	}
-	fp := &integrationctrl.FindingReconciler{Client: mgr.GetClient(), Creds: creds, Namespace: namespace, Log: log}
+	fp := &integration.FindingReconciler{Client: mgr.GetClient(), Creds: creds, Namespace: namespace, Log: log}
 	if err := fp.SetupWithManager(mgr); err != nil {
 		return err
 	}

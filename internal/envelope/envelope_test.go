@@ -11,10 +11,10 @@ import (
 
 func testEvent() Event {
 	return Event{
-		Type:  TypeClassification,
-		Repo:  "acme/shop",
-		Issue: 123,
-		Classification: &Classification{
+		Type:    TypeInvestigation,
+		Repo:    "acme/shop",
+		Finding: "finding-abc123def0-1",
+		Investigation: &Investigation{
 			Stage: Stage{
 				Outcome: OutcomeOK, Harness: "claude", Model: "claude-sonnet-5",
 				SessionID: "a1b2c3d4-0000-0000-0000-000000000000", NumTurns: 9,
@@ -22,6 +22,9 @@ func testEvent() Event {
 				ElapsedSeconds: 93.1,
 			},
 			ReportMarkdown:   "report",
+			Exploitability:   AnalysisResult{Rating: "high", Summary: "reachable from the request path"},
+			Likelihood:       AnalysisResult{Rating: "medium", Summary: "requires authenticated caller"},
+			Impact:           AnalysisResult{Rating: "critical", Summary: "full data read"},
 			Recommendation:   "remediate",
 			Priority:         "high",
 			Severity:         "high",
@@ -29,7 +32,6 @@ func testEvent() Event {
 			RemediationModel: "claude-sonnet-5",
 			MaxTurns:         40,
 			TokenBudget:      200000,
-			WillRemediate:    true,
 		},
 	}
 }
@@ -64,7 +66,7 @@ func TestDecodeWrappedLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := Decode([]byte("2026-07-13T12:00:00Z " + line))
-	if !ok || got.Issue != 123 {
+	if !ok || got.Finding != "finding-abc123def0-1" {
 		t.Errorf("Decode(wrapped) = %+v, %v; want event, true", got, ok)
 	}
 }
@@ -76,7 +78,7 @@ func TestDecodeRejects(t *testing.T) {
 	}{
 		{"plain log line", "level=INFO msg=hello"},
 		{"prefix with bad json", Prefix + "{nope"},
-		{"wrong version", Prefix + `{"v":99,"type":"classification"}`},
+		{"wrong version", Prefix + `{"v":99,"type":"investigation"}`},
 		{"superseded v1", Prefix + `{"v":1,"type":"remediation"}`},
 		{"missing type", Prefix + `{"v":2}`},
 		{"empty", ""},
@@ -92,13 +94,13 @@ func TestDecodeRejects(t *testing.T) {
 
 func TestRemediationChangesetRoundTrip(t *testing.T) {
 	want := Event{
-		Type:  TypeRemediation,
-		Repo:  "acme/shop",
-		Issue: 123,
+		Type:    TypeRemediation,
+		Repo:    "acme/shop",
+		Finding: "finding-abc123def0-1",
 		Remediation: &Remediation{
 			Stage:   Stage{Outcome: OutcomeOK, Harness: "claude", Model: "claude-sonnet-5"},
 			Success: true,
-			Branch:  "patchy/issue-123",
+			Branch:  "patchy/finding-abc123def0-1",
 			Changeset: &Changeset{
 				BaseSHA:       "0123456789abcdef0123456789abcdef01234567",
 				CommitMessage: "fix(security): escape sink",
@@ -125,7 +127,7 @@ func TestRemediationChangesetRoundTrip(t *testing.T) {
 }
 
 func TestFatalEvent(t *testing.T) {
-	line, err := (Event{Type: TypeFatal, Repo: "acme/shop", Issue: 5, Error: "workspace missing"}).Encode()
+	line, err := (Event{Type: TypeFatal, Repo: "acme/shop", Error: "workspace missing"}).Encode()
 	if err != nil {
 		t.Fatal(err)
 	}

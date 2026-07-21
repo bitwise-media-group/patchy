@@ -12,13 +12,25 @@
         "posturePolicies": [{ "controlID": "C-0211" }]
     },
     {
-        "name": "remediation-controller-needs-the-kubernetes-api",
+        "name": "fakegithub-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
         "actions": ["alertOnly"],
         "resources": [
             {
                 "designatorType": "Attributes",
-                "attributes": { "name": ".*patchy-remediation-controller" }
+                "attributes": { "kind": "Deployment", "name": "patchy-fakegithub" }
+            }
+        ],
+        "posturePolicies": [{ "controlID": "C-0211" }]
+    },
+    {
+        "name": "controllers-need-the-kubernetes-api",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["alertOnly"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "name": ".*patchy-.*-controller" }
             }
         ],
         "posturePolicies": [
@@ -29,13 +41,13 @@
         ]
     },
     {
-        "name": "remediation-controller-rbac-is-the-minimal-job-lifecycle",
+        "name": "controllers-rbac-is-the-minimal-cr-and-job-lifecycle",
         "policyType": "postureExceptionPolicy",
         "actions": ["alertOnly"],
         "resources": [
             {
                 "designatorType": "Attributes",
-                "attributes": { "name": ".*patchy-remediation-controller" }
+                "attributes": { "name": ".*patchy-.*-controller" }
             }
         ],
         "posturePolicies": [
@@ -101,7 +113,7 @@
         "resources": [
             {
                 "designatorType": "Attributes",
-                "attributes": { "kind": "Ingress", "name": "patchy-webhook", "namespace": "patchy" }
+                "attributes": { "kind": "Ingress", "name": "patchy-integration", "namespace": "patchy" }
             }
         ],
         "posturePolicies": [{ "controlID": "C-0263" }]

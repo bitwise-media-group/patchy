@@ -155,9 +155,3 @@ func (a *App) installationID(ctx context.Context, repo Repo) (int64, error) {
 	a.mu.Unlock()
 	return id, nil
 }
-
-// For implements Resolver over Installation.
-func (a *App) For(ctx context.Context, repo Repo) (*Client, error) { return a.Installation(ctx, repo) }
-
-// All implements Resolver over Installations.
-func (a *App) All(ctx context.Context) ([]*Client, error) { return a.Installations(ctx) }

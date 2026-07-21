@@ -9,6 +9,23 @@ import (
 	"slices"
 )
 
+// Recommendation is the investigation's verdict. The values are the same
+// vocabulary internal/labels stamps on the tracking issue
+// (security-recommendation: <value>) — one vocabulary, no mapping.
+type Recommendation string
+
+// The investigation verdicts.
+const (
+	RecommendIgnore    Recommendation = "ignore"
+	RecommendRemediate Recommendation = "remediate"
+	RecommendManual    Recommendation = "manual"
+)
+
+// Level is a priority or severity value.
+type Level string
+
+var validLevels = []Level{"low", "medium", "high", "critical"}
+
 // Rating grades one investigation dimension. "none" is an assessed
 // "not applicable / no realistic risk" — distinct from an absent rating,
 // which fails validation.
@@ -24,9 +41,9 @@ type Analysis struct {
 	Summary string `yaml:"summary"`
 }
 
-// Investigation is the parsed investigation report — the split pipeline's
-// analysis contract. It extends the classification shape with the three
-// assessed dimensions the scheduler's priority derives from.
+// Investigation is the parsed investigation report — the analysis stage's
+// contract, carrying the three assessed dimensions the scheduler's priority
+// derives from.
 type Investigation struct {
 	// Exploitability: can the vulnerability actually be exercised here?
 	Exploitability Analysis `yaml:"exploitability"`

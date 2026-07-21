@@ -7,31 +7,40 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"testing"
 
-	"github.com/bitwise-media-group/patchy/pkg/source"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
 
-func testManifest() Manifest {
-	return Manifest{
-		Source:      "ghas",
-		Advisories:  []string{"CWE-79", "CVE-2026-1234"},
-		RuleID:      "js/reflected-xss",
-		Title:       "Reflected cross-site scripting",
-		Description: "Directly writing user input to the page allows XSS.\n\nSanitize all user input.",
-		Severity:    "high",
-		Alerts: []Alert{
-			{
-				Number:  7,
-				HTMLURL: "https://github.com/acme/shop/security/code-scanning/7",
-				Locations: []source.Location{
-					{Path: "src/render.js", StartLine: 42, EndLine: 44},
+func testFinding() *v1alpha1.Finding {
+	return &v1alpha1.Finding{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "patchy", Name: "finding-abc123def0-1"},
+		Spec: v1alpha1.FindingSpec{
+			Source: "github-code-scanning",
+			Repository: &v1alpha1.FindingRepository{
+				Type: "git", URL: "https://github.com/acme/shop", Name: "acme/shop", DefaultBranch: "main",
+			},
+			Advisories:  []string{"CWE-79", "CVE-2026-1234"},
+			RuleID:      "js/reflected-xss",
+			Title:       "Reflected cross-site scripting",
+			Description: "Directly writing user input to the page allows XSS.\n\nSanitize all user input.",
+			Severity:    v1alpha1.LevelHigh,
+			Alerts: []v1alpha1.Alert{
+				{
+					ID:  "7",
+					URL: "https://github.com/acme/shop/security/code-scanning/7",
+					Locations: []v1alpha1.Location{
+						{Path: "src/render.js", StartLine: 42, EndLine: 44},
+					},
 				},
 			},
 		},
+		Status: v1alpha1.FindingStatus{Phase: v1alpha1.PhaseOpened},
 	}
 }
 
@@ -54,32 +63,16 @@ func golden(t *testing.T, name, got string) {
 }
 
 func TestGoldens(t *testing.T) {
-	m := testManifest()
 	tests := []struct {
 		name   string
 		render func() (string, error)
 	}{
-		{"issue.md", func() (string, error) { return RenderIssueBody(m) }},
-		{"comment_accumulation.md", func() (string, error) { return AccumulationComment(m.Alerts[0]) }},
-		{"comment_enhancement.md", func() (string, error) {
-			return EnhancementComment("cmdb", "**Owners:** @octocat\n**System:** storefront")
-		}},
-		{"comment_report.md", func() (string, error) { return ReportComment("Classification", "report body here") }},
-		{"comment_approve.md", func() (string, error) {
-			return ApproveComment("Remediation confidence 0.61 is below the 0.75 threshold.")
-		}},
+		{"finding_issue.md", func() (string, error) { return RenderFindingIssue(testFinding()) }},
 		{"pr_body.md", func() (string, error) { return PRBody(123, "remediation report here") }},
-		{"workspace_issue.md", func() (string, error) {
-			return RenderWorkspaceIssue(WorkspaceIssue{
-				Repo: "acme/shop", Number: 123, Title: "[ghas] CWE-79: Reflected cross-site scripting",
-				Body:     "issue body with manifest",
-				Comments: []string{"### Context — `cmdb`\n\n**Owners:** @octocat", "accumulated alert #9"},
-			})
-		}},
-		{"prompt_classify.md", func() (string, error) {
-			return RenderClassifyPrompt(ClassifyPrompt{
+		{"prompt_investigate.md", func() (string, error) {
+			return RenderInvestigatePrompt(InvestigatePrompt{
 				IssuePath:          "/workspace/input/issue.md",
-				ReportPath:         "/workspace/reports/classification.md",
+				ReportPath:         "/workspace/reports/investigation.md",
 				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-4-8"},
 				MaxTurnsCeiling:    80,
 				TokenBudgetCeiling: 400000,
@@ -87,10 +80,10 @@ func TestGoldens(t *testing.T) {
 		}},
 		{"prompt_remediate.md", func() (string, error) {
 			return RenderRemediatePrompt(RemediatePrompt{
-				IssuePath:          "/workspace/input/issue.md",
-				ClassificationPath: "/workspace/reports/classification.md",
-				ReportPath:         "/workspace/reports/remediation.md",
-				CommitScriptPath:   "/workspace/commit.sh",
+				IssuePath:         "/workspace/input/issue.md",
+				InvestigationPath: "/workspace/input/investigation.md",
+				ReportPath:        "/workspace/reports/remediation.md",
+				CommitScriptPath:  "/workspace/commit.sh",
 			})
 		}},
 	}
@@ -105,78 +98,26 @@ func TestGoldens(t *testing.T) {
 	}
 }
 
-func TestManifestRoundTrip(t *testing.T) {
-	want := testManifest()
-	body, err := RenderIssueBody(want)
-	if err != nil {
-		t.Fatalf("RenderIssueBody: %v", err)
-	}
-	got, err := ParseManifest(body)
-	if err != nil {
-		t.Fatalf("ParseManifest: %v", err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("round-trip = %+v, want %+v", got, want)
+func TestFindingIssueTitle(t *testing.T) {
+	got := FindingIssueTitle(testFinding())
+	if want := "[github-code-scanning] CWE-79: Reflected cross-site scripting"; got != want {
+		t.Errorf("FindingIssueTitle() = %q, want %q", got, want)
 	}
 }
 
-func TestManifestAdd(t *testing.T) {
-	m := testManifest()
-	dup := source.Finding{AlertNumber: 7}
-	if m.Add(dup) {
-		t.Error("Add(existing alert) = true, want false")
+func TestStageReportComment(t *testing.T) {
+	got := RenderStageReportComment("investigation", 2, "report body")
+	if !strings.Contains(got, "<!-- patchy:report investigation/2 -->") {
+		t.Errorf("comment lacks the dedup marker:\n%s", got)
 	}
-	fresh := source.Finding{
-		AlertNumber: 9,
-		HTMLURL:     "https://github.com/acme/shop/security/code-scanning/9",
-		Locations:   []source.Location{{Path: "src/other.js", StartLine: 3}},
-	}
-	if !m.Add(fresh) {
-		t.Fatal("Add(new alert) = false, want true")
-	}
-	if want := []int{7, 9}; !reflect.DeepEqual(m.AlertNumbers(), want) {
-		t.Errorf("AlertNumbers() = %v, want %v", m.AlertNumbers(), want)
+	if !strings.Contains(got, "report body") {
+		t.Errorf("comment lacks the report body:\n%s", got)
 	}
 }
 
-func TestParseManifestErrors(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-	}{
-		{"no block", "just a hand-written issue"},
-		{"unterminated", manifestOpen + `{"source":"ghas"}`},
-		{"bad json", manifestOpen + "{nope}" + manifestClose},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := ParseManifest(tt.body); err == nil {
-				t.Error("ParseManifest() error = nil, want error")
-			}
-		})
-	}
-}
-
-func TestIssueTitle(t *testing.T) {
-	if got, want := IssueTitle(testManifest()), "[ghas] CWE-79: Reflected cross-site scripting"; got != want {
-		t.Errorf("IssueTitle() = %q, want %q", got, want)
-	}
-}
-
-// TestManifestSurvivesHostileDescription guards the HTML-comment embedding:
-// a description containing the comment terminator must not corrupt the block.
-func TestManifestSurvivesHostileDescription(t *testing.T) {
-	want := testManifest()
-	want.Description = "injected --> <!-- patchy:manifest v1 {} -->"
-	body, err := RenderIssueBody(want)
-	if err != nil {
-		t.Fatalf("RenderIssueBody: %v", err)
-	}
-	got, err := ParseManifest(body)
-	if err != nil {
-		t.Fatalf("ParseManifest: %v", err)
-	}
-	if got.Description != want.Description {
-		t.Errorf("Description = %q, want %q", got.Description, want.Description)
+func TestEnrichmentProjection(t *testing.T) {
+	got := RenderEnrichmentProjection(v1alpha1.Enrichment{Enhancer: "cmdb", Markdown: "**Owners:** @octocat"})
+	if !strings.Contains(got, "<!-- patchy:enrichment cmdb -->") || !strings.Contains(got, "@octocat") {
+		t.Errorf("projection = %q", got)
 	}
 }

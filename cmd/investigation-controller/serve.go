@@ -15,8 +15,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
+	"github.com/bitwise-media-group/patchy/internal/controller/investigation"
 	"github.com/bitwise-media-group/patchy/internal/forge"
-	"github.com/bitwise-media-group/patchy/internal/investctrl"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
@@ -35,6 +35,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f := cmd.Flags()
 	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
+	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.Duration("finding-min-age", time.Hour, "how old a finding must be before investigation picks it up")
 	f.Int("max-attempts", 2, "analysis attempts per finding before it fails")
 	f.Int("max-concurrent-investigations", 3, "simultaneously running investigation jobs")
@@ -63,18 +64,15 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 }
 
 // agentEnv is the PATCHY_* configuration every investigation pod receives.
-// The runner reads the analysis stage's limits from the CLASSIFY_* keys (one
-// stage-1 vocabulary; the prompt differs by phase).
 func agentEnv(opts *cli.Options) map[string]string {
 	return map[string]string{
-		"PATCHY_MODEL_ALLOWLIST":      opts.String("model-allowlist"),
-		"PATCHY_CONFIDENCE_THRESHOLD": fmt.Sprint(opts.Float("confidence-threshold")),
+		"PATCHY_MODEL_ALLOWLIST": opts.String("model-allowlist"),
 
-		"PATCHY_CLASSIFY_HARNESS":      opts.String("investigate-harness"),
-		"PATCHY_CLASSIFY_MODEL":        opts.String("investigate-model"),
-		"PATCHY_CLASSIFY_TIMEOUT":      opts.Duration("investigate-timeout").String(),
-		"PATCHY_CLASSIFY_MAX_TURNS":    fmt.Sprint(opts.Int("investigate-max-turns")),
-		"PATCHY_CLASSIFY_TOKEN_BUDGET": fmt.Sprint(opts.Int("investigate-token-budget")),
+		"PATCHY_INVESTIGATE_HARNESS":      opts.String("investigate-harness"),
+		"PATCHY_INVESTIGATE_MODEL":        opts.String("investigate-model"),
+		"PATCHY_INVESTIGATE_TIMEOUT":      opts.Duration("investigate-timeout").String(),
+		"PATCHY_INVESTIGATE_MAX_TURNS":    fmt.Sprint(opts.Int("investigate-max-turns")),
+		"PATCHY_INVESTIGATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("investigate-token-budget")),
 
 		"PATCHY_REMEDIATE_MAX_TURNS":    fmt.Sprint(opts.Int("remediate-max-turns")),
 		"PATCHY_REMEDIATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("remediate-token-budget")),
@@ -110,7 +108,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Kubeconfig:              opts.String("kubeconfig"),
 		LeaderElectionID:        "patchy-investigation-controller-leader",
 		LeaderElectionNamespace: namespace,
-		Namespaces:              []string{namespace, opts.String("agent-namespace")},
+		Namespaces:              []string{namespace},
+		AgentNamespace:          opts.String("agent-namespace"),
+		HealthAddr:              opts.String("health-addr"),
 		Log:                     log,
 	})
 	if err != nil {
@@ -137,7 +137,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Env:                agentEnv(opts),
 	}, log)
 
-	gate := &investctrl.GateReconciler{
+	gate := &investigation.GateReconciler{
 		Client:    mgr.GetClient(),
 		Forges:    forge.NewStore(mgr.GetAPIReader()),
 		Namespace: namespace,
@@ -152,7 +152,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if err := gate.SetupWithManager(mgr); err != nil {
 		return err
 	}
-	inv := &investctrl.InvestigationReconciler{
+	inv := &investigation.InvestigationReconciler{
 		Client:              mgr.GetClient(),
 		Runner:              runner,
 		Namespace:           namespace,

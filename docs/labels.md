@@ -1,131 +1,148 @@
-# Labels & state machine
+# State machine & labels
 
-The `internal/labels` package is the single source of truth for label names, value formats, and legal transitions. Every
-patchy label renders as `<key>: <value>` — key, colon-space, value — truncated to GitHub's 50-character label cap. Full
-metadata that a label abbreviates (the complete classification report, say) lives in report-comment YAML frontmatter,
-not in labels.
+The `Finding` custom resource is the authoritative state machine for one security finding. `api/v1alpha1` owns the phase
+taxonomy and the legal transition table (`transitions.go`), every phase edge has exactly one writer component, and
+`SetPhase` refuses illegal moves — a controller cannot accidentally invent a transition. Labels on the tracking issue
+are a **one-way projection** of this state for humans and issue searches; nothing ever parses them back.
 
-Patchy only adds and removes labels inside the `security-` namespace; it never touches foreign labels, and unknown or
-malformed `security-*` labels are ignored rather than wedging the pipeline. Labels are created by the GitHub API on
-first use — patchy does not manage label colors or descriptions.
+## Phases
 
-## Label keys
-
-<div class="nowrap-first" markdown>
-
-| Key                                  | Cardinality             | Written by             | Meaning                                                     |
-| ------------------------------------ | ----------------------- | ---------------------- | ----------------------------------------------------------- |
-| `security-source`                    | single                  | source-controller      | Finding source, e.g. `ghas`                                 |
-| `security-advisory`                  | multi (one per id)      | source-controller      | CWE/CVE/GHSA identifiers; the primary one keys accumulation |
-| `security-alert`                     | multi (one per alert)   | source-controller      | Each accumulated GHAS alert number                          |
-| `security-finding`                   | single                  | per-transition owner   | **The lifecycle state** (below)                             |
-| `security-accumulation`              | single                  | source-controller      | `open` \| `complete` — the 1-hour window gate               |
-| `security-severity`                  | single                  | remediation-controller | `low` \| `medium` \| `high` \| `critical`                   |
-| `security-priority`                  | single                  | remediation-controller | `low` \| `medium` \| `high` \| `critical`                   |
-| `security-recommendation`            | single                  | remediation-controller | `remediate` \| `ignore` \| `manual`                         |
-| `security-recommendation-confidence` | single                  | remediation-controller | 0–1 float, ≤ 4 decimals, e.g. `0.75`                        |
-| `security-token-budget`              | single (remediate only) | remediation-controller | Output-token budget granted to remediation                  |
-| `security-max-turns`                 | single (remediate only) | remediation-controller | Turn ceiling granted to remediation                         |
-| `security-attempts`                  | single                  | remediation-controller | Agent-Job retry counter                                     |
-| `security-classifier`                | single                  | remediation-controller | Harness that classified, e.g. `claude`                      |
-| `security-remediator`                | single                  | remediation-controller | Harness that remediated                                     |
-
-</div>
-
-Two usage-label families record what each stage cost, one label per metric — `input-tokens`, `output-tokens`, `turns`,
-`cost`, `session` (truncated to 8 characters), and `elapsed` (rendered like `12.4s`):
-
-```text
-security-classification-input-tokens: 48211     security-remediation-input-tokens: 195402
-security-classification-output-tokens: 9120     security-remediation-output-tokens: 88031
-security-classification-turns: 14               security-remediation-turns: 61
-security-classification-cost: 0.87              security-remediation-cost: 6.12
-security-classification-session: 1c2f9a3d       security-remediation-session: 9b7e21c4
-security-classification-elapsed: 312.7s         security-remediation-elapsed: 1804.2s
-```
-
-## The `security-finding` states
+`Finding.status.phase` walks the happy path
+`Opened → Enhanced → Investigating → Queued → Remediating → InReview → Remediated`, with `AwaitingApproval` before
+`Queued` when a human must approve, and `Dismissed` / `HandedOff` / `Failed` as the other terminal phases. `Queued` is a
+real phase — remediation runs in priority order with bounded concurrency, so findings observably wait for a slot.
 
 <div class="nowrap-first" markdown>
 
-| State              | Meaning                                                               |
-| ------------------ | --------------------------------------------------------------------- |
-| `opened`           | Issue created from the first alert; accumulating                      |
-| `context-enhanced` | Ownership / infrastructure context added                              |
-| `classifying`      | Agent Job leased (the label **is** the lease)                         |
-| `classified`       | Verdict labels stamped; route chosen                                  |
-| `in-review`        | Remediation branch pushed, pull request open                          |
-| `remediated`       | PR merged; issue closed. **Terminal**                                 |
-| `attempted`        | Agent exhausted or PR closed unmerged; handed to humans. **Terminal** |
+| Phase              | Meaning                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `Opened`           | Ingested from the first alert; accumulating, awaiting enhancement                       |
+| `Enhanced`         | The enhancer chain ran; ownership / infrastructure context recorded                     |
+| `Investigating`    | An `Investigation` child exists (the child create is the lease); analysis Job runs      |
+| `AwaitingApproval` | Verdict is `remediate` but below the confidence threshold, or a breaking-change hold    |
+| `Queued`           | Admitted to the remediation queue; waiting for a priority-ordered slot                  |
+| `Remediating`      | A `Remediation` child holds a slot; the remediation Job runs                            |
+| `InReview`         | Branch pushed, pull request open; humans review                                         |
+| `Remediated`       | PR merged. **Terminal**                                                                 |
+| `Failed`           | Retries exhausted, fatal stage outcome, or PR closed unmerged. **Terminal**             |
+| `Dismissed`        | Investigation verdict `ignore`: alerts dismissed, issue closed. **Terminal**, revivable |
+| `HandedOff`        | Verdict `manual`, or a human closed the tracking issue. **Terminal**, revivable         |
 
 </div>
+
+Terminal entry sets `status.completedAt`, which starts the [finding TTL](configuration/remediation-controller.md)
+(default 14 days — the `FindingRollup` objects retain the statistics after deletion). `Dismissed` and `HandedOff` are
+revivable terminals: reopening the issue moves `Dismissed → HandedOff`, and a `/approve` comment moves
+`HandedOff → Queued`, clearing `completedAt` and cancelling the TTL.
 
 ## Legal transitions
 
-Self-transitions are always legal no-ops; everything else is refused by the controllers. Per-transition ownership means
-no state edge has two writers.
+Self-transitions are always legal no-ops; everything else is refused by `SetPhase`. Per-edge ownership means no phase
+edge has two writers.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> opened : source-controller
-    opened --> context_enhanced : context-controller
-    context_enhanced --> classifying : remediation-controller (lease)
-    classifying --> classified : classification ok
-    classifying --> context_enhanced : job failed, retry
-    classifying --> in_review : approve re-run success
-    classifying --> attempted : retries exhausted / fatal
-    classified --> classifying : /approve re-run
-    classified --> in_review : remediation success
-    classified --> attempted : remediation failed
-    in_review --> remediated : PR merged
-    in_review --> attempted : PR closed unmerged
-    remediated --> [*]
-    attempted --> [*]
-
-    state "context-enhanced" as context_enhanced
-    state "in-review" as in_review
+    [*] --> Opened : integration
+    Opened --> Enhanced : context
+    Enhanced --> Investigating : investigation (lease)
+    Investigating --> Enhanced : retry revert
+    Investigating --> Queued : verdict remediate, confident
+    Investigating --> AwaitingApproval : low confidence / breaking hold
+    Investigating --> Dismissed : verdict ignore
+    Investigating --> HandedOff : verdict manual
+    Investigating --> Failed : attempts exhausted
+    AwaitingApproval --> Queued : /approve
+    Queued --> Remediating : scheduler grant
+    Remediating --> Queued : retry re-queue
+    Remediating --> InReview : branch pushed, PR open
+    Remediating --> Failed : attempts exhausted
+    InReview --> Remediated : PR merged
+    InReview --> Failed : PR closed unmerged
+    Dismissed --> HandedOff : issue reopened
+    HandedOff --> Queued : /approve revival
+    Remediated --> [*]
+    Failed --> [*]
 ```
+
+Every non-terminal phase additionally has an edge to `HandedOff`, written by the integration-controller when a human
+closes the tracking issue — a person can always pull a finding out of the machine's hands.
 
 <div class="nowrap-first" markdown>
 
-| From               | To                 | Writer                 | Trigger                                                        |
-| ------------------ | ------------------ | ---------------------- | -------------------------------------------------------------- |
-| _(none)_           | `opened`           | source-controller      | First alert of an advisory type for the repository             |
-| `opened`           | `context-enhanced` | context-controller     | `issues` webhook or reconcile sweep after the 2m grace         |
-| `context-enhanced` | `classifying`      | remediation-controller | Reconcile: `accumulation: complete` ∧ older than min age       |
-| `classifying`      | `classified`       | remediation-controller | Classification event applied (verdict labels stamped)          |
-| `classifying`      | `context-enhanced` | remediation-controller | Job launch failed / recoverable failure with attempts left     |
-| `classifying`      | `in-review`        | remediation-controller | `/approve` remediate-only re-run succeeded                     |
-| `classifying`      | `attempted`        | remediation-controller | Attempts exhausted or fatal agent outcome                      |
-| `classified`       | `classifying`      | remediation-controller | `/approve` comment by an owner/member/collaborator             |
-| `classified`       | `in-review`        | remediation-controller | Same-pod remediation success (branch pushed, PR opened)        |
-| `classified`       | `attempted`        | remediation-controller | Same-pod remediation failure                                   |
-| `in-review`        | `remediated`       | remediation-controller | `pull_request` closed with `merged=true` on `patchy/issue-<n>` |
-| `in-review`        | `attempted`        | remediation-controller | Remediation PR closed unmerged                                 |
+| Edge                                                                                   | Writer                   | Trigger                                                              |
+| -------------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------- |
+| _(none)_ → `Opened`                                                                    | integration-controller   | First alert of an advisory family for a repository                   |
+| `Opened` → `Enhanced`                                                                  | context-controller       | Enhancer chain completed                                             |
+| `Enhanced` → `Investigating`                                                           | investigation-controller | Gate admits (accumulation closed ∧ min age); `Investigation` created |
+| `Investigating` → `Enhanced`                                                           | investigation-controller | Recoverable Job failure with attempts left                           |
+| `Investigating` → `Queued` / `AwaitingApproval` / `Dismissed` / `HandedOff` / `Failed` | investigation-controller | Verdict routing                                                      |
+| `AwaitingApproval` → `Queued`, `HandedOff` → `Queued`                                  | remediation-controller   | Accepted `/approve` (approval / revival)                             |
+| `Queued` → `Remediating`                                                               | remediation-controller   | Priority scheduler grants a slot                                     |
+| `Remediating` → `Queued`                                                               | remediation-controller   | Recoverable failure re-queued                                        |
+| `Remediating` → `InReview` / `Failed`                                                  | remediation-controller   | Push + PR succeeded / attempts exhausted                             |
+| `InReview` → `Remediated` / `Failed`                                                   | integration-controller   | `pull_request` webhook: merged / closed unmerged                     |
+| `Dismissed` → `HandedOff`                                                              | integration-controller   | Human reopened the tracking issue                                    |
+| any non-terminal → `HandedOff`                                                         | integration-controller   | Human closed the tracking issue                                      |
 
 </div>
 
-The `security-accumulation` transition (`open → complete`) is owned solely by the source-controller and runs in parallel
-with the early states, gated on issue age against the accumulation window.
+## Conditions
 
-## Classification taxonomy and routing
+Facts that are not phases ride on `status.conditions`. Accumulation is the important one: alerts keep folding into a
+Finding **while** enhancement runs, so the window close cannot be a phase.
 
-The agent's report frontmatter speaks a three-word vocabulary — `ignore` (false positive), `remediate` (automated fix
-likely to succeed), `manual` (real, but a human must handle it) — the same values the `security-recommendation` label
-carries, so the report and the issue never need translating. Confidence is the probability the finding can be fully
-remediated **without breaking functionality**; backwards-compatible fixes are always preferred, and when a
-better-but-breaking fix exists the compatible one waits for an explicit `/approve`.
+<div class="nowrap-first" markdown>
 
-| Classification result             | Route                                                               |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `ignore`                          | Dismiss all accumulated GHAS alerts (_false positive_), close issue |
-| `manual`                          | Assign repository owners                                            |
-| `remediate`, confidence < 0.75    | Assign owners + `/approve` instructions                             |
-| `remediate`, breaking-change hold | Assign owners + `/approve` instructions                             |
-| `remediate`, confidence ≥ 0.75    | Remediation stage runs in the same pod                              |
-| Stage outcome not `ok`            | `manual`, assign owners — a partial report is never trusted         |
+| Condition                                               | On                         | Meaning                                                                                                     |
+| ------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `Ready`                                                 | every kind                 | The summary condition                                                                                       |
+| `Stalled`                                               | every kind                 | Cannot progress without operator action (ambiguous forge match, oversized artifact)                         |
+| `AccumulationComplete`                                  | Finding                    | The accumulation window closed; the gate may admit                                                          |
+| `ContextEnhanced`                                       | Finding                    | The enhancer chain ran                                                                                      |
+| `Investigated`                                          | Finding                    | Analysis completed; the reason carries the recommendation                                                   |
+| `Approved`                                              | Finding                    | A human `/approve` was accepted                                                                             |
+| `ForgeResolved`                                         | Finding                    | The repository resolved to exactly one Forge (`False` reasons: `NoRepository`, `NoForgeMatch`, `Ambiguous`) |
+| `Complete`                                              | Investigation, Remediation | The stage finished; the reason carries the outcome                                                          |
+| `RolledUpTotal` / `…Repository` / `…Harness` / `…Model` | Finding                    | Per-scope rollup accounting markers (exactly-once, finalizer-backed)                                        |
 
-Stage outcomes other than `ok` — `runtime_error`, `timeout`, `budget_exceeded`, `report_missing`, `report_invalid`,
-`commit_failed`, `changeset_too_large` — always route to humans.
+</div>
 
-`/approve` is honoured from comment authors whose association is `OWNER`, `MEMBER`, or `COLLABORATOR`.
+Findings parked with `ForgeResolved: False` are re-queued automatically when `Forge` resources change. A finding can
+also be paused by a human: `spec.suspend: true` halts pipeline progress until cleared.
+
+## Watching it
+
+```sh
+kubectl get patchy -n patchy                        # every patchy kind, one shot
+kubectl get findings -w                             # phase, severity, priority, verdict, live
+kubectl get investigations                          # per-attempt analysis children (short name: inv)
+kubectl get remediations                            # per-attempt remediation children (rem)
+kubectl get findingrollups                          # the all-time statistics (fr)
+kubectl describe finding <name>                     # conditions, phase log, enrichments, attempts
+```
+
+Machine metadata that used to ride on issue labels — alert numbers, accumulation state, confidence, budgets, attempt
+counts, per-stage token/cost accounting — lives on these resources, nowhere else.
+
+## The projected labels
+
+The tracking-issue projection stamps a trimmed, human-facing vocabulary, rendered from the Finding by the
+integration-controller (`internal/labels`). Every label is `<key>: <value>`, truncated to GitHub's 50-character cap; the
+multi-valued advisory key emits one label per identifier. Patchy only touches labels in the `security-` namespace,
+ignores foreign or malformed `security-*` labels, and does not manage label colors or descriptions.
+
+<div class="nowrap-first" markdown>
+
+| Key                       | Cardinality        | Values                                                                                                                                                                      |
+| ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-source`         | single             | The source handler that ingested the finding, e.g. `ghas`                                                                                                                   |
+| `security-advisory`       | multi (one per id) | The CWE/CVE/GHSA identifiers                                                                                                                                                |
+| `security-finding`        | single             | The phase, kebab-cased: `opened`, `enhanced`, `investigating`, `queued`, `awaiting-approval`, `remediating`, `in-review`, `remediated`, `dismissed`, `handed-off`, `failed` |
+| `security-severity`       | single             | `low` \| `medium` \| `high` \| `critical` (scanner-assigned)                                                                                                                |
+| `security-priority`       | single             | `low` \| `medium` \| `high` \| `critical` (derived from the investigation)                                                                                                  |
+| `security-recommendation` | single             | `remediate` \| `ignore` \| `manual` (the investigation verdict)                                                                                                             |
+
+</div>
+
+That is the whole list — the projection is deliberately small. Labels exist for issue searches and human triage; the CR
+is the state, so no machine or usage labels exist on issues anymore.

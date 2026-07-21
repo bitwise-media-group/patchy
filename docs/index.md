@@ -11,6 +11,6 @@ hide:
   This body only provides the page title and meta description for the <head>.
 -->
 
-An end-to-end pipeline for triaging and remediating security findings, using GitHub issues as the state machine — alerts
-accumulate into issues, a sandboxed coding agent classifies each finding, and high-confidence fixes become pull requests
-for human review.
+An end-to-end pipeline for triaging and remediating security findings, using Kubernetes custom resources as the state
+machine — alerts accumulate into `Finding` resources projected to GitHub tracking issues, a sandboxed coding agent
+investigates each one, and high-confidence fixes become pull requests for human review.

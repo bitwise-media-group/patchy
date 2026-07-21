@@ -5,19 +5,20 @@
 {# overrides/home.html Custom landing for Patchy. Injected full-bleed between the (turf-skinned) Material header and the
 page body via the `tabs` block. The normal article `content` block is emptied; index.md sets `hide: [navigation, toc]`.
 Content mirrors the design-system kit (design-system/ui_kits/patchy): the hero follows one finding from alert to pull
-request, the lifecycle strip makes every legal forward state visible, and the architecture specimen hangs four binaries
-off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
+request, the lifecycle strip makes the happy-path phases visible, and the architecture specimen hangs six binaries
+off one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
 <div class="pt">
     <!-- HERO -->
     <header class="pt-hero">
         <div class="pt-hero__texture"></div>
         <div class="pt-hero__inner">
             <div class="pt-hero__copy">
-                <div class="pt-kicker"><span class="pt-dot"></span>GITHUB ISSUES ARE THE STATE MACHINE</div>
+                <div class="pt-kicker"><span class="pt-dot"></span>CUSTOM RESOURCES ARE THE STATE MACHINE</div>
                 <h1 class="pt-headline">Every finding gets a path to <span>solid ground.</span></h1>
                 <p class="pt-lede">
-                    Patchy gathers related security alerts into GitHub issues, adds ownership context, and sends safe
-                    fixes through an isolated coding agent — with a human at the merge button.
+                    Patchy gathers related security alerts into Kubernetes Finding resources — each projected to a
+                    GitHub tracking issue — adds ownership context, and sends safe fixes through an isolated coding
+                    agent, with a human at the merge button.
                 </p>
                 <div class="pt-term">
                     <div class="pt-term__bar"><i></i><i></i><i></i><span>zsh — install</span></div>
@@ -73,7 +74,7 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
                         </div>
                         <div class="pt-progress__item pt-progress__item--done">
                             <span class="pt-progress__marker">✓</span>
-                            <span><strong>Remediation classified</strong><small>92% confidence · claude</small></span>
+                            <span><strong>Investigation complete</strong><small>92% confidence · claude</small></span>
                         </div>
                         <div class="pt-progress__item pt-progress__item--active">
                             <span class="pt-progress__marker">4</span>
@@ -91,21 +92,22 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
     <!-- STATS -->
     <section class="pt-stats" aria-label="Patchy facts">
         <div class="pt-stat"><b>1 hour</b><small>ALERT ACCUMULATION WINDOW</small></div>
-        <div class="pt-stat"><b>0</b><small>EXTRA STATE DATABASES</small></div>
-        <div class="pt-stat"><b>4</b><small>SEPARATE GO BINARIES</small></div>
+        <div class="pt-stat"><b>0</b><small>AGENT FORGE CREDENTIALS</small></div>
+        <div class="pt-stat"><b>6</b><small>SEPARATE GO BINARIES</small></div>
         <div class="pt-stat"><b>1</b><small>HUMAN MERGE DECISION</small></div>
     </section>
     <!-- LIFECYCLE -->
     <section class="pt-section">
         <h2 class="pt-eyebrow">// THE FINDING LIFECYCLE</h2>
-        <p class="pt-lead">Labels move the work. GitHub keeps the truth.</p>
+        <p class="pt-lead">Phases move the work. The cluster keeps the truth.</p>
         <p class="pt-sublead">
-            No shadow database and no mystery queue. Every transition is visible on the issue that caused it.
+            No shadow database and no mystery queue. Every transition is a phase edge on the Finding —
+            <code>kubectl get findings -w</code> is the whole pipeline, live.
         </p>
         <div class="pt-pipeline" role="list" aria-label="Security finding lifecycle">
-            {% set pt_states = [ ["01", "opened", "Alert lands"], ["02", "context-enhanced", "Owner added"], ["03",
-            "classifying", "Agent starts"], ["04", "classified", "Route chosen"], ["05", "in-review", "PR opened"],
-            ["06", "remediated", "Patch merged"] ] %} {% for s in pt_states %}
+            {% set pt_states = [ ["01", "Opened", "Alert lands"], ["02", "Enhanced", "Owner added"], ["03",
+            "Investigating", "Agent assesses"], ["04", "Queued", "Slot awaited"], ["05", "InReview", "PR opened"],
+            ["06", "Remediated", "Patch merged"] ] %} {% for s in pt_states %}
             <div class="pt-state" role="listitem">
                 <div class="pt-state__top">
                     <span>{{ s[0] }}</span>
@@ -120,32 +122,34 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
             <span class="pt-branch-note__line"></span>
             <span class="pt-branch-note__marker">↳</span>
             <span>
-                <strong>attempted</strong>
-                <small>Agent exhausted or a safe patch was not possible — hand back to the repository owner.</small>
+                <strong>HandedOff</strong>
+                <small>A safe automated patch was not possible — hand back to the repository owner.</small>
             </span>
         </div>
     </section>
     <!-- ARCHITECTURE -->
     <section class="pt-section">
-        <h2 class="pt-eyebrow">// FOUR BINARIES, ONE SYSTEM</h2>
+        <h2 class="pt-eyebrow">// SIX BINARIES, ONE SYSTEM</h2>
         <p class="pt-lead">Separate concerns. Shared ground.</p>
         <p class="pt-sublead">
-            Each component owns a narrow set of transitions. The agent never talks to GitHub and never receives GitHub
+            Each component owns a narrow set of phase edges. The agent never talks to GitHub and never receives forge
             credentials.
         </p>
         <div class="pt-architecture">
             <div class="pt-architecture__source">
-                <span><strong>GitHub issues</strong><small>the only state store</small></span>
+                <span><strong>Custom resources</strong><small>the only state store</small></span>
                 <span class="pt-label">source of truth</span>
             </div>
             <div class="pt-architecture__rail" aria-hidden="true">
-                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span><span></span>
             </div>
             <div class="pt-components">
-                {% set pt_components = [ ["source-controller", "Webhook in · issues open · alerts accumulate"],
-                ["context-controller", "Ownership and infrastructure context added"], ["remediation-controller", "Jobs
-                scheduled · labels and PRs written"], ["agent-runner", "Classify and patch inside the isolated pod"] ]
-                %} {% for c in pt_components %}
+                {% set pt_components = [ ["integration-controller", "Webhooks in · Findings ingested · issues
+                projected"], ["source-controller", "Repositories pinned · tarballs served to the sandbox"],
+                ["context-controller", "Ownership and infrastructure context added"], ["investigation-controller",
+                "Findings gated · analysis Jobs run · verdicts routed"], ["remediation-controller", "Queue scheduled ·
+                fixes pushed · PRs opened"], ["agent-runner", "Investigate and patch inside the isolated pod"] ] %} {%
+                for c in pt_components %}
                 <article class="pt-component">
                     <span class="pt-component__number">0{{ loop.index }}</span>
                     <h3>{{ c[0] }}</h3>
@@ -163,22 +167,22 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
             <div class="pt-card">
                 <h3>Let related alerts gather</h3>
                 <p>
-                    Matching <code>security-advisory</code> labels accumulate for one hour, so one weakness becomes one
-                    useful issue instead of forty noisy ones.
+                    Alerts of one advisory family accumulate into a single Finding for an hour, so one weakness
+                    becomes one useful tracking issue instead of forty noisy ones.
                 </p>
             </div>
             <div class="pt-card">
                 <h3>Context before code</h3>
                 <p>
-                    Repository ownership and infrastructure relationships arrive on the issue before the classifier
-                    decides a route.
+                    Repository ownership and infrastructure relationships arrive on the finding before the
+                    investigation decides a route.
                 </p>
             </div>
             <div class="pt-card">
                 <h3>Keep the agent fenced in</h3>
                 <p>
-                    The coding agent works inside an ephemeral Kubernetes Job with no GitHub API access — the clone
-                    token dies with the init container.
+                    The coding agent works inside an ephemeral Kubernetes Job with no forge credential at all — the
+                    repository arrives as a digest-verified tarball, and the model key is the only secret in the pod.
                 </p>
             </div>
             <div class="pt-card">
@@ -205,9 +209,9 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
             <div class="pt-step">
                 <div class="pt-step__num">02</div>
                 <h3>Create the secrets</h3>
-                <p>App credentials, the webhook HMAC, and the model API key.</p>
+                <p>App credentials plus the webhook HMAC, and the model API key.</p>
                 <div class="pt-cmd">
-                    <code>$ kubectl -n patchy create secret generic patchy-github-app …</code>
+                    <code>$ kubectl -n patchy create secret generic patchy-github …</code>
                     <div class="md-code__nav">
                         <button
                             class="md-code__button"
@@ -222,7 +226,7 @@ off one GitHub-issue source of truth. #} {% extends "main.html" %} {% block tabs
             <div class="pt-step">
                 <div class="pt-step__num">03</div>
                 <h3>Install the chart</h3>
-                <p>One Helm release: three controllers, RBAC, network policies.</p>
+                <p>One Helm release: CRDs, five controllers, RBAC, network policies.</p>
                 <div class="pt-cmd">
                     <code>$ helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy</code>
                     <div class="md-code__nav">

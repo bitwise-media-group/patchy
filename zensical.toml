@@ -6,7 +6,7 @@
 
 [project]
 site_name = "Patchy"
-site_description = "Automated triage and remediation of security findings, using GitHub issues as the state machine."
+site_description = "Automated triage and remediation of security findings, using Kubernetes custom resources as the state machine."
 site_url = "https://oss.bitwisemedia.uk/patchy/"
 repo_url = "https://github.com/bitwise-media-group/patchy"
 repo_name = "bitwise-media-group/patchy"
@@ -27,12 +27,13 @@ nav = [
     { "Verify the pipeline" = "getting-started/verify.md" },
   ] },
   { "How it works" = "how-it-works.md" },
-  { "Labels & state machine" = "labels.md" },
+  { "State machine & labels" = "labels.md" },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },
-    { "webhook-controller" = "configuration/webhook-controller.md" },
+    { "integration-controller" = "configuration/integration-controller.md" },
     { "source-controller" = "configuration/source-controller.md" },
     { "context-controller" = "configuration/context-controller.md" },
+    { "investigation-controller" = "configuration/investigation-controller.md" },
     { "remediation-controller" = "configuration/remediation-controller.md" },
     { "agent-runner" = "configuration/agent-runner.md" },
   ] },

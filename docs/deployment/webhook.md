@@ -1,43 +1,33 @@
 # Webhook exposure
 
-A GitHub App has exactly **one** webhook URL, and GitHub POSTs every subscribed event to it — but each patchy controller
-runs its own receiver (`POST /webhook` on port 8080). The **webhook-controller** resolves this: it is the single
-internet-facing component, and the one URL points at it:
+A GitHub App has exactly **one** webhook URL, and GitHub POSTs every subscribed event to it. In patchy that URL points
+at the **integration-controller** — the single internet-facing component and the only webhook receiver in the system:
 
 ```text
-https://<webhook.host>/webhook
+https://<webhook.host>/github/webhooks
 ```
 
-The webhook-controller validates each delivery against the shared HMAC secret, then routes it — signature intact — to
-the controllers that consume its `X-GitHub-Event` type:
-
-| Event                 | Routed to                | Why                                           |
-| --------------------- | ------------------------ | --------------------------------------------- |
-| `code_scanning_alert` | `source-controller`      | Open / accumulate finding issues              |
-| `issues`              | `context-controller`     | Enhance newly opened finding issues           |
-| `issue_comment`       | `remediation-controller` | The `/approve` escape hatch                   |
-| `pull_request`        | `remediation-controller` | Close the loop when the remediation PR merges |
-| anything else         | `source-controller`      | It owns the `pkg/source` plugin seam          |
+Each delivery's HMAC signature is validated against the `webhookSecret` of your configured `Integration` resources
+before anything else happens; a delivery no Integration's secret matches is rejected with `401`. There is no routing
+tier and nothing to fan deliveries out to — scanner events are ingested into `Finding` resources and human signals
+(issue close, `/approve`, PR merge) are applied to them, all inside this one controller.
 
 Two properties follow:
 
-- **No credential faces the internet.** The webhook-controller holds only the webhook secret, which cannot mint GitHub
-  tokens; the controllers, which hold the App key, only ever see deliveries that already passed HMAC validation (and
-  each one re-validates the forwarded signature itself — the webhook-controller is not trusted).
-- **Exposure needs nothing exotic.** Routing happens in the webhook-controller, not in routing infrastructure, so any
-  plain Ingress or Gateway API implementation works as-is — no header matching, no rewrites, no mirroring.
+- **Losing a delivery is not losing work.** The webhook path carries ingestion and human-in-the-loop signals only;
+  pipeline progress rides on the controllers' watch-driven reconcile loops, which no delivery can announce anyway
+  ("accumulation closed", "older than an hour", "a slot freed"). A `503` from a full queue just means GitHub redelivers.
+- **Exposure needs nothing exotic.** Any plain Ingress or Gateway API implementation works as-is — no header matching,
+  no rewrites, no mirroring. Only `/github/webhooks` needs exposing; the probes stay cluster-internal on port 8081.
 
-The chart derives the routing table from its own Service names; override it wholesale with
-`webhookController.config.extra.PATCHY_FORWARD_ROUTES` (the format is documented in
-[Configuration → webhook-controller](../configuration/webhook-controller.md)). Forwarding is best-effort by design: a
-failed forward is logged and dropped, because every controller pairs its webhook fast path with a reconcile loop
-(`config.reconcileInterval`, default `60s`) that picks up anything missed. The webhook-controller is also stateless, so
-unlike the singleton controllers it runs two replicas by default (`webhookController.replicas`).
+The credential story: the integration-controller holds no GitHub credential in its Deployment at all — the
+`Integration`/`Forge` Secrets are read on demand through the Kubernetes API, and the components that exercise write
+credentials (remediation-controller's push/PR) never face the internet.
 
 ## Expose it
 
-Enable one flavour under the chart's `webhook` value and point the App's webhook URL at `https://<host>/webhook`. Both
-expose only the `/webhook` path — the probes stay cluster-internal.
+Enable one flavour under the chart's `webhook` value and point the App's webhook URL at
+`https://<host>/github/webhooks`.
 
 **Plain Ingress** (`webhook.ingress`) — works with any ingress controller:
 
@@ -94,8 +84,8 @@ Any other conformant implementation (ingress-nginx, Istio, Envoy Gateway, Cilium
 
 ## Kustomize
 
-The base ships the webhook-controller Deployment and its ClusterIP Service (`patchy-webhook-controller`) but
-deliberately no Ingress — put your environment's Ingress or Gateway in front of that Service in your own overlay. The
-dev overlay exposes it as NodePort 30079 for kind, which is where a webhook tunnel (smee.io, ngrok,
-`gh webhook forward`) should point. On [Colima](colima.md) you can skip the NodePort and run a real local Ingress
-instead.
+The base ships the integration-controller Deployment and its ClusterIP Service (`patchy-integration-controller:8080`)
+but deliberately no Ingress — put your environment's Ingress or Gateway in front of that Service in your own overlay.
+The dev overlay exposes it two ways at once: NodePort 30079 (where a webhook tunnel — smee.io, ngrok,
+`gh webhook forward` — or `mise run replay` should point) and a host-less, class-less Ingress for the same path that any
+default ingress controller satisfies. On [Colima](colima.md) that Ingress is live out of the box.

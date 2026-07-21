@@ -1,43 +1,39 @@
 # Isolation model
 
-Patchy hands untrusted inputs — repository contents and security-alert text — to a coding agent. The deployment is built
-so that a prompt-injected or misbehaving agent cannot reach GitHub, the cluster, or anything else it wasn't given. The
-controls are layered: credential separation, RBAC, pod security, and network egress.
+Patchy hands untrusted inputs — repository contents and security-alert text — to a coding agent. DESIGN.md asks for an
+agent with "no internet access and no GitHub credentials"; taken literally the first half is unachievable, because
+`claude -p` **is** a network client of `api.anthropic.com`. What is actually delivered is layered — credential absence,
+RBAC, pod security, and network egress — and the first layer is the one that matters.
 
-## Credential separation
+## Credential absence — the real control
 
-The core control is what the agent pod **doesn't** have:
+The agent pod holds **no forge credential at all, in any container** — there is no init-container clone token, because
+there is no clone. The repository arrives as a tarball from the source-controller's in-cluster artifact server: the URL
+carries an unguessable 128-bit id, the Job pins the sha256 digest, and the init container verifies it before extracting
+and synthesizing the local git base. The per-Job Secret carries only handoff markdown, and `internal/jobs` lists
+`GITHUB_TOKEN` as a reserved env name so no configuration can smuggle a credential in.
 
-| Credential                                                     | Where it lives                         | Who sees it                                                                       |
-| -------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------- |
-| GitHub App private key                                         | `patchy-github-app` Secret, release ns | Controllers only — never the internet-facing webhook-controller                   |
-| Webhook HMAC secret                                            | `patchy-webhook-secret`, release ns    | Controllers + webhook-controller (its only credential)                            |
-| Clone token (read, single repo)                                | Per-Job Secret, agent ns               | **Init container only** — unset after clone                                       |
-| Push token (write, single repo)                                | Minted on demand, never stored         | remediation-controller only                                                       |
-| Model credential (API key or `claude setup-token` OAuth token) | `patchy-anthropic`, agent ns           | Agent container (`ANTHROPIC_API_KEY`, or the configured `--anthropic-secret-env`) |
+| Credential                                                     | Where it lives                     | Who sees it                                                                                                                |
+| -------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| GitHub App key / token, webhook secret                         | `patchy-github` Secret, release ns | Read on demand through the API by the controllers the `Integration`/`Forge` CRs point at — never mounted into a Deployment |
+| Read token (single repo, archive download)                     | Minted on demand, never stored     | source-controller only                                                                                                     |
+| Write token (single repo, push + PR)                           | Minted on demand, never stored     | remediation-controller only                                                                                                |
+| Model credential (API key or `claude setup-token` OAuth token) | `patchy-anthropic`, agent ns       | The agent container — **the only secret value in the pod**                                                                 |
 
-The remediation-controller mints a short-lived installation token scoped to the one repository with `contents: read`,
-places it in an owner-referenced per-Job Secret (garbage-collected with the Job), and mounts it into the **init
-container** only. The init script fetches the pinned base commit (depth 1, no tags) with the token in a per-invocation
-header and unsets `GITHUB_TOKEN` — no GitHub credential exists anywhere in the agent container's environment or
-filesystem. The branch push happens later, controller-side, through the GitHub API with a separately minted
-`contents: write` token.
+All GitHub side effects — issue projection, alert dismissal, branch push, pull requests — happen controller-side with
+short-lived, per-repository scoped tokens. An agent that reaches `github.com` reaches it as an anonymous member of the
+public.
 
 ## RBAC
 
-Only the remediation-controller talks to the Kubernetes API, and only inside the agent namespace:
+Every controller identity gets a verb-by-verb `Role` in the release namespace (its own CRs and status subresources,
+`get` on Secrets, its leader-election Lease); the two job controllers additionally share a Role in `patchy-agents`
+covering exactly what `internal/jobs` uses — create/get/list/watch/delete on `batch/jobs`, get/list/watch pods,
+`pods/log` (the `PATCHY-EVENT:` stream), and create/get/delete on the per-Job handoff `secrets`.
 
-```text
-batch/jobs      create, get, list, watch, delete
-pods            get, list, watch
-pods/log        get
-secrets         create, get, delete      # its own per-Job Secret, by name — no list/watch
-configmaps      create, get, delete
-```
-
-The source- and context-controllers run with `automountServiceAccountToken: false` and no Role. The agent ServiceAccount
-(`patchy-agent`) has no Role whatsoever and no mounted token — Kubernetes API access from the agent pod would let it
-read the very Secrets that isolate it.
+The agent ServiceAccount (`patchy-agent`) has **no Role whatsoever** and the pods run with
+`automountServiceAccountToken: false` — Kubernetes API access from the agent pod would let a prompt-injected agent read
+the very Secrets the isolation model depends on.
 
 ## Pod security
 
@@ -48,53 +44,62 @@ and agent Jobs — runs as non-root uid 65532 with a read-only root filesystem, 
 `backoffLimit: 0` and `restartPolicy: Never` — retries belong to the state machine, not to Kubernetes — under an
 `activeDeadlineSeconds` kill switch (`--job-deadline`).
 
-## Network egress
+## Network egress — the floor and the fence
 
-The baseline NetworkPolicies (always rendered) hold the agent namespace to cluster-external egress only — the RFC-1918
-and link-local ranges in `agent.networkPolicy.clusterCIDRs` are excluded, so the agent cannot reach cluster services.
-But plain L3/L4 policies cannot name hostnames; pinning egress to exactly the model API and the GitHub clone hosts takes
-one of two optional layers:
+**The baseline NetworkPolicy is the floor.** `patchy-agents` is default-deny in both directions. Egress is re-permitted
+for DNS, the artifact port (9790) to source-controller only, and TCP 443 with the cluster's own ranges and the cloud
+metadata endpoint (`169.254.169.254`) excluded — adjust `agent.networkPolicy.clusterCIDRs` (Helm) or the `except:` CIDRs
+in `base/networkpolicy.yaml` (kustomize) to your cluster's pod/service/node CIDRs. Be honest about what this is: **a
+plain NetworkPolicy is L3/L4 and cannot match a hostname**, so "TCP 443" means every HTTPS host on the internet, not
+just Anthropic's.
 
-- **Cilium** (`agent.networkPolicy.cilium.enabled: true`) — a `CiliumNetworkPolicy` with DNS-aware FQDN rules for
-  `api.anthropic.com`, `github.com`, `codeload.github.com`, and `objects.githubusercontent.com`. Requires Cilium with
-  the DNS proxy. This is what the prod kustomize overlay uses.
-- **Istio** (`agent.networkPolicy.istio.enabled: true`) — a `Sidecar` in REGISTRY_ONLY mode plus `ServiceEntry` objects
-  for the same hosts. Two hard requirements: **native sidecars** (Kubernetes ≥ 1.29 and istiod with
+Pinning egress to hostnames takes one of two optional layers, and the allowlist is deliberately short:
+`api.anthropic.com` and the in-cluster artifact endpoint. **No GitHub hosts appear anywhere in it** — the pod never
+talks to a forge, so there is nothing to allow.
+
+- **Cilium** (`agent.networkPolicy.cilium.enabled`, or the kustomize `components/cilium` — what the prod overlay uses) —
+  a `CiliumNetworkPolicy` with `toFQDNs: api.anthropic.com`, plus a DNS rule constraining what names the pod may resolve
+  at all (`*.anthropic.com` and `*.svc.cluster.local`, so the artifact fetch still resolves). Requires Cilium with the
+  DNS proxy.
+- **Istio** (`agent.networkPolicy.istio.enabled`, or `components/istio`) — the same allowlist as a `Sidecar` in
+  `REGISTRY_ONLY` mode (exposing only the `api.anthropic.com` ServiceEntry and the release namespace's artifact
+  Service), matched by SNI. Two hard requirements: **native sidecars** (Kubernetes ≥ 1.29 and istiod with
   `ENABLE_NATIVE_SIDECARS=true` — a classic sidecar never terminates, hanging the Job, and blackholes the init
-  container's clone), and the **Istio CNI node agent** (the `restricted` PSS rejects `istio-init`'s NET_ADMIN/NET_RAW).
+  container's artifact fetch), and the **Istio CNI node agent** (the `restricted` PSS rejects `istio-init`'s
+  NET_ADMIN/NET_RAW).
 
-Enabling both fails the chart render.
+Enabling both fails the chart render. If you have neither, drop the components — the base policy still applies and is
+then the whole of the L3/L4 story.
 
 ### Why Cilium is preferred
 
-Both layers render the same four-host allowlist, but they are not equivalent, and the prod overlay picks Cilium
-deliberately:
+Both layers render the same allowlist, but they are not equivalent, and the prod overlay picks Cilium deliberately:
 
-- **DNS exfiltration.** Istio enforces at the TCP/TLS layer — the `Sidecar` + `ServiceEntry` pair matches HTTPS flows by
-  SNI — but the pod still needs UDP/53 to the cluster resolver, and the proxy does not constrain what names it may
-  resolve. A prompt-injected agent can encode data into query names (`<chunk>.attacker.example`) and walk it out through
-  the resolver with every other route blocked. Cilium's transparent DNS proxy answers only the allowlisted names and
-  drops everything else, closing that channel; the learned IPs then bound the L3/L4 rules, so skipping DNS and dialling
-  a raw address is blocked too.
+- **DNS exfiltration.** Istio enforces at the TCP/TLS layer, but the pod still needs UDP/53 to the cluster resolver, and
+  the proxy does not constrain what names it may resolve. A prompt-injected agent can encode data into query names
+  (`<chunk>.attacker.example`) and walk it out through the resolver with every other route blocked. Cilium's transparent
+  DNS proxy answers only the allowlisted patterns and drops everything else, closing that channel; the learned IPs then
+  bound the L3/L4 rules, so skipping DNS and dialling a raw address is blocked too.
 - **Enforcement point.** The sidecar and its traffic redirection live inside the pod's own network namespace, where a
   sufficiently privileged process could bypass them. Cilium enforces in eBPF on the node, outside anything the workload
   can touch.
-- **Job friction.** The native-sidecar and CNI-node-agent requirements above exist purely to make the mesh coexist with
-  a short-lived Job; Cilium adds nothing to the pod.
+- **Job friction.** The native-sidecar and CNI-node-agent requirements exist purely to make the mesh coexist with a
+  short-lived Job; Cilium adds nothing to the pod.
 
-Use Istio only when the cluster already runs the mesh and Cilium is not an option, and treat its allowlist as the weaker
-fence: it narrows HTTPS egress but leaves DNS open. Either way, the boundary remains the missing credential (see
-[credential separation](#credential-separation)), not the egress layer.
+Either way, do not mistake the FQDN policy for the boundary. The missing credential is the boundary; the egress layers
+narrow what a compromised agent can talk to, not what it can do to your forge.
 
 !!! warning "kind is not a sandbox"
 
     kind's default CNI (kindnet) ignores NetworkPolicy entirely. The dev overlay applying cleanly does not mean the
-    egress fence works — verify isolation on a CNI that enforces it.
+    egress fence works — verify isolation on a CNI that enforces it (k3s on [Colima](colima.md) enforces the L3/L4
+    floor; the FQDN layer needs a real Cilium or Istio cluster).
 
 ## What leaves the pod
 
-The agent's only output channel is the `PATCHY-EVENT:` JSONL stream on stdout (parsed by the controller from the pod
-log), which carries the remediation as a size-capped structured changeset (`PATCHY_CHANGESET_MAX_BYTES`, 5 MiB) — the
-changed files' contents, not git objects. The controller — not the agent — replays that changeset through the GitHub API
-to create the branch and opens the pull request, so every GitHub side effect passes through code that validates the
-state machine first.
+The agent's only output channel is the `PATCHY-EVENT:` JSONL stream on stdout (parsed by the owning controller from the
+pod log), which carries the remediation as a size-capped structured changeset (`PATCHY_CHANGESET_MAX_BYTES`, 5 MiB) —
+the changed files' contents against the pinned base SHA, not git objects. The remediation-controller — not the agent —
+verifies the commit claim, replays the changeset through the GitHub Git Data API to create the `patchy/<finding>`
+branch, and opens the pull request, so every forge side effect passes through code that validates the state machine
+first.

@@ -1,7 +1,8 @@
 # Create the GitHub App
 
 Patchy authenticates as a GitHub App: the controllers mint short-lived, single-repository installation tokens for every
-operation instead of holding a long-lived personal access token. One App serves the whole stack.
+operation instead of holding a long-lived personal access token. One App serves the whole stack (though you may split
+read and write identities across two Apps — one per custom resource — later).
 
 ## Register the App
 
@@ -18,13 +19,13 @@ Grant exactly these — nothing more:
 
 <div class="nowrap-first" markdown>
 
-| Permission               | Access       | Why                                                     |
-| ------------------------ | ------------ | ------------------------------------------------------- |
-| **Code scanning alerts** | Read & write | Read alert detail; dismiss false positives              |
-| **Issues**               | Read & write | The state machine — open, label, comment, assign, close |
-| **Contents**             | Read & write | Clone the repository; push the remediation branch       |
-| **Pull requests**        | Read & write | Open the pull request a human reviews                   |
-| **Metadata**             | Read         | Mandatory for every App                                 |
+| Permission               | Access       | Why                                                          |
+| ------------------------ | ------------ | ------------------------------------------------------------ |
+| **Code scanning alerts** | Read & write | Read alert detail; dismiss false positives                   |
+| **Issues**               | Read & write | The tracking projection — open, label, comment, close        |
+| **Contents**             | Read & write | Download the repository archive; push the remediation branch |
+| **Pull requests**        | Read & write | Open the pull request a human reviews                        |
+| **Metadata**             | Read         | Mandatory for every App                                      |
 
 </div>
 
@@ -34,33 +35,36 @@ Subscribe to these four events:
 
 <div class="nowrap-first" markdown>
 
-| Event                 | Consumed by              | Purpose                                                   |
-| --------------------- | ------------------------ | --------------------------------------------------------- |
-| `code_scanning_alert` | `source-controller`      | New findings arrive and accumulate into issues            |
-| `issues`              | `context-controller`     | React to `security-finding: opened` issues                |
-| `issue_comment`       | `remediation-controller` | The `/approve` escape hatch for held findings             |
-| `pull_request`        | `remediation-controller` | Close the loop when the remediation PR merges (or closes) |
+| Event                 | Purpose                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| `code_scanning_alert` | New findings arrive and accumulate into `Finding` resources           |
+| `issues`              | Human signals on the tracking issue — close hands off, reopen revives |
+| `issue_comment`       | The `/approve` release for held findings                              |
+| `pull_request`        | Close the loop when the remediation PR merges (or closes unmerged)    |
 
 </div>
 
+All four are consumed by the **integration-controller** — the only webhook receiver in the system. Pipeline progress
+itself is not webhook-driven: the reconcile loops carry it, and the webhook path is ingestion and human-in-the-loop
+signals.
+
 ## The webhook URL
 
-A GitHub App has exactly **one** webhook URL. Point it at the **webhook-controller** — the only patchy component exposed
+A GitHub App has exactly **one** webhook URL. Point it at the integration-controller — the only patchy component exposed
 to the internet:
 
 ```text
-https://patchy.example.com/webhook
+https://patchy.example.com/github/webhooks
 ```
 
-The webhook-controller validates each delivery's HMAC signature and routes it to the controllers that consume its event
-type. It holds no GitHub credential, so the controllers carrying the App's private key never face the internet directly.
-Enable the exposure with the chart's `webhook.host` plus `webhook.ingress` or `webhook.httpRoute` — see
-[Deployment → Webhook exposure](../deployment/webhook.md) for both flavours and the managed-platform (EKS, AKS, GKE)
-notes.
+The integration-controller validates each delivery against the webhook secrets of your configured `Integration`
+resources before anything else happens. Enable the exposure with the chart's `webhook.host` plus `webhook.ingress` or
+`webhook.httpRoute` — see [Deployment → Webhook exposure](../deployment/webhook.md) for both flavours and the
+managed-platform (EKS, AKS, GKE) notes.
 
 ## Collect the credentials
 
-Three values leave this page and become [Kubernetes Secrets](install.md#create-the-secrets):
+Three values leave this page and become one [Kubernetes Secret](install.md#create-the-secrets), `patchy-github`:
 
 1. **Webhook secret** — generate one now and paste it into the App's **Webhook secret** field:
 
@@ -80,5 +84,5 @@ configuring.
 
 !!! info "GitHub Enterprise Server"
 
-    Point the controllers at your instance with `PATCHY_GITHUB_BASE_URL` (Helm value `github.baseURL`), e.g.
-    `https://ghes.example.com/api/v3`. Everything else is identical.
+    Point the custom resources at your instance with `spec.github.baseURL` on the `Integration` and `spec.baseURL`
+    on the `Forge`, e.g. `https://ghes.example.com/api/v3`. Everything else is identical.

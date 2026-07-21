@@ -1,102 +1,125 @@
 # How it works
 
-Patchy is five Go binaries sharing one source of truth: the GitHub issue. Labels carry the state, transitions are
-visible on the issue that caused them, and there is no shadow database or queue. Each component owns a narrow set of
-transitions, and no label key has two writers.
+Patchy is six Go binaries sharing one source of truth: the Kubernetes API. The `patchy.bitwisemedia.uk/v1alpha1` custom
+resources — `Integration`, `Forge`, `Finding`, `Repository`, `Investigation`, `Remediation`, `FindingRollup` — carry all
+pipeline state; etcd is the only state store, and there is no shadow database or queue. GitHub issues are a **one-way,
+human-facing projection**: labels and comments are rendered from the Finding, and human actions flow back in as webhook
+signals, never by re-parsing issue state.
 
-Webhooks enter through one door: the GitHub App's single webhook URL points at the **webhook-controller**, which
-validates the HMAC signature and routes each delivery to the controllers that consume its event type — event types no
-route claims default to the source-controller, and every controller re-validates the signature itself. The
-webhook-controller holds no GitHub credential, so the components carrying the App's key never face the internet.
+Webhooks enter through one door: the GitHub App's single webhook URL points at the **integration-controller**'s
+`/github/webhooks` receiver, which validates each delivery against the webhook secrets of your configured `Integration`
+resources. No other controller faces the internet, and no other controller serves a webhook. Pipeline progress is
+**not** webhook-driven — the gates ("accumulation closed", "older than an hour", "a free remediation slot") are
+conditions no event can announce, so the controllers' watch-driven reconcile loops carry the pipeline; the webhook path
+is ingestion and human-in-the-loop signals only.
 
 ```mermaid
 flowchart LR
-    GH[GitHub<br/>issues + alerts] -->|one webhook URL| WP[webhook-controller]
-    WP -->|code_scanning_alert| SC[source-controller]
-    SC -->|open / accumulate issue| GH
-    WP -->|issues: opened| CC[context-controller]
-    CC -->|enrich + context-enhanced| GH
-    GH -->|reconcile: enhanced + 1h old| RC[remediation-controller]
-    RC -->|Job| AR[agent-runner<br/>sandboxed pod]
+    GH[GitHub<br/>alerts + issues + PRs] -->|one webhook URL| IC[integration-controller]
+    IC -->|ingest into Finding CRs| K8S[(Kubernetes API<br/>the state store)]
+    IC -->|project issues · labels · comments| GH
+    K8S --> CC[context-controller<br/>enhancer chain]
+    K8S --> SC[source-controller<br/>Forge/Repository + artifacts :9790]
+    K8S --> VC[investigation-controller<br/>gate + analysis Jobs]
+    K8S --> RC[remediation-controller<br/>queue + Jobs + push/PR + rollups]
+    VC -->|Job| AR[agent-runner<br/>sandboxed pod]
+    RC -->|Job| AR
+    SC -->|digest-verified tarball| AR
+    AR -->|PATCHY-EVENT: stream| VC
     AR -->|PATCHY-EVENT: stream| RC
-    RC -->|labels · comments · dismissals · branch · PR| GH
+    RC -->|branch push · pull request| GH
 ```
+
+Two namespaces, and the split is the security boundary: the five controllers run in `patchy` (single replicas, leader
+election as rollout insurance), and the ephemeral agent Jobs run in `patchy-agents`, which holds exactly one secret —
+the model API key. See the [isolation model](deployment/isolation.md).
 
 ## 1. Findings arrive and accumulate
 
-The **source-controller** receives `code_scanning_alert` webhooks, fetches the alert detail, and opens a GitHub issue
-carrying the finding's manifest: the alert body, the advisory identifiers (CWE/CVE/GHSA), and the initial labels —
-`security-finding: opened`, `security-accumulation: open`, `security-source`, `security-advisory`, `security-alert`.
+The **integration-controller** validates each `code_scanning_alert` delivery and hands it to the matching
+[`pkg/source` handler](extending.md), which normalizes the alert into advisories (GHSA/CVE/CWE), severity, and
+locations. The result is folded into a `Finding` resource: a new one at phase `Opened` for a first alert, or — for the
+**accumulation window** (one hour by default) — merged into the existing Finding for the same repository and advisory
+family. Accumulation is a condition (`AccumulationComplete`), not a phase, so alerts keep folding in while enhancement
+runs concurrently. Alerts arriving after the window close open a fresh Finding.
 
-Multiple alerts of the same advisory type against the same repository are one weakness, not many. For the **accumulation
-window** (one hour by default) they fold into the same issue: the body's machine manifest grows and each alert adds a
-`security-alert: <n>` label. When the issue is older than the window, the reconcile pass flips
-`security-accumulation: open → complete`, releasing it downstream. Alerts arriving later open a fresh issue.
+## 2. The tracking issue is a projection
 
-## 2. Context before code
+The same controller projects every Finding out as a GitHub tracking issue — body, enrichment and report comments, and a
+trimmed [label vocabulary](labels.md#the-projected-labels) (source, advisories, phase, severity, priority,
+recommendation). The projection is one-way: nothing ever parses issue state back into the pipeline. Human signals do
+flow back — an issue closed by a human hands the finding off, a `/approve` comment releases a held finding, and the PR
+merge webhook completes it.
 
-The **context-controller** reacts to `security-finding: opened` issues (webhook first, with a reconcile sweep for
-anything the webhook missed after a 2-minute grace). It runs the enhancer chain — ownership and infrastructure context,
-posted as a comment so the accumulator keeps sole ownership of the issue body — and flips the state to
-`context-enhanced`. The built-in enhancer is a YAML-backed static map (a stand-in for a real CMDB); the
-[`pkg/enhance`](extending.md) seam takes real integrations.
+## 3. Context before code
 
-## 3. Pickup is deliberate, not eager
+The **context-controller** watches for `Opened` findings and runs the enhancer chain — ownership and infrastructure
+context recorded as enrichments on Finding status (projected as issue comments by the integration-controller), then the
+`Opened → Enhanced` transition. It holds no GitHub credential and makes no external calls at all. The built-in enhancer
+is a YAML-backed static map (a stand-in for a real CMDB); the [`pkg/enhance`](extending.md) seam takes real
+integrations.
 
-The **remediation-controller**'s reconcile loop — not a webhook — picks up issues that are `context-enhanced`, have
-`accumulation: complete`, and are older than `--issue-min-age` (one hour). The age gate is the design's patience: it
-guarantees the accumulation window has done its work before any tokens are spent.
+## 4. Repositories are pinned once
 
-Pickup writes `security-finding: classifying` _before_ the Job exists — the label is the lease. If the Job fails to
-launch, the label reverts to `context-enhanced` and the next pass retries, up to `--max-attempts` (2) tracked in
-`security-attempts`. Then it mints an ephemeral Kubernetes Job in the agent namespace.
+The **source-controller** runs the `Forge` and `Repository` reconcilers: it validates forge credentials, resolves each
+Repository to its covering `Forge`, pins the head SHA exactly once, downloads the tarball archive at that SHA over plain
+HTTP (no git binary anywhere controller-side), and serves it from an in-cluster artifact endpoint (`:9790`). Agent pods
+fetch it **credential-lessly** — the URL carries an unguessable id and the Job pins the sha256 digest — so investigation
+and remediation are guaranteed the same code.
 
-## 4. The sandboxed agent
+## 5. The gate, then the investigation
 
-The Job is the isolation boundary (detailed in [Deployment → Isolation model](deployment/isolation.md)):
+The **investigation-controller** admits findings that are `Enhanced`, have a closed accumulation window, and are older
+than `--finding-min-age` (one hour) — the age gate is the design's patience. Admission materializes the `Repository` and
+one immutable `Investigation` per attempt (the child create is the lease), then the analysis scheduler runs agent Jobs
+under bounded concurrency in severity order.
 
-- An **init container** clones the repository — a tag-free, depth-1 fetch pinned to the exact default-branch commit the
-  controller resolved — using a short-lived, single-repo, read-only token from a per-Job Secret, then unsets it. The
-  credential never survives into the agent container.
-- The **agent container** runs `agent-runner` with no GitHub credentials and no Kubernetes API access; network egress is
-  limited to the model API. Its inputs are the cloned repo, a templated `issue.md`, and `PATCHY_*` env config.
+Inside the pod, **agent-runner** drives `claude -p` over the pinned tree and a templated finding handoff. The agent
+writes a report with parseable YAML frontmatter: `exploitability`, `likelihood`, and `impact` ratings, a
+`recommendation` (`ignore` | `remediate` | `manual`), `severity`, `priority`, a `confidence` value in [0, 1], and — for
+`remediate` — the model, turn count, and token budget it wants for the fix (clamped later to operator ceilings and a
+model allowlist). Backwards-compatible fixes are always favoured; if a better-but-breaking fix exists, the report says
+so and the pipeline holds for a human `/approve`. The runtime never talks to GitHub or the Kubernetes API — results
+leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout.
 
-Inside the pod, `agent-runner` runs a two-stage flow via `claude -p`:
+## 6. Verdicts route
 
-1. **Classify** — is this a false positive? Can it be remediated safely? The agent writes a report with YAML
-   frontmatter: `recommendation` (`ignore` | `remediate` | `manual`), `priority`, `severity`, `confidence` (0–1), and —
-   for `remediate` — the `model`, `max_turns` and `token_budget` it wants.
-2. **Remediate** — only when the recommendation is `remediate`, confidence clears the threshold (0.75), and no
-   breaking-change hold applies. The stage runs under the requested budget (clamped to the controller's ceilings, with a
-   live output-token kill switch) and produces a remediation report plus a structured changeset — the changed files'
-   contents, diffed against the pinned base commit.
+The investigation-controller stamps the results onto the Finding (the report is projected onto the tracking issue, and
+the ratings feed a 0–100 scheduling priority) and routes:
 
-The runtime never talks to GitHub. Results leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout, which the
-remediation-controller tails from the pod log.
+| Verdict                                                 | Route                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `ignore` (false positive)                               | Dismiss the accumulated alerts, close the issue — `Dismissed`                    |
+| `manual`                                                | Hand to the repository owners — `HandedOff` (revivable by `/approve`)            |
+| `remediate`, confidence < threshold, or a breaking hold | `AwaitingApproval` — a human `/approve` comment releases it                      |
+| `remediate`, confidence ≥ threshold (0.75)              | `Queued` for remediation                                                         |
+| Stage failed (timeout, budget, invalid report, …)       | Retry within `--max-attempts`, then `Failed` — a partial report is never trusted |
 
-## 5. Side effects, all in one place
+## 7. Remediation in priority order
 
-The remediation-controller is the **only** component that writes GitHub side effects from agent results. Per the
-classification event it stamps the verdict labels (severity, priority, recommendation, confidence, usage) and routes:
+The **remediation-controller** admits queued findings (including approvals and revivals), schedules them in priority
+order under bounded concurrency (with aging so low-priority findings cannot starve), and runs the second agent stage:
+the finding markdown, the same pinned tree, and the investigation report, under the clamped budget. The agent emits a
+summary report plus a `commit.sh` that must run cleanly and leave real commits — the claim is verified, not believed.
 
-| Outcome                                           | Action                                                                    |
-| ------------------------------------------------- | ------------------------------------------------------------------------- |
-| `ignore` (false positive)                         | Dismiss every accumulated GHAS alert as _false positive_, close the issue |
-| `manual`                                          | Assign the repository owners                                              |
-| `remediate`, confidence < threshold               | Assign owners + `/approve` instructions                                   |
-| `remediate`, a better-but-breaking fix exists     | Hold for `/approve` — a human accepts the compatible fix explicitly       |
-| `remediate`, confidence ≥ threshold               | Continue: the same pod's remediation stage runs                           |
-| Stage failed (timeout, budget, invalid report, …) | Route to humans (`manual`), never trust a partial report                  |
+The controller — the only holder of a forge **write** credential — then replays the changeset through the GitHub Git
+Data API (blob → tree → commit → ref) onto a `patchy/<finding>` branch, opens the pull request, and moves the finding to
+`InReview`.
 
-On remediation success it replays the changeset through the GitHub API (blob → tree → commit → ref) with a scoped write
-token — no git binary, no clone — creating branch `patchy/issue-<n>`, opens the pull request, and sets `in-review`. A
-maintainer's `/approve` comment on a held issue re-runs a remediate-only Job, reusing the classification report from the
-issue comment.
+## 8. Humans close the loop
 
-## 6. Humans close the loop
+Merging the PR fires a `pull_request` webhook: the integration-controller moves the finding to `Remediated`. Closing the
+PR unmerged, or exhausting retries anywhere above, lands it at `Failed`; `manual` verdicts and human-closed issues land
+at `HandedOff`, which a later `/approve` can revive back into the queue. Completed findings are kept for a TTL (14 days
+by default) and then deleted; per-scope `FindingRollup` resources retain the all-time statistics — success rates,
+verdict mix, token and cost totals per repository, harness, and model.
 
-Merging the PR fires a `pull_request` webhook: the issue flips to `remediated` and closes. Closing the PR unmerged — or
-exhausting retries anywhere above — lands the issue at `attempted` with `security-recommendation: manual` and the owners
-assigned. Both are terminal: every finding ends either repaired or explicitly in human hands.
+Watch it all with the shared kubectl category:
 
-The complete legal-transition table, with writers, lives in [Labels & state machine](labels.md).
+```sh
+kubectl get patchy -n patchy          # everything patchy owns
+kubectl get findings -w               # the pipeline, live
+kubectl get investigations,remediations,findingrollups
+```
+
+The complete phase table, with writers, lives in [State machine & labels](labels.md).

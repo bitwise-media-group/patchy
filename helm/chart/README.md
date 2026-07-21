@@ -37,9 +37,9 @@ service-account tokens; [`templates/rbac.yaml`](templates/rbac.yaml) pins verb-b
 two Services exist — the integration-controller's :8080 and the source-controller's :9790; every other port is a
 kubelet-probed :8081.
 
-The CRDs render as templates gated by `crds.install` — living in `templates/crds/` rather than the chart's
-install-only `crds/` directory means `helm upgrade` keeps them current — with `helm.sh/resource-policy: keep` stamped
-when `crds.keep` is true so uninstall never deletes them — and with them the all-time FindingRollup statistics.
+The CRDs render as templates gated by `crds.install` — living in `templates/crds/` rather than the chart's install-only
+`crds/` directory means `helm upgrade` keeps them current — with `helm.sh/resource-policy: keep` stamped when
+`crds.keep` is true so uninstall never deletes them — and with them the all-time FindingRollup statistics.
 
 ## Switching the pipeline on
 

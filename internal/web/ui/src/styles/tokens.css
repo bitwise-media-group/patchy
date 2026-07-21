@@ -1,0 +1,114 @@
+/* Patchy design tokens — vendored from the design-system repo.
+ *
+ * Canonical source: design-system tokens/themes.css (.theme-patchy /
+ * .theme-patchy-light) plus the typography/spacing tokens the kit consumes.
+ * That file is the single source of truth — re-copy these values whenever the
+ * palette changes. Vendored so the single-file build is self-contained and
+ * the project lifts into the source-controller without cross-repo paths.
+ *
+ * Palette metaphor: healthy turf green is progress, warm soil marks the
+ * original finding, pale seedling green marks a completed repair, and
+ * amber/red are reserved for human attention and failure.
+ */
+
+:root {
+  /* ---- Typography ---- */
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 360ms;
+}
+
+/* Shared semantic aliases — both modes. */
+.theme-patchy,
+.theme-patchy-light {
+  --color-primary: var(--patchy-green);
+  --color-primary-hover: var(--patchy-green-2);
+  --color-primary-active: var(--patchy-moss);
+  --color-on-primary: var(--patchy-on-accent);
+  --surface-page: var(--patchy-bg);
+  --surface-card: var(--patchy-surface);
+  --text-strong: var(--patchy-fg);
+  --text-body: var(--patchy-fg);
+  --text-muted: var(--patchy-muted);
+  --border-subtle: var(--patchy-line);
+  --border-default: var(--patchy-line-2);
+  --focus-ring: var(--patchy-green);
+  --radius-card: 12px;
+}
+
+/* Dark (default) — damp soil at night, with bright new turf. */
+.theme-patchy {
+  --patchy-green: #78d64b;
+  --patchy-green-2: #9be66a;
+  --patchy-moss: #46a653;
+  --patchy-seedling: #c7f28a;
+  --patchy-ink-green: #8de05d;
+  --patchy-soil: #a47a55;
+  --patchy-amber: #e7b75f;
+  --patchy-red: #ef716a;
+  --patchy-on-accent: #10200d;
+
+  /* Severity ramp — hotter and wider-spectrum than the state tones so
+   * severity never collides with lifecycle colours. */
+  --patchy-sev-low: #6bbf45;
+  --patchy-sev-medium: #f2d437;
+  --patchy-sev-high: #fb8b1e;
+  --patchy-sev-critical: #ff4d7e;
+
+  --patchy-bg: #0c140e;
+  --patchy-surface: #121d15;
+  --patchy-surface-2: #17251a;
+  --patchy-code: #071009;
+  --patchy-code-2: #0e1811;
+  --patchy-line: #26372a;
+  --patchy-line-2: #354a39;
+  --patchy-fg: #edf7ee;
+  --patchy-muted: #98ab9b;
+  --patchy-faint: #697c6d;
+  --patchy-shadow: 0 20px 52px rgba(2, 8, 4, 0.44);
+  --patchy-shadow-strong: 0 30px 80px rgba(2, 8, 4, 0.62);
+  --shadow-glow: 0 6px 20px rgba(120, 214, 75, 0.28);
+}
+
+/* Light — garden paper, white panels, and a deep accessible turf green. */
+.theme-patchy-light {
+  --patchy-green: #2f7d36;
+  --patchy-green-2: #25672c;
+  --patchy-moss: #367a3c;
+  --patchy-seedling: #3c7630;
+  --patchy-ink-green: #286f30;
+  --patchy-soil: #77583e;
+  --patchy-amber: #9a6700;
+  --patchy-red: #c53b36;
+  --patchy-on-accent: #ffffff;
+
+  --patchy-sev-low: #256b2e;
+  --patchy-sev-medium: #a38200;
+  --patchy-sev-high: #b04a00;
+  --patchy-sev-critical: #9f1239;
+
+  --patchy-bg: #f3f7ef;
+  --patchy-surface: #ffffff;
+  --patchy-surface-2: #eaf2e5;
+  --patchy-code: #e1ebdd;
+  --patchy-code-2: #eaf1e6;
+  --patchy-line: #cad8c4;
+  --patchy-line-2: #afc2b0;
+  --patchy-fg: #172219;
+  --patchy-muted: #566859;
+  --patchy-faint: #708073;
+  --patchy-shadow: 0 20px 52px rgba(38, 72, 42, 0.12);
+  --patchy-shadow-strong: 0 30px 80px rgba(38, 72, 42, 0.18);
+  --shadow-glow: 0 6px 20px rgba(47, 125, 54, 0.24);
+}

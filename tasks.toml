@@ -48,14 +48,35 @@ description = "run envtest-backed tests (real kube-apiserver)"
 dir = "{{cwd}}"
 run = "./hack/envtest.sh"
 
+# Status page SPA: built into internal/web/ui/dist and embedded into the
+# status-server binary via -tags withui (hack/build.sh). dist/ is git-ignored
+# (a built bundle); sources/outputs rerun npm only when the UI sources change.
+[ui]
+description = "build the embedded status page SPA (internal/web/ui/dist)"
+dir = "{{cwd}}"
+sources = [
+  "internal/web/ui/package.json",
+  "internal/web/ui/package-lock.json",
+  "internal/web/ui/index.html",
+  "internal/web/ui/vite.config.ts",
+  "internal/web/ui/tsconfig.json",
+  "internal/web/ui/src/**/*",
+]
+outputs = ["internal/web/ui/dist/index.html"]
+run = [
+  "npm --prefix internal/web/ui ci --no-fund --no-audit",
+  "npm --prefix internal/web/ui run build",
+]
+
 # Redefines the archetype's build task (whole-task replacement): patchy is
 # multi-binary — one controller per concern plus the agent runtime — so the
 # single-app go-build is replaced by a loop over cmd/ (hack/build.sh; the
-# multiline tasks live in hack/ so shellcheck lints them).
+# multiline tasks live in hack/ so shellcheck lints them). The ui task runs
+# first so the withui build can embed internal/web/ui/dist.
 [build]
 description = "build all patchy binaries into bin/"
 dir = "{{cwd}}"
-run = "./hack/build.sh"
+run = [{ task = "ui" }, "./hack/build.sh"]
 
 # One-command local dev loop on Colima: cluster up, snapshot images, retag,
 # apply the dev overlay, restart so a re-run redeploys. The interesting parts

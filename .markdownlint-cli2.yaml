@@ -25,6 +25,8 @@ ignores:
     - "dist/**"
     - ".claude/**"
     - "CHANGELOG.md"
+    # Status page SPA sub-project (its own toolchain; node_modules/dist live here).
+    - "internal/web/ui/**"
     # Shared toolchain submodule — linted in its own repo.
     - ".mise/**"
     # Docs site build output (zensical) + the uv-managed python env.

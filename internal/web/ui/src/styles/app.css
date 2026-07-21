@@ -1,0 +1,453 @@
+/* Patchy status page — Tailwind entry.
+ *
+ * Layout/spacing/typography live as utilities in the components. This file
+ * carries: (1) the Tailwind theme mapping onto the vendored --patchy-*
+ * tokens, so utilities like bg-turf/text-muted re-tint through the body
+ * class theme switch; (2) the few bespoke recipes utilities can't express
+ * cleanly (patch mark, pill tones via color-mix, timeline rail, pipeline
+ * cells). Every colour still resolves from tokens.css. */
+
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme {
+  --animate-pulse-dot: ps-pulse 1.7s ease-in-out infinite;
+  @keyframes ps-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.8);
+    }
+  }
+  --animate-rise: ps-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  @keyframes ps-rise {
+    from {
+      transform: translateY(8px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+/* Utilities reference the runtime vars directly (inline), so the body-class
+ * theme switch re-tints everything without a rebuild. */
+@theme inline {
+  --color-turf: var(--patchy-green);
+  --color-turf-2: var(--patchy-green-2);
+  --color-moss: var(--patchy-moss);
+  --color-seedling: var(--patchy-seedling);
+  --color-ink: var(--patchy-ink-green);
+  --color-soil: var(--patchy-soil);
+  --color-amber: var(--patchy-amber);
+  --color-red: var(--patchy-red);
+  --color-onaccent: var(--patchy-on-accent);
+  --color-page: var(--patchy-bg);
+  --color-surface: var(--patchy-surface);
+  --color-surface-2: var(--patchy-surface-2);
+  --color-code: var(--patchy-code);
+  --color-code-2: var(--patchy-code-2);
+  --color-line: var(--patchy-line);
+  --color-line-2: var(--patchy-line-2);
+  --color-fg: var(--patchy-fg);
+  --color-muted: var(--patchy-muted);
+  --color-faint: var(--patchy-faint);
+  --shadow-card: var(--patchy-shadow);
+  --shadow-strong: var(--patchy-shadow-strong);
+  --shadow-turf-glow: var(--shadow-glow);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-page text-fg font-sans text-[14px] leading-normal;
+  }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--patchy-green);
+    color: var(--patchy-on-accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---- patch mark: turf sliding over a soil hole ---- */
+  .patch-mark {
+    position: relative;
+    display: inline-block;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    background: var(--patchy-surface-2);
+    border: 1px solid var(--patchy-line-2);
+    overflow: hidden;
+  }
+  .patch-mark__hole {
+    position: absolute;
+    width: 48%;
+    height: 30%;
+    left: 18%;
+    bottom: 17%;
+    border-radius: 50%;
+    background: var(--patchy-soil);
+    box-shadow: inset 0 3px 0 color-mix(in oklab, var(--patchy-code) 35%, transparent);
+  }
+  .patch-mark__turf {
+    position: absolute;
+    width: 49%;
+    height: 29%;
+    right: 12%;
+    bottom: 27%;
+    border-radius: 3px;
+    background: var(--patchy-green);
+    border: 1px solid color-mix(in oklab, var(--patchy-green) 70%, var(--patchy-fg));
+    transform: rotate(-7deg);
+  }
+  .patch-mark__blade {
+    position: absolute;
+    width: 2px;
+    height: 22%;
+    border-radius: 2px;
+    background: var(--patchy-green-2);
+    transform-origin: bottom;
+  }
+  .patch-mark__blade--one {
+    right: 32%;
+    bottom: 54%;
+    transform: rotate(-15deg);
+  }
+  .patch-mark__blade--two {
+    right: 23%;
+    bottom: 52%;
+    transform: rotate(15deg);
+  }
+
+  /* ---- pills: tone grammar via color-mix tints ---- */
+  .ps-pill {
+    @apply inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-[3px] font-mono text-[10.5px] font-semibold whitespace-nowrap;
+    color: var(--patchy-ink-green);
+    background: color-mix(in oklab, var(--patchy-green) 10%, transparent);
+    border: 1px solid color-mix(in oklab, var(--patchy-green) 28%, transparent);
+  }
+  .ps-pill__label {
+    @apply font-medium text-muted;
+  }
+  .ps-pill--seedling {
+    color: var(--patchy-seedling);
+    background: color-mix(in oklab, var(--patchy-seedling) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-seedling) 28%, transparent);
+  }
+  .ps-pill--amber {
+    color: var(--patchy-amber);
+    background: color-mix(in oklab, var(--patchy-amber) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-amber) 28%, transparent);
+  }
+  .ps-pill--soil {
+    color: var(--patchy-soil);
+    background: color-mix(in oklab, var(--patchy-soil) 10%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-soil) 28%, transparent);
+  }
+  .ps-pill--red {
+    color: var(--patchy-red);
+    background: color-mix(in oklab, var(--patchy-red) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-red) 26%, transparent);
+  }
+  .ps-pill--neutral {
+    color: var(--patchy-muted);
+    background: color-mix(in oklab, var(--patchy-muted) 8%, transparent);
+    border-color: var(--patchy-line-2);
+  }
+  /* Severity/rating tones — the dedicated ramp, never the state tones. */
+  .ps-pill--sev-low {
+    color: var(--patchy-sev-low);
+    background: color-mix(in oklab, var(--patchy-sev-low) 10%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-low) 30%, transparent);
+  }
+  .ps-pill--sev-medium {
+    color: var(--patchy-sev-medium);
+    background: color-mix(in oklab, var(--patchy-sev-medium) 10%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-medium) 30%, transparent);
+  }
+  .ps-pill--sev-high {
+    color: var(--patchy-sev-high);
+    background: color-mix(in oklab, var(--patchy-sev-high) 11%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-high) 32%, transparent);
+  }
+  .ps-pill--sev-critical {
+    color: var(--patchy-sev-critical);
+    background: color-mix(in oklab, var(--patchy-sev-critical) 11%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-critical) 34%, transparent);
+  }
+
+  .ps-live-dot {
+    @apply animate-pulse-dot inline-block size-[7px] rounded-full bg-turf;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--patchy-green) 12%, transparent);
+  }
+  .ps-mono-tag {
+    @apply inline-flex items-center gap-1 rounded-md border border-line bg-code-2 px-1.5 py-0.5 font-mono text-[11px] text-fg no-underline;
+    overflow-wrap: anywhere;
+  }
+  a.ps-mono-tag:hover {
+    @apply border-line-2;
+  }
+  .ps-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line-2 bg-surface px-2 py-1 font-mono text-[10.5px] text-muted no-underline;
+  }
+
+  /* ---- notes (amber default; green/red variants) ---- */
+  .ps-note {
+    @apply mt-4 flex flex-wrap items-center gap-2 rounded-[10px] px-3.5 py-2.5 text-[12.5px] text-amber;
+    background: color-mix(in oklab, var(--patchy-amber) 8%, transparent);
+    border: 1px solid color-mix(in oklab, var(--patchy-amber) 26%, transparent);
+  }
+  .ps-note--green {
+    color: var(--patchy-ink-green);
+    background: color-mix(in oklab, var(--patchy-green) 8%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-green) 26%, transparent);
+  }
+  .ps-note--red {
+    color: var(--patchy-red);
+    background: color-mix(in oklab, var(--patchy-red) 7%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-red) 24%, transparent);
+  }
+  .ps-note a {
+    @apply inline-flex items-center gap-1 font-semibold text-inherit;
+  }
+
+  /* ---- section heading (mono eyebrow) ---- */
+  .ps-heading {
+    @apply m-0 font-mono text-[11px] font-semibold tracking-[0.09em] uppercase text-ink;
+  }
+
+  /* ---- key/value grids ---- */
+  .ps-kv {
+    @apply m-0 grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-x-4 gap-y-3;
+  }
+  .ps-kv--stack {
+    @apply grid-cols-1 gap-2;
+  }
+  .ps-kv dt {
+    @apply font-mono text-[9.5px] tracking-[0.07em] uppercase text-faint;
+  }
+  .ps-kv dd {
+    @apply mx-0 mt-1 mb-0 text-[12.5px] text-fg;
+  }
+
+  /* ---- segmented button groups (filters, trend measures) ---- */
+  .ps-filter-group {
+    @apply flex rounded-[9px] border border-line bg-surface p-[3px];
+  }
+  .ps-filter-group button {
+    @apply cursor-pointer rounded-[7px] border-0 bg-transparent px-2 py-1.5 font-mono text-[10px] text-muted;
+  }
+  .ps-filter-group button.is-active {
+    @apply bg-surface-2 text-fg;
+    box-shadow: inset 0 0 0 1px var(--patchy-line-2);
+  }
+
+  /* ---- tabs ---- */
+  .ps-tabs {
+    @apply flex gap-5 border-b border-line;
+  }
+  .ps-tabs a {
+    @apply -mb-px border-b-2 border-transparent px-0.5 py-3 text-[13px] font-semibold text-muted no-underline hover:text-fg;
+  }
+  .ps-tabs a.is-active {
+    @apply border-turf text-ink;
+  }
+
+  /* ---- stat tile ---- */
+  .ps-stat {
+    @apply min-h-[92px] border-l border-line px-5 py-4 first:border-l-0;
+  }
+  .ps-stat strong {
+    @apply block font-mono text-[23px] font-bold text-ink;
+  }
+  .ps-stat span {
+    @apply mt-1 block text-[11.5px] text-muted;
+  }
+
+  /* ---- phase pipeline cells (count circle + connecting rail) ---- */
+  .ps-phase {
+    @apply -my-1.5 cursor-pointer rounded-[9px] border-0 bg-transparent p-1.5 text-left text-inherit;
+  }
+  .ps-phase:hover {
+    background: color-mix(in oklab, var(--patchy-green) 5%, transparent);
+  }
+  .ps-phase.is-active {
+    background: color-mix(in oklab, var(--patchy-green) 11%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--patchy-green) 40%, transparent);
+  }
+  .ps-phase__top {
+    @apply flex items-center;
+  }
+  .ps-phase__count {
+    @apply grid size-[27px] flex-none place-items-center rounded-full bg-turf font-mono text-[10.5px] font-bold text-onaccent;
+  }
+  .ps-phase.is-empty .ps-phase__count {
+    @apply border border-line-2 bg-surface text-faint;
+  }
+  .ps-phase__line {
+    @apply mx-2 h-px flex-1 bg-line-2;
+  }
+  .ps-phase strong {
+    @apply mt-2 block pr-2 font-mono text-[10px] font-semibold text-fg;
+    overflow-wrap: anywhere;
+  }
+  .ps-phase--terminal {
+    @apply inline-flex items-center gap-2;
+  }
+  .ps-phase--terminal strong {
+    @apply mt-0;
+  }
+  .ps-phase--terminal .ps-phase__count {
+    @apply size-[22px] border border-line-2 bg-surface text-[9.5px] text-muted;
+  }
+  .ps-phase--terminal:not(.is-empty) .ps-phase__count {
+    @apply border-soil text-soil;
+  }
+
+  /* ---- board & rollup table grids (header and rows must never drift) ---- */
+  .ps-grid-board {
+    @apply grid grid-cols-[minmax(250px,2.3fr)_0.75fr_1.15fr_0.75fr_0.75fr_0.65fr] items-center gap-4 max-lg:min-w-[860px];
+  }
+  .ps-grid-rollup {
+    @apply grid grid-cols-[minmax(180px,1.8fr)_0.7fr_0.8fr_1.2fr_0.9fr_0.8fr] items-center gap-4 max-lg:min-w-[760px];
+  }
+  .ps-grid-rollup-repo {
+    @apply grid grid-cols-[minmax(180px,1.8fr)_0.7fr_1.2fr_0.8fr_0.7fr_0.8fr] items-center gap-4 max-lg:min-w-[760px];
+  }
+  .ps-table-header {
+    @apply min-h-10 border-b border-line px-4.5 font-mono text-[9px] tracking-[0.08em] uppercase text-faint;
+  }
+  .ps-hover-row {
+    @apply border-b border-line last:border-b-0;
+  }
+  .ps-hover-row:hover {
+    background: color-mix(in oklab, var(--patchy-green) 3.5%, var(--patchy-surface));
+  }
+
+  /* ---- confidence track & stacked mix bar ---- */
+  .ps-track {
+    @apply mt-1.5 block h-[3px] w-14 overflow-hidden rounded-full bg-line;
+  }
+  .ps-track span {
+    @apply block h-full rounded-full bg-turf;
+  }
+  /* 2px surface gaps between segments; identity never rides on hue alone —
+   * the tooltip and the share column restate the mix in text. */
+  .ps-mixbar {
+    @apply flex h-2 gap-[2px] overflow-hidden rounded-full;
+  }
+  .ps-mixbar > span {
+    @apply block h-full min-w-[3px];
+  }
+  .ps-fill--green {
+    background: var(--patchy-green);
+  }
+  .ps-fill--red {
+    background: var(--patchy-red);
+  }
+  .ps-fill--amber {
+    background: var(--patchy-amber);
+  }
+  .ps-fill--soil {
+    background: var(--patchy-soil);
+  }
+  .ps-fill--faint {
+    background: var(--patchy-faint);
+  }
+
+  /* ---- timeline rail ---- */
+  .ps-timeline__item {
+    @apply relative flex min-h-[54px] items-start gap-3;
+  }
+  .ps-timeline__item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 11px;
+    top: 24px;
+    bottom: 0;
+    width: 1px;
+    background: var(--patchy-line-2);
+  }
+  .ps-timeline__marker {
+    @apply relative z-[1] grid size-[23px] flex-none place-items-center rounded-full border border-line-2 bg-surface-2 text-muted;
+  }
+  .ps-timeline__item--done .ps-timeline__marker,
+  .ps-timeline__item--green .ps-timeline__marker {
+    @apply border-turf bg-turf text-onaccent;
+  }
+  .ps-timeline__item--active .ps-timeline__marker {
+    @apply border-turf bg-turf text-onaccent;
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--patchy-green) 12%, transparent);
+  }
+  .ps-timeline__item--red .ps-timeline__marker {
+    background: color-mix(in oklab, var(--patchy-red) 18%, var(--patchy-surface-2));
+    border-color: var(--patchy-red);
+    color: var(--patchy-red);
+  }
+  .ps-timeline__item--amber .ps-timeline__marker {
+    background: color-mix(in oklab, var(--patchy-amber) 16%, var(--patchy-surface-2));
+    border-color: var(--patchy-amber);
+    color: var(--patchy-amber);
+  }
+  .ps-timeline__item--soil .ps-timeline__marker {
+    background: color-mix(in oklab, var(--patchy-soil) 16%, var(--patchy-surface-2));
+    border-color: var(--patchy-soil);
+    color: var(--patchy-soil);
+  }
+  .ps-timeline__item--red .ps-timeline__body > strong {
+    color: var(--patchy-red);
+  }
+  .ps-timeline__item--amber .ps-timeline__body > strong {
+    color: var(--patchy-amber);
+  }
+
+  /* ---- action buttons ---- */
+  .ps-action {
+    @apply inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[9px] border border-line-2 bg-surface-2 px-3.5 text-[13px] font-semibold text-fg transition-colors disabled:cursor-default disabled:opacity-60;
+  }
+  .ps-action:hover:not(:disabled) {
+    @apply border-turf;
+  }
+  .ps-action--primary {
+    @apply border-turf bg-turf text-onaccent shadow-turf-glow;
+  }
+  .ps-action--primary:hover:not(:disabled) {
+    @apply border-turf-2 bg-turf-2;
+  }
+  .ps-action.is-confirming {
+    @apply border-amber bg-amber text-onaccent shadow-none;
+  }
+}

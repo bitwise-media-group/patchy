@@ -21,6 +21,10 @@ project_name: patchy
 before:
     hooks:
         - go mod download
+        # The status page SPA must exist before the status-server build
+        # compiles with -tags withui (internal/web/embed_ui.go).
+        - npm --prefix internal/web/ui ci --no-fund --no-audit
+        - npm --prefix internal/web/ui run build
 
 env:
     - CGO_ENABLED=0
@@ -111,6 +115,25 @@ builds:
       binary: agent-runner
       flags:
           - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+      goarch:
+          - amd64
+          - arm64
+    - id: status-server
+      main: ./cmd/status-server
+      binary: status-server
+      flags:
+          - -trimpath
+      # withui embeds the status page SPA (built by the npm before-hooks).
+      tags:
+          - withui
       ldflags:
           - -s -w
           - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
@@ -244,6 +267,24 @@ dockers_v2:
       platforms:
           - linux/amd64
           - linux/arm64
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: status-server
+      ids: [status-server]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/status-server
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: status-server
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT

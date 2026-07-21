@@ -14,3 +14,5 @@ coverage/
 .claude/plans/
 .claude/*.md
 settings.local.json
+
+node_modules/

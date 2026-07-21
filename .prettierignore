@@ -25,3 +25,6 @@ helm/chart/templates/
 # Docs site build output (zensical)
 /site/
 
+
+# Status page SPA sub-project (its own toolchain; node_modules/dist live here)
+internal/web/ui/

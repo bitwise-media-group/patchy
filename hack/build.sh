@@ -5,7 +5,9 @@
 # Build every patchy binary into bin/ — one controller per concern plus the
 # agent runtime. Same ldflags contract as .goreleaser.yaml: version metadata
 # stamped into internal/version. MODULE/VERSION/COMMIT/DATE/LDFLAGS override
-# the derived defaults.
+# the derived defaults. BUILD_TAGS defaults to withui, which embeds the
+# status page SPA (internal/web/ui/dist — build it first: mise run ui);
+# BUILD_TAGS='' compiles the stub instead.
 set -eu
 
 module="${MODULE:-$(go list -m)}"
@@ -16,8 +18,9 @@ ldflags="${LDFLAGS:--s -w \
   -X $module/internal/version.Version=$version \
   -X $module/internal/version.Commit=$commit \
   -X $module/internal/version.BuildDate=$date}"
+tags="${BUILD_TAGS-withui}"
 mkdir -p bin
 for dir in cmd/*/; do
   app=$(basename "$dir")
-  CGO_ENABLED=0 go build -trimpath -ldflags "$ldflags" -o "bin/$app" "./cmd/$app"
+  CGO_ENABLED=0 go build -trimpath -tags "$tags" -ldflags "$ldflags" -o "bin/$app" "./cmd/$app"
 done

@@ -1,0 +1,39 @@
+#!/bin/sh
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The scripted stand-in for the real agent-runner, for credential-less local
+# dev (the dev-fake overlay). The job controllers only ever read the agent
+# container's stdout, so a shell script that prints one well-formed
+# PATCHY-EVENT line per stage exercises the entire CR pipeline — verdict
+# routing, priority scheduling, the changeset push, the pull request —
+# without a model key. Branches on PATCHY_PHASE exactly like the real
+# runtime; PATCHY_BASE_SHA seeds the changeset's push base.
+#
+# The investigation verdict is remediate at 0.92 confidence — above the
+# default 0.75 threshold, so findings flow straight to Queued. Edit the
+# fields below to demo other routes (ignore, manual, await_approval, low
+# confidence).
+set -eu
+
+repo="${PATCHY_REPO:-unknown/unknown}"
+finding="${PATCHY_FINDING:-unknown}"
+phase="${PATCHY_PHASE:-investigate}"
+base_sha="${PATCHY_BASE_SHA:-}"
+
+case "$phase" in
+investigate)
+  printf 'PATCHY-EVENT: {"v":3,"type":"investigation","repo":"%s","finding":"%s","investigation":{"outcome":"ok","harness":"fake","model":"fake-scripted","session_id":"00000000-0000-4000-8000-000000000000","num_turns":3,"usage":{"input_tokens":1200,"output_tokens":800,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.05},"elapsed_seconds":2.5,"report_markdown":"## Investigation (fake agent)\\n\\nScripted verdict from hack/fake-agent — no model was consulted.","exploitability":{"rating":"high","summary":"scripted"},"likelihood":{"rating":"medium","summary":"scripted"},"impact":{"rating":"high","summary":"scripted"},"recommendation":"remediate","priority":"high","severity":"high","confidence":0.92,"remediation_model":"claude-sonnet-5","max_turns":40,"token_budget":200000,"await_approval":false}}\n' \
+    "$repo" "$finding"
+  ;;
+remediate)
+  content=$(printf 'escaped();\n' | base64 | tr -d '\n')
+  printf 'PATCHY-EVENT: {"v":3,"type":"remediation","repo":"%s","finding":"%s","remediation":{"outcome":"ok","harness":"fake","model":"claude-sonnet-5","session_id":"00000000-0000-4000-8000-000000000001","num_turns":5,"usage":{"input_tokens":2500,"output_tokens":1500,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.12},"elapsed_seconds":4.0,"report_markdown":"## Remediation (fake agent)\\n\\nScripted fix from hack/fake-agent — review app.js.","success":true,"confidence":0.9,"branch":"patchy/%s","changeset":{"base_sha":"%s","commit_message":"fix(security): escape the sink (fake agent)","upserts":[{"path":"app.js","mode":"100644","content_b64":"%s"}]}}}\n' \
+    "$repo" "$finding" "$finding" "$base_sha" "$content"
+  ;;
+*)
+  printf 'PATCHY-EVENT: {"v":3,"type":"fatal","repo":"%s","finding":"%s","error":"fake agent: unknown phase %s"}\n' \
+    "$repo" "$finding" "$phase"
+  exit 1
+  ;;
+esac

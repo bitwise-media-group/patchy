@@ -53,32 +53,54 @@ type comment struct {
 type Server struct {
 	*httptest.Server
 
+	// externalURL is the address clients reach the fake at — stamped into
+	// the absolute URLs it hands out (the tarball redirect).
+	externalURL string
+
 	mu        sync.Mutex
 	issues    map[int]*Issue
 	comments  map[int][]comment
 	dismissed map[int]string
+	pulls     map[int]*pull
 	git       gitData
 	next      int
 	// Now stamps created_at; tests override it to age issues instantly.
 	Now func() time.Time
 }
 
-// New starts the fake. The returned URL is what a controller's
-// --github-base-url should point at.
-func New() *Server {
+func newState() (*Server, *http.ServeMux) {
 	s := &Server{
 		issues:    make(map[int]*Issue),
 		comments:  make(map[int][]comment),
 		dismissed: make(map[int]string),
+		pulls:     make(map[int]*pull),
 		git:       newGitData(),
 		next:      100,
 		Now:       time.Now,
 	}
 	mux := http.NewServeMux()
 	s.routes(mux)
+	return s, mux
+}
+
+// New starts the fake on an ephemeral localhost listener. The returned URL is
+// what an Integration/Forge baseURL should point at.
+func New() *Server {
+	s, mux := newState()
 	// go-github appends /api/v3 for a non-api.github.com base URL.
 	s.Server = httptest.NewServer(http.StripPrefix("/api/v3", mux))
+	s.externalURL = s.Server.URL
 	return s
+}
+
+// NewStandalone builds the fake without starting a listener — the handler
+// for a caller-owned http.Server (the `mise run fakegithub` dev server).
+// externalURL is the address clients will reach that server at. The embedded
+// httptest.Server stays nil: Close and URL are not available in this mode.
+func NewStandalone(externalURL string) (*Server, http.Handler) {
+	s, mux := newState()
+	s.externalURL = externalURL
+	return s, http.StripPrefix("/api/v3", mux)
 }
 
 // Issues returns a snapshot of every issue, ordered by number.
@@ -146,6 +168,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /repos/{owner}/{repo}/code-scanning/alerts/{number}", s.updateAlert)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues", s.listIssues)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/issues", s.createIssue)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}", s.getIssue)
 	mux.HandleFunc("PATCH /repos/{owner}/{repo}/issues/{number}", s.editIssue)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}/comments", s.listComments)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/issues/{number}/comments", s.createComment)
@@ -153,6 +176,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}", s.removeLabel)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/issues/{number}/assignees", s.addAssignees)
 	mux.HandleFunc("GET /repos/{owner}/{repo}", s.getRepo)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/pulls", s.listPulls)
+	mux.HandleFunc("POST /repos/{owner}/{repo}/pulls", s.createPull)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/tarball/{ref...}", s.tarballRedirect)
+	mux.HandleFunc("GET /_tarball/{owner}/{repo}/{ref...}", s.tarball)
 	mux.HandleFunc("GET /search/issues", s.searchIssues)
 	s.gitRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +269,18 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, is)
+}
+
+func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
+	number, _ := strconv.Atoi(r.PathValue("number"))
+	s.mu.Lock()
+	is, ok := s.issues[number]
+	s.mu.Unlock()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
 	writeJSON(w, is)
 }
 

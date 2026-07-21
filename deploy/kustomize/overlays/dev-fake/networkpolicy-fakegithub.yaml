@@ -1,0 +1,48 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The base controllers policy only allows egress on 443/6443, and — unlike
+# kind — colima's k3s enforces NetworkPolicy. This dev-only addition lets the
+# controllers reach the in-cluster fake GitHub (fakegithub.yaml, port 9990).
+# Policies are additive, so this widens the base rather than replacing it.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-controllers-fakegithub
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/component: controller
+    policyTypes: [Egress]
+    egress:
+        - to:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: fakegithub
+          ports:
+              - protocol: TCP
+                port: 9990
+---
+# The fake's own policy: API ingress on 9990 from anywhere — the controllers,
+# and the NodePort walkthrough curls, which arrive from the node IP — and no
+# egress at all: the fake serves from memory and never dials out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-fakegithub
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: fakegithub
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 9990

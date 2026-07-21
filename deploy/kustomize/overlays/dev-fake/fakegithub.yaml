@@ -1,0 +1,118 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The fake GitHub (e2e/fakegithub) as an in-cluster Deployment, so the
+# credential-less walkthrough needs no server running on the host. State is
+# in-memory and per-pod: `kubectl -n patchy rollout restart deployment
+# patchy-fakegithub` is the clean-slate button (and every `make dev-colima`
+# re-run restarts it anyway).
+#
+# Deliberately NOT labelled app.kubernetes.io/component: controller — the
+# base patchy-controllers NetworkPolicy selects that label and would confine
+# ingress to 8080/8081. Its own policy (networkpolicy-fakegithub.yaml)
+# admits ingress on 9990 — from the controllers and the NodePort below —
+# and blocks all egress: the fake never dials out.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-fakegithub
+    namespace: patchy
+    labels:
+        app: fakegithub
+        app.kubernetes.io/name: fakegithub
+        app.kubernetes.io/part-of: patchy
+        app.kubernetes.io/component: dev-fake
+spec:
+    # One replica, no persistence: the whole point is disposable in-memory
+    # state (issues, PRs, pushed refs) that a restart wipes.
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: fakegithub
+            app.kubernetes.io/part-of: patchy
+    template:
+        metadata:
+            labels:
+                app: fakegithub
+                app.kubernetes.io/name: fakegithub
+                app.kubernetes.io/part-of: patchy
+                app.kubernetes.io/component: dev-fake
+        spec:
+            # The fake never talks to the Kubernetes API — no token needed.
+            automountServiceAccountToken: false
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: fakegithub
+                  # Built from hack/fakegithub/Dockerfile by `make dev-colima`
+                  # when PATCHY_OVERLAY=dev-fake.
+                  image: patchy/fakegithub:dev
+                  args:
+                      # The URL stamped into tarball redirects must be the one
+                      # the follower (source-controller) can reach — the
+                      # in-cluster Service, not the host address the
+                      # standalone default assumes.
+                      - -external-url=http://patchy-fakegithub.patchy.svc.cluster.local:9990
+                  ports:
+                      - name: api
+                        containerPort: 9990
+                        protocol: TCP
+                  # The API serves no health endpoint; a TCP accept is enough
+                  # for a single in-memory process.
+                  livenessProbe:
+                      tcpSocket:
+                          port: api
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  readinessProbe:
+                      tcpSocket:
+                          port: api
+                      initialDelaySeconds: 1
+                      periodSeconds: 5
+                  resources:
+                      requests:
+                          cpu: 10m
+                          memory: 32Mi
+                      limits:
+                          cpu: 500m
+                          memory: 256Mi
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+---
+# NodePort so the walkthrough's host-side curls work without a port-forward:
+# colima forwards every listening VM port to localhost, so the fake's API
+# answers at http://localhost:30990 (on kind, add 30990 to extraPortMappings).
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-fakegithub
+    namespace: patchy
+    labels:
+        app: fakegithub
+        app.kubernetes.io/name: fakegithub
+        app.kubernetes.io/part-of: patchy
+        app.kubernetes.io/component: dev-fake
+spec:
+    type: NodePort
+    selector:
+        app.kubernetes.io/name: fakegithub
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: api
+          port: 9990
+          targetPort: api
+          nodePort: 30990
+          protocol: TCP

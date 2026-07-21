@@ -1,0 +1,51 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The credential-less end-to-end overlay: everything from dev, with GitHub
+# replaced by the e2e suite's fake API running in-cluster and the model
+# replaced by a scripted agent — the whole CRD pipeline runs with zero real
+# credentials and nothing on the host.
+#
+#     PATCHY_OVERLAY=dev-fake make dev-colima      # deploy (builds the fake images too)
+#     mise run replay -- -dev-secret \
+#         fixtures/webhooks/code_scanning_alert.created.json
+#     kubectl get patchy -n patchy -w              # watch the pipeline
+#
+# The fake's API is reachable from the host at http://localhost:30990 (its
+# Service NodePort). See docs/deployment/colima.md for the full walkthrough.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+    - ../dev
+    - fakegithub.yaml
+    - networkpolicy-fakegithub.yaml
+
+patches:
+    # The scripted agent image (hack/fake-agent) instead of the real
+    # agent-runner: prints canned PATCHY-EVENT lines, needs no model key.
+    - patch: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+              name: patchy-config
+              namespace: patchy
+          data:
+              PATCHY_AGENT_IMAGE: patchy/fake-agent:dev
+    # Point the Integration and Forge at the in-cluster fake GitHub.
+    - target:
+          group: patchy.bitwisemedia.uk
+          kind: Integration
+          name: github
+      patch: |
+          - op: add
+            path: /spec/github/baseURL
+            value: http://patchy-fakegithub.patchy.svc.cluster.local:9990
+    - target:
+          group: patchy.bitwisemedia.uk
+          kind: Forge
+          name: github
+      patch: |
+          - op: add
+            path: /spec/baseURL
+            value: http://patchy-fakegithub.patchy.svc.cluster.local:9990

@@ -1,6 +1,10 @@
 {
     "action": "created",
-    "issue": { "number": 101, "state": "open" },
+    "issue": {
+        "number": 102,
+        "state": "open",
+        "html_url": "https://github.com/acme/shop/issues/102"
+    },
     "comment": {
         "body": "/approve",
         "author_association": "MEMBER",

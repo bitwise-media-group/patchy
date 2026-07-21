@@ -2,8 +2,10 @@
     "action": "closed",
     "pull_request": {
         "number": 901,
+        "html_url": "https://github.com/acme/shop/pull/901",
         "merged": true,
-        "head": { "ref": "patchy/issue-101" },
+        "merged_at": "2026-07-21T12:00:00Z",
+        "head": { "ref": "patchy/finding-cccccccccc-1" },
         "base": { "ref": "main" }
     },
     "repository": {

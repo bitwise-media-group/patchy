@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // Command replay signs a recorded webhook fixture with the shared secret and
-// delivers it to a running controller — the local stand-in for GitHub.
+// delivers it to a running integration-controller — the local stand-in for
+// GitHub.
 //
-//	replay -url http://localhost:8080/webhook -secret-file dev.secret \
+//	replay -url http://localhost:30079/github/webhooks -secret-file my.secret \
 //	    -event code_scanning_alert ../fixtures/webhooks/code_scanning_alert.created.json
+//
+// Against the dev/dev-fake overlays, -dev-secret signs with their placeholder
+// webhook secret so no secret file is needed:
+//
+//	replay -dev-secret ../fixtures/webhooks/code_scanning_alert.created.json
 package main
 
 import (
@@ -30,9 +36,16 @@ func main() {
 	}
 }
 
+// devWebhookSecret is the placeholder the dev overlay ships in its
+// patchy-github Secret (deploy/kustomize/overlays/dev/secret-dev.yaml);
+// -dev-secret signs with it so replaying against the dev/dev-fake stacks
+// needs no secret file.
+const devWebhookSecret = "dev-webhook-secret-replace-me"
+
 func run() error {
-	url := flag.String("url", "http://localhost:8080/webhook", "controller webhook endpoint")
-	secretFile := flag.String("secret-file", "", "file holding the webhook secret (required)")
+	url := flag.String("url", "http://localhost:30079/github/webhooks", "controller webhook endpoint")
+	secretFile := flag.String("secret-file", "", "file holding the webhook secret")
+	devSecret := flag.Bool("dev-secret", false, "sign with the dev overlay's placeholder webhook secret")
 	event := flag.String("event", "", "X-GitHub-Event type (default: inferred from the fixture name)")
 	flag.Parse()
 
@@ -45,14 +58,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if *secretFile == "" {
-		return fmt.Errorf("-secret-file is required")
+	var secret []byte
+	switch {
+	case *devSecret && *secretFile != "":
+		return fmt.Errorf("-dev-secret and -secret-file are mutually exclusive")
+	case *devSecret:
+		secret = []byte(devWebhookSecret)
+	case *secretFile != "":
+		rawSecret, err := os.ReadFile(*secretFile)
+		if err != nil {
+			return err
+		}
+		secret = []byte(strings.TrimRight(string(rawSecret), "\r\n"))
+	default:
+		return fmt.Errorf("one of -secret-file or -dev-secret is required")
 	}
-	rawSecret, err := os.ReadFile(*secretFile)
-	if err != nil {
-		return err
-	}
-	secret := []byte(strings.TrimRight(string(rawSecret), "\r\n"))
 
 	eventType := *event
 	if eventType == "" {

@@ -254,6 +254,76 @@ func TestFindingRevivalCorrection(t *testing.T) {
 	}
 }
 
+func TestFindingRevivalReversesCounts(t *testing.T) {
+	fnd := terminalFinding(v1alpha1.PhaseFailed)
+	r, c := newReconciler(t, fnd)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1"}}
+	if _, err := r.ReconcileFinding(t.Context(), req); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	total := rollup(t, c, "total")
+	if total.Status.Bucket.Findings != 1 || total.Status.Bucket.Phases["failed"] != 1 {
+		t.Fatalf("bucket = %+v, want findings 1 / failed 1", total.Status.Bucket)
+	}
+
+	// A retry moves the finding back into flight: the failed count reverses.
+	var cur v1alpha1.Finding
+	if err := c.Get(t.Context(), req.NamespacedName, &cur); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	cur.Status.Phase = v1alpha1.PhaseInReview
+	cur.Status.CompletedAt = nil
+	cur.Status.Attempts.Remediation = 2
+	if err := c.Status().Update(t.Context(), &cur); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, err := r.ReconcileFinding(t.Context(), req); err != nil {
+		t.Fatalf("Reconcile revival: %v", err)
+	}
+	total = rollup(t, c, "total")
+	if total.Status.Bucket.Findings != 0 || total.Status.Bucket.Phases["failed"] != 0 {
+		t.Errorf("bucket = %+v after revival, want findings 0 / failed 0", total.Status.Bucket)
+	}
+	if total.Status.Bucket.Recommendations["remediate"] != 0 {
+		t.Errorf("recommendations = %v after revival, want remediate 0", total.Status.Bucket.Recommendations)
+	}
+	if total.Status.Bucket.Attempts != 2 {
+		t.Errorf("attempts = %d after revival, want 2 (spend stays)", total.Status.Bucket.Attempts)
+	}
+
+	// Re-reconcile while in flight: reversal is not applied twice.
+	if _, err := r.ReconcileFinding(t.Context(), req); err != nil {
+		t.Fatalf("Reconcile in flight: %v", err)
+	}
+	if got := rollup(t, c, "total").Status.Bucket.Findings; got != 0 {
+		t.Errorf("findings = %d after re-reconcile, want 0", got)
+	}
+
+	// Completed again: counted afresh under the new phase.
+	if err := c.Get(t.Context(), req.NamespacedName, &cur); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	done := metav1.NewTime(clock)
+	cur.Status.Phase = v1alpha1.PhaseRemediated
+	cur.Status.CompletedAt = &done
+	if err := c.Status().Update(t.Context(), &cur); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, err := r.ReconcileFinding(t.Context(), req); err != nil {
+		t.Fatalf("Reconcile recount: %v", err)
+	}
+	total = rollup(t, c, "total")
+	if total.Status.Bucket.Findings != 1 || total.Status.Bucket.Phases["remediated"] != 1 {
+		t.Errorf("bucket = %+v after recount, want findings 1 / remediated 1", total.Status.Bucket)
+	}
+	if total.Status.Bucket.Recommendations["remediate"] != 1 {
+		t.Errorf("recommendations = %v after recount, want remediate 1", total.Status.Bucket.Recommendations)
+	}
+	if total.Status.Bucket.Attempts != 2 {
+		t.Errorf("attempts = %d after recount, want 2 (counted once)", total.Status.Bucket.Attempts)
+	}
+}
+
 func TestNonTerminalDeleteCountsAsDeleted(t *testing.T) {
 	fnd := terminalFinding(v1alpha1.PhaseRemediating)
 	fnd.Status.CompletedAt = nil

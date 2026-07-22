@@ -125,22 +125,32 @@ func applyStage(b *v1alpha1.RollupBucket, d StageDelta) {
 }
 
 // FindingDelta is one finding's terminal contribution (total and repository
-// scopes only — a finding has no single harness/model owner).
+// scopes only — a finding has no single harness/model owner). Three shapes:
+// a count (Phase + Count), a swap between terminal phases (Phase +
+// PrevPhase), and a reversal when a revival moved the finding back into
+// flight (PrevPhase + Uncount, no Phase).
 type FindingDelta struct {
 	// Phase bucket to increment (kebab-free lowercase: remediated, failed,
-	// dismissed, handedoff, deleted).
+	// dismissed, handedoff, deleted); empty on a pure reversal.
 	Phase string
-	// PrevPhase, when non-empty, is decremented first — the revival
-	// correction (the finding was counted under PrevPhase, then revived and
-	// completed again).
+	// PrevPhase, when non-empty, is decremented — the previously counted
+	// phase no longer holds (revived, or completed again differently).
 	PrevPhase string
-	// Recommendation histogram key (remediate/ignore/manual); empty skips.
+	// Recommendation histogram key (remediate/ignore/manual) to increment;
+	// empty skips.
 	Recommendation string
+	// PrevRecommendation, when non-empty, is decremented.
+	PrevRecommendation string
 	// Attempts summed (investigation + remediation), counted only on the
 	// first terminal entry (corrections pass zero to avoid double counts).
 	Attempts int64
-	// FirstCount marks the finding's first terminal entry (findings++).
-	FirstCount bool
+	// Count marks the finding entering the counted set (findings++).
+	Count bool
+	// Uncount reverses a prior count (findings--) after a revival.
+	Uncount bool
+	// First marks the finding's first terminal entry ever — attempts and the
+	// monthly trend line are counted once, and never reversed.
+	First bool
 }
 
 // applyFinding folds the delta into a bucket's finding-level counters.
@@ -148,20 +158,26 @@ func applyFinding(b *v1alpha1.RollupBucket, d FindingDelta) {
 	if b.Phases == nil {
 		b.Phases = map[string]int64{}
 	}
-	if d.FirstCount {
+	if d.Count {
 		b.Findings++
+	}
+	if d.Uncount && b.Findings > 0 {
+		b.Findings--
 	}
 	if d.PrevPhase != "" && b.Phases[d.PrevPhase] > 0 {
 		b.Phases[d.PrevPhase]--
 	}
-	b.Phases[d.Phase]++
+	if d.Phase != "" {
+		b.Phases[d.Phase]++
+	}
+	if d.PrevRecommendation != "" && b.Recommendations[d.PrevRecommendation] > 0 {
+		b.Recommendations[d.PrevRecommendation]--
+	}
 	if d.Recommendation != "" {
 		if b.Recommendations == nil {
 			b.Recommendations = map[string]int64{}
 		}
-		if d.FirstCount {
-			b.Recommendations[d.Recommendation]++
-		}
+		b.Recommendations[d.Recommendation]++
 	}
 	b.Attempts += d.Attempts
 }
@@ -236,7 +252,7 @@ func Apply(
 		}
 	case finding != nil:
 		applyFinding(&st.Bucket, *finding)
-		if month != "" && finding.FirstCount {
+		if month != "" && finding.First {
 			m := monthlyOf(st, month)
 			m.Findings++
 			st.Monthly[month] = m

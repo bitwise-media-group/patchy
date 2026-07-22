@@ -75,7 +75,8 @@ func TestApplyStageDelta(t *testing.T) {
 func TestApplyFindingDeltaAndRevivalCorrection(t *testing.T) {
 	var st v1alpha1.FindingRollupStatus
 	first := FindingDelta{
-		Phase: "handedoff", Recommendation: "manual", Attempts: 2, FirstCount: true,
+		Phase: "handedoff", Recommendation: "manual", Attempts: 2,
+		Count: true, First: true,
 	}
 	if !Apply(&st, "f:uid-1:1", nil, &first, applyClock, "2026-07") {
 		t.Fatal("first Apply returned false")
@@ -84,8 +85,12 @@ func TestApplyFindingDeltaAndRevivalCorrection(t *testing.T) {
 		t.Errorf("bucket = %+v", st.Bucket)
 	}
 
-	// Revival: handed off → remediated. Correction decrements the old phase.
-	correction := FindingDelta{Phase: "remediated", PrevPhase: "handedoff"}
+	// Revival observed at the next terminal entry: handed off → remediated.
+	// The swap decrements the old phase without a second findings count.
+	correction := FindingDelta{
+		Phase: "remediated", PrevPhase: "handedoff",
+		Recommendation: "remediate", PrevRecommendation: "manual",
+	}
 	if !Apply(&st, "f:uid-1:2", nil, &correction, applyClock, "2026-07") {
 		t.Fatal("correction Apply returned false")
 	}
@@ -95,8 +100,59 @@ func TestApplyFindingDeltaAndRevivalCorrection(t *testing.T) {
 	if st.Bucket.Phases["handedoff"] != 0 || st.Bucket.Phases["remediated"] != 1 {
 		t.Errorf("phases = %v, want handedoff 0 / remediated 1", st.Bucket.Phases)
 	}
+	if st.Bucket.Recommendations["manual"] != 0 || st.Bucket.Recommendations["remediate"] != 1 {
+		t.Errorf("recommendations = %v, want manual 0 / remediate 1", st.Bucket.Recommendations)
+	}
 	if st.Monthly["2026-07"].Findings != 1 {
 		t.Errorf("monthly findings = %d, want 1", st.Monthly["2026-07"].Findings)
+	}
+}
+
+func TestApplyFindingReversalAndRecount(t *testing.T) {
+	var st v1alpha1.FindingRollupStatus
+	first := FindingDelta{
+		Phase: "failed", Recommendation: "remediate", Attempts: 2,
+		Count: true, First: true,
+	}
+	if !Apply(&st, "f:uid-1:1", nil, &first, applyClock, "2026-07") {
+		t.Fatal("first Apply returned false")
+	}
+
+	// Revival: a retry moved the finding back into flight — the reversal
+	// removes it from the terminal counts entirely.
+	reversal := FindingDelta{
+		PrevPhase: "failed", PrevRecommendation: "remediate", Uncount: true,
+	}
+	if !Apply(&st, "f:uid-1:2", nil, &reversal, applyClock, "") {
+		t.Fatal("reversal Apply returned false")
+	}
+	if st.Bucket.Findings != 0 || st.Bucket.Phases["failed"] != 0 {
+		t.Errorf("bucket = %+v after reversal, want findings 0 / failed 0", st.Bucket)
+	}
+	if st.Bucket.Recommendations["remediate"] != 0 {
+		t.Errorf("recommendations = %v after reversal, want remediate 0", st.Bucket.Recommendations)
+	}
+	if st.Bucket.Attempts != 2 {
+		t.Errorf("attempts = %d after reversal, want 2 (spend stays)", st.Bucket.Attempts)
+	}
+	if st.Monthly["2026-07"].Findings != 1 {
+		t.Errorf("monthly findings = %d after reversal, want 1 (trend stays)", st.Monthly["2026-07"].Findings)
+	}
+
+	// Completed again: counted afresh, but attempts/monthly only once ever.
+	recount := FindingDelta{Phase: "remediated", Recommendation: "remediate", Count: true}
+	if !Apply(&st, "f:uid-1:3", nil, &recount, applyClock, "2026-07") {
+		t.Fatal("recount Apply returned false")
+	}
+	if st.Bucket.Findings != 1 || st.Bucket.Phases["remediated"] != 1 {
+		t.Errorf("bucket = %+v after recount", st.Bucket)
+	}
+	if st.Bucket.Recommendations["remediate"] != 1 {
+		t.Errorf("recommendations = %v after recount", st.Bucket.Recommendations)
+	}
+	if st.Bucket.Attempts != 2 || st.Monthly["2026-07"].Findings != 1 {
+		t.Errorf("attempts = %d / monthly = %d after recount, want 2 / 1",
+			st.Bucket.Attempts, st.Monthly["2026-07"].Findings)
 	}
 }
 

@@ -8,7 +8,10 @@
 // Exactly-once accounting: every Investigation/Remediation child contributes
 // one immutable stage delta per scope (ledger key i:<uid> / r:<uid>); every
 // Finding contributes terminal-phase counts to the total and repository
-// scopes (ledger key f:<uid>:<seq>, with revival corrections at seq+1). A
+// scopes (ledger key f:<uid>:<seq>). A revival (retry, approval) reverses
+// those counts at seq+1 — the finding is back in flight, so only spend-like
+// sums (attempts, the monthly trend) stay put — and a later completion
+// counts it again. A
 // per-scope condition marks aggregation on the contributing object, and the
 // matching rollup finalizer is removed only when the object is deleting and
 // its scope condition is true — kubectl delete can never lose un-aggregated
@@ -187,13 +190,15 @@ func (r *Reconciler) child(ctx context.Context, obj client.Object, c childObj) e
 	return nil
 }
 
-// countedMarker encodes what a finding's scope condition already counted.
-func countedMarker(phase string, seq int) string {
-	return fmt.Sprintf("phase=%s;seq=%d", phase, seq)
+// countedMarker encodes what a finding's scope condition already counted: an
+// empty phase means the count was reversed after a revival; markers written
+// before rec existed parse back with an empty recommendation.
+func countedMarker(phase string, seq int, rec string) string {
+	return fmt.Sprintf("phase=%s;seq=%d;rec=%s", phase, seq, rec)
 }
 
 // parseCounted decodes a counted marker; zero seq means never counted.
-func parseCounted(msg string) (phase string, seq int) {
+func parseCounted(msg string) (phase string, seq int, rec string) {
 	for _, part := range strings.Split(msg, ";") {
 		if v, ok := strings.CutPrefix(part, "phase="); ok {
 			phase = v
@@ -201,8 +206,27 @@ func parseCounted(msg string) (phase string, seq int) {
 		if v, ok := strings.CutPrefix(part, "seq="); ok {
 			seq, _ = strconv.Atoi(v)
 		}
+		if v, ok := strings.CutPrefix(part, "rec="); ok {
+			rec = v
+		}
 	}
-	return phase, seq
+	return phase, seq, rec
+}
+
+// findingScopes are the two scopes a finding's terminal counts contribute to.
+func findingScopes(repoKey string) []scopeTarget {
+	return []scopeTarget{
+		{
+			scope:     v1alpha1.RollupScope{Type: v1alpha1.ScopeTotal},
+			condition: v1alpha1.ConditionRolledUpTotal,
+			finalizer: v1alpha1.FinalizerRollupTotal,
+		},
+		{
+			scope:     v1alpha1.RollupScope{Type: v1alpha1.ScopeRepository, Key: repoKey},
+			condition: v1alpha1.ConditionRolledUpRepository,
+			finalizer: v1alpha1.FinalizerRollupRepository,
+		},
+	}
 }
 
 // ReconcileFinding aggregates terminal-phase counts, applies revival
@@ -215,6 +239,24 @@ func (r *Reconciler) ReconcileFinding(ctx context.Context, req ctrl.Request) (ct
 	deleting := !fnd.DeletionTimestamp.IsZero()
 	terminal := v1alpha1.Terminal(fnd.Status.Phase) && fnd.Status.CompletedAt != nil
 	if !terminal && !deleting {
+		if v1alpha1.Terminal(fnd.Status.Phase) {
+			return ctrl.Result{}, nil // terminal but completedAt not stamped yet
+		}
+		// A revival (retry or approval) moved the finding back into flight:
+		// reverse any counts so the rollup reflects only findings that are
+		// still terminal; a later completion counts it again.
+		changed, err := r.uncountFinding(ctx, &fnd)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if changed {
+			if err := r.Status().Update(ctx, &fnd); err != nil {
+				if kerrors.IsConflict(err) {
+					return ctrl.Result{Requeue: true}, nil
+				}
+				return ctrl.Result{}, err
+			}
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -265,24 +307,12 @@ type findingCounts struct {
 // countFinding aggregates the finding's terminal counts into the total and
 // repository scopes, reporting whether conditions changed.
 func (r *Reconciler) countFinding(ctx context.Context, fnd *v1alpha1.Finding, c findingCounts) (bool, error) {
-	targets := []scopeTarget{
-		{
-			scope:     v1alpha1.RollupScope{Type: v1alpha1.ScopeTotal},
-			condition: v1alpha1.ConditionRolledUpTotal,
-			finalizer: v1alpha1.FinalizerRollupTotal,
-		},
-		{
-			scope:     v1alpha1.RollupScope{Type: v1alpha1.ScopeRepository, Key: c.repo},
-			condition: v1alpha1.ConditionRolledUpRepository,
-			finalizer: v1alpha1.FinalizerRollupRepository,
-		},
-	}
 	changed := false
-	for _, target := range targets {
+	for _, target := range findingScopes(c.repo) {
 		cond := meta.FindStatusCondition(fnd.Status.Conditions, target.condition)
-		counted, seq := "", 0
+		counted, seq, countedRec := "", 0, ""
 		if cond != nil && cond.Status == metav1.ConditionTrue {
-			counted, seq = parseCounted(cond.Message)
+			counted, seq, countedRec = parseCounted(cond.Message)
 			if counted == c.phase {
 				continue // already counted under this phase
 			}
@@ -296,13 +326,23 @@ func (r *Reconciler) countFinding(ctx context.Context, fnd *v1alpha1.Finding, c 
 		}
 		first := seq == 0
 		delta := stats.FindingDelta{
-			Phase:          c.phase,
-			PrevPhase:      counted,
-			Recommendation: c.recommendation,
-			FirstCount:     first,
+			Phase:     c.phase,
+			PrevPhase: counted,
+			Count:     counted == "",
+			First:     first,
+		}
+		// Swap the recommendation histogram alongside the phase; a swap from
+		// a pre-rec marker (countedRec unknown) leaves the histogram alone.
+		if c.recommendation != countedRec && (counted == "" || countedRec != "") {
+			delta.Recommendation = c.recommendation
+			delta.PrevRecommendation = countedRec
 		}
 		if first {
 			delta.Attempts = c.attempts
+		}
+		markerRec := countedRec
+		if delta.Recommendation != "" {
+			markerRec = delta.Recommendation
 		}
 		ledger := fmt.Sprintf("f:%s:%d", fnd.UID, seq+1)
 		if err := r.applyScope(ctx, target.scope, ledger, nil, &delta, c.month); err != nil {
@@ -315,7 +355,44 @@ func (r *Reconciler) countFinding(ctx context.Context, fnd *v1alpha1.Finding, c 
 			Type:    target.condition,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Aggregated",
-			Message: countedMarker(c.phase, seq+1),
+			Message: countedMarker(c.phase, seq+1, markerRec),
+		})
+		changed = true
+	}
+	return changed, nil
+}
+
+// uncountFinding reverses a revived finding's terminal counts in every scope
+// that recorded them, reporting whether conditions changed.
+func (r *Reconciler) uncountFinding(ctx context.Context, fnd *v1alpha1.Finding) (bool, error) {
+	repoKey := ""
+	if fnd.Spec.Repository != nil {
+		repoKey = fnd.Spec.Repository.Name
+	}
+	changed := false
+	for _, target := range findingScopes(repoKey) {
+		cond := meta.FindStatusCondition(fnd.Status.Conditions, target.condition)
+		if cond == nil || cond.Status != metav1.ConditionTrue {
+			continue
+		}
+		counted, seq, countedRec := parseCounted(cond.Message)
+		if counted == "" {
+			continue // never counted, or already reversed
+		}
+		delta := stats.FindingDelta{
+			PrevPhase:          counted,
+			PrevRecommendation: countedRec,
+			Uncount:            true,
+		}
+		ledger := fmt.Sprintf("f:%s:%d", fnd.UID, seq+1)
+		if err := r.applyScope(ctx, target.scope, ledger, nil, &delta, ""); err != nil {
+			return changed, err
+		}
+		meta.SetStatusCondition(&fnd.Status.Conditions, metav1.Condition{
+			Type:    target.condition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reversed",
+			Message: countedMarker("", seq+1, ""),
 		})
 		changed = true
 	}

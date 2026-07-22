@@ -21,8 +21,23 @@ const findings: Finding[] = [
     ruleID: "go/ssrf",
     title: "Server-side request forgery in webhook URL validation",
     description:
+      "# Server-side request forgery in webhook URL validation\n" +
       "A webhook target URL is fetched before its host is validated against the allowlist. " +
-      "An attacker who can register a webhook can direct requests at internal services.",
+      "An attacker who can register a webhook can direct requests at internal services.\n\n" +
+      "## Recommendation\n" +
+      "Validate the host against the allowlist *before* issuing the request, and reject " +
+      "redirects that leave the allowed set. Prefer `net.SplitHostPort` over string matching.\n\n" +
+      "## Example\n" +
+      "In the case marked BAD, the URL is fetched before validation:\n\n" +
+      "```go\n" +
+      'resp, _ := http.Get(target) // BAD: unvalidated\n' +
+      "if !allowlist.Contains(host(target)) {\n" +
+      "\treturn errDenied\n" +
+      "}\n" +
+      "```\n\n" +
+      "## References\n" +
+      "- OWASP: [Server Side Request Forgery](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery).\n" +
+      "- Common Weakness Enumeration: [CWE-918](https://cwe.mitre.org/data/definitions/918.html).",
     severity: "high",
     alerts: [{ id: "alerts/311", url: "https://github.com/bitwise-media-group/evolve/security/code-scanning/311" }],
     phase: "Opened",

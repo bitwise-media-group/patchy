@@ -3,7 +3,17 @@ import type { Finding, Rating } from "../types";
 import { DASH, formatConfidence } from "../format";
 import { hrefForFinding } from "../router";
 import { Icon } from "./icons";
+import { Markdown } from "./Markdown";
 import { Pill, RatingPill, VerdictPill } from "./Pills";
+
+// Scanner help text often opens with a heading that repeats the finding
+// title; drop it rather than render the title twice.
+function trimTitleHeading(md: string, title?: string): string {
+  const m = /^\s*#{1,6}\s+(.+?)\s*(?:\n|$)/.exec(md);
+  return m && title && m[1].trim().toLowerCase() === title.trim().toLowerCase()
+    ? md.slice(m[0].length)
+    : md;
+}
 
 function AnalysisRow({
   title,
@@ -52,7 +62,9 @@ export function OverviewTab({ finding }: { finding: Finding }) {
         ) : null}
       </div>
       {finding.description ? (
-        <p class="mt-3.5 max-w-[720px] text-[13.5px] leading-relaxed whitespace-pre-wrap text-muted">{finding.description}</p>
+        <div class="mt-3.5 max-w-[720px]">
+          <Markdown source={trimTitleHeading(finding.description, finding.title)} />
+        </div>
       ) : null}
 
       {inv?.awaitApproval && finding.phase === "AwaitingApproval" ? (
@@ -95,9 +107,9 @@ export function OverviewTab({ finding }: { finding: Finding }) {
             <div class="mb-3" key={e.enhancer}>
               <span class="ps-mono-tag">{e.enhancer}</span>
               {e.markdown ? (
-                <pre class="mt-2 mb-1 overflow-x-auto rounded-[9px] border border-line bg-code-2 px-3 py-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted">
-                  {e.markdown}
-                </pre>
+                <div class="mt-2 mb-1">
+                  <Markdown source={e.markdown} />
+                </div>
               ) : null}
               {e.owners && e.owners.length > 0 ? <span class="text-faint">owners: {e.owners.join(", ")}</span> : null}
             </div>

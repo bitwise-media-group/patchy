@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.4](https://github.com/bitwise-media-group/patchy/compare/v0.5.3...v0.5.4) (2026-07-22)
+
+
+### Features
+
+* **integration-controller:** sweep and replay the webhook delivery log ([b33e915](https://github.com/bitwise-media-group/patchy/commit/b33e915034e62a171fa115389f2f510df45285f3))
+* **status-server:** user menu with replay and reset demo actions ([a02ca62](https://github.com/bitwise-media-group/patchy/commit/a02ca62e84c2f9b3f097496e5aa95a65202a0db4))
+
+
+### Bug Fixes
+
+* **charts:** add admin role to chart ([c1f61f6](https://github.com/bitwise-media-group/patchy/commit/c1f61f6573a6472f72ed5c2be0696e094fd9b18e))
+* **rollup:** reverse terminal counts when a finding is revived ([0063cb5](https://github.com/bitwise-media-group/patchy/commit/0063cb54bea3ca9ef1ba5f2b1ee823a77c2dc5e0))
+* **web:** stop rendering report frontmatter on the status page ([8860b1c](https://github.com/bitwise-media-group/patchy/commit/8860b1cb056150532f2ce43b411421e7c430e1de))
+
 ## [0.5.3](https://github.com/bitwise-media-group/patchy/compare/v0.5.2...v0.5.3) (2026-07-22)
 
 

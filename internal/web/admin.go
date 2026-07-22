@@ -104,30 +104,21 @@ func (s *Server) requestReplay(ctx context.Context, id auth.Identity) error {
 	return nil
 }
 
-// resetAll deletes every pipeline resource in the namespace: findings and
-// their child runs, the pinned repositories, and the rollup statistics.
-// Integrations and Forges — the configuration — stay, but each active
-// Integration gets spec.reset stamped so the integration-controller drops
-// its receiver's delivery dedup window: without that, redelivering the
-// webhooks that produced the just-deleted findings is silently ignored as
-// duplicates until the dedup TTL elapses.
+// resetAll requests the demo reset by stamping spec.reset on every active
+// Integration; the integration-controller consumes it — permanently
+// deleting the tracking issues, reopening the dismissed code-scanning
+// alerts, deleting every pipeline resource, and dropping its receiver's
+// delivery dedup window — with credentials the status server does not
+// hold. The controller also needs the Findings' issue numbers and
+// repositories, which is why nothing is deleted here first. A namespace
+// with no active Integration has nothing on GitHub to clean, so the
+// pipeline resources are deleted directly as a fallback.
 func (s *Server) resetAll(ctx context.Context, id auth.Identity) error {
-	for _, obj := range []client.Object{
-		&v1alpha1.Finding{},
-		&v1alpha1.Investigation{},
-		&v1alpha1.Remediation{},
-		&v1alpha1.Repository{},
-		&v1alpha1.FindingRollup{},
-	} {
-		if err := s.client.DeleteAllOf(ctx, obj, client.InNamespace(s.namespace)); err != nil {
-			return fmt.Errorf("delete all %T: %w", obj, err)
-		}
-	}
-
 	var list v1alpha1.IntegrationList
 	if err := s.client.List(ctx, &list, client.InNamespace(s.namespace)); err != nil {
 		return fmt.Errorf("list integrations: %w", err)
 	}
+	stamped := 0
 	for i := range list.Items {
 		if list.Items[i].Spec.Suspend {
 			continue
@@ -142,7 +133,23 @@ func (s *Server) resetAll(ctx context.Context, id auth.Identity) error {
 			return s.client.Update(ctx, &cur)
 		})
 		if err != nil {
-			return fmt.Errorf("request dedup reset on integration %s: %w", name, err)
+			return fmt.Errorf("request reset on integration %s: %w", name, err)
+		}
+		stamped++
+	}
+	if stamped > 0 {
+		return nil
+	}
+
+	for _, obj := range []client.Object{
+		&v1alpha1.Finding{},
+		&v1alpha1.Investigation{},
+		&v1alpha1.Remediation{},
+		&v1alpha1.Repository{},
+		&v1alpha1.FindingRollup{},
+	} {
+		if err := s.client.DeleteAllOf(ctx, obj, client.InNamespace(s.namespace)); err != nil {
+			return fmt.Errorf("delete all %T: %w", obj, err)
 		}
 	}
 	return nil

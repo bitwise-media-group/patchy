@@ -97,18 +97,20 @@ func TestHandleAdminReset(t *testing.T) {
 		t.Fatalf("status = %d (%s), want 200", res.StatusCode, body)
 	}
 
+	// The reset is a request, not an act: the integration-controller does
+	// the deleting (it needs the Findings' issue numbers for the GitHub
+	// cleanup), so everything must still be here, and the Integration must
+	// carry the stamp.
 	for _, list := range []client.ObjectList{
 		&v1alpha1.FindingList{}, &v1alpha1.InvestigationList{}, &v1alpha1.FindingRollupList{},
 	} {
 		if err := mustClient(s).List(t.Context(), list, client.InNamespace("patchy")); err != nil {
 			t.Fatalf("list %T: %v", list, err)
 		}
-		if n := len(asMap(t, list)["items"].([]any)); n != 0 {
-			t.Errorf("%T still holds %d items after reset", list, n)
+		if n := len(asMap(t, list)["items"].([]any)); n == 0 {
+			t.Errorf("%T emptied by the status server; deletion is the controller's job", list)
 		}
 	}
-	// Configuration survives, stamped with the dedup-window reset request
-	// so redeliveries of the deleted findings' webhooks are ingested again.
 	var integs v1alpha1.IntegrationList
 	if err := mustClient(s).List(t.Context(), &integs, client.InNamespace("patchy")); err != nil {
 		t.Fatalf("list integrations: %v", err)
@@ -119,6 +121,30 @@ func TestHandleAdminReset(t *testing.T) {
 	req := integs.Items[0].Spec.Reset
 	if req == nil || req.By != "op@acme.test" || !req.At.Time.Equal(testClock) {
 		t.Errorf("spec.reset = %+v, want stamped by op@acme.test at testClock", req)
+	}
+}
+
+func TestHandleAdminResetNoIntegrationFallsBack(t *testing.T) {
+	inv := &v1alpha1.Investigation{ObjectMeta: metav1.ObjectMeta{Name: "inv-1", Namespace: "patchy"}}
+	s := testServer(t, fullFinding(), inv, testRollup("total", "", "total"))
+	s.auth, s.granter = stubAuth{id: operator}, stubGranter{grants: allGrants()}
+
+	res, body := postAdmin(t, s, "reset")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d (%s), want 200", res.StatusCode, body)
+	}
+
+	// No Integration means no controller to consume the request and nothing
+	// on GitHub to clean; the pipeline resources are deleted directly.
+	for _, list := range []client.ObjectList{
+		&v1alpha1.FindingList{}, &v1alpha1.InvestigationList{}, &v1alpha1.FindingRollupList{},
+	} {
+		if err := mustClient(s).List(t.Context(), list, client.InNamespace("patchy")); err != nil {
+			t.Fatalf("list %T: %v", list, err)
+		}
+		if n := len(asMap(t, list)["items"].([]any)); n != 0 {
+			t.Errorf("%T still holds %d items after fallback reset", list, n)
+		}
 	}
 }
 

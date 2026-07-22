@@ -33,6 +33,17 @@ func (c *Client) DismissAlert(ctx context.Context, repo Repo, number int, reason
 	return nil
 }
 
+// OpenAlert reopens a code-scanning alert (undoes a dismissal). Only
+// dismissed alerts can be reopened; GitHub rejects the transition for
+// fixed alerts.
+func (c *Client) OpenAlert(ctx context.Context, repo Repo, number int) error {
+	state := &github.CodeScanningAlertState{State: "open"}
+	if _, _, err := c.gh.CodeScanning.UpdateAlert(ctx, repo.Owner, repo.Name, int64(number), state); err != nil {
+		return fmt.Errorf("ghclient: open alert %s#%d: %w", repo, number, err)
+	}
+	return nil
+}
+
 // alertFromGitHub maps a go-github alert onto patchy's Alert: rule
 // metadata and tags, security_severity_level falling back to the rule
 // severity, and the most recent instance's commit, message, and location.

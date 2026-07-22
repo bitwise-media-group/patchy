@@ -82,3 +82,17 @@ func TestDismissAlert(t *testing.T) {
 		t.Errorf("DismissAlert() error = %v, want nil", err)
 	}
 }
+
+func TestOpenAlert(t *testing.T) {
+	mux, c := newFakeClient(t)
+	mux.HandleFunc("PATCH /repos/o/r/code-scanning/alerts/4", func(w http.ResponseWriter, r *http.Request) {
+		if body := decodeBody[map[string]any](t, r); !reflect.DeepEqual(body, map[string]any{"state": "open"}) {
+			t.Errorf("open request = %v, want state open only", body)
+		}
+		writeJSON(t, w, `{"number":4,"state":"open"}`)
+	})
+
+	if err := c.OpenAlert(context.Background(), testRepo, 4); err != nil {
+		t.Errorf("OpenAlert() error = %v, want nil", err)
+	}
+}

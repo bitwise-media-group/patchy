@@ -120,7 +120,7 @@
                     "additionalProperties": false
                 },
                 "reset": {
-                    "description": "Reset requests the receiver forget its delivery dedup window, so a\nredelivery of an already-handled delivery GUID is ingested again.\nStamped by the status page's demo reset alongside deleting the\npipeline resources; without it, redeliveries of recently seen GUIDs\nanswer 202 and are silently dropped until the dedup TTL elapses.\nFreshness against status.resetAt decides whether the request is still\nactionable — the controller never clears spec.",
+                    "description": "Reset requests the demo reset (stamped by the status page): the\ncontroller permanently deletes every finding's tracking issue,\nreopens the dismissed findings' code-scanning alerts, deletes every\npipeline resource, and drops the receiver's delivery dedup window so\nredeliveries of already-handled GUIDs are ingested again. Issue\ndeletion requires admin-level repository permission on the\ncredential. Freshness against status.resetAt decides whether the\nrequest is still actionable — the controller never clears spec.",
                     "properties": {
                         "at": {
                             "description": "At is when the request was received.",

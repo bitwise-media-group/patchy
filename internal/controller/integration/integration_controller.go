@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/ghclient"
 )
 
 // defaultRevalidate paces credential revalidation when spec.interval is
@@ -36,6 +37,9 @@ type IntegrationReconciler struct {
 	// reset or replay request is consumed, so the redeliveries either
 	// triggers are not swallowed as duplicates.
 	ResetDedup func()
+	// ClientFor overrides forge-client construction in tests; nil means
+	// Creds.Client.
+	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (resetClient, error)
 }
 
 // Reconcile implements the Integration control loop.
@@ -64,13 +68,15 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	meta.SetStatusCondition(&integ.Status.Conditions, cond)
 	integ.Status.WebhookPath = "/" + string(integ.Spec.Provider) + "/webhooks"
 	integ.Status.ObservedGeneration = integ.Generation
-	// A reset needs no credential: it only drops the in-process receiver's
-	// dedup window, so manual redeliveries land immediately.
+	// The demo reset runs regardless of the Ready condition (the parts
+	// needing credentials fail into the retry) and echoes status.resetAt
+	// only on success, so a failed attempt keeps the Findings it needs.
+	var resetErr error
 	if req := pendingReset(&integ); req != nil {
-		r.dropDedup()
-		integ.Status.ResetAt = &req.At
-		r.log().LogAttrs(ctx, slog.LevelInfo, "webhook dedup window dropped",
-			slog.String("integration", integ.Name), slog.String("by", req.By))
+		if resetErr = r.consumeReset(ctx, &integ, req); resetErr != nil {
+			r.log().LogAttrs(ctx, slog.LevelWarn, "demo reset failed; retrying",
+				slog.String("integration", integ.Name), slog.Any("error", resetErr))
+		}
 	}
 	if cond.Status == metav1.ConditionTrue {
 		if rep := pendingReplay(&integ); rep != nil {
@@ -96,6 +102,9 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
+	}
+	if resetErr != nil {
+		return ctrl.Result{}, resetErr
 	}
 
 	interval := integ.Spec.Interval.Duration

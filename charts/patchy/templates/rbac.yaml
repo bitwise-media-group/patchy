@@ -29,7 +29,7 @@ PR-merge) to Finding spec + status.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
-  verbs: [create, get, list, watch, update, patch, delete]
+  verbs: [create, get, list, watch, update, patch, delete, deletecollection]
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings/status]
   verbs: [get, update, patch]
@@ -41,7 +41,11 @@ PR-merge) to Finding spec + status.
   verbs: [get, update, patch]
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [investigations, remediations]
-  verbs: [get, list, watch]
+  verbs: [get, list, watch, deletecollection]
+{{- /* the demo reset (Integration spec.reset) wipes every pipeline resource */}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [repositories, findingrollups]
+  verbs: [deletecollection]
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]

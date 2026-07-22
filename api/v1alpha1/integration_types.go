@@ -96,13 +96,14 @@ type IntegrationSpec struct {
 	// actionable — the controller never clears spec.
 	// +optional
 	Replay *ActionRequest `json:"replay,omitempty"`
-	// Reset requests the receiver forget its delivery dedup window, so a
-	// redelivery of an already-handled delivery GUID is ingested again.
-	// Stamped by the status page's demo reset alongside deleting the
-	// pipeline resources; without it, redeliveries of recently seen GUIDs
-	// answer 202 and are silently dropped until the dedup TTL elapses.
-	// Freshness against status.resetAt decides whether the request is still
-	// actionable — the controller never clears spec.
+	// Reset requests the demo reset (stamped by the status page): the
+	// controller permanently deletes every finding's tracking issue,
+	// reopens the dismissed findings' code-scanning alerts, deletes every
+	// pipeline resource, and drops the receiver's delivery dedup window so
+	// redeliveries of already-handled GUIDs are ingested again. Issue
+	// deletion requires admin-level repository permission on the
+	// credential. Freshness against status.resetAt decides whether the
+	// request is still actionable — the controller never clears spec.
 	// +optional
 	Reset *ActionRequest `json:"reset,omitempty"`
 	// GitHub is the github provider block.

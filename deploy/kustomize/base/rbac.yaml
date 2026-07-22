@@ -315,6 +315,11 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findingrollups]
       verbs: [get, list, watch]
+    # Read-only: the projection lifts each run's report markdown from the
+    # Investigation/Remediation children (reports live on the child only).
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [investigations, remediations]
+      verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

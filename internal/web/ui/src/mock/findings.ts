@@ -359,6 +359,12 @@ const findings: Finding[] = [
       },
       {
         enhancer: "cmdb",
+        attributes: {
+          cloud: "google",
+          environment: "prod",
+          "internet-facing": "true",
+          project: "x-feeds-9c21",
+        },
         markdown: "Runs in `prod/feeds` (public ingress). Feed sources are user-suppliable — treat parser input as hostile.",
         appliedAt: "2026-07-15T12:50:31Z",
       },
@@ -374,6 +380,11 @@ const findings: Finding[] = [
       likelihood: "medium",
       impact: "high",
       completedAt: "2026-07-15T13:19:44Z",
+      report:
+        "## Summary\n\nThe XML feed parser resolves external entities, so a crafted podcast feed can read local files " +
+        "(`file:///etc/passwd`) and exfiltrate them via the enclosure URL.\n\n## Reachability\n\nFeed URLs are " +
+        "user-suppliable through the import form — the parser input is attacker-controlled end to end.\n\n" +
+        "## Recommendation\n\nDisable DTD processing on the shared `xml.NewDecoder` wrapper; no feature depends on entities.",
     },
     remediation: {
       name: "gh-cs-dke-podcast-7d01b3-rem-1",
@@ -382,6 +393,10 @@ const findings: Finding[] = [
       success: true,
       branch: "patch/security-205",
       completedAt: "2026-07-15T13:58:27Z",
+      report:
+        "## Change\n\nDisabled DTD processing and external entity resolution in `internal/feeds/parse.go` " +
+        "(`decoder.Strict = true`, entity map cleared).\n\n## Verification\n\nAdded a regression test with a " +
+        "malicious feed fixture; the parser now rejects it. Full test suite passes.",
     },
     pullRequest: {
       number: 482,
@@ -576,6 +591,7 @@ const findings: Finding[] = [
       {
         enhancer: "cmdb",
         owners: ["platform-ops"],
+        attributes: { environment: "prod", system: "media-archive", tier: "2" },
         markdown: "Bucket `media-archive` (prod). Served via CDN origin-access; direct public read is unintended.",
         appliedAt: "2026-07-14T03:55:03Z",
       },

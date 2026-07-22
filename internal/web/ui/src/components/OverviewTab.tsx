@@ -106,6 +106,17 @@ export function OverviewTab({ finding }: { finding: Finding }) {
           {finding.enrichments.map((e) => (
             <div class="mb-3" key={e.enhancer}>
               <span class="ps-mono-tag">{e.enhancer}</span>
+              {e.attributes && Object.keys(e.attributes).length > 0 ? (
+                <ul class="mt-2 mb-1 flex list-disc flex-col gap-1 pl-4.5 text-[12.5px] marker:text-faint">
+                  {Object.entries(e.attributes)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([k, v]) => (
+                      <li key={k}>
+                        <span class="text-muted">{k}:</span> <span class="text-fg">{v}</span>
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
               {e.markdown ? (
                 <div class="mt-2 mb-1">
                   <Markdown source={e.markdown} />

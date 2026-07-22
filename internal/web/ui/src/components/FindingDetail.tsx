@@ -6,6 +6,7 @@ import { Icon } from "./icons";
 import { ActionBar } from "./ActionBar";
 import { DetailHeader } from "./DetailHeader";
 import { AlertsTab } from "./AlertsTab";
+import { InvestigationTab } from "./InvestigationTab";
 import { OverviewTab } from "./OverviewTab";
 import { RemediationTab } from "./RemediationTab";
 import { SidebarMeta } from "./SidebarMeta";
@@ -63,6 +64,7 @@ export function FindingDetail({
           {tab === "overview" ? <OverviewTab finding={finding} /> : null}
           {tab === "alerts" ? <AlertsTab finding={finding} /> : null}
           {tab === "timeline" ? <TimelineTab finding={finding} /> : null}
+          {tab === "investigation" ? <InvestigationTab finding={finding} /> : null}
           {tab === "remediation" ? <RemediationTab finding={finding} /> : null}
         </div>
         <SidebarMeta finding={finding} />

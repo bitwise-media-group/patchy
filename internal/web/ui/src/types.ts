@@ -97,6 +97,7 @@ export interface TrackingStatus {
 export interface Enrichment {
   enhancer: string;
   owners?: string[];
+  attributes?: Record<string, string>;
   markdown?: string;
   appliedAt?: string;
 }
@@ -112,6 +113,7 @@ export interface InvestigationSummary {
   impact?: Rating;
   awaitApproval?: boolean;
   completedAt?: string;
+  report?: string; // full report markdown, lifted from the Investigation child
 }
 
 export interface RemediationSummary {
@@ -121,6 +123,7 @@ export interface RemediationSummary {
   success?: boolean;
   branch?: string;
   completedAt?: string;
+  report?: string; // full report markdown, lifted from the Remediation child
 }
 
 export interface PullRequestStatus {

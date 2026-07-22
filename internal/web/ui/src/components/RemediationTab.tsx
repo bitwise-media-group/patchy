@@ -1,7 +1,9 @@
 import type { Finding } from "../types";
 import { DASH, formatDate } from "../format";
 import { Icon } from "./icons";
+import { Markdown } from "./Markdown";
 import { Pill } from "./Pills";
+import { PullRequestCard } from "./PullRequest";
 
 export function RemediationTab({ finding }: { finding: Finding }) {
   const rem = finding.remediation;
@@ -62,24 +64,20 @@ export function RemediationTab({ finding }: { finding: Finding }) {
       </section>
 
       <section class="mt-6">
+        <h2 class="ps-heading mb-3">Report</h2>
+        {rem?.report ? (
+          <div class="rounded-[11px] border border-line bg-code p-4">
+            <Markdown source={rem.report} />
+          </div>
+        ) : (
+          <p class="text-faint">No report recorded{rem ? " (the remediation may have expired)" : ""}.</p>
+        )}
+      </section>
+
+      <section class="mt-6">
         <h2 class="ps-heading mb-3">Pull request</h2>
         {pr ? (
-          <a
-            class="inline-flex items-center gap-3 rounded-[11px] border border-line-2 bg-surface px-4 py-3 text-fg no-underline hover:border-turf"
-            href={pr.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Icon name="gitPullRequest" size={17} />
-            <span class="flex flex-col">
-              <strong class="font-mono text-[13px]">#{pr.number}</strong>
-              <small class="mt-0.5 text-[11px] text-muted">
-                {pr.state ?? "open"}
-                {pr.mergedAt ? ` · merged ${formatDate(pr.mergedAt)}` : ""}
-              </small>
-            </span>
-            <Icon name="externalLink" size={13} />
-          </a>
+          <PullRequestCard pr={pr} />
         ) : (
           <p class="text-faint">No pull request opened yet.</p>
         )}

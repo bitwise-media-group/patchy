@@ -189,6 +189,38 @@ func TestBuildDatasetProjection(t *testing.T) {
 	}
 }
 
+func TestBuildDatasetAttachesReports(t *testing.T) {
+	inv := &v1alpha1.Investigation{
+		ObjectMeta: metav1.ObjectMeta{Name: "gh-cs-orders-1-inv-1", Namespace: "patchy"},
+		Status:     v1alpha1.InvestigationStatus{Report: "## Analysis\n\ninjectable"},
+	}
+	rem := &v1alpha1.Remediation{
+		ObjectMeta: metav1.ObjectMeta{Name: "gh-cs-orders-1-rem-1", Namespace: "patchy"},
+		Status:     v1alpha1.RemediationStatus{Report: "## Fix\n\nparameterised"},
+	}
+	s := testServer(t, fullFinding(), inv, rem)
+	ds, err := s.buildDataset(t.Context(), true, nil, nil)
+	if err != nil {
+		t.Fatalf("buildDataset: %v", err)
+	}
+	f := ds.Findings[0]
+	if f.Investigation == nil || f.Investigation.Report != "## Analysis\n\ninjectable" {
+		t.Errorf("investigation report = %+v", f.Investigation)
+	}
+	if f.Remediation == nil || f.Remediation.Report != "## Fix\n\nparameterised" {
+		t.Errorf("remediation report = %+v", f.Remediation)
+	}
+
+	// An expired/absent child leaves the report empty rather than erroring.
+	s = testServer(t, fullFinding())
+	if ds, err = s.buildDataset(t.Context(), true, nil, nil); err != nil {
+		t.Fatalf("buildDataset without children: %v", err)
+	}
+	if got := ds.Findings[0].Investigation.Report; got != "" {
+		t.Errorf("report without child = %q, want empty", got)
+	}
+}
+
 func TestBuildDatasetRollupProjection(t *testing.T) {
 	s := testServer(t, testRollup(v1alpha1.ScopeTotal, "", "total"))
 	ds, err := s.buildDataset(t.Context(), false, nil, nil)

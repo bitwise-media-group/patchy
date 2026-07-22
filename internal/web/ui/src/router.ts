@@ -8,14 +8,14 @@
 import { useEffect, useState } from "preact/hooks";
 import type { ScopeType } from "./types";
 
-export type TabId = "overview" | "alerts" | "timeline" | "remediation";
+export type TabId = "overview" | "alerts" | "timeline" | "investigation" | "remediation";
 
 export type Route =
   | { view: "list" }
   | { view: "detail"; name: string; tab: TabId }
   | { view: "rollups"; scope: ScopeType };
 
-const TABS: TabId[] = ["overview", "alerts", "timeline", "remediation"];
+const TABS: TabId[] = ["overview", "alerts", "timeline", "investigation", "remediation"];
 const SCOPES: ScopeType[] = ["total", "repository", "harness", "model"];
 
 export function parseRoute(hash: string): Route {

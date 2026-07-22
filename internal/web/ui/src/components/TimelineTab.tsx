@@ -3,7 +3,7 @@
 
 import type { Finding, Phase } from "../types";
 import { formatAgo, formatDate, PHASE_LABELS } from "../format";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 type Entry = {
   key: string;
@@ -20,6 +20,24 @@ const TERMINAL_TONE: Partial<Record<Phase, Entry["tone"]>> = {
   HandedOff: "amber",
 };
 
+// RECOVERY_DETAIL annotates a terminal phase the finding has since left —
+// each terminal is revivable by exactly one human signal (transitions.go).
+const RECOVERY_DETAIL: Partial<Record<Phase, string>> = {
+  Failed: "recovered — retried by a human",
+  HandedOff: "revived by approval",
+  Dismissed: "reopened",
+};
+
+// MARKER_ICON: what sits inside the timeline dot per tone; "active" stays
+// empty (the pulsing current-position dot).
+const MARKER_ICON: Partial<Record<Entry["tone"], IconName>> = {
+  done: "check",
+  green: "check",
+  red: "x",
+  amber: "alertTriangle",
+  soil: "x",
+};
+
 function entries(finding: Finding): Entry[] {
   const out: Entry[] = [];
   const times = finding.phaseTimes ?? [];
@@ -28,8 +46,11 @@ function entries(finding: Finding): Entry[] {
     out.push({
       key: `phase-${i}`,
       title: PHASE_LABELS[pt.phase],
+      detail: last ? undefined : RECOVERY_DETAIL[pt.phase],
       at: pt.at,
-      tone: last ? (TERMINAL_TONE[pt.phase] ?? "active") : "done",
+      // A terminal phase keeps its own tone wherever it sits in history — a
+      // past "failed" must never render as a green tick.
+      tone: TERMINAL_TONE[pt.phase] ?? (last ? "active" : "done"),
     });
   });
   if (finding.approval) {
@@ -61,7 +82,7 @@ export function TimelineTab({ finding }: { finding: Finding }) {
         {list.map((e) => (
           <div class={`ps-timeline__item ps-timeline__item--${e.tone}`} key={e.key}>
             <span class="ps-timeline__marker">
-              {e.tone === "done" || e.tone === "green" ? <Icon name="check" size={11} strokeWidth={2.6} /> : null}
+              {MARKER_ICON[e.tone] ? <Icon name={MARKER_ICON[e.tone]!} size={11} strokeWidth={2.6} /> : null}
             </span>
             <span class="ps-timeline__body">
               <strong class="block font-mono text-[12px] font-semibold text-fg">{e.title}</strong>

@@ -7,6 +7,7 @@ export function Tabs({ finding, active }: { finding: Finding; active: TabId }) {
     ["overview", "Overview"],
     ["alerts", alertCount > 0 ? `Alerts (${alertCount})` : "Alerts"],
     ["timeline", "Timeline"],
+    ["investigation", "Investigation"],
     ["remediation", "Remediation"],
   ];
   return (

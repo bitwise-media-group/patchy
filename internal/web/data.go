@@ -133,13 +133,15 @@ type Tracking struct {
 
 // Enrichment is one enhancer contribution.
 type Enrichment struct {
-	Enhancer  string   `json:"enhancer"`
-	Owners    []string `json:"owners,omitempty"`
-	Markdown  string   `json:"markdown,omitempty"`
-	AppliedAt string   `json:"appliedAt,omitempty"`
+	Enhancer   string            `json:"enhancer"`
+	Owners     []string          `json:"owners,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+	Markdown   string            `json:"markdown,omitempty"`
+	AppliedAt  string            `json:"appliedAt,omitempty"`
 }
 
-// Investigation mirrors the Finding's investigation summary.
+// Investigation mirrors the Finding's investigation summary, plus the report
+// markdown lifted from the Investigation child.
 type Investigation struct {
 	Name           string `json:"name,omitempty"`
 	Attempt        int32  `json:"attempt,omitempty"`
@@ -151,9 +153,11 @@ type Investigation struct {
 	Impact         string `json:"impact,omitempty"`
 	AwaitApproval  bool   `json:"awaitApproval,omitempty"`
 	CompletedAt    string `json:"completedAt,omitempty"`
+	Report         string `json:"report,omitempty"`
 }
 
-// Remediation mirrors the Finding's remediation summary.
+// Remediation mirrors the Finding's remediation summary, plus the report
+// markdown lifted from the Remediation child.
 type Remediation struct {
 	Name        string `json:"name,omitempty"`
 	Attempt     int32  `json:"attempt,omitempty"`
@@ -161,6 +165,7 @@ type Remediation struct {
 	Success     bool   `json:"success,omitempty"`
 	Branch      string `json:"branch,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
+	Report      string `json:"report,omitempty"`
 }
 
 // PullRequest is the remediation pull request's lifecycle.
@@ -265,7 +270,9 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
 	for i := range findings.Items {
-		ds.Findings = append(ds.Findings, projectFinding(&findings.Items[i], verbs))
+		out := projectFinding(&findings.Items[i], verbs)
+		s.attachReports(ctx, &findings.Items[i], &out)
+		ds.Findings = append(ds.Findings, out)
 	}
 	// Newest first, stable across refetches.
 	slices.SortFunc(ds.Findings, func(a, b Finding) int {
@@ -276,6 +283,25 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 		return cmp.Compare(a.Name, b.Name)
 	})
 	return ds, nil
+}
+
+// attachReports lifts the run reports off the Investigation/Remediation
+// children onto the projection — the Finding carries only summaries, the
+// full markdown lives on the child. An absent child (expired, deleted)
+// simply leaves the report empty.
+func (s *Server) attachReports(ctx context.Context, f *v1alpha1.Finding, out *Finding) {
+	if inv := f.Status.Investigation; inv != nil && inv.Name != "" && out.Investigation != nil {
+		var child v1alpha1.Investigation
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: f.Namespace, Name: inv.Name}, &child); err == nil {
+			out.Investigation.Report = child.Status.Report
+		}
+	}
+	if rem := f.Status.Remediation; rem != nil && rem.Name != "" && out.Remediation != nil {
+		var child v1alpha1.Remediation
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: f.Namespace, Name: rem.Name}, &child); err == nil {
+			out.Remediation.Report = child.Status.Report
+		}
+	}
 }
 
 // projectFinding flattens one Finding CR onto the wire type.
@@ -347,7 +373,8 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 	}
 	for _, e := range st.Enrichments {
 		out.Enrichments = append(out.Enrichments, Enrichment{
-			Enhancer: e.Enhancer, Owners: e.Owners, Markdown: e.Markdown, AppliedAt: stamp(e.AppliedAt),
+			Enhancer: e.Enhancer, Owners: e.Owners, Attributes: e.Attributes,
+			Markdown: e.Markdown, AppliedAt: stamp(e.AppliedAt),
 		})
 	}
 	if inv := st.Investigation; inv != nil {

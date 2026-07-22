@@ -28,6 +28,5 @@ signing identity; and a compromise of the cluster patchy runs in.
 
 ## Code scanning triage
 
-CodeQL findings are triaged in
-[`security/code-scanning/index.md`](security/code-scanning/index.md), with a report per finding
-recording why it was dismissed or how it was remediated.
+CodeQL findings are triaged in [`security/code-scanning/index.md`](security/code-scanning/index.md), with a report per
+finding recording why it was dismissed or how it was remediated.

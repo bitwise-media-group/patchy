@@ -1,18 +1,18 @@
-# Build artifacts
+# build artifacts
 /bin/
 dist/
 
-# Docs site (zensical) build output + python env
+# docs site (zensical) build output + python env
 /site/
 /.cache/
 /.venv/
 
-# Coverage (make test)
+# coverage (make test)
 coverage/
 
-# Claude plans / local settings
-.claude/plans/
-.claude/*.md
-settings.local.json
+# claude code
+/.claude/**
+!/.claude/settings.json
 
+# node modules
 node_modules/

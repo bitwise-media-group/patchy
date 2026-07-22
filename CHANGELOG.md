@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1](https://github.com/bitwise-media-group/patchy/compare/v0.5.0...v0.5.1) (2026-07-22)
+
+
+### Features
+
+* **web:** render finding descriptions and enrichments as markdown ([3c83475](https://github.com/bitwise-media-group/patchy/commit/3c83475e1a4a2ed69beecf037b0fd57dc541ba73))
+
+
+### Bug Fixes
+
+* **web:** keep sign-out reachable for signed-in but unauthorized users ([3516c65](https://github.com/bitwise-media-group/patchy/commit/3516c6565baa088175ea93bf78399089c1041751))
+
 ## [0.5.0](https://github.com/bitwise-media-group/patchy/compare/v0.4.0...v0.5.0) (2026-07-22)
 
 

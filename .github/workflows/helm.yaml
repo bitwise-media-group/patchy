@@ -99,8 +99,11 @@ jobs:
                   set -euo pipefail
                   docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin <<<"${GITHUB_TOKEN}"
                   # legacy signature format (.sig tag + Rekor), matching the
-                  # container images: the platform verifies one format everywhere
-                  cosign sign --yes --use-signing-config=false \
+                  # container images: the platform verifies one format everywhere.
+                  # --new-bundle-format=false (hidden, deprecated, defaults true
+                  # in cosign v3) selects the legacy storage format; the signing
+                  # config flag alone only picks trust services, not the format.
+                  cosign sign --yes --new-bundle-format=false --use-signing-config=false \
                     "ghcr.io/${GITHUB_REPOSITORY}/charts/${{ matrix.chart }}@${{ steps.push.outputs.digest }}"
 
             - name: Attest build provenance

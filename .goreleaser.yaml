@@ -305,10 +305,13 @@ docker_digest:
 # Keyless cosign signatures over the pushed container images. The empty
 # `artifacts` default selects exactly the dockers_v2 image artifacts above, and
 # signing targets the immutable digest, not the tag. Signatures are pushed to
-# ghcr as OCI artifacts next to each image. --use-signing-config=false pins
-# cosign v3 to the legacy signature format (.sig tag + Rekor upload) instead of
-# a bundle attached via the OCI referrers API: kyverno's Cosign verification
-# only reads the legacy format.
+# ghcr as OCI artifacts next to each image. Two flags pin cosign v3 to the
+# legacy signature format (.sig tag + Rekor upload) instead of a bundle attached
+# via the OCI referrers API, which kyverno's Cosign verification cannot see:
+# --new-bundle-format=false selects the legacy storage format (hidden, deprecated,
+# still defaults to true in v3 -- --use-signing-config=false alone does NOT change
+# it), and --use-signing-config=false keeps the v2 trust services (Fulcio +
+# Rekor v1) that legacy verifiers expect.
 # Runs only on publish; `make snapshot` additionally skips it via --skip=sign.
 # Verify with:
 #   cosign verify ghcr.io/bitwise-media-group/patchy/<name>:vX.Y.Z \
@@ -320,6 +323,7 @@ docker_signs:
           - sign
           - ${artifact}@${digest}
           - --yes
+          - --new-bundle-format=false
           - --use-signing-config=false
       output: true
 

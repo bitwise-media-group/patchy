@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.3](https://github.com/bitwise-media-group/patchy/compare/v0.5.2...v0.5.3) (2026-07-22)
+
+
+### Features
+
+* **enhance:** project enrichment attributes as labels, markdown as sticky comments ([76e4a4e](https://github.com/bitwise-media-group/patchy/commit/76e4a4e1e2315066161be545fd8c551e89b4c5a7))
+* **web:** enrichment attributes list, run reports, investigation tab ([30fe2bb](https://github.com/bitwise-media-group/patchy/commit/30fe2bb8a8287ab2ef3367a24bcac67e1eea3a6b))
+* **web:** surface run accounting on the stage tabs and detail header ([8fce4cd](https://github.com/bitwise-media-group/patchy/commit/8fce4cdb7e4dace2aa7e2721b0724eea77c68f99))
+* **web:** surface the remediation PR link in the list and sidebar ([f00398c](https://github.com/bitwise-media-group/patchy/commit/f00398cc4cbdc5256f093f2ffad9c8242bfbcca4))
+
+
+### Bug Fixes
+
+* **release:** pin cosign to the legacy signature storage format ([b8bde34](https://github.com/bitwise-media-group/patchy/commit/b8bde34d66e0df21ea32c3b00add8f41a1abde73))
+* **release:** sign with cosign v3's sigstore bundle format, not legacy ([0f89045](https://github.com/bitwise-media-group/patchy/commit/0f89045241378922b4db628e9781e8ff9dc54b3d))
+
 ## [0.5.2](https://github.com/bitwise-media-group/patchy/compare/v0.5.1...v0.5.2) (2026-07-22)
 
 

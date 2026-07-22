@@ -34,6 +34,9 @@ type Dataset struct {
 type User struct {
 	Name     string `json:"name"`
 	LoggedIn bool   `json:"loggedIn"`
+	// AdminActions are the granted namespace-wide verbs (replay, reset) the
+	// user menu renders. Absent means none.
+	AdminActions []string `json:"adminActions,omitempty"`
 }
 
 // Finding is the flattened metadata+spec+status projection of one Finding,

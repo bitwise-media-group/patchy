@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/findings", s.handleFindings)
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
 	mux.HandleFunc("POST /api/findings/{name}/actions/{verb}", s.handleAction)
+	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	s.auth.Register(mux)
 	mux.Handle("/", s.staticHandler())
@@ -123,7 +124,7 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 			id.Display(), s.namespace), http.StatusForbidden)
 		return
 	}
-	user := &User{Name: id.Display(), LoggedIn: id.Session}
+	user := &User{Name: id.Display(), LoggedIn: id.Session, AdminActions: grants.Admin}
 	ds, err := s.buildDataset(r.Context(), true, grants.Verbs, user)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build dataset", slog.Any("error", err))

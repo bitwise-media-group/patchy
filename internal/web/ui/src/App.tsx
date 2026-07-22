@@ -7,10 +7,11 @@ import {
   fetchFindings,
   fetchRollups,
   postAction,
+  postAdmin,
   subscribe,
 } from "./api";
 import { consumeLogoutMarker, readAuthError, readProvider, signInURL, signOut } from "./auth";
-import type { ActionVerb, Dataset, Phase } from "./types";
+import type { ActionVerb, AdminVerb, Dataset, Phase } from "./types";
 import { emptySelection, filterFindings, repoOptions, sortFindings, type Selection } from "./filters";
 import { useRoute } from "./router";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
@@ -104,6 +105,32 @@ export function App() {
         }
       } finally {
         setBusy(null);
+      }
+    },
+    [load, persona, pushToast],
+  );
+
+  const [adminBusy, setAdminBusy] = useState<AdminVerb | null>(null);
+  const onAdmin = useCallback(
+    async (verb: AdminVerb) => {
+      setAdminBusy(verb);
+      try {
+        await postAdmin(verb);
+        pushToast(
+          verb === "replay"
+            ? "Replay requested — the integration will redeliver the webhook log shortly."
+            : "All pipeline data deleted.",
+          "green",
+        );
+        await load(persona);
+      } catch (e) {
+        if (e instanceof AuthRequiredError) {
+          setFindingsBlocked("unauthenticated");
+        } else {
+          pushToast(e instanceof Error ? e.message : String(e), "red");
+        }
+      } finally {
+        setAdminBusy(null);
       }
     },
     [load, persona, pushToast],
@@ -223,6 +250,8 @@ export function App() {
         onToggleTheme={toggleTheme}
         persona={persona}
         onPersonaChange={setPersona}
+        adminBusy={adminBusy}
+        onAdmin={(verb) => void onAdmin(verb)}
       />
       <main class="mx-auto w-[min(1240px,calc(100%-40px))] pt-6 pb-20 max-sm:w-[calc(100%-28px)]">{body}</main>
       <Toasts toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />

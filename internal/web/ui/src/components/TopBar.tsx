@@ -1,8 +1,10 @@
-import type { Dataset } from "../types";
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { AdminVerb, Dataset } from "../types";
 import type { DataMode } from "../api";
 import { readProvider, signOut } from "../auth";
 import { PERSONAS, type Persona } from "../mock/personas";
 import { hrefForList, hrefForRollups, type Route } from "../router";
+import { Icon } from "./icons";
 import { PatchMark } from "./PatchMark";
 import { ThemeToggle, type ThemeMode } from "./ThemeToggle";
 
@@ -33,6 +35,114 @@ function PersonaSwitcher({ persona, onChange }: { persona: Persona; onChange: (p
 
 const NAV_LINK = "rounded-[7px] px-2.5 py-1 text-[12.5px] font-semibold no-underline";
 
+const MENU_ITEM =
+  "flex w-full cursor-pointer items-center gap-2 rounded-[7px] border-0 bg-transparent px-2.5 py-1.5 text-left font-mono text-[11.5px] text-fg hover:bg-surface-2 disabled:cursor-default disabled:opacity-50";
+
+// UserMenu drops from the signed-in name: the namespace-wide demo tools
+// (replay, reset — rendered only when the server granted the verb) and
+// sign-out. Reset arms on the first click and deletes on the second.
+function UserMenu({
+  name,
+  adminActions,
+  adminBusy,
+  onAdmin,
+}: {
+  name: string;
+  adminActions: AdminVerb[];
+  adminBusy: AdminVerb | null;
+  onAdmin: (verb: AdminVerb) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [armedReset, setArmedReset] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setArmedReset(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setArmedReset(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const run = (verb: AdminVerb) => {
+    setOpen(false);
+    setArmedReset(false);
+    onAdmin(verb);
+  };
+
+  return (
+    <div class="relative" ref={ref}>
+      <button
+        type="button"
+        class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-fg transition-colors hover:border-turf"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((o) => !o);
+          setArmedReset(false);
+        }}
+      >
+        <span class="max-w-[180px] truncate">{name}</span>
+        <Icon name="chevronDown" size={12} class={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? (
+        <div
+          class="absolute right-0 z-40 mt-1.5 flex min-w-[210px] flex-col gap-px rounded-[10px] border border-line bg-surface p-1 shadow-strong"
+          role="menu"
+        >
+          {adminActions.includes("replay") ? (
+            <button
+              type="button"
+              class={MENU_ITEM}
+              role="menuitem"
+              disabled={adminBusy !== null}
+              onClick={() => run("replay")}
+            >
+              <Icon name="rotateCcw" size={13} class="flex-none text-muted" />
+              {adminBusy === "replay" ? "Requesting replay…" : "Replay deliveries"}
+            </button>
+          ) : null}
+          {adminActions.includes("reset") ? (
+            <button
+              type="button"
+              class={`${MENU_ITEM} ${armedReset ? "bg-[color-mix(in_oklab,var(--patchy-red)_12%,transparent)] text-red hover:bg-[color-mix(in_oklab,var(--patchy-red)_18%,transparent)]" : "text-red"}`}
+              role="menuitem"
+              disabled={adminBusy !== null}
+              onClick={() => (armedReset ? run("reset") : setArmedReset(true))}
+            >
+              <Icon name={armedReset ? "alertTriangle" : "trash"} size={13} class="flex-none" />
+              {adminBusy === "reset"
+                ? "Resetting…"
+                : armedReset
+                  ? "Click again to delete everything"
+                  : "Reset all data"}
+            </button>
+          ) : null}
+          {adminActions.length > 0 ? <div class="mx-1 my-1 h-px bg-line" role="separator" /> : null}
+          <button type="button" class={MENU_ITEM} role="menuitem" onClick={() => void signOut()}>
+            <Icon name="logOut" size={13} class="flex-none text-muted" />
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function TopBar({
   dataset,
   mode,
@@ -41,6 +151,8 @@ export function TopBar({
   onToggleTheme,
   persona,
   onPersonaChange,
+  adminBusy,
+  onAdmin,
 }: {
   dataset: Dataset | null;
   mode: DataMode;
@@ -49,6 +161,8 @@ export function TopBar({
   onToggleTheme: () => void;
   persona: Persona;
   onPersonaChange: (p: Persona) => void;
+  adminBusy: AdminVerb | null;
+  onAdmin: (verb: AdminVerb) => void;
 }) {
   const navClass = (active: boolean) =>
     `${NAV_LINK} ${active ? "bg-surface-2 text-fg" : "text-muted"}`;
@@ -84,23 +198,15 @@ export function TopBar({
         </div>
         <div class="ml-auto flex items-center gap-3">
           {mode === "demo" ? <PersonaSwitcher persona={persona} onChange={onPersonaChange} /> : null}
-          {/* The provider cookie keeps sign-out reachable when the dataset
+          {/* The provider cookie keeps the menu reachable when the dataset
               carries no user (e.g. the 403 fallback to public rollups). */}
           {dataset?.user?.loggedIn || (mode === "live" && readProvider()?.authenticated) ? (
-            <div class="flex items-center gap-2 font-mono text-[10.5px] text-muted">
-              {dataset?.user?.loggedIn ? (
-                <span class="max-sm:hidden" title="Signed in">
-                  {dataset.user.name}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                class="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-fg transition-colors hover:border-turf"
-                onClick={() => void signOut()}
-              >
-                Sign out
-              </button>
-            </div>
+            <UserMenu
+              name={dataset?.user?.loggedIn ? dataset.user.name : "account"}
+              adminActions={dataset?.user?.adminActions ?? []}
+              adminBusy={adminBusy}
+              onAdmin={onAdmin}
+            />
           ) : null}
           <ThemeToggle mode={themeMode} onToggle={onToggleTheme} />
         </div>

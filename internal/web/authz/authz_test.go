@@ -105,24 +105,24 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 6 {
-		t.Fatalf("first resolve made %d reviews, want 6", calls)
+	if calls != 8 {
+		t.Fatalf("first resolve made %d reviews, want 8", calls)
 	}
 
 	// Same identity with reordered groups hits the cache.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "u", Groups: []string{"a", "b"}}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 6 {
-		t.Errorf("cached resolve made %d extra reviews", calls-6)
+	if calls != 8 {
+		t.Errorf("cached resolve made %d extra reviews", calls-8)
 	}
 
 	// A different identity misses.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "v"}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 12 {
-		t.Errorf("distinct identity made %d reviews total, want 12", calls)
+	if calls != 16 {
+		t.Errorf("distinct identity made %d reviews total, want 16", calls)
 	}
 
 	// Expiry re-resolves.
@@ -130,8 +130,8 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 18 {
-		t.Errorf("expired resolve made %d reviews total, want 18", calls)
+	if calls != 24 {
+		t.Errorf("expired resolve made %d reviews total, want 24", calls)
 	}
 }
 

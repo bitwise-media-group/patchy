@@ -19,6 +19,12 @@
 #                          finding to the state it failed from; expedite skips
 #                          the waiting stages (accumulation window, minimum
 #                          age, queue position).
+#   * the user menu's demo tooling — the CUSTOM verbs replay / reset on
+#                          findings.patchy.bitwisemedia.uk. replay asks the
+#                          integration-controller to redeliver the webhook
+#                          delivery log; reset deletes every pipeline
+#                          resource in the namespace (findings, runs,
+#                          repositories, rollups). Grant sparingly.
 #
 # Rollup statistics are public by design and need no grant.
 #
@@ -68,6 +74,22 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
       verbs: [approve, retry, expedite, suspend, resume]
+---
+# Operator + the user menu's demo tooling: replay the webhook delivery log,
+# reset (delete) all pipeline state. For demo/dev environments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-findings-admin
+    labels:
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings, findingrollups]
+      verbs: [get, list]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [approve, retry, expedite, suspend, resume, replay, reset]
 ---
 # Example bindings: an SSO group of operators, one individual approver.
 apiVersion: rbac.authorization.k8s.io/v1

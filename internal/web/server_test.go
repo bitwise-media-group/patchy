@@ -41,7 +41,11 @@ func (s stubGranter) Grants(context.Context, auth.Identity) (authz.Grants, error
 var operator = &auth.Identity{Username: "op@acme.test", DisplayName: "Op", Session: true}
 
 func allGrants() authz.Grants {
-	return authz.Grants{View: true, Verbs: append([]string(nil), authz.ActionVerbs...)}
+	return authz.Grants{
+		View:  true,
+		Verbs: append([]string(nil), authz.ActionVerbs...),
+		Admin: append([]string(nil), authz.AdminVerbs...),
+	}
 }
 
 func TestHandlerSecurityHeaders(t *testing.T) {

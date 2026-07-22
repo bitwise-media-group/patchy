@@ -46,6 +46,11 @@ export type Recommendation = "remediate" | "ignore" | "manual";
 // injects them as Finding.userActions; the UI never decides authorization.
 export type ActionVerb = "approve" | "retry" | "expedite" | "suspend" | "resume";
 
+// AdminVerb is a namespace-wide action in the user menu (demo tooling):
+// replay redelivers the webhook delivery log, reset deletes all pipeline
+// state. Granted verbs arrive as DatasetUser.adminActions.
+export type AdminVerb = "replay" | "reset";
+
 export interface Location {
   path: string;
   startLine?: number;
@@ -263,6 +268,8 @@ export interface Rollup {
 export interface DatasetUser {
   name: string;
   loggedIn: boolean;
+  // Granted namespace-wide verbs the user menu renders; absent means none.
+  adminActions?: AdminVerb[];
 }
 
 // Dataset is the payload behind GET /api/findings (everything) and

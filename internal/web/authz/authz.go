@@ -31,10 +31,21 @@ const (
 	VerbSuspend = "suspend"
 	// VerbResume is the custom RBAC verb behind the resume action.
 	VerbResume = "resume"
+	// VerbReplay is the custom RBAC verb behind the namespace-wide replay
+	// action (redeliver the webhook delivery log — demo tooling).
+	VerbReplay = "replay"
+	// VerbReset is the custom RBAC verb behind the namespace-wide reset
+	// action (delete every pipeline resource — demo tooling).
+	VerbReset = "reset"
 )
 
-// ActionVerbs lists the custom verbs in the order the UI receives them.
+// ActionVerbs lists the per-finding custom verbs in the order the UI
+// receives them.
 var ActionVerbs = []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume}
+
+// AdminVerbs lists the namespace-wide custom verbs, resolved the same way
+// but surfaced on the dataset's user rather than per finding.
+var AdminVerbs = []string{VerbReplay, VerbReset}
 
 // findingsGroup is the API group carrying the custom verbs.
 const findingsGroup = "patchy.bitwisemedia.uk"
@@ -55,11 +66,18 @@ type Grants struct {
 	View bool
 	// Verbs are the granted custom action verbs, in ActionVerbs order.
 	Verbs []string
+	// Admin are the granted namespace-wide verbs, in AdminVerbs order.
+	Admin []string
 }
 
-// Allows reports whether verb is granted.
+// Allows reports whether the per-finding verb is granted.
 func (g Grants) Allows(verb string) bool {
 	return slices.Contains(g.Verbs, verb)
+}
+
+// AllowsAdmin reports whether the namespace-wide verb is granted.
+func (g Grants) AllowsAdmin(verb string) bool {
+	return slices.Contains(g.Admin, verb)
 }
 
 // Full is the bypass granter for auth mode none: everything, for everyone.
@@ -67,7 +85,11 @@ type Full struct{}
 
 // Grants returns every grant.
 func (Full) Grants(context.Context, auth.Identity) (Grants, error) {
-	return Grants{View: true, Verbs: append([]string(nil), ActionVerbs...)}, nil
+	return Grants{
+		View:  true,
+		Verbs: append([]string(nil), ActionVerbs...),
+		Admin: append([]string(nil), AdminVerbs...),
+	}, nil
 }
 
 // Reviewer resolves grants through SubjectAccessReviews, cached briefly per
@@ -126,6 +148,15 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 		}
 		if allowed {
 			g.Verbs = append(g.Verbs, verb)
+		}
+	}
+	for _, verb := range AdminVerbs {
+		allowed, err := r.review(ctx, id, verb)
+		if err != nil {
+			return Grants{}, err
+		}
+		if allowed {
+			g.Admin = append(g.Admin, verb)
 		}
 	}
 

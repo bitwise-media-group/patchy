@@ -34,9 +34,10 @@ Seven binaries, one module. "Not monolithic" means separate binaries/deployments
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
   Kubernetes API; no credentials beyond the model key.
 - `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
-  SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, and the access-review-gated
-  approve/retry/expedite/suspend/resume actions. Rollup statistics are public; the findings surface always requires auth.
-  Writes Finding SPEC only (`spec.approval`, `spec.suspend`) — never status, never a phase.
+  SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, the access-review-gated
+  approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
+  `spec.replay`; reset → delete all pipeline CRs). Rollup statistics are public; the findings surface always
+  requires auth. Writes SPEC only (`spec.approval`, `spec.suspend`, `spec.replay`) — never status, never a phase.
 
 ## Layout
 

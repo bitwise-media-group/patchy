@@ -295,11 +295,14 @@ subjects:
 ---
 # ---- status-server ----------------------------------------------------------
 # The status page backend: reads Findings/FindingRollups for the projection
-# and writes Finding SPEC only — approve records spec.approval, suspend and
-# resume toggle spec.suspend. Deliberately NO findings/status: the status
-# server never moves a phase (the transition table's writers stay exclusive),
-# and RBAC enforces that at the API layer. No leases (no reconcilers, no
-# leader election), no secrets (the auth config is a mounted volume).
+# and writes SPEC only — approve records spec.approval, suspend and resume
+# toggle spec.suspend, replay stamps Integration spec.replay. Deliberately NO
+# */status: the status server never moves a phase (the transition table's
+# writers stay exclusive), and RBAC enforces that at the API layer. The
+# delete/deletecollection verbs back the access-review-gated reset action
+# (demo tooling): wipe the pipeline state, keep the configuration
+# (Integrations, Forges). No leases (no reconcilers, no leader election), no
+# secrets (the auth config is a mounted volume).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -311,15 +314,21 @@ metadata:
 rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [get, list, watch, update, patch]
+      verbs: [get, list, watch, update, patch, delete, deletecollection]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findingrollups]
-      verbs: [get, list, watch]
-    # Read-only: the projection lifts each run's report markdown from the
-    # Investigation/Remediation children (reports live on the child only).
+      verbs: [get, list, watch, delete, deletecollection]
+    # Read-only plus reset: the projection lifts each run's report markdown
+    # from the Investigation/Remediation children (reports live on the child
+    # only); repositories exist for reset alone.
     - apiGroups: [patchy.bitwisemedia.uk]
-      resources: [investigations, remediations]
-      verbs: [get, list, watch]
+      resources: [investigations, remediations, repositories]
+      verbs: [get, list, watch, delete, deletecollection]
+    # Spec-only write seam for the replay action (spec.replay); the cached
+    # client's informer needs list/watch.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [get, list, watch, update, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

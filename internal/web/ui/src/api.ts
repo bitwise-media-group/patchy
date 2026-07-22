@@ -5,7 +5,7 @@
 // finding's permitted verbs already resolved for the requesting user, and a
 // mutation is re-checked on POST. The client only reflects 401/403.
 
-import type { ActionVerb, Dataset, Finding } from "./types";
+import type { ActionVerb, AdminVerb, Dataset, Finding } from "./types";
 import { availableActions, retryTarget } from "./actions";
 import { mockDataset } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
@@ -133,6 +133,24 @@ export async function postAction(
   await request<unknown>(`/api/findings/${encodeURIComponent(name)}/actions/${verb}`, {
     method: "POST",
   });
+}
+
+// postAdmin runs one namespace-wide action from the user menu. In demo mode
+// reset empties the mock dataset and replay is a no-op — enough to show the
+// buttons working.
+export async function postAdmin(verb: AdminVerb): Promise<void> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    if (verb === "reset") {
+      const data = demoDataset();
+      data.findings = [];
+      data.rollups = [];
+    }
+    return;
+  }
+  await request<unknown>(`/api/admin/${verb}`, { method: "POST" });
 }
 
 // subscribe opens the SSE stream and calls onChange whenever findings change

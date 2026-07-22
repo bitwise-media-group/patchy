@@ -56,6 +56,19 @@ the finding fails again, another retry is required.
 minimum-age wait, and both schedulers rank the finding's runs ahead of all non-expedited work. It does not bypass an
 `AwaitingApproval` hold — that remains approve's job.
 
+## The user menu: demo tooling
+
+The signed-in name in the top bar drops a menu holding sign-out and two namespace-wide actions, each behind its own
+custom RBAC verb and hidden without the grant:
+
+| Action                | Verb     | What happens                                                                                                                                                                                                                                   |
+| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Replay deliveries** | `replay` | Writes `spec.replay` on the active Integrations; the integration-controller then redelivers the App webhook's delivery log — successes included — through the [redelivery sweep](deployment/webhook.md#missed-deliveries-the-redelivery-sweep) |
+| **Reset all data**    | `reset`  | Deletes every pipeline resource in the namespace — findings, investigation/remediation runs, pinned repositories, rollups. Configuration (Integrations, Forges) survives. Two clicks to confirm                                                |
+
+Reset then Replay re-runs the entire pipeline from ingestion — the demo loop. Grant these verbs sparingly; the
+`patchy-findings-admin` example tier in `rbac.users.example.yaml` bundles them with the operator verbs.
+
 ## Access model
 
 Two tiers, on purpose:

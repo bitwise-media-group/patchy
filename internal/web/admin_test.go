@@ -107,13 +107,18 @@ func TestHandleAdminReset(t *testing.T) {
 			t.Errorf("%T still holds %d items after reset", list, n)
 		}
 	}
-	// Configuration survives.
+	// Configuration survives, stamped with the dedup-window reset request
+	// so redeliveries of the deleted findings' webhooks are ingested again.
 	var integs v1alpha1.IntegrationList
 	if err := mustClient(s).List(t.Context(), &integs, client.InNamespace("patchy")); err != nil {
 		t.Fatalf("list integrations: %v", err)
 	}
 	if len(integs.Items) != 1 {
-		t.Errorf("integrations = %d, want the configuration untouched", len(integs.Items))
+		t.Fatalf("integrations = %d, want the configuration untouched", len(integs.Items))
+	}
+	req := integs.Items[0].Spec.Reset
+	if req == nil || req.By != "op@acme.test" || !req.At.Time.Equal(testClock) {
+		t.Errorf("spec.reset = %+v, want stamped by op@acme.test at testClock", req)
 	}
 }
 

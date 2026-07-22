@@ -31,6 +31,11 @@ type IntegrationReconciler struct {
 	Log *slog.Logger
 	// Now tells time; nil means time.Now (tests override).
 	Now func() time.Time
+	// ResetDedup drops the in-process webhook receiver's delivery dedup
+	// window (webhook.Server.ResetDedup); nil is a no-op. Called when a
+	// reset or replay request is consumed, so the redeliveries either
+	// triggers are not swallowed as duplicates.
+	ResetDedup func()
 }
 
 // Reconcile implements the Integration control loop.
@@ -59,8 +64,19 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	meta.SetStatusCondition(&integ.Status.Conditions, cond)
 	integ.Status.WebhookPath = "/" + string(integ.Spec.Provider) + "/webhooks"
 	integ.Status.ObservedGeneration = integ.Generation
+	// A reset needs no credential: it only drops the in-process receiver's
+	// dedup window, so manual redeliveries land immediately.
+	if req := pendingReset(&integ); req != nil {
+		r.dropDedup()
+		integ.Status.ResetAt = &req.At
+		r.log().LogAttrs(ctx, slog.LevelInfo, "webhook dedup window dropped",
+			slog.String("integration", integ.Name), slog.String("by", req.By))
+	}
 	if cond.Status == metav1.ConditionTrue {
 		if rep := pendingReplay(&integ); rep != nil {
+			// The replay's redeliveries reuse their original delivery GUIDs;
+			// drop the dedup window first or the receiver discards them all.
+			r.dropDedup()
 			st, scanned := r.sweepDeliveries(ctx, &integ, r.now(), true)
 			if scanned {
 				st.ReplayedAt = &rep.At
@@ -95,6 +111,13 @@ func (r *IntegrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.Integration{}).
 		Named("integration").
 		Complete(r)
+}
+
+// dropDedup invokes the ResetDedup seam when wired.
+func (r *IntegrationReconciler) dropDedup() {
+	if r.ResetDedup != nil {
+		r.ResetDedup()
+	}
 }
 
 func (r *IntegrationReconciler) log() *slog.Logger {

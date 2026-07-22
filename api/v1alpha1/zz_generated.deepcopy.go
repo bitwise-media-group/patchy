@@ -771,6 +771,11 @@ func (in *IntegrationSpec) DeepCopyInto(out *IntegrationSpec) {
 		*out = new(ActionRequest)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Reset != nil {
+		in, out := &in.Reset, &out.Reset
+		*out = new(ActionRequest)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.GitHub != nil {
 		in, out := &in.GitHub, &out.GitHub
 		*out = new(GitHubIntegration)
@@ -816,6 +821,10 @@ func (in *IntegrationStatus) DeepCopyInto(out *IntegrationStatus) {
 		in, out := &in.Redelivery, &out.Redelivery
 		*out = new(RedeliveryStatus)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.ResetAt != nil {
+		in, out := &in.ResetAt, &out.ResetAt
+		*out = (*in).DeepCopy()
 	}
 }
 

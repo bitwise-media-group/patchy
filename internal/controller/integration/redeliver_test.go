@@ -110,3 +110,43 @@ func TestPendingReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestPendingReset(t *testing.T) {
+	at := metav1.NewTime(time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC))
+	earlier := metav1.NewTime(at.Add(-time.Hour))
+	tests := []struct {
+		name    string
+		integ   v1alpha1.Integration
+		pending bool
+	}{
+		{"no request", v1alpha1.Integration{}, false},
+		{
+			"unhandled request",
+			v1alpha1.Integration{Spec: v1alpha1.IntegrationSpec{Reset: &v1alpha1.ActionRequest{At: at}}},
+			true,
+		},
+		{
+			"handled request",
+			v1alpha1.Integration{
+				Spec:   v1alpha1.IntegrationSpec{Reset: &v1alpha1.ActionRequest{At: at}},
+				Status: v1alpha1.IntegrationStatus{ResetAt: &at},
+			},
+			false,
+		},
+		{
+			"newer request supersedes the handled one",
+			v1alpha1.Integration{
+				Spec:   v1alpha1.IntegrationSpec{Reset: &v1alpha1.ActionRequest{At: at}},
+				Status: v1alpha1.IntegrationStatus{ResetAt: &earlier},
+			},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pendingReset(&tt.integ) != nil; got != tt.pending {
+				t.Errorf("pendingReset() != nil = %v, want %v", got, tt.pending)
+			}
+		})
+	}
+}

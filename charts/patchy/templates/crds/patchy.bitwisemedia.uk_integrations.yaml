@@ -144,6 +144,27 @@ spec:
                 - at
                 - by
                 type: object
+              reset:
+                description: |-
+                  Reset requests the receiver forget its delivery dedup window, so a
+                  redelivery of an already-handled delivery GUID is ingested again.
+                  Stamped by the status page's demo reset alongside deleting the
+                  pipeline resources; without it, redeliveries of recently seen GUIDs
+                  answer 202 and are silently dropped until the dedup TTL elapses.
+                  Freshness against status.resetAt decides whether the request is still
+                  actionable — the controller never clears spec.
+                properties:
+                  at:
+                    description: At is when the request was received.
+                    format: date-time
+                    type: string
+                  by:
+                    description: By is the requesting login.
+                    type: string
+                required:
+                - at
+                - by
+                type: object
               secretRef:
                 description: |-
                   SecretRef names the credential Secret. For github: either key "token"
@@ -308,6 +329,12 @@ spec:
                       lookback horizon; the oldest part of the window went unscanned.
                     type: boolean
                 type: object
+              resetAt:
+                description: |-
+                  ResetAt echoes spec.reset.at once the receiver's dedup window has
+                  been dropped; a spec.reset newer than this triggers another drop.
+                format: date-time
+                type: string
               webhookPath:
                 description: |-
                   WebhookPath is the receiver path deliveries must target

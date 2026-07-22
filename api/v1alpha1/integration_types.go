@@ -96,6 +96,15 @@ type IntegrationSpec struct {
 	// actionable — the controller never clears spec.
 	// +optional
 	Replay *ActionRequest `json:"replay,omitempty"`
+	// Reset requests the receiver forget its delivery dedup window, so a
+	// redelivery of an already-handled delivery GUID is ingested again.
+	// Stamped by the status page's demo reset alongside deleting the
+	// pipeline resources; without it, redeliveries of recently seen GUIDs
+	// answer 202 and are silently dropped until the dedup TTL elapses.
+	// Freshness against status.resetAt decides whether the request is still
+	// actionable — the controller never clears spec.
+	// +optional
+	Reset *ActionRequest `json:"reset,omitempty"`
 	// GitHub is the github provider block.
 	// +optional
 	GitHub *GitHubIntegration `json:"github,omitempty"`
@@ -171,6 +180,10 @@ type IntegrationStatus struct {
 	// Redelivery reports the last failed-delivery sweep.
 	// +optional
 	Redelivery *RedeliveryStatus `json:"redelivery,omitempty"`
+	// ResetAt echoes spec.reset.at once the receiver's dedup window has
+	// been dropped; a spec.reset newer than this triggers another drop.
+	// +optional
+	ResetAt *metav1.Time `json:"resetAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

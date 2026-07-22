@@ -251,7 +251,7 @@ func TestQueueFull(t *testing.T) {
 }
 
 func TestDedupEviction(t *testing.T) {
-	d := newDedup(2)
+	d := newDedup(2, time.Minute)
 	if !d.add("a") || !d.add("b") {
 		t.Fatal("fresh ids reported as duplicates")
 	}
@@ -267,6 +267,42 @@ func TestDedupEviction(t *testing.T) {
 	d.remove("c")
 	if !d.add("c") {
 		t.Error("c still deduped after remove")
+	}
+}
+
+func TestDedupReset(t *testing.T) {
+	d := newDedup(2, time.Minute)
+	if !d.add("a") || !d.add("b") {
+		t.Fatal("fresh ids reported as duplicates")
+	}
+	d.reset()
+	if !d.add("a") || !d.add("b") {
+		t.Error("ids still deduped after reset")
+	}
+	if d.add("a") {
+		t.Error("a not deduped after re-add; reset broke the window")
+	}
+}
+
+func TestDedupTTL(t *testing.T) {
+	now := time.Unix(0, 0)
+	d := newDedup(4, 5*time.Minute)
+	d.now = func() time.Time { return now }
+
+	if !d.add("a") {
+		t.Fatal("fresh id reported as duplicate")
+	}
+	now = now.Add(4 * time.Minute)
+	if d.add("a") {
+		t.Error("a not deduped inside the TTL")
+	}
+	now = now.Add(time.Minute) // 5m after the original add
+	if !d.add("a") {
+		t.Error("a still deduped once the TTL elapsed")
+	}
+	now = now.Add(time.Minute)
+	if d.add("a") {
+		t.Error("refreshed a not deduped inside its new TTL")
 	}
 }
 

@@ -29,6 +29,12 @@ const scopeName = "github.com/bitwise-media-group/patchy/internal/webhook"
 // maxBody matches GitHub's 25 MB webhook payload cap.
 const maxBody = 25 << 20
 
+// dedupTTL bounds how long a delivery GUID is treated as a duplicate.
+// Redeliveries reuse the original GUID, so this must be long enough to
+// absorb a duplicate burst yet short enough that a deliberate redelivery
+// (the GitHub UI, or the Integration's sweep/replay) is handled again.
+const dedupTTL = 5 * time.Minute
+
 var tracer = sync.OnceValue(func() trace.Tracer {
 	return otel.Tracer(scopeName)
 })
@@ -114,9 +120,15 @@ func NewServer(cfg Config, log *slog.Logger, h Handler) *Server {
 		log:   log,
 		h:     h,
 		queue: make(chan Event, cfg.QueueSize),
-		seen:  newDedup(1024),
+		seen:  newDedup(1024, dedupTTL),
 	}
 }
+
+// ResetDedup drops the delivery dedup window, so redeliveries of
+// already-seen GUIDs are handled as new. Called when an Integration's
+// reset or replay request is consumed — both make GitHub resend deliveries
+// whose GUIDs the receiver has already recorded.
+func (s *Server) ResetDedup() { s.seen.reset() }
 
 // Run serves until ctx is cancelled, then drains: the listener shuts down
 // gracefully, queued deliveries finish, and the worker pool exits.

@@ -86,7 +86,16 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Log:       log,
 	}
 
-	ic := &integration.IntegrationReconciler{Client: mgr.GetClient(), Creds: creds, Log: log}
+	srv := webhook.NewServer(webhook.Config{
+		Addr:       opts.ListenAddr,
+		Path:       "/github/webhooks",
+		SecretsFor: receiver.Secrets,
+	}, log, receiver)
+
+	ic := &integration.IntegrationReconciler{
+		Client: mgr.GetClient(), Creds: creds, Log: log,
+		ResetDedup: srv.ResetDedup,
+	}
 	if err := ic.SetupWithManager(mgr); err != nil {
 		return err
 	}
@@ -94,12 +103,6 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if err := fp.SetupWithManager(mgr); err != nil {
 		return err
 	}
-
-	srv := webhook.NewServer(webhook.Config{
-		Addr:       opts.ListenAddr,
-		Path:       "/github/webhooks",
-		SecretsFor: receiver.Secrets,
-	}, log, receiver)
 
 	log.LogAttrs(ctx, slog.LevelInfo, "integration-controller starting",
 		slog.String("addr", opts.ListenAddr),

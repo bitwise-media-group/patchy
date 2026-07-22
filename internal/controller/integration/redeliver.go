@@ -109,6 +109,19 @@ func pendingReplay(integ *v1alpha1.Integration) *v1alpha1.ActionRequest {
 	return rep
 }
 
+// pendingReset returns the spec.reset request not yet echoed by
+// status.resetAt, or nil.
+func pendingReset(integ *v1alpha1.Integration) *v1alpha1.ActionRequest {
+	req := integ.Spec.Reset
+	if req == nil {
+		return nil
+	}
+	if at := integ.Status.ResetAt; at != nil && !at.Time.Before(req.At.Time) {
+		return nil
+	}
+	return req
+}
+
 // pickRedeliveries selects, from one scan window of delivery attempts, the
 // attempt to redeliver per logical delivery (GUID): the newest failed
 // attempt of any GUID with no successful attempt and fewer than maxAttempts

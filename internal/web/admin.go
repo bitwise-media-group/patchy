@@ -50,7 +50,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	case authz.VerbReplay:
 		err = s.requestReplay(r.Context(), *id)
 	case authz.VerbReset:
-		err = s.resetAll(r.Context())
+		err = s.resetAll(r.Context(), *id)
 	default:
 		http.NotFound(w, r)
 		return
@@ -106,8 +106,12 @@ func (s *Server) requestReplay(ctx context.Context, id auth.Identity) error {
 
 // resetAll deletes every pipeline resource in the namespace: findings and
 // their child runs, the pinned repositories, and the rollup statistics.
-// Integrations and Forges — the configuration — stay.
-func (s *Server) resetAll(ctx context.Context) error {
+// Integrations and Forges — the configuration — stay, but each active
+// Integration gets spec.reset stamped so the integration-controller drops
+// its receiver's delivery dedup window: without that, redelivering the
+// webhooks that produced the just-deleted findings is silently ignored as
+// duplicates until the dedup TTL elapses.
+func (s *Server) resetAll(ctx context.Context, id auth.Identity) error {
 	for _, obj := range []client.Object{
 		&v1alpha1.Finding{},
 		&v1alpha1.Investigation{},
@@ -117,6 +121,28 @@ func (s *Server) resetAll(ctx context.Context) error {
 	} {
 		if err := s.client.DeleteAllOf(ctx, obj, client.InNamespace(s.namespace)); err != nil {
 			return fmt.Errorf("delete all %T: %w", obj, err)
+		}
+	}
+
+	var list v1alpha1.IntegrationList
+	if err := s.client.List(ctx, &list, client.InNamespace(s.namespace)); err != nil {
+		return fmt.Errorf("list integrations: %w", err)
+	}
+	for i := range list.Items {
+		if list.Items[i].Spec.Suspend {
+			continue
+		}
+		name := list.Items[i].Name
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var cur v1alpha1.Integration
+			if err := s.client.Get(ctx, client.ObjectKeyFromObject(&list.Items[i]), &cur); err != nil {
+				return err
+			}
+			cur.Spec.Reset = &v1alpha1.ActionRequest{By: id.Username, At: metav1.NewTime(s.now())}
+			return s.client.Update(ctx, &cur)
+		})
+		if err != nil {
+			return fmt.Errorf("request dedup reset on integration %s: %w", name, err)
 		}
 	}
 	return nil

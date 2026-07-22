@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.0](https://github.com/bitwise-media-group/patchy/compare/v0.3.3...v0.4.0) (2026-07-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* GitHub issues are no longer the state store. The pipeline is driven by the patchy.bitwisemedia.uk/v1alpha1 custom resources; issues are a one-way projection. webhook-controller is removed, and deployments must install the CRDs and create Integration/Forge resources.
+
+### Features
+
+* **agent:** drop node for the native claude binary ([081d1ab](https://github.com/bitwise-media-group/patchy/commit/081d1abdd20d1abf78d0635ff1404e272610c5e1))
+* **api:** add patchy.bitwisemedia.uk/v1alpha1 API and CRD tooling ([e57c20b](https://github.com/bitwise-media-group/patchy/commit/e57c20b98140e326e9c18fd04ca6c3b09e894d7e))
+* **context:** add the CRD-native enhancement reconciler ([68e16d4](https://github.com/bitwise-media-group/patchy/commit/68e16d4aa8f3b805ddd6fbca39e0119222fcc4de))
+* cut the pipeline over to the CRD state machine ([b55d8a7](https://github.com/bitwise-media-group/patchy/commit/b55d8a723f60032b97ded75c4fd4c472795f018b))
+* **deploy:** rebuild kustomize and helm for the CRD stack ([67e3e12](https://github.com/bitwise-media-group/patchy/commit/67e3e1243089c2531e47de9c759d61f05603651a))
+* **deploy:** ship the status-server in kustomize and helm ([d6ecbe3](https://github.com/bitwise-media-group/patchy/commit/d6ecbe3504e68f2b628d19f36211d83618484385))
+* **integration:** add the integration-controller engine ([ff79f37](https://github.com/bitwise-media-group/patchy/commit/ff79f375d366dc5f8d363d4fd5e785bf6e84b9dd))
+* **investigation:** split the agent stages and add investigation-controller ([50aedd1](https://github.com/bitwise-media-group/patchy/commit/50aedd1a6b2ba203a4ef5708acd06024a7a56353))
+* **remediation:** add the CRD-native remediation engine ([1c280a1](https://github.com/bitwise-media-group/patchy/commit/1c280a1718354622eeb62e1650ae3c0ba8a38e53))
+* **rollup:** add all-time statistics rollups, finding TTL, and metrics ([76bb964](https://github.com/bitwise-media-group/patchy/commit/76bb9643a563f09f06df78a2fce5c7512d5865fc))
+* **source:** add forge resolution and repository artifact engine ([a66e81b](https://github.com/bitwise-media-group/patchy/commit/a66e81bd20cfb82690a2d2994c03c56ee2afaa32))
+* **web:** add the status-server backend and binary ([1933a38](https://github.com/bitwise-media-group/patchy/commit/1933a38442f4afbf6d65ec05ab38a9fca72e4802))
+* **web:** embed the status page SPA and wire the withui build ([a2a2809](https://github.com/bitwise-media-group/patchy/commit/a2a280994717274579f75b01510e26da28f0791c))
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/text to v0.39.0 ([913cd05](https://github.com/bitwise-media-group/patchy/commit/913cd053105a251f752388334b40b85ff64ebd78))
+* **web:** harden auth cookie attributes flagged by CodeQL ([fb1bc98](https://github.com/bitwise-media-group/patchy/commit/fb1bc98e8f117e6a939489f0f89b2be7f863d8c9))
+
 ## [0.3.3](https://github.com/bitwise-media-group/patchy/compare/v0.3.2...v0.3.3) (2026-07-19)
 
 

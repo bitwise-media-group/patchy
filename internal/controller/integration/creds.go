@@ -81,6 +81,24 @@ func (c *Creds) Client(ctx context.Context, integ *v1alpha1.Integration, repo gh
 	return app.Installation(ctx, repo)
 }
 
+// App returns the Integration's GitHub App for app-level (JWT) calls like
+// the webhook delivery log. ok is false for a PAT credential — PATs cannot
+// see App webhook deliveries.
+func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghclient.App, ok bool, err error) {
+	secret, err := c.secret(ctx, integ)
+	if err != nil {
+		return nil, false, err
+	}
+	if _, isPAT := ghsecret.Token(secret); isPAT {
+		return nil, false, nil
+	}
+	app, err = c.apps.FromSecret(secret, githubBaseURL(integ))
+	if err != nil {
+		return nil, false, err
+	}
+	return app, true, nil
+}
+
 // Validate checks the Integration's secret carries a usable API credential
 // and a webhook secret.
 func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error {
@@ -120,6 +138,13 @@ type capability func(*v1alpha1.Integration) bool
 func issuesEnabled(i *v1alpha1.Integration) bool {
 	return !i.Spec.Suspend && i.Spec.GitHub != nil &&
 		i.Spec.GitHub.Issues != nil && i.Spec.GitHub.Issues.Enabled
+}
+
+// redeliveryEnabled reports whether the Integration sweeps failed webhook
+// deliveries.
+func redeliveryEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.GitHub != nil &&
+		i.Spec.GitHub.Redelivery != nil && i.Spec.GitHub.Redelivery.Enabled
 }
 
 // codeScanningEnabled reports whether the Integration ingests code-scanning

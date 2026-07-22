@@ -29,6 +29,8 @@ type IntegrationReconciler struct {
 	Creds *Creds
 	// Log receives reconcile diagnostics; nil discards.
 	Log *slog.Logger
+	// Now tells time; nil means time.Now (tests override).
+	Now func() time.Time
 }
 
 // Reconcile implements the Integration control loop.
@@ -57,6 +59,22 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	meta.SetStatusCondition(&integ.Status.Conditions, cond)
 	integ.Status.WebhookPath = "/" + string(integ.Spec.Provider) + "/webhooks"
 	integ.Status.ObservedGeneration = integ.Generation
+	if cond.Status == metav1.ConditionTrue {
+		if rep := pendingReplay(&integ); rep != nil {
+			st, scanned := r.sweepDeliveries(ctx, &integ, r.now(), true)
+			if scanned {
+				st.ReplayedAt = &rep.At
+			}
+			integ.Status.Redelivery = st
+		} else if redeliveryEnabled(&integ) {
+			st, _ := r.sweepDeliveries(ctx, &integ, r.now(), false)
+			// The standing sweep must not forget which replay was handled.
+			if prev := integ.Status.Redelivery; prev != nil {
+				st.ReplayedAt = prev.ReplayedAt
+			}
+			integ.Status.Redelivery = st
+		}
+	}
 	if err := r.Status().Update(ctx, &integ); err != nil {
 		if kerrors.IsConflict(err) {
 			return ctrl.Result{Requeue: true}, nil
@@ -84,4 +102,11 @@ func (r *IntegrationReconciler) log() *slog.Logger {
 		return slog.New(slog.DiscardHandler)
 	}
 	return r.Log
+}
+
+func (r *IntegrationReconciler) now() time.Time {
+	if r.Now == nil {
+		return time.Now()
+	}
+	return r.Now()
 }

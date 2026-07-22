@@ -98,6 +98,11 @@ Integrations, ingests scanner events into Findings, and applies the human signal
 No other controller serves a webhook. The base ships a ClusterIP Service and no Ingress: put your Ingress or Gateway in
 front of `patchy-integration-controller:8080` in your own overlay.
 
+GitHub never retries a failed delivery on its own; enable `spec.github.redelivery` on the Integration and the controller
+sweeps the App's delivery log every reconcile interval, redelivering anything that missed (App credentials required —
+the delivery log is invisible to a PAT). The status page's user menu adds a full replay on demand (`spec.replay`, RBAC
+verb `replay`).
+
 Pipeline progress is **not** webhook-driven — the gates ("accumulation closed", "older than an hour", "a free
 remediation slot") are conditions no event can announce. The controllers' watch-driven reconcile loops carry the
 pipeline; the webhook path is ingestion and human-in-the-loop signals.

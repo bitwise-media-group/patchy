@@ -16,13 +16,44 @@ Two properties follow:
 
 - **Losing a delivery is not losing work.** The webhook path carries ingestion and human-in-the-loop signals only;
   pipeline progress rides on the controllers' watch-driven reconcile loops, which no delivery can announce anyway
-  ("accumulation closed", "older than an hour", "a slot freed"). A `503` from a full queue just means GitHub redelivers.
+  ("accumulation closed", "older than an hour", "a slot freed"). A rejected delivery (`503` on a full queue, downtime)
+  stays in GitHub's 30-day delivery log, and the [redelivery sweep](#missed-deliveries-the-redelivery-sweep) replays it.
 - **Exposure needs nothing exotic.** Any plain Ingress or Gateway API implementation works as-is — no header matching,
   no rewrites, no mirroring. Only `/github/webhooks` needs exposing; the probes stay cluster-internal on port 8081.
 
 The credential story: the integration-controller holds no GitHub credential in its Deployment at all — the
 `Integration`/`Forge` Secrets are read on demand through the Kubernetes API, and the components that exercise write
 credentials (remediation-controller's push/PR) never face the internet.
+
+## Missed deliveries: the redelivery sweep
+
+GitHub does **not** retry a failed webhook delivery on its own — it records the attempt in the App's 30-day delivery log
+and moves on. A delivery patchy never got a `2xx` to (receiver down, queue full, misconfigured secret) would otherwise
+sit there until someone redelivers it by hand.
+
+The integration-controller closes that gap when `spec.github.redelivery` is enabled on the Integration:
+
+```yaml
+spec:
+  interval: 10m # the sweep rides the reconcile interval
+  github:
+    redelivery:
+      enabled: true
+      lookback: 24h # how far back each sweep scans (GitHub retains 30d)
+```
+
+Each sweep lists the App webhook's recent deliveries (app-level API — this needs **App credentials**, a PAT cannot see
+the delivery log) and asks GitHub to redeliver every delivery whose attempts within the lookback all failed, up to three
+attempts per delivery. Duplicates are harmless: the receiver dedups per delivery GUID and ingestion is idempotent. The
+outcome lands on `status.redelivery` (scan size, redeliveries requested, truncation, last error).
+
+The status page's user menu offers a **Replay deliveries** action (RBAC verb `replay`) that redelivers _everything_ in
+the lookback window, including deliveries that already succeeded — paired with **Reset all data** (verb `reset`), it
+re-runs the whole pipeline from ingestion, which is exactly what a demo wants. The button writes `spec.replay` on the
+Integration; the controller performs the redelivery on its next reconcile.
+
+Deliveries that never happened — alerts predating the App installation — are invisible to the sweep; only a list-alerts
+backfill could find those, and patchy does not do that today.
 
 ## Expose it
 

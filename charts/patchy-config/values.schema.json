@@ -70,6 +70,23 @@
                             "required": ["enabled"],
                             "type": "object",
                             "additionalProperties": false
+                        },
+                        "redelivery": {
+                            "description": "Redelivery enables the failed-delivery sweep.",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Enabled turns the sweep on. Requires App credentials — the delivery\nlog is App-scoped, so a PAT integration cannot sweep.",
+                                    "type": "boolean"
+                                },
+                                "lookback": {
+                                    "default": "24h",
+                                    "description": "Lookback bounds how far back each sweep scans the delivery log.\nGitHub retains deliveries for 30 days.",
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["enabled"],
+                            "type": "object",
+                            "additionalProperties": false
                         }
                     },
                     "type": "object",
@@ -84,6 +101,23 @@
                     "description": "Provider is the external system type.",
                     "enum": ["github"],
                     "type": "string"
+                },
+                "replay": {
+                    "description": "Replay requests one full redelivery of every webhook delivery in the\nlookback window, including deliveries that already succeeded (the\nreceiver dedups; ingestion is idempotent). Freshness against\nstatus.redelivery.replayedAt decides whether the request is still\nactionable — the controller never clears spec.",
+                    "properties": {
+                        "at": {
+                            "description": "At is when the request was received.",
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        "by": {
+                            "description": "By is the requesting login.",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["at", "by"],
+                    "type": "object",
+                    "additionalProperties": false
                 },
                 "secretRef": {
                     "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation.",

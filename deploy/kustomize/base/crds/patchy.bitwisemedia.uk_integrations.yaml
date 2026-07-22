@@ -94,6 +94,23 @@ spec:
                     required:
                     - enabled
                     type: object
+                  redelivery:
+                    description: Redelivery enables the failed-delivery sweep.
+                    properties:
+                      enabled:
+                        description: |-
+                          Enabled turns the sweep on. Requires App credentials — the delivery
+                          log is App-scoped, so a PAT integration cannot sweep.
+                        type: boolean
+                      lookback:
+                        default: 24h
+                        description: |-
+                          Lookback bounds how far back each sweep scans the delivery log.
+                          GitHub retains deliveries for 30 days.
+                        type: string
+                    required:
+                    - enabled
+                    type: object
                 type: object
               interval:
                 default: 10m
@@ -104,6 +121,25 @@ spec:
                 enum:
                 - github
                 type: string
+              replay:
+                description: |-
+                  Replay requests one full redelivery of every webhook delivery in the
+                  lookback window, including deliveries that already succeeded (the
+                  receiver dedups; ingestion is idempotent). Freshness against
+                  status.redelivery.replayedAt decides whether the request is still
+                  actionable — the controller never clears spec.
+                properties:
+                  at:
+                    description: At is when the request was received.
+                    format: date-time
+                    type: string
+                  by:
+                    description: By is the requesting login.
+                    type: string
+                required:
+                - at
+                - by
+                type: object
               secretRef:
                 description: |-
                   SecretRef names the credential Secret. For github: either key "token"
@@ -234,6 +270,39 @@ spec:
                     type: string
                 required:
                 - remaining
+                type: object
+              redelivery:
+                description: Redelivery reports the last failed-delivery sweep.
+                properties:
+                  error:
+                    description: Error carries the last sweep failure; empty when
+                      the sweep succeeded.
+                    type: string
+                  lastSweepAt:
+                    description: LastSweepAt is when the last sweep ran.
+                    format: date-time
+                    type: string
+                  redelivered:
+                    description: Redelivered counts the redeliveries the last sweep
+                      requested.
+                    format: int32
+                    type: integer
+                  replayedAt:
+                    description: |-
+                      ReplayedAt echoes spec.replay.at once that replay has run; a
+                      spec.replay newer than this triggers another full replay.
+                    format: date-time
+                    type: string
+                  scanned:
+                    description: Scanned counts the delivery attempts the last sweep
+                      inspected.
+                    format: int32
+                    type: integer
+                  truncated:
+                    description: |-
+                      Truncated marks a sweep that hit the page cap before reaching the
+                      lookback horizon; the oldest part of the window went unscanned.
+                    type: boolean
                 type: object
               webhookPath:
                 description: |-

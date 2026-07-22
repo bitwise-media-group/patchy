@@ -36,6 +36,23 @@ type GitHubCodeScanningAlerts struct {
 	Enabled bool `json:"enabled"`
 }
 
+// GitHubRedelivery configures the failed-delivery sweep: on every
+// reconcile interval the controller lists the App webhook's recent
+// deliveries and asks GitHub to redeliver those that never got a 2xx —
+// deliveries missed while the receiver was down or its queue was full.
+// GitHub does not retry failed deliveries on its own; without the sweep
+// they sit in the 30-day delivery log until redelivered by hand.
+type GitHubRedelivery struct {
+	// Enabled turns the sweep on. Requires App credentials — the delivery
+	// log is App-scoped, so a PAT integration cannot sweep.
+	Enabled bool `json:"enabled"`
+	// Lookback bounds how far back each sweep scans the delivery log.
+	// GitHub retains deliveries for 30 days.
+	// +optional
+	// +kubebuilder:default="24h"
+	Lookback metav1.Duration `json:"lookback,omitempty"`
+}
+
 // GitHubIntegration is the github provider block: one GitHub App covering
 // any combination of the capabilities.
 type GitHubIntegration struct {
@@ -49,6 +66,9 @@ type GitHubIntegration struct {
 	// CodeScanningAlerts enables scanner ingestion.
 	// +optional
 	CodeScanningAlerts *GitHubCodeScanningAlerts `json:"codeScanningAlerts,omitempty"`
+	// Redelivery enables the failed-delivery sweep.
+	// +optional
+	Redelivery *GitHubRedelivery `json:"redelivery,omitempty"`
 }
 
 // IntegrationSpec configures one external system. Exactly the provider block
@@ -69,6 +89,13 @@ type IntegrationSpec struct {
 	// Suspend pauses reconciliation of this integration.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+	// Replay requests one full redelivery of every webhook delivery in the
+	// lookback window, including deliveries that already succeeded (the
+	// receiver dedups; ingestion is idempotent). Freshness against
+	// status.redelivery.replayedAt decides whether the request is still
+	// actionable — the controller never clears spec.
+	// +optional
+	Replay *ActionRequest `json:"replay,omitempty"`
 	// GitHub is the github provider block.
 	// +optional
 	GitHub *GitHubIntegration `json:"github,omitempty"`
@@ -95,6 +122,30 @@ type RateLimitStatus struct {
 	ResetAt *metav1.Time `json:"resetAt,omitempty"`
 }
 
+// RedeliveryStatus reports the last failed-delivery sweep.
+type RedeliveryStatus struct {
+	// LastSweepAt is when the last sweep ran.
+	// +optional
+	LastSweepAt *metav1.Time `json:"lastSweepAt,omitempty"`
+	// Scanned counts the delivery attempts the last sweep inspected.
+	// +optional
+	Scanned int32 `json:"scanned,omitempty"`
+	// Redelivered counts the redeliveries the last sweep requested.
+	// +optional
+	Redelivered int32 `json:"redelivered,omitempty"`
+	// Truncated marks a sweep that hit the page cap before reaching the
+	// lookback horizon; the oldest part of the window went unscanned.
+	// +optional
+	Truncated bool `json:"truncated,omitempty"`
+	// Error carries the last sweep failure; empty when the sweep succeeded.
+	// +optional
+	Error string `json:"error,omitempty"`
+	// ReplayedAt echoes spec.replay.at once that replay has run; a
+	// spec.replay newer than this triggers another full replay.
+	// +optional
+	ReplayedAt *metav1.Time `json:"replayedAt,omitempty"`
+}
+
 // IntegrationStatus is the integration's observed state.
 type IntegrationStatus struct {
 	// Conditions of the integration (Ready: credential valid, system
@@ -117,6 +168,9 @@ type IntegrationStatus struct {
 	// RateLimit is the last observed API quota.
 	// +optional
 	RateLimit *RateLimitStatus `json:"rateLimit,omitempty"`
+	// Redelivery reports the last failed-delivery sweep.
+	// +optional
+	Redelivery *RedeliveryStatus `json:"redelivery,omitempty"`
 }
 
 // +kubebuilder:object:root=true

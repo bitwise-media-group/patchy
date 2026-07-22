@@ -31,10 +31,10 @@ func (a *oidcAuthenticator) writeSession(w http.ResponseWriter, s session) error
 	}
 	remaining := time.Until(s.Start.Add(a.cfg.SessionDuration.Duration))
 	if remaining <= 0 {
-		clearChunked(w)
+		clearChunked(w, a.secure())
 		return nil
 	}
-	return writeChunked(w, blob, remaining, !a.cfg.Insecure)
+	return writeChunked(w, blob, remaining, a.secure())
 }
 
 // readSession reads and unseals the session cookie; ok is false when there

@@ -88,6 +88,12 @@ func (a *oidcAuthenticator) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /logout", a.handleLogout)
 }
 
+// secure reports whether cookies carry the Secure attribute; only the
+// plain-HTTP local-dev posture (cfg.Insecure) drops it.
+func (a *oidcAuthenticator) secure() bool {
+	return !a.cfg.Insecure
+}
+
 // oauth2Config assembles the flow configuration for one request; the
 // redirect URL may depend on the request's forwarded headers.
 func (a *oidcAuthenticator) oauth2Config(r *http.Request) *oauth2.Config {
@@ -149,7 +155,7 @@ func (a *oidcAuthenticator) handleAuthorize(w http.ResponseWriter, r *http.Reque
 		Path:     "/oauth2/",
 		MaxAge:   int(stateTTL.Seconds()),
 		HttpOnly: true,
-		Secure:   !a.cfg.Insecure,
+		Secure:   a.secure(),
 		SameSite: http.SameSiteLaxMode,
 	})
 	opts := []oauth2.AuthCodeOption{
@@ -167,7 +173,7 @@ func (a *oidcAuthenticator) handleAuthorize(w http.ResponseWriter, r *http.Reque
 // the session cookie and the guarded redirect home.
 func (a *oidcAuthenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	clearCookie(w, cookieOAuthState)
+	clearCookie(w, cookieOAuthState, a.secure())
 	if e := q.Get("error"); e != "" {
 		desc := q.Get("error_description")
 		a.fail(w, r, fmt.Sprintf("provider rejected sign-in: %s", strings.TrimSpace(e+" "+desc)), nil)
@@ -220,16 +226,16 @@ func (a *oidcAuthenticator) handleCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	a.setProviderCookie(w, r, true)
-	clearCookie(w, CookieAuthError)
-	clearCookie(w, CookieLogout)
+	clearCookie(w, CookieAuthError, a.secure())
+	clearCookie(w, CookieLogout, a.secure())
 	http.Redirect(w, r, st.OriginalPath, http.StatusSeeOther)
 }
 
 // handleLogout drops the session and pauses autoLogin until the SPA consumes
 // the marker.
 func (a *oidcAuthenticator) handleLogout(w http.ResponseWriter, r *http.Request) {
-	clearChunked(w)
-	_ = setJSONCookie(w, CookieLogout, true, time.Hour)
+	clearChunked(w, a.secure())
+	_ = setJSONCookie(w, CookieLogout, true, time.Hour, a.secure())
 	a.setProviderCookie(w, r, false)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -251,14 +257,14 @@ func (a *oidcAuthenticator) Identify(w http.ResponseWriter, r *http.Request) (*I
 	}
 	if err != nil {
 		a.log.LogAttrs(r.Context(), slog.LevelInfo, "session rejected", slog.Any("error", err))
-		clearChunked(w)
+		clearChunked(w, a.secure())
 		a.setProviderCookie(w, r, false)
 		return nil, nil
 	}
 	id, err := a.identityFrom(idToken)
 	if err != nil {
 		a.log.LogAttrs(r.Context(), slog.LevelWarn, "session claims unusable", slog.Any("error", err))
-		clearChunked(w)
+		clearChunked(w, a.secure())
 		a.setProviderCookie(w, r, false)
 		return nil, nil
 	}
@@ -308,14 +314,14 @@ func (a *oidcAuthenticator) setProviderCookie(w http.ResponseWriter, r *http.Req
 	if readJSONCookie(r, CookieProvider, &have) && have == want {
 		return
 	}
-	_ = setJSONCookie(w, CookieProvider, want, 0)
+	_ = setJSONCookie(w, CookieProvider, want, 0, a.secure())
 }
 
 // fail records a sign-in failure for the SPA and sends the browser home.
 func (a *oidcAuthenticator) fail(w http.ResponseWriter, r *http.Request, msg string, err error) {
 	a.log.LogAttrs(r.Context(), slog.LevelWarn, "sign-in failed",
 		slog.String("reason", msg), slog.Any("error", err))
-	_ = setJSONCookie(w, CookieAuthError, msg, time.Minute)
+	_ = setJSONCookie(w, CookieAuthError, msg, time.Minute, a.secure())
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

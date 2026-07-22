@@ -65,7 +65,7 @@ func writeChunked(w http.ResponseWriter, value string, maxAge time.Duration, sec
 	for i := range maxChunks {
 		start := i * chunkSize
 		if start >= len(value) {
-			clearCookie(w, chunkName(i))
+			clearCookie(w, chunkName(i), secure)
 			continue
 		}
 		end := min(start+chunkSize, len(value))
@@ -96,20 +96,30 @@ func readChunked(r *http.Request) string {
 }
 
 // clearChunked removes every session chunk.
-func clearChunked(w http.ResponseWriter) {
+func clearChunked(w http.ResponseWriter, secure bool) {
 	for i := range maxChunks {
-		clearCookie(w, chunkName(i))
+		clearCookie(w, chunkName(i), secure)
 	}
 }
 
-// clearCookie expires one cookie.
-func clearCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1})
+// clearCookie expires one cookie. Deletion matches on name and path only, so
+// the hardened attributes here never prevent the clear — they just keep the
+// expiring replacement as locked down as what it removes.
+func clearCookie(w http.ResponseWriter, name string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // setJSONCookie writes an SPA-visible base64url JSON cookie. Not HttpOnly by
 // design — the SPA reads it; it must never carry a secret.
-func setJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Duration) error {
+func setJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Duration, secure bool) error {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("cookie %s: %w", name, err)
@@ -119,6 +129,7 @@ func setJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Durati
 		Value:    base64.RawURLEncoding.EncodeToString(raw),
 		Path:     "/",
 		MaxAge:   int(maxAge.Seconds()),
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	return nil

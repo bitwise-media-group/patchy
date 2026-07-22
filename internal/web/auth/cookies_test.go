@@ -98,15 +98,37 @@ func TestWriteChunkedClearsLeftovers(t *testing.T) {
 	}
 }
 
+func TestClearCookieAttributes(t *testing.T) {
+	rec := httptest.NewRecorder()
+	clearCookie(rec, cookieSession, true)
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("got %d cookies, want 1", len(cookies))
+	}
+	c := cookies[0]
+	if c.MaxAge >= 0 || c.Value != "" {
+		t.Errorf("cookie not cleared: maxAge=%d value=%q", c.MaxAge, c.Value)
+	}
+	if !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode {
+		t.Errorf("clear attributes: httpOnly=%v secure=%v sameSite=%v", c.HttpOnly, c.Secure, c.SameSite)
+	}
+}
+
 func TestJSONCookieRoundTrip(t *testing.T) {
 	rec := httptest.NewRecorder()
 	want := providerState{Provider: "oidc", Authenticated: true, AutoLogin: true}
-	if err := setJSONCookie(rec, CookieProvider, want, 0); err != nil {
+	if err := setJSONCookie(rec, CookieProvider, want, 0, true); err != nil {
 		t.Fatalf("setJSONCookie: %v", err)
 	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == CookieProvider && c.HttpOnly {
+		if c.Name != CookieProvider {
+			continue
+		}
+		if c.HttpOnly {
 			t.Error("provider cookie must be SPA-readable (not HttpOnly)")
+		}
+		if !c.Secure {
+			t.Error("provider cookie must carry the Secure attribute")
 		}
 	}
 	var got providerState

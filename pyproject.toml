@@ -6,7 +6,7 @@
 
 [project]
 name = "patchy"
-version = "0.5.6" # x-release-please-version
+version = "0.5.7" # x-release-please-version
 description = "Automated triage and remediation of security findings, using GitHub issues as the state machine."
 readme = "README.md"
 requires-python = ">=3.13"

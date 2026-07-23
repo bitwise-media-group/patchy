@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/bitwise-media-group/patchy/compare/v0.5.6...v0.5.7) (2026-07-23)
+
+
+### Features
+
+* **integration-controller:** demo reset cleans GitHub up too ([09ef72a](https://github.com/bitwise-media-group/patchy/commit/09ef72aade2aeab6d8649f12c6dd37edfc67824e))
+
 ## [0.5.6](https://github.com/bitwise-media-group/patchy/compare/v0.5.5...v0.5.6) (2026-07-22)
 
 

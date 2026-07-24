@@ -7,18 +7,27 @@
         "duration": {
             "type": "string",
             "description": "Go duration, e.g. 60s, 2m, 1h30m",
-            "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+            "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+$"
         },
         "logLevel": {
             "type": "string",
             "description": "slog level for the controller's stderr logger",
-            "enum": ["debug", "info", "warn", "error"]
+            "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+            ]
         },
         "extraEnv": {
             "type": "object",
             "description": "Verbatim PATCHY_* variable name -> value",
             "additionalProperties": {
-                "type": ["string", "number", "boolean"]
+                "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                ]
             }
         },
         "imageOverride": {
@@ -26,133 +35,311 @@
             "description": "Key-by-key override of the global image; digest pins and beats any tag",
             "additionalProperties": false,
             "properties": {
-                "repository": { "type": "string" },
-                "tag": { "type": "string" },
-                "digest": { "type": "string" }
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "digest": {
+                    "type": "string"
+                }
             }
         },
         "agentStage": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["model", "timeout", "maxTurns", "tokenBudget"],
+            "required": [
+                "model",
+                "timeout",
+                "maxTurns",
+                "tokenBudget"
+            ],
             "properties": {
-                "model": { "type": "string" },
-                "timeout": { "$ref": "#/definitions/duration" },
-                "maxTurns": { "type": "integer", "minimum": 1 },
-                "tokenBudget": { "type": "integer", "minimum": 1 }
+                "model": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "$ref": "#/definitions/duration"
+                },
+                "maxTurns": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "tokenBudget": {
+                    "type": "integer",
+                    "minimum": 1
+                }
             }
         },
         "agentRunner": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["enabled"],
+            "required": [
+                "enabled"
+            ],
             "properties": {
-                "enabled": { "type": "boolean" },
-                "image": { "$ref": "#/definitions/imageOverride" },
-                "secret": { "type": "string" },
-                "secretKey": { "type": "string" },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
+                "secret": {
+                    "type": "string"
+                },
+                "secretKey": {
+                    "type": "string"
+                },
                 "secretEnv": {
                     "type": "string",
-                    "enum": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]
+                    "enum": [
+                        "ANTHROPIC_API_KEY",
+                        "CLAUDE_CODE_OAUTH_TOKEN",
+                        "ANTHROPIC_AUTH_TOKEN",
+                        "OPENAI_API_KEY"
+                    ]
                 },
-                "hosts": { "type": "array", "items": { "type": "string" } },
-                "dnsPatterns": { "type": "array", "items": { "type": "string" } }
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dnsPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
             }
         },
         "serviceAccount": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["create"],
+            "required": [
+                "create"
+            ],
             "properties": {
-                "create": { "type": "boolean" },
-                "name": { "type": "string" },
-                "annotations": { "type": "object" }
+                "create": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "annotations": {
+                    "type": "object"
+                }
             }
         },
         "service": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["type", "port"],
+            "required": [
+                "type",
+                "port"
+            ],
             "properties": {
-                "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-                "nodePort": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535 },
-                "annotations": { "type": "object" }
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "ClusterIP",
+                        "NodePort",
+                        "LoadBalancer"
+                    ]
+                },
+                "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "nodePort": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "annotations": {
+                    "type": "object"
+                }
             }
         },
         "controllerNetworkPolicy": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["create"],
+            "required": [
+                "create"
+            ],
             "properties": {
-                "create": { "type": "boolean" }
+                "create": {
+                    "type": "boolean"
+                }
             }
         }
     },
     "properties": {
-        "global": { "type": "object" },
+        "global": {
+            "type": "object"
+        },
         "config": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["logLevel", "maxAttempts", "priorityAgingInterval", "priorityAgingCap"],
+            "required": [
+                "logLevel",
+                "maxAttempts",
+                "priorityAgingInterval",
+                "priorityAgingCap"
+            ],
             "properties": {
-                "logLevel": { "$ref": "#/definitions/logLevel" },
-                "maxAttempts": { "type": "integer", "minimum": 1 },
-                "priorityAgingInterval": { "$ref": "#/definitions/duration" },
-                "priorityAgingCap": { "type": "integer", "minimum": 0 },
-                "extra": { "$ref": "#/definitions/extraEnv" }
+                "logLevel": {
+                    "$ref": "#/definitions/logLevel"
+                },
+                "maxAttempts": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "priorityAgingInterval": {
+                    "$ref": "#/definitions/duration"
+                },
+                "priorityAgingCap": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "extra": {
+                    "$ref": "#/definitions/extraEnv"
+                }
             }
         },
         "image": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["repository", "pullPolicy"],
+            "required": [
+                "repository",
+                "pullPolicy"
+            ],
             "properties": {
-                "repository": { "type": "string" },
-                "tag": { "type": "string" },
-                "pullPolicy": { "type": "string", "enum": ["IfNotPresent", "Always", "Never"] },
-                "pullSecrets": { "type": "array", "items": { "type": "object" } }
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "pullPolicy": {
+                    "type": "string",
+                    "enum": [
+                        "IfNotPresent",
+                        "Always",
+                        "Never"
+                    ]
+                },
+                "pullSecrets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                }
             }
         },
-        "nameOverride": { "type": "string" },
-        "fullnameOverride": { "type": "string" },
+        "nameOverride": {
+            "type": "string"
+        },
+        "fullnameOverride": {
+            "type": "string"
+        },
         "crds": {
             "type": "object",
             "additionalProperties": false,
             "description": "patchy.bitwisemedia.uk CRD installation; keep guards the all-time FindingRollup data on uninstall",
             "properties": {
-                "install": { "type": "boolean" },
-                "keep": { "type": "boolean" }
+                "install": {
+                    "type": "boolean"
+                },
+                "keep": {
+                    "type": "boolean"
+                }
             }
         },
-        "commonLabels": { "type": "object" },
-        "commonAnnotations": { "type": "object" },
+        "admissionPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Field-level authorization for the human finding actions. Binds each human-writable spec field to its own custom RBAC verb via a ValidatingAdmissionPolicy (Kubernetes 1.30+).",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Render the ValidatingAdmissionPolicy. Disabling it makes the custom finding verbs advisory: anyone holding `update` on findings could then change any field."
+                },
+                "extraExemptSubjects": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Additional usernames exempt from the policy, for a controller of your own that legitimately writes Finding spec. The chart's own components are exempted automatically."
+                }
+            }
+        },
+        "commonLabels": {
+            "type": "object"
+        },
+        "commonAnnotations": {
+            "type": "object"
+        },
         "webhook": {
             "type": "object",
             "description": "The single external entry point for the provider webhook URL, fronting the integration-controller (path /github/webhooks)",
             "additionalProperties": false,
-            "required": ["ingress", "httpRoute"],
+            "required": [
+                "ingress",
+                "httpRoute"
+            ],
             "properties": {
-                "host": { "type": "string" },
+                "host": {
+                    "type": "string"
+                },
                 "ingress": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["enabled"],
+                    "required": [
+                        "enabled"
+                    ],
                     "properties": {
-                        "enabled": { "type": "boolean" },
-                        "className": { "type": "string" },
-                        "annotations": { "type": "object" },
-                        "tls": { "type": "array", "items": { "type": "object" } }
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "className": {
+                            "type": "string"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "tls": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
                     }
                 },
                 "httpRoute": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["enabled"],
+                    "required": [
+                        "enabled"
+                    ],
                     "properties": {
-                        "enabled": { "type": "boolean" },
-                        "annotations": { "type": "object" },
-                        "parentRefs": { "type": "array", "items": { "type": "object" } }
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "parentRefs": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
                     }
                 }
             }
@@ -160,206 +347,469 @@
         "integrationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "networkPolicy"],
+            "required": [
+                "config",
+                "serviceAccount",
+                "service",
+                "networkPolicy"
+            ],
             "properties": {
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["accumulationWindow"],
+                    "required": [
+                        "accumulationWindow"
+                    ],
                     "properties": {
-                        "accumulationWindow": { "$ref": "#/definitions/duration" },
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "accumulationWindow": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "service": { "$ref": "#/definitions/service" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "service": {
+                    "$ref": "#/definitions/service"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "sourceController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "service", "networkPolicy"],
+            "required": [
+                "config",
+                "serviceAccount",
+                "service",
+                "networkPolicy"
+            ],
             "properties": {
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "service": { "$ref": "#/definitions/service" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "service": {
+                    "$ref": "#/definitions/service"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "contextController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "networkPolicy"],
+            "required": [
+                "config",
+                "serviceAccount",
+                "networkPolicy"
+            ],
             "properties": {
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "investigationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "networkPolicy"],
+            "required": [
+                "config",
+                "serviceAccount",
+                "networkPolicy"
+            ],
             "properties": {
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["findingMinAge", "maxConcurrentInvestigations", "confidenceThreshold"],
+                    "required": [
+                        "findingMinAge",
+                        "maxConcurrentInvestigations",
+                        "confidenceThreshold"
+                    ],
                     "properties": {
-                        "findingMinAge": { "$ref": "#/definitions/duration" },
-                        "maxConcurrentInvestigations": { "type": "integer", "minimum": 1 },
-                        "confidenceThreshold": { "type": ["string", "number"] },
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "maxAttempts": { "type": "integer", "minimum": 1 },
-                        "priorityAgingInterval": { "$ref": "#/definitions/duration" },
-                        "priorityAgingCap": { "type": "integer", "minimum": 0 },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "findingMinAge": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "maxConcurrentInvestigations": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "confidenceThreshold": {
+                            "type": [
+                                "string",
+                                "number"
+                            ]
+                        },
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "maxAttempts": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "priorityAgingInterval": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "priorityAgingCap": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "remediationController": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["config", "serviceAccount", "networkPolicy"],
+            "required": [
+                "config",
+                "serviceAccount",
+                "networkPolicy"
+            ],
             "properties": {
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["maxConcurrentRemediations", "findingTTL"],
+                    "required": [
+                        "maxConcurrentRemediations",
+                        "findingTTL"
+                    ],
                     "properties": {
-                        "maxConcurrentRemediations": { "type": "integer", "minimum": 1 },
-                        "findingTTL": { "$ref": "#/definitions/duration" },
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "maxAttempts": { "type": "integer", "minimum": 1 },
-                        "priorityAgingInterval": { "$ref": "#/definitions/duration" },
-                        "priorityAgingCap": { "type": "integer", "minimum": 0 },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "maxConcurrentRemediations": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "findingTTL": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "maxAttempts": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "priorityAgingInterval": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "priorityAgingCap": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "statusServer": {
             "type": "object",
             "description": "The human-facing status page: public rollup statistics, authenticated findings review, RBAC-gated approve/suspend/resume",
             "additionalProperties": false,
-            "required": ["enabled", "auth", "ingress", "httpRoute", "rbac", "serviceAccount", "service", "networkPolicy"],
+            "required": [
+                "enabled",
+                "auth",
+                "ingress",
+                "httpRoute",
+                "rbac",
+                "serviceAccount",
+                "service",
+                "networkPolicy"
+            ],
             "properties": {
-                "enabled": { "type": "boolean" },
-                "image": { "$ref": "#/definitions/imageOverride" },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
                 "config": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "logLevel": { "$ref": "#/definitions/logLevel" },
-                        "extra": { "$ref": "#/definitions/extraEnv" }
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
                     }
                 },
                 "auth": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "existingSecret": { "type": "string" },
+                        "existingSecret": {
+                            "type": "string"
+                        },
                         "config": {
                             "type": "object",
                             "description": "Inline auth config rendered into a chart-managed Secret (config.yaml); prefer existingSecret in production"
                         }
                     }
                 },
-                "host": { "type": "string" },
+                "host": {
+                    "type": "string"
+                },
                 "ingress": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["enabled"],
+                    "required": [
+                        "enabled"
+                    ],
                     "properties": {
-                        "enabled": { "type": "boolean" },
-                        "className": { "type": "string" },
-                        "annotations": { "type": "object" },
-                        "tls": { "type": "array", "items": { "type": "object" } }
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "className": {
+                            "type": "string"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "tls": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
                     }
                 },
                 "httpRoute": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["enabled"],
+                    "required": [
+                        "enabled"
+                    ],
                     "properties": {
-                        "enabled": { "type": "boolean" },
-                        "annotations": { "type": "object" },
-                        "parentRefs": { "type": "array", "items": { "type": "object" } }
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "parentRefs": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
                     }
                 },
                 "rbac": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["userRoles"],
+                    "required": [
+                        "userRoles"
+                    ],
                     "properties": {
-                        "userRoles": { "type": "boolean" }
+                        "userRoles": {
+                            "type": "boolean"
+                        }
                     }
                 },
-                "resources": { "type": "object" },
-                "podAnnotations": { "type": "object" },
-                "podLabels": { "type": "object" },
-                "nodeSelector": { "type": "object" },
-                "tolerations": { "type": "array", "items": { "type": "object" } },
-                "affinity": { "type": "object" },
-                "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
-                "service": { "$ref": "#/definitions/service" },
-                "networkPolicy": { "$ref": "#/definitions/controllerNetworkPolicy" }
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "service": {
+                    "$ref": "#/definitions/service"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
             }
         },
         "agent": {
@@ -377,53 +827,111 @@
                 "networkPolicy"
             ],
             "properties": {
-                "namespace": { "type": "string" },
-                "createNamespace": { "type": "boolean" },
-                "serviceAccount": { "type": "string" },
-                "jobDeadline": { "$ref": "#/definitions/duration" },
-                "jobTTL": { "$ref": "#/definitions/duration" },
-                "modelAllowlist": { "type": "string" },
-                "investigate": { "$ref": "#/definitions/agentStage" },
-                "remediate": { "$ref": "#/definitions/agentStage" },
+                "namespace": {
+                    "type": "string"
+                },
+                "createNamespace": {
+                    "type": "boolean"
+                },
+                "serviceAccount": {
+                    "type": "string"
+                },
+                "jobDeadline": {
+                    "$ref": "#/definitions/duration"
+                },
+                "jobTTL": {
+                    "$ref": "#/definitions/duration"
+                },
+                "modelAllowlist": {
+                    "type": "string"
+                },
+                "investigate": {
+                    "$ref": "#/definitions/agentStage"
+                },
+                "remediate": {
+                    "$ref": "#/definitions/agentStage"
+                },
                 "runners": {
                     "type": "object",
-                    "additionalProperties": { "$ref": "#/definitions/agentRunner" }
+                    "additionalProperties": {
+                        "$ref": "#/definitions/agentRunner"
+                    }
                 },
                 "networkPolicy": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["create", "cilium", "istio"],
+                    "required": [
+                        "create",
+                        "cilium",
+                        "istio"
+                    ],
                     "properties": {
-                        "create": { "type": "boolean" },
+                        "create": {
+                            "type": "boolean"
+                        },
                         "mode": {
                             "description": "Hostname-enforcement dialect for the agent sandbox; auto detects it from the cluster's API surface",
                             "type": "string",
-                            "enum": ["auto", "none", "cilium", "gke", "istio"]
+                            "enum": [
+                                "auto",
+                                "none",
+                                "cilium",
+                                "gke",
+                                "istio"
+                            ]
                         },
                         "broadEgress": {
                             "description": "Whether the base policy keeps its TCP-443-to-anywhere rule; auto drops it whenever a hostname mode is enforcing, because policies are additive",
                             "type": "string",
-                            "enum": ["auto", "always", "never"]
+                            "enum": [
+                                "auto",
+                                "always",
+                                "never"
+                            ]
                         },
-                        "clusterCIDRs": { "type": "array", "items": { "type": "string" } },
-                        "clusterDNSPatterns": { "type": "array", "items": { "type": "string" } },
+                        "clusterCIDRs": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "clusterDNSPatterns": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
                         "cilium": {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": ["enabled"],
+                            "required": [
+                                "enabled"
+                            ],
                             "properties": {
-                                "enabled": { "type": "boolean" }
+                                "enabled": {
+                                    "type": "boolean"
+                                }
                             }
                         },
                         "istio": {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": ["enabled"],
+                            "required": [
+                                "enabled"
+                            ],
                             "properties": {
-                                "enabled": { "type": "boolean" },
-                                "istiodNamespace": { "type": "string" },
-                                "injectionLabel": { "type": "string" },
-                                "injectionValue": { "type": "string" }
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "istiodNamespace": {
+                                    "type": "string"
+                                },
+                                "injectionLabel": {
+                                    "type": "string"
+                                },
+                                "injectionValue": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }

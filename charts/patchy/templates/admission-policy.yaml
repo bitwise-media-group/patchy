@@ -1,0 +1,197 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Field-level authorization for human actions on Findings — the Helm rendering
+# of deploy/kustomize/base/admission-policy.yaml. Keep the two in step; the
+# validation expressions are the security control and the envtest suite in
+# internal/action runs against the kustomize copy.
+#
+# WHY THIS EXISTS
+#
+# The custom verbs (approve, retry, expedite, suspend, resume) let a grant say
+# "this developer may approve findings, and nothing else". The status server can
+# honour that alone because it writes as its own ServiceAccount and asks
+# SubjectAccessReview first. Anything writing as the *user* — the patchy CLI,
+# kubectl, curl — is authorized by the API server, and RBAC has no notion of a
+# field: `update` on findings grants the whole object. Admission control is the
+# only server-side mechanism that can express the difference, and because it
+# runs in the API server it applies to every client equally.
+#
+# Unlike the kustomize copy, the exempt subjects are computed from the release's
+# actual ServiceAccount names — a renamed release or an overridden
+# serviceAccount.name would otherwise silently drop a controller out of the
+# exemption and stall the pipeline.
+{{- if .Values.admissionPolicy.enabled }}
+{{/*
+Gate on KubeVersion rather than Capabilities.APIVersions: an offline
+`helm template` reports only a minimal built-in API list, so an APIVersions
+check would fail every render that is not against a live cluster. KubeVersion is
+defined in both cases and overridable with --kube-version.
+
+This FAILS rather than skipping itself, because silently omitting the policy is
+the one outcome nobody would notice: the chart would install, the verbs would
+look granted, and every one of them would be advisory.
+
+Chart.yaml's own kubeVersion is currently stricter than this, so in practice
+helm rejects an old cluster first. The check stays because it names the reason —
+and because the day someone relaxes that constraint, this is what stops the
+verb ladder quietly becoming decorative.
+*/}}
+{{- if not (semverCompare ">=1.30.0-0" .Capabilities.KubeVersion.Version) }}
+{{- fail (printf "admissionPolicy.enabled is true but this cluster is %s; ValidatingAdmissionPolicy needs Kubernetes 1.30+. Upgrade, or set admissionPolicy.enabled=false and accept that the custom finding verbs become advisory — anyone holding `update` on findings could then change any field, including forging an approval." .Capabilities.KubeVersion.Version) }}
+{{- end }}
+{{- $ns := .Release.Namespace }}
+{{- $subjects := list }}
+{{- range $c := list
+    (dict "name" "integration-controller" "vals" .Values.integrationController)
+    (dict "name" "source-controller" "vals" .Values.sourceController)
+    (dict "name" "context-controller" "vals" .Values.contextController)
+    (dict "name" "investigation-controller" "vals" .Values.investigationController)
+    (dict "name" "remediation-controller" "vals" .Values.remediationController)
+    (dict "name" "status-server" "vals" $.Values.statusServer)
+}}
+{{- $sa := include "patchy.serviceAccountName" (dict "root" $ "name" $c.name "vals" $c.vals) }}
+{{- $subjects = append $subjects (printf "system:serviceaccount:%s:%s" $ns $sa) }}
+{{- end }}
+{{- range $extra := .Values.admissionPolicy.extraExemptSubjects }}
+{{- $subjects = append $subjects $extra }}
+{{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-finding-actions
+    labels: {{- include "patchy.labels" (dict "root" $ "name" "admission-policy") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations: {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    # Fail closed: a policy that cannot compile or evaluate must not become an
+    # open door.
+    failurePolicy: Fail
+    matchConstraints:
+        resourceRules:
+            # CREATE is matched alongside UPDATE deliberately. Without it, a
+            # user holding create+delete could delete a finding and recreate it
+            # with spec.approval already set, laundering an approval they were
+            # never granted.
+            - apiGroups: [patchy.bitwisemedia.uk]
+              apiVersions: [v1alpha1]
+              operations: [CREATE, UPDATE]
+              resources: [findings]
+    matchConditions:
+        # The patchy controllers own spec: ingest writes it, accumulation folds
+        # alerts into it, and the status server does its own SubjectAccessReview
+        # before writing. They are exempt; everyone else is evaluated.
+        - name: not-a-patchy-controller
+          expression: >-
+              !(request.userInfo.username in [{{ range $i, $s := $subjects }}{{ if $i }}, {{ end }}'{{ $s }}'{{ end }}])
+    variables:
+        - name: auth
+          expression: >-
+              authorizer.group('patchy.bitwisemedia.uk').resource('findings')
+                .namespace(request.namespace)
+        # oldObject is null on CREATE, so every rule below reads "unchanged from
+        # old, OR authorized". On a create that means "there is nothing to be
+        # unchanged from", which is what makes presetting a field count as
+        # changing it.
+        - name: old
+          expression: "oldObject"
+    validations:
+        # --- the human-writable fields, each gated by its own verb ------------
+        - expression: >-
+              (variables.old != null && variables.old.spec.?suspend.orValue(false) == object.spec.?suspend.orValue(false))
+              || (object.spec.?suspend.orValue(false)
+                    ? variables.auth.check('suspend').allowed()
+                    : variables.auth.check('resume').allowed())
+          messageExpression: >-
+              "changing spec.suspend on finding " + object.metadata.name +
+              " requires the 'suspend' or 'resume' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?approval == object.spec.?approval)
+              || variables.auth.check('approve').allowed()
+          messageExpression: >-
+              "changing spec.approval on finding " + object.metadata.name +
+              " requires the 'approve' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?retry == object.spec.?retry)
+              || variables.auth.check('retry').allowed()
+          messageExpression: >-
+              "changing spec.retry on finding " + object.metadata.name +
+              " requires the 'retry' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?expedite == object.spec.?expedite)
+              || variables.auth.check('expedite').allowed()
+          messageExpression: >-
+              "changing spec.expedite on finding " + object.metadata.name +
+              " requires the 'expedite' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        # --- everything else in spec is the pipeline's, not a human's ---------
+        #
+        # Enumerated field by field because CEL cannot subtract keys from a
+        # struct. A field added to FindingSpec must be added here too — the test
+        # TestAdmissionPolicyCoversEveryFindingSpecField enforces that against
+        # the kustomize copy, so keep this list identical to it.
+        #
+        # spec.related is deliberately absent: relationship edges are documented
+        # as human-writable (api/v1alpha1/finding_types.go) and carry no
+        # authority.
+        - expression: >-
+              variables.old == null || (
+                variables.old.spec.integrationRef == object.spec.integrationRef
+                && variables.old.spec.?trackingRef == object.spec.?trackingRef
+                && variables.old.spec.source == object.spec.source
+                && variables.old.spec.?repository == object.spec.?repository
+                && variables.old.spec.advisories == object.spec.advisories
+                && variables.old.spec.?ruleID == object.spec.?ruleID
+                && variables.old.spec.?title == object.spec.?title
+                && variables.old.spec.?description == object.spec.?description
+                && variables.old.spec.?severity == object.spec.?severity
+                && variables.old.spec.?alerts == object.spec.?alerts
+                && variables.old.spec.?overflowAlerts == object.spec.?overflowAlerts
+              )
+          messageExpression: >-
+              "finding " + object.metadata.name + " is written by the patchy pipeline; " +
+              "only spec.suspend, spec.approval, spec.retry, spec.expedite and spec.related " +
+              "may be changed by a user, and each needs its own verb"
+          reason: Forbidden
+
+        # --- metadata that carries meaning -----------------------------------
+        #
+        # The rollup finalizers guarantee a finding's spend is aggregated before
+        # deletion, and the selector labels are what accumulation and child
+        # lookup key on. `update` would otherwise let a user break either.
+        - expression: >-
+              variables.old == null || (
+                variables.old.metadata.?finalizers == object.metadata.?finalizers
+                && variables.old.metadata.?ownerReferences == object.metadata.?ownerReferences
+                && variables.old.metadata.?labels == object.metadata.?labels
+              )
+          messageExpression: >-
+              "finding " + object.metadata.name +
+              " has pipeline-owned finalizers, ownerReferences and labels; they may not be edited by hand"
+          reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-finding-actions
+    labels: {{- include "patchy.labels" (dict "root" $ "name" "admission-policy") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $) }}
+    annotations: {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    policyName: {{ include "patchy.fullname" . }}-finding-actions
+    validationActions: [Deny]
+    matchResources:
+        namespaceSelector:
+            matchLabels:
+                kubernetes.io/metadata.name: {{ .Release.Namespace }}
+{{- end }}

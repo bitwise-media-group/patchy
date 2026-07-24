@@ -1,0 +1,184 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Field-level authorization for human actions on Findings.
+#
+# WHY THIS EXISTS
+#
+# The custom verbs (approve, retry, expedite, suspend, resume) let a grant say
+# "this developer may approve findings, and nothing else". The status server can
+# honour that on its own because it writes as its own ServiceAccount and asks
+# SubjectAccessReview first. Anything writing as the *user* — the patchy CLI,
+# kubectl, curl — is authorized by the API server, and RBAC has no notion of a
+# field: `update` on findings grants the whole object. Without this policy,
+# granting a developer the ability to suspend a finding would also let them
+# rewrite its severity, forge an approval, or strip a finalizer.
+#
+# Admission control is the only server-side mechanism that can express the
+# distinction (CRDs get only /status and /scale subresources, and CEL in a CRD
+# schema has no authorizer). Because it runs inside the API server's admission
+# chain, it applies to every client equally — there is no "go around the CLI"
+# path, which is the entire point.
+#
+# WHAT IT ENFORCES
+#
+# For everyone except the patchy controllers, on UPDATE and CREATE of a Finding:
+#   * each human-writable spec field may change only with its own custom verb;
+#   * every other spec field must not change at all;
+#   * finalizers, ownerReferences and labels must not change.
+#
+# Status is untouched: findings/status is a distinct resource in RBAC and is not
+# matched here, so controller status writes and phase transitions are unaffected.
+#
+# REQUIRES Kubernetes 1.30+ (ValidatingAdmissionPolicy GA, `authorizer` binding).
+# On an older cluster this resource will not apply, and enforcement silently
+# degrades to "whoever holds update owns the whole CR" — verify with:
+#   kubectl api-resources | grep validatingadmissionpolic
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+    name: patchy-finding-actions
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    # Fail closed: a policy that cannot compile or evaluate must not become an
+    # open door.
+    failurePolicy: Fail
+    matchConstraints:
+        resourceRules:
+            # CREATE is matched alongside UPDATE deliberately. Without it, a
+            # user holding create+delete could delete a finding and recreate it
+            # with spec.approval already set — laundering an approval they were
+            # never granted. The example roles withhold create/delete too; this
+            # is the second lock.
+            - apiGroups: [patchy.bitwisemedia.uk]
+              apiVersions: [v1alpha1]
+              operations: [CREATE, UPDATE]
+              resources: [findings]
+    matchConditions:
+        # The patchy controllers own spec: ingest writes it, accumulation folds
+        # alerts into it, and the status server does its own SubjectAccessReview
+        # before writing. They are exempt; everyone else is checked.
+        - name: not-a-patchy-controller
+          expression: >-
+              !(request.userInfo.username in [
+                'system:serviceaccount:patchy:patchy-integration-controller',
+                'system:serviceaccount:patchy:patchy-source-controller',
+                'system:serviceaccount:patchy:patchy-context-controller',
+                'system:serviceaccount:patchy:patchy-investigation-controller',
+                'system:serviceaccount:patchy:patchy-remediation-controller',
+                'system:serviceaccount:patchy:patchy-status-server'
+              ])
+    variables:
+        - name: auth
+          expression: >-
+              authorizer.group('patchy.bitwisemedia.uk').resource('findings')
+                .namespace(request.namespace)
+        # oldObject is null on CREATE, so every rule below is written as
+        # "unchanged from old, OR authorized". On a create that reads as "there
+        # is nothing to be unchanged from", which is what makes presetting a
+        # field on a fresh object count as changing it.
+        - name: old
+          expression: "oldObject"
+    validations:
+        # --- the human-writable fields, each gated by its own verb ------------
+
+        # suspend and resume are opposite directions of one boolean, so which
+        # verb is required depends on which way it is being moved.
+        - expression: >-
+              (variables.old != null && variables.old.spec.?suspend.orValue(false) == object.spec.?suspend.orValue(false))
+              || (object.spec.?suspend.orValue(false)
+                    ? variables.auth.check('suspend').allowed()
+                    : variables.auth.check('resume').allowed())
+          messageExpression: >-
+              "changing spec.suspend on finding " + object.metadata.name +
+              " requires the 'suspend' or 'resume' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?approval == object.spec.?approval)
+              || variables.auth.check('approve').allowed()
+          messageExpression: >-
+              "changing spec.approval on finding " + object.metadata.name +
+              " requires the 'approve' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?retry == object.spec.?retry)
+              || variables.auth.check('retry').allowed()
+          messageExpression: >-
+              "changing spec.retry on finding " + object.metadata.name +
+              " requires the 'retry' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              (variables.old != null && variables.old.spec.?expedite == object.spec.?expedite)
+              || variables.auth.check('expedite').allowed()
+          messageExpression: >-
+              "changing spec.expedite on finding " + object.metadata.name +
+              " requires the 'expedite' verb on findings.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        # --- everything else in spec is the pipeline's, not a human's ---------
+        #
+        # Enumerated field by field rather than compared wholesale, because the
+        # four fields above and spec.related are legitimately mutable and CEL
+        # cannot subtract keys from a struct. A field added to FindingSpec must
+        # be added here too — the codegen drift check will not catch that, so it
+        # is called out in docs/cli.md.
+        #
+        # spec.related is deliberately absent: relationship edges are documented
+        # as human-writable (api/v1alpha1/finding_types.go), and carry no
+        # authority.
+        - expression: >-
+              variables.old == null || (
+                variables.old.spec.integrationRef == object.spec.integrationRef
+                && variables.old.spec.?trackingRef == object.spec.?trackingRef
+                && variables.old.spec.source == object.spec.source
+                && variables.old.spec.?repository == object.spec.?repository
+                && variables.old.spec.advisories == object.spec.advisories
+                && variables.old.spec.?ruleID == object.spec.?ruleID
+                && variables.old.spec.?title == object.spec.?title
+                && variables.old.spec.?description == object.spec.?description
+                && variables.old.spec.?severity == object.spec.?severity
+                && variables.old.spec.?alerts == object.spec.?alerts
+                && variables.old.spec.?overflowAlerts == object.spec.?overflowAlerts
+              )
+          messageExpression: >-
+              "finding " + object.metadata.name + " is written by the patchy pipeline; " +
+              "only spec.suspend, spec.approval, spec.retry, spec.expedite and spec.related " +
+              "may be changed by a user, and each needs its own verb"
+          reason: Forbidden
+
+        # --- metadata that carries meaning -----------------------------------
+        #
+        # Not housekeeping. The rollup finalizers are what guarantee a finding's
+        # spend is aggregated before it is deleted, and the selector labels
+        # (key-hash, severity, finding) are what accumulation and child lookup
+        # key on. `update` on findings would otherwise let a user quietly break
+        # either one.
+        - expression: >-
+              variables.old == null || (
+                variables.old.metadata.?finalizers == object.metadata.?finalizers
+                && variables.old.metadata.?ownerReferences == object.metadata.?ownerReferences
+                && variables.old.metadata.?labels == object.metadata.?labels
+              )
+          messageExpression: >-
+              "finding " + object.metadata.name +
+              " has pipeline-owned finalizers, ownerReferences and labels; they may not be edited by hand"
+          reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+    name: patchy-finding-actions
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    policyName: patchy-finding-actions
+    validationActions: [Deny]
+    matchResources:
+        namespaceSelector:
+            matchLabels:
+                kubernetes.io/metadata.name: patchy

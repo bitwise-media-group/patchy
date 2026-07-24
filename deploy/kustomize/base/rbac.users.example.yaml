@@ -5,9 +5,24 @@
 # (like secrets.example.yaml). Copy into your environment overlay and bind to
 # your own users/SSO groups.
 #
-# The status page's user authorization is ordinary Kubernetes RBAC evaluated
-# per signed-in user (the server asks via SubjectAccessReview; users need no
-# kubeconfig and never talk to the API server themselves):
+# Two clients consume these grants, and they are authorized differently:
+#
+#   * the STATUS PAGE evaluates them per signed-in user by asking the cluster
+#     (SubjectAccessReview) — those users need no kubeconfig and never talk to
+#     the API server themselves;
+#   * the patchy CLI acts as the user's OWN kubeconfig identity, so the API
+#     server authorizes it directly.
+#
+# The CLI is why every role below viewer also grants native `update`: without
+# it no client acting as the user could write a finding at all. RBAC has no
+# notion of a field, so `update` alone would grant the whole resource — the
+# ValidatingAdmissionPolicy in admission-policy.yaml is what narrows it back
+# down, binding each spec field to its custom verb for every client equally.
+# Grant `update` only alongside that policy, and note that `create`/`delete`
+# are deliberately absent: with them, a user could delete a finding and
+# recreate it with an approval already set.
+#
+# What the verbs buy:
 #
 #   * viewing findings   — native `get` on findings
 #   * the action buttons — the CUSTOM verbs approve / retry / expedite /
@@ -26,7 +41,9 @@
 #                          resource in the namespace (findings, runs,
 #                          repositories, rollups). Grant sparingly.
 #
-# Rollup statistics are public by design and need no grant.
+# Rollup statistics are public by design and need no grant on the status page.
+# The CLI reads them through the API server like anything else, so `patchy get
+# rollups` does need get/list — which the viewer role already carries.
 #
 # Subjects come from the OIDC claims (auth config claims: username/groups),
 # so bind Users to the username claim's values (e.g. email) and Groups to the
@@ -58,7 +75,9 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [approve]
+      # update is the native verb the API server checks; the admission policy
+      # is what limits it to spec.approval for this role.
+      verbs: [update, patch, approve]
 ---
 # Viewer + every action: approve, retry, expedite, suspend, resume.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -73,7 +92,7 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [approve, retry, expedite, suspend, resume]
+      verbs: [update, patch, approve, retry, expedite, suspend, resume]
 ---
 # Operator + the user menu's demo tooling: replay the webhook delivery log,
 # reset (delete) all pipeline state. For demo/dev environments.
@@ -89,7 +108,7 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [approve, retry, expedite, suspend, resume, replay, reset]
+      verbs: [update, patch, approve, retry, expedite, suspend, resume, replay, reset]
 ---
 # Example bindings: an SSO group of operators, one individual approver.
 apiVersion: rbac.authorization.k8s.io/v1

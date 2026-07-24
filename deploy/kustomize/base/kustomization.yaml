@@ -27,6 +27,9 @@ resources:
     - deployment-status-server.yaml
     - service.yaml
     - networkpolicy.yaml
+    # Field-level authorization for human actions (see the file header).
+    # Needs Kubernetes 1.30+; without it the custom verbs are advisory only.
+    - admission-policy.yaml
     # secrets.example.yaml and crs.example.yaml are documentation, not
     # resources — see the files.
 

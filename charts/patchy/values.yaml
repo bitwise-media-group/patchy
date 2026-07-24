@@ -35,6 +35,26 @@ crds:
     install: true
     keep: true
 
+# Field-level authorization for the human actions on Findings
+# (approve/retry/expedite/suspend/resume). RBAC has no notion of a field, so
+# `update` on findings otherwise grants the whole resource; this policy binds
+# each spec field to its own custom verb, in the API server's admission chain,
+# for every client — the CLI, kubectl, curl alike.
+#
+# Requires Kubernetes 1.30+ (ValidatingAdmissionPolicy GA). The template FAILS
+# the render rather than skipping itself on an older cluster: silently dropping
+# it would leave the verb ladder advisory with nothing to say so.
+#
+# Disable it only if you accept that anyone granted `update` on findings can
+# change any field, including forging an approval.
+admissionPolicy:
+    enabled: true
+    # Additional usernames exempt from the policy, for a controller of your own
+    # that legitimately writes Finding spec. The chart's own controllers and
+    # status server are exempted automatically from their resolved
+    # ServiceAccount names.
+    extraExemptSubjects: []
+
 # Extra labels stamped on every object the chart renders.
 commonLabels: {}
 

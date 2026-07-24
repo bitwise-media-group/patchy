@@ -6,10 +6,12 @@
 # Commit history; when that PR merges the workflow cuts the draft GitHub release +
 # vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
 # keyless cosign signatures, and a SLSA build-provenance attestation over
-# everything in checksums.txt. patchy ships Kubernetes services, not a Homebrew
-# CLI, so there is no cask; container images are published by goreleaser
+# everything in checksums.txt. Container images are published by goreleaser
 # (dockers_v2 over the repo-root Dockerfile.*) to ghcr, and their digests
 # (dist/digests.txt) get the same build-provenance attestation as the archives.
+# The workstation CLI — the one binary that runs on a laptop rather than in the
+# cluster — additionally ships as a Homebrew cask pushed to
+# bitwise-media-group/homebrew-tap.
 # When a release was actually cut, the helm job then packages, cosign-signs,
 # and pushes the chart to ghcr (helm.yaml, called at the release tag) — it runs
 # here rather than on `release: published` because goreleaser publishes the
@@ -64,6 +66,9 @@ jobs:
         secrets:
             # private key for the App that authors the release PR (same App as /merge)
             app-private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
+            # PAT with write access to bitwise-media-group/homebrew-tap — the default
+            # GITHUB_TOKEN cannot push the cask to another repository.
+            homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
     # Package, sign, and push the helm chart to ghcr — only when this run cut a
     # release (release_created is an empty string otherwise). Runs after the

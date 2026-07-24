@@ -8,9 +8,10 @@
 # publishing via `make snapshot`.
 #
 # Produces cross-platform binary archives + checksums + SBOMs + keyless cosign
-# signatures, and the container images: multi-arch manifests built by buildx
-# from the repo-root Dockerfile.* (dockers_v2 below) and pushed to ghcr on
-# release.
+# signatures, the container images (multi-arch manifests built by buildx from
+# the repo-root Dockerfile.* — dockers_v2 below — and pushed to ghcr on
+# release), and a Homebrew cask for the workstation CLI pushed to
+# bitwise-media-group/homebrew-tap.
 version: 2
 
 # ^ref: https://goreleaser.com/errors/multiple-tokens/
@@ -188,10 +189,30 @@ builds:
           - amd64
           - arm64
 
+# Two archives, split by where the binary runs: the cluster components in one,
+# the workstation CLI in the other. The split is what keeps the Homebrew cask
+# below honest — `brew install patchy` puts the CLI (and its kubectl-plugin
+# alias) on a laptop without also unpacking seven binaries that only ever run
+# in a pod — and the CLI archive is the only one carrying windows, since the
+# controllers do not build for it.
 archives:
     - id: patchy
+      ids:
+          - source-controller
+          - context-controller
+          - remediation-controller
+          - integration-controller
+          - investigation-controller
+          - agent-runner
+          - status-server
       formats: [tar.gz]
       name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      files:
+          - LICENSE
+    - id: patchy-cli
+      ids: [patchy, kubectl-patchy]
+      formats: [tar.gz]
+      name_template: "{{ .ProjectName }}-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
       files:
           - LICENSE
 
@@ -455,3 +476,31 @@ release:
     # undraft it only once every asset has been uploaded.
     use_existing_draft: true
     mode: replace
+
+# ^ref: https://goreleaser.com/customization/homebrew_casks/
+# The workstation CLI as a Homebrew cask — the cluster components are installed
+# by helm/kustomize from the ghcr images above and have no business in a tap.
+# `ids` sources the cask from the CLI-only archive, so the cask ships exactly
+# the two binaries it declares.
+homebrew_casks:
+    - name: patchy
+      ids: [patchy-cli]
+      # kubectl-patchy is the same program under the name kubectl looks for on
+      # PATH; installing both is what makes `kubectl patchy get findings` work
+      # for anyone who would rather not learn a second binary.
+      binaries: [patchy, kubectl-patchy]
+      homepage: https://github.com/bitwise-media-group/patchy
+      description: Triage and remediate security findings from the terminal, over your own kubeconfig
+      # skip the tap push for snapshots and prereleases; publish on real tags
+      skip_upload: auto
+      repository:
+          owner: bitwise-media-group
+          name: homebrew-tap
+          branch: main
+          token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      hooks:
+          pre:
+              install: |
+                  if OS.mac?
+                    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/patchy", "#{staged_path}/kubectl-patchy"]
+                  end

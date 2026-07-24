@@ -64,6 +64,18 @@ installed as a second release once the CRDs exist:
 helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy --namespace patchy --create-namespace
 ```
 
+## The CLI
+
+The workstation CLI ships separately from the cluster components — as a Homebrew cask, or as the `patchy-cli` release
+archive for anything brew does not cover:
+
+```sh
+brew install bitwise-media-group/tap/patchy
+```
+
+It talks to the Kubernetes API with your own kubeconfig, so what you can do is exactly what your RBAC allows. See
+[`docs/cli.md`](docs/cli.md).
+
 ## Status
 
 All components are implemented and tested end to end. The context enhancer is a deliberate placeholder — the plugin seam

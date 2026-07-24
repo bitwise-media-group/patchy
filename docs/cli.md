@@ -9,19 +9,25 @@ what you can do is exactly what your RBAC allows.
 
 ## Install
 
-Binaries ship with each release, cosign-signed, for linux, macOS and windows:
+On macOS and linux, from the Homebrew tap:
+
+```sh
+brew install bitwise-media-group/tap/patchy
+```
+
+Otherwise, binaries ship with each release, cosign-signed, for linux, macOS and windows:
 
 ```sh
 # from a release archive
-tar -xzf patchy_<version>_<os>_<arch>.tar.gz
+tar -xzf patchy-cli_<version>_<os>_<arch>.tar.gz
 install -m 0755 patchy /usr/local/bin/patchy
 
 # or from source
 go install github.com/bitwise-media-group/patchy/cmd/patchy@latest
 ```
 
-The archive also carries `kubectl-patchy`. Put that on your `PATH` and every command below also works as
-`kubectl patchy …`:
+The cask and the archive both carry `kubectl-patchy` — brew puts it on your `PATH` for you; from an archive, put it
+there yourself. Either way every command below also works as `kubectl patchy …`:
 
 ```sh
 kubectl patchy get findings

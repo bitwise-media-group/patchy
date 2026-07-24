@@ -38,11 +38,11 @@ labels:
 
 # Overlays pin tags/digests by patching these entries.
 #
-# NOTE: the agent-runner image appears TWICE in the rendered output — here (so
-# the transformer knows it) and as the PATCHY_AGENT_IMAGE value in
-# configmap.yaml, which is the string the job controllers stamp into the Jobs
-# they create. `images:` does not rewrite ConfigMap values, so an overlay that
-# pins agent-runner must patch BOTH.
+# NOTE: each per-harness agent-runner image appears TWICE in the rendered
+# output — here (so the transformer knows it) and as the
+# PATCHY_<HARNESS>_AGENT_IMAGE value in configmap.yaml, which is the string the
+# job controllers stamp into the Jobs they create. `images:` does not rewrite
+# ConfigMap values, so an overlay that pins a runner image must patch BOTH.
 images:
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
       newTag: latest
@@ -54,7 +54,9 @@ images:
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       newTag: latest
-    - name: ghcr.io/bitwise-media-group/patchy/agent-runner
+    - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newTag: latest

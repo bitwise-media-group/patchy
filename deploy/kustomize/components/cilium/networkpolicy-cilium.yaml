@@ -9,21 +9,25 @@
 # else — a package registry the agent tries to reach, an exfil endpoint a
 # prompt-injected agent is talked into — is dropped.
 #
-# The agent pod needs exactly two destinations:
+# One policy per harness, each selecting that harness's pods by their
+# patchy.bitwisemedia.uk/harness label, so a claude pod may reach only
+# api.anthropic.com and a codex pod only api.openai.com. Each pod needs exactly
+# two destinations:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
 #     container's credential-less, digest-verified tarball fetch. No forge
 #     host appears in this policy at all — the pod never talks to GitHub.
-#   * api.anthropic.com: the agent container's `claude -p`.
+#   * its own model API: the agent container's harness CLI.
 #
-# Requires: Cilium with DNS-based policy enabled (the DNS proxy). If your CNI
-# is not Cilium, drop this component; base/networkpolicy.yaml still applies
-# and is the floor.
+# The codex policy is inert until the codex runner is enabled (no codex pod
+# carries the label otherwise). Requires: Cilium with DNS-based policy enabled
+# (the DNS proxy). If your CNI is not Cilium, drop this component;
+# base/networkpolicy.yaml still applies and is the floor.
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-    name: patchy-agent-egress
+    name: patchy-agent-egress-claude
     namespace: patchy-agents
     labels:
         app.kubernetes.io/part-of: patchy
@@ -32,6 +36,7 @@ spec:
         matchLabels:
             app.kubernetes.io/name: patchy-agent
             app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: claude
     egress:
         # DNS, via Cilium's proxy — this is what makes toFQDNs work at all:
         # the proxy watches the answers and programs the resolved IPs into the
@@ -61,9 +66,54 @@ spec:
                     - port: "9790"
                       protocol: TCP
 
-        # The agent container: `claude -p` and nothing else.
+        # The agent container: the claude harness's model API and nothing else.
         - toFQDNs:
               - matchName: api.anthropic.com
+          toPorts:
+              - ports:
+                    - port: "443"
+                      protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+    name: patchy-agent-egress-codex
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    endpointSelector:
+        matchLabels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: codex
+    egress:
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: kube-system
+                    k8s-app: kube-dns
+          toPorts:
+              - ports:
+                    - port: "53"
+                      protocol: ANY
+                rules:
+                    dns:
+                        - matchPattern: "*.openai.com"
+                        - matchPattern: "*.patchy.svc.cluster.local"
+                        - matchPattern: "*.svc.cluster.local"
+
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: patchy
+                    app.kubernetes.io/name: source-controller
+          toPorts:
+              - ports:
+                    - port: "9790"
+                      protocol: TCP
+
+        # The agent container: the codex harness's model API and nothing else.
+        - toFQDNs:
+              - matchName: api.openai.com
           toPorts:
               - ports:
                     - port: "443"

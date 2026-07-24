@@ -1,8 +1,10 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Agent image. Used for BOTH containers of the ephemeral Job that
-# internal/jobs creates:
+# Claude agent image. One of the per-harness agent-runner images (the codex
+# harness has its own, Dockerfile.codex-agent-runner); a Job runs the image of
+# the harness resolved for its model. Used for BOTH containers of the ephemeral
+# Job that internal/jobs creates:
 #
 #   initContainer "prepare" — runs /bin/sh with the clone script (needs sh,
 #     git and the GitHub token; the token never reaches the agent container).

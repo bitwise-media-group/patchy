@@ -4,8 +4,12 @@
 # Defence in depth for the agent sandbox on Istio meshes: the same egress
 # allowlist as the Cilium component, enforced by the sidecar (REGISTRY_ONLY +
 # a ServiceEntry; the proxy matches the client-hello SNI, TLS is not
-# terminated). Sidecar injection is switched on by the namespace label the
-# chart adds when this is enabled (agent.networkPolicy.istio.injectionLabel).
+# terminated). One ServiceEntry + Sidecar is rendered per enabled runner: each
+# Sidecar's workloadSelector scopes it to that harness's pods (by the harness
+# label) and its egress lists only that runner's model hosts, so a claude pod
+# reaches only api.anthropic.com and a codex pod only api.openai.com. Sidecar
+# injection is switched on by the namespace label the chart adds when this is
+# enabled (agent.networkPolicy.istio.injectionLabel).
 #
 # REQUIREMENTS — both are hard: native sidecars (istiod with
 # ENABLE_NATIVE_SIDECARS=true; otherwise the Job never completes and the
@@ -14,28 +18,30 @@
 # restricted PSS). Unlike Cilium, the sidecar does not constrain what names
 # the pod may RESOLVE. See deploy/kustomize/components/istio.
 {{- if and .Values.agent.networkPolicy.create .Values.agent.networkPolicy.istio.enabled }}
-{{- $hosts := .Values.agent.networkPolicy.hosts }}
+{{- $root := . }}
+{{- range $id, $r := .Values.agent.runners }}
+{{- if $r.enabled }}
 ---
-# The agent container: `claude -p` and nothing else. exportTo: "." keeps the
-# entry private to the agent namespace. There is deliberately NO forge
-# (GitHub) entry: the repository arrives as a tarball from source-
-# controller's in-cluster artifact server (a mesh-registry Service the
-# Sidecar below already exposes), and the pod holds no forge credential.
+# One runner's model API. exportTo: "." keeps the entry private to the agent
+# namespace. There is deliberately NO forge (GitHub) entry: the repository
+# arrives as a tarball from source-controller's in-cluster artifact server (a
+# mesh-registry Service the Sidecar below already exposes), and the pod holds
+# no forge credential.
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
-    name: {{ include "patchy.fullname" . }}-agent-anthropic
-    namespace: {{ .Values.agent.namespace }}
+    name: {{ include "patchy.fullname" $root }}-agent-{{ $id }}
+    namespace: {{ $root.Values.agent.namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
-    {{- with include "patchy.annotations" (dict "root" .) }}
+        {{- include "patchy.labels" (dict "root" $root "name" "patchy-agents") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $root) }}
     annotations:
         {{- . | nindent 8 }}
     {{- end }}
 spec:
     exportTo: ["."]
     hosts:
-        {{- range $hosts.anthropic }}
+        {{- range $r.hosts | default list }}
         - {{ . | quote }}
         {{- end }}
     location: MESH_EXTERNAL
@@ -45,36 +51,42 @@ spec:
           name: tls
           protocol: TLS
 ---
-# Drop anything not in the registry. Two slices of the registry are visible:
-# this namespace's (the api.anthropic.com ServiceEntry, exportTo: ".") and
-# the release namespace's Services — which is how the init container reaches
-# source-controller's artifact server.
+# Drop anything not in this harness's registry slice. Visible to it: this
+# runner's model ServiceEntry above (by explicit host) and the release
+# namespace's Services — which is how the init container reaches source-
+# controller's artifact server. The workloadSelector scopes the Sidecar to
+# this harness's pods, so the other runner's ServiceEntry is not reachable.
 apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
-    name: {{ include "patchy.fullname" . }}-agent-egress
-    namespace: {{ .Values.agent.namespace }}
+    name: {{ include "patchy.fullname" $root }}-agent-egress-{{ $id }}
+    namespace: {{ $root.Values.agent.namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
-    {{- with include "patchy.annotations" (dict "root" .) }}
+        {{- include "patchy.labels" (dict "root" $root "name" "patchy-agents") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $root) }}
     annotations:
         {{- . | nindent 8 }}
     {{- end }}
 spec:
     workloadSelector:
         labels:
-            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+            {{- include "patchy.agentPodSelector" $root | nindent 12 }}
+            patchy.bitwisemedia.uk/harness: {{ $id | quote }}
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
         - hosts:
-              - ./*
-              - {{ .Release.Namespace }}/*
+              {{- range $r.hosts | default list }}
+              - ./{{ . }}
+              {{- end }}
+              - {{ $root.Release.Namespace }}/*
+{{- end }}
+{{- end }}
 ---
-# The mesh's own plumbing, re-permitted through the default-deny: egress
-# 15012 to istiod (XDS + workload certs) and ingress 15021 (kubelet probes
-# the proxy's readiness endpoint; probes arrive from the node IP, which no
-# pod selector can match).
+# The mesh's own plumbing, re-permitted through the default-deny (one policy
+# for all agent pods): egress 15012 to istiod (XDS + workload certs) and
+# ingress 15021 (kubelet probes the proxy's readiness endpoint; probes arrive
+# from the node IP, which no pod selector can match).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

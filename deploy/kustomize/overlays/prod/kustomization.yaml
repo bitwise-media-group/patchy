@@ -23,8 +23,9 @@ components:
 
 # Digest pinning. PLACEHOLDERS — replace every sha256 below with the digest
 # the release pipeline published (`crane digest ghcr.io/...:vX.Y.Z`), and keep
-# PATCHY_AGENT_IMAGE in configmap-patch.yaml in step with the agent-runner
-# digest: kustomize rewrites container images, not ConfigMap values.
+# PATCHY_CLAUDE_AGENT_IMAGE (and PATCHY_CODEX_AGENT_IMAGE when enabled) in
+# configmap-patch.yaml in step with the runner digests: kustomize rewrites
+# container images, not ConfigMap values.
 images:
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -36,7 +37,9 @@ images:
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    - name: ghcr.io/bitwise-media-group/patchy/agent-runner
+    - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

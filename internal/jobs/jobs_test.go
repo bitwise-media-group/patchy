@@ -21,14 +21,23 @@ var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 func testConfig() Config {
 	return Config{
-		Namespace:       "patchy-agents",
-		Image:           "ghcr.io/bitwise-media-group/patchy-agent:1",
-		ServiceAccount:  "patchy-agent",
-		Deadline:        time.Hour,
-		TTL:             2 * time.Hour,
-		AnthropicSecret: "anthropic",
+		Namespace:      "patchy-agents",
+		ServiceAccount: "patchy-agent",
+		Deadline:       time.Hour,
+		TTL:            2 * time.Hour,
+		Runners: map[string]Runner{
+			"claude": {
+				Image:     "ghcr.io/bitwise-media-group/patchy/claude-agent-runner:1",
+				Secret:    "anthropic",
+				SecretEnv: "ANTHROPIC_API_KEY",
+			},
+			"codex": {
+				Image:     "ghcr.io/bitwise-media-group/patchy/codex-agent-runner:1",
+				Secret:    "openai",
+				SecretEnv: "OPENAI_API_KEY",
+			},
+		},
 		Env: map[string]string{
-			"PATCHY_INVESTIGATE_MODEL":   "claude-sonnet-5",
 			"PATCHY_INVESTIGATE_TIMEOUT": "15m",
 			"GITHUB_TOKEN":               "must-never-pass-through",
 			"CLAUDE_CODE_OAUTH_TOKEN":    "must-never-pass-through",
@@ -45,6 +54,8 @@ func testSpec() Spec {
 		Repo:           "octo/repo",
 		Attempt:        1,
 		Phase:          "investigate",
+		Harness:        "claude",
+		Model:          "anthropic/claude-sonnet-5",
 		BaseSHA:        "0123456789abcdef0123456789abcdef01234567",
 		IssueMarkdown:  "# Finding\n",
 		Kind:           "investigation",
@@ -287,13 +298,16 @@ func TestCreateAgentEnv(t *testing.T) {
 		envs[env.Name] = env
 	}
 	wantValues := map[string]string{
-		"HOME":                       "/workspace",
-		"PATCHY_WORKSPACE":           "/workspace",
-		"PATCHY_REPO":                "octo/repo",
-		"PATCHY_PHASE":               "investigate",
-		"PATCHY_FINDING":             "finding-abc123def0-1",
-		"PATCHY_BASE_SHA":            spec.BaseSHA,
-		"PATCHY_INVESTIGATE_MODEL":   "claude-sonnet-5",
+		"HOME":             "/workspace",
+		"PATCHY_WORKSPACE": "/workspace",
+		"PATCHY_REPO":      "octo/repo",
+		"PATCHY_PHASE":     "investigate",
+		"PATCHY_FINDING":   "finding-abc123def0-1",
+		"PATCHY_BASE_SHA":  spec.BaseSHA,
+		// The stage harness and model are set per-Job from the Spec, not the
+		// controller-global Env.
+		"PATCHY_INVESTIGATE_HARNESS": "claude",
+		"PATCHY_INVESTIGATE_MODEL":   "anthropic/claude-sonnet-5",
 		"PATCHY_INVESTIGATE_TIMEOUT": "15m",
 	}
 	for k, want := range wantValues {
@@ -319,7 +333,9 @@ func TestCreateAgentEnv(t *testing.T) {
 func TestCreateAgentEnvOAuthToken(t *testing.T) {
 	cs := fake.NewClientset()
 	cfg := testConfig()
-	cfg.AnthropicSecretEnv = "CLAUDE_CODE_OAUTH_TOKEN"
+	claude := cfg.Runners["claude"]
+	claude.SecretEnv = "CLAUDE_CODE_OAUTH_TOKEN"
+	cfg.Runners["claude"] = claude
 	c := New(cs, cfg, nil)
 
 	name, err := c.Create(context.Background(), testSpec())
@@ -344,6 +360,56 @@ func TestCreateAgentEnvOAuthToken(t *testing.T) {
 	}
 	if got, ok := envs["ANTHROPIC_API_KEY"]; ok {
 		t.Errorf("ANTHROPIC_API_KEY = %+v, want absent when the OAuth env is selected", got)
+	}
+}
+
+// TestCreateRunnerSelection asserts a Job runs the image, credential, and
+// harness label of the runner its Spec.Harness selects.
+func TestCreateRunnerSelection(t *testing.T) {
+	tests := []struct {
+		harness   string
+		wantImage string
+		wantEnv   string
+		wantRef   string // credential Secret name
+	}{
+		{"claude", "ghcr.io/bitwise-media-group/patchy/claude-agent-runner:1", "ANTHROPIC_API_KEY", "anthropic"},
+		{"codex", "ghcr.io/bitwise-media-group/patchy/codex-agent-runner:1", "OPENAI_API_KEY", "openai"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.harness, func(t *testing.T) {
+			cs := fake.NewClientset()
+			c := New(cs, testConfig(), nil)
+			spec := testSpec()
+			spec.Harness = tt.harness
+			name, err := c.Create(context.Background(), spec)
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			job, err := cs.BatchV1().Jobs("patchy-agents").Get(context.Background(), name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get job: %v", err)
+			}
+			// Both the init and agent containers run the selected runner image.
+			for _, ct := range append(job.Spec.Template.Spec.InitContainers, job.Spec.Template.Spec.Containers...) {
+				if ct.Image != tt.wantImage {
+					t.Errorf("%s image = %q, want %q", ct.Name, ct.Image, tt.wantImage)
+				}
+			}
+			if got := job.Spec.Template.Labels["patchy.bitwisemedia.uk/harness"]; got != tt.harness {
+				t.Errorf("harness label = %q, want %q", got, tt.harness)
+			}
+			envs := map[string]corev1.EnvVar{}
+			for _, env := range job.Spec.Template.Spec.Containers[0].Env {
+				envs[env.Name] = env
+			}
+			cred, ok := envs[tt.wantEnv]
+			if !ok || cred.ValueFrom == nil || cred.ValueFrom.SecretKeyRef == nil {
+				t.Fatalf("%s = %+v, want a secretKeyRef", tt.wantEnv, cred)
+			}
+			if ref := cred.ValueFrom.SecretKeyRef; ref.Name != tt.wantRef || ref.Key != "api-key" {
+				t.Errorf("%s ref = %s/%s, want %s/api-key", tt.wantEnv, ref.Name, ref.Key, tt.wantRef)
+			}
+		})
 	}
 }
 

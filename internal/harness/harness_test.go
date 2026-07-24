@@ -12,8 +12,9 @@ func TestByID(t *testing.T) {
 		name string
 	}{
 		{"claude", true, "Claude Code"},
+		{"codex", true, "OpenAI Codex"},
 		{"fake", true, "Fake"},
-		{"codex", false, ""},
+		{"cursor", false, ""},
 		{"", false, ""},
 	}
 	for _, tt := range tests {

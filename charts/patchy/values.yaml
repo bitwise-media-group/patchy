@@ -13,10 +13,10 @@
 
 # Every image is <repository>/<binary>, the names goreleaser publishes. `tag`
 # defaults to v<appVersion>. Per-component overrides live under
-# <controller>.image / agent.image and win key-by-key; a component `digest`
-# pins the image (and beats any tag). Pinning the agent-runner digest here
-# also lands in PATCHY_AGENT_IMAGE — unlike kustomize, there is one knob, not
-# two.
+# <controller>.image / agent.runners.<harness>.image and win key-by-key; a
+# component `digest` pins the image (and beats any tag). Pinning a runner's
+# digest here also lands in its PATCHY_<HARNESS>_AGENT_IMAGE — unlike
+# kustomize, there is one knob, not two.
 image:
     repository: ghcr.io/bitwise-media-group/patchy
     tag: ""
@@ -42,16 +42,6 @@ commonLabels: {}
 # controller pods. Per-object annotations (<controller>.podAnnotations, the
 # service/serviceAccount/webhook annotations) win key-by-key.
 commonAnnotations: {}
-
-anthropic:
-    # Secret in the AGENT namespace (agent.namespace, not the release
-    # namespace) holding the model credential. Consumed by the agent Job
-    # pods; if missing, every agent pod fails with CreateContainerConfigError.
-    secret: patchy-anthropic
-    secretKey: api-key
-    # Env var the credential is injected as: ANTHROPIC_API_KEY for an API
-    # key, or CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token.
-    secretEnv: ANTHROPIC_API_KEY
 
 # Settings shared by more than one controller. Each controller renders its own
 # ConfigMap (consumed with envFrom) holding these plus its `config` block, and
@@ -378,9 +368,6 @@ agent:
     # expects it to exist and to carry the restricted Pod Security labels.
     createNamespace: true
     serviceAccount: patchy-agent
-    # The agent-runner image the job controllers stamp into every Job they
-    # create (PATCHY_AGENT_IMAGE). Same override shape as <controller>.image.
-    image: {}
     # Job execution limits (both job controllers).
     jobDeadline: 1h
     jobTTL: 1h
@@ -388,25 +375,66 @@ agent:
     # on exactly these. The remediate maxTurns/tokenBudget are CEILINGS: the
     # investigation report requests its own model/turns/budget for the
     # remediation stage, and both the controller and the runner clamp those
-    # requests to these bounds (and to the allowlist).
-    modelAllowlist: claude-sonnet-5,claude-opus-4-8
+    # requests to these bounds (and to the allowlist). Models are canonical,
+    # provider-qualified ids; the harness that runs a model is derived from it.
+    modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
     investigate:
-        harness: claude
-        model: claude-sonnet-5
+        model: anthropic/claude-sonnet-5
         timeout: 15m
         maxTurns: 25
         tokenBudget: 150000
     remediate:
-        harness: claude
-        model: claude-sonnet-5
+        # The default model when the investigation report's suggestion is
+        # missing or off the allowlist.
+        model: anthropic/claude-sonnet-5
         timeout: 45m
         maxTurns: 80
         tokenBudget: 400000
+    # The per-harness runner fleet. A harness is enabled only when its runner
+    # is `enabled: true` AND its credential Secret exists (checked at
+    # controller startup). A Job runs the image, credential, and egress policy
+    # of the harness resolved for its model, so an OpenAI model routes to the
+    # codex runner and an Anthropic model to the claude runner. Every
+    # allowlisted model must have at least one enabled harness that supports
+    # it, or the controllers refuse to start.
+    runners:
+        claude:
+            enabled: true
+            # Override of <prefix>/claude-agent-runner; same shape as
+            # <controller>.image (repository / tag / digest).
+            image: {}
+            # Secret (agent namespace) holding the Anthropic credential.
+            secret: patchy-anthropic
+            secretKey: api-key
+            # ANTHROPIC_API_KEY for an API key, or CLAUDE_CODE_OAUTH_TOKEN for
+            # a `claude setup-token` OAuth token.
+            secretEnv: ANTHROPIC_API_KEY
+            # The model API this runner's pods may reach (SNI/FQDN allowlist)
+            # and, for Cilium, the DNS names they may resolve. No forge host
+            # ever appears — the pod never talks to GitHub.
+            hosts:
+                - api.anthropic.com
+            dnsPatterns:
+                - "*.anthropic.com"
+        codex:
+            # Off by default; enable it and supply the OpenAI credential to let
+            # the investigation choose OpenAI models for remediation.
+            enabled: false
+            image: {}
+            secret: patchy-openai
+            secretKey: api-key
+            secretEnv: OPENAI_API_KEY
+            hosts:
+                - api.openai.com
+            dnsPatterns:
+                - "*.openai.com"
     # The sandbox policies: default-deny both directions plus DNS, the
     # artifact server, and TCP-443-only external egress. A plain
     # NetworkPolicy cannot match hostnames; enforcement at that level needs
-    # `cilium` or `istio` below. Credential absence is the real control
-    # either way — see deploy/kustomize/base/networkpolicy.yaml.
+    # `cilium` or `istio` below, which render one policy per enabled runner
+    # (selecting pods by their harness label) so each reaches only its own
+    # model API. Credential absence is the real control either way — see
+    # deploy/kustomize/base/networkpolicy.yaml.
     networkPolicy:
         create: true
         # Cluster-internal ranges the agent egress must NOT reach (pod/
@@ -417,24 +445,17 @@ agent:
             - 172.16.0.0/12
             - 192.168.0.0/16
             - 169.254.0.0/16
-        # Hosts the agent sandbox may reach, shared by both components
-        # below. There is deliberately NO forge (GitHub) host: the pod never
-        # talks to it.
-        hosts:
-            anthropic:
-                - api.anthropic.com
-            # Cilium only: what names the agent pod may RESOLVE at all. The
-            # cluster-local pattern is what lets the artifact fetch resolve
-            # source-controller's Service.
-            dnsPatterns:
-                - "*.anthropic.com"
-                - "*.svc.cluster.local"
+        # Cilium only: cluster-local DNS names every runner pod may resolve on
+        # top of its own model host — this is what lets the artifact fetch
+        # resolve source-controller's Service.
+        clusterDNSPatterns:
+            - "*.svc.cluster.local"
         # FQDN egress allowlist for Cilium CNIs (requires DNS-based policy).
         # Mutually exclusive with istio.
         cilium:
             enabled: false
-        # The same allowlist as an Istio Sidecar (REGISTRY_ONLY) + a
-        # ServiceEntry. Requires native sidecars (istiod with
+        # The same allowlist as per-runner Istio Sidecars (REGISTRY_ONLY) +
+        # ServiceEntries. Requires native sidecars (istiod with
         # ENABLE_NATIVE_SIDECARS=true) and the Istio CNI node agent — see
         # deploy/kustomize/components/istio.
         istio:

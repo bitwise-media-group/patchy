@@ -12,13 +12,15 @@ data:
     PATCHY_ACCUMULATION_WINDOW: 1h
     PATCHY_FINDING_MIN_AGE: 1h
 
-    # The real harness and models, and the ceilings the investigation's
-    # stage-2 suggestions are clamped to.
-    PATCHY_INVESTIGATE_HARNESS: claude
-    PATCHY_REMEDIATE_HARNESS: claude
-    PATCHY_INVESTIGATE_MODEL: claude-sonnet-5
-    PATCHY_REMEDIATE_MODEL: claude-sonnet-5
-    PATCHY_MODEL_ALLOWLIST: claude-sonnet-5,claude-opus-4-8
+    # The real models (canonical, provider-qualified; the harness is derived
+    # from the model) and the ceilings the investigation's stage-2 suggestions
+    # are clamped to. Only the claude runner is enabled here; add `codex` to
+    # PATCHY_HARNESSES and OpenAI models to the allowlist to let the
+    # investigation choose them.
+    PATCHY_HARNESSES: claude
+    PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet-5
+    PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet-5
+    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
     PATCHY_CONFIDENCE_THRESHOLD: "0.75"
     PATCHY_MAX_ATTEMPTS: "2"
 
@@ -31,7 +33,8 @@ data:
     # Keep finished Jobs around long enough to debug a bad run.
     PATCHY_JOB_TTL: 6h
 
-    # PIN ME. Must be the same digest as the agent-runner entry in
+    # PIN ME. Must be the same digest as the claude-agent-runner entry in
     # kustomization.yaml's `images:` block — this string is copied verbatim
-    # into every Job the controllers create.
-    PATCHY_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/agent-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    # into every claude Job the controllers create. (Pin PATCHY_CODEX_AGENT_IMAGE
+    # too when the codex runner is enabled.)
+    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000

@@ -27,8 +27,9 @@ deploy/
 └── README.md
 ```
 
-The Dockerfiles live at the repo root: `Dockerfile.controller` (all five controllers, ARG `TARGET`) and
-`Dockerfile.agent-runner` (the agent image: agent-runner + git + claude CLI).
+The Dockerfiles live at the repo root: `Dockerfile.controller` (all controllers, ARG `TARGET`) and one per-harness agent
+image — `Dockerfile.claude-agent-runner` (agent-runner + git + claude CLI) and `Dockerfile.codex-agent-runner`
+(agent-runner + git + codex CLI). A Job runs the image of the harness resolved for its model.
 
 ## What gets deployed where
 
@@ -123,8 +124,9 @@ kubectl -n patchy-agents create secret generic patchy-anthropic \
   --from-literal=api-key="$ANTHROPIC_API_KEY"
 ```
 
-`patchy-anthropic` must exist even for a fake-harness run: `internal/jobs` unconditionally wires `ANTHROPIC_API_KEY`
-into the agent container from it, and a missing Secret means `CreateContainerConfigError` on every Job.
+`patchy-anthropic` is the claude runner's credential; `internal/jobs` wires it into a claude Job's agent container from
+it, and the controllers refuse to start if an enabled harness's credential is missing. Enable the codex runner and it
+needs `patchy-openai` (an OpenAI key) the same way. A fake-harness run (dev) needs no model credential at all.
 
 The pipeline is then switched on with two custom resources referencing that Secret — an `Integration` (webhook
 validation, alert ingestion, issue projection) and a `Forge` (repository read for the artifact, write for the push +
@@ -136,13 +138,13 @@ API, on demand, by name.
 
 Everything is `PATCHY_*` environment in one ConfigMap (`base/configmap.yaml`), consumed with `envFrom`.
 `internal/cli/options.go` maps each variable back onto a cobra flag — prefix `PATCHY`, dashes become underscores, so
-`--agent-image` is `PATCHY_AGENT_IMAGE` — with precedence flag > env > default. The Deployments pass no flags but
-`serve`, so the ConfigMap is the whole configuration surface. A key a binary does not bind is inert, which is why one
-ConfigMap serves all five.
+`--claude-agent-image` is `PATCHY_CLAUDE_AGENT_IMAGE` — with precedence flag > env > default. The Deployments pass no
+flags but `serve`, so the ConfigMap is the whole configuration surface. A key a binary does not bind is inert, which is
+why one ConfigMap serves all five.
 
-`PATCHY_AGENT_IMAGE` is a special case: it is the string the job controllers stamp into the Jobs they create, and
-kustomize's `images:` transformer **does not rewrite ConfigMap values**. An overlay that pins the agent-runner image
-must patch both the `images:` entry and this key.
+The per-harness `PATCHY_<HARNESS>_AGENT_IMAGE` keys are a special case: they are the strings the job controllers stamp
+into the Jobs they create, and kustomize's `images:` transformer **does not rewrite ConfigMap values**. An overlay that
+pins a runner image must patch both the `images:` entry and the matching `PATCHY_<HARNESS>_AGENT_IMAGE` key.
 
 ## The isolation model — what it actually is
 
@@ -209,18 +211,18 @@ Three things to know about dev:
   `overlays/dev/secret-dev.yaml` for the by-hand equivalent).
 - **kind runs kindnet, which ignores NetworkPolicy.** The policies apply cleanly and do nothing. A green dev apply is
   not evidence of a working sandbox.
-- **The fake harness still needs the `patchy-anthropic` Secret to exist.** `PATCHY_INVESTIGATE_HARNESS=fake` reaches the
-  agent pod (the controllers pass their agent configuration through to every Job), so no model is ever called and the
-  key's value is irrelevant — but `internal/jobs` wires `ANTHROPIC_API_KEY` from that Secret unconditionally, and a
-  missing Secret is a `CreateContainerConfigError`. The dev overlay ships an obvious placeholder.
+- **The fake harness needs no model credential.** The dev overlay sets `PATCHY_HARNESSES: fake`, which restricts the
+  enabled set to the fake runner — it carries no Secret, so `internal/jobs` wires no model key into its Jobs and dev
+  runs with zero real credentials. The claude/codex runners configured in the base are simply not enabled.
 
 ### prod
 
-DESIGN.md's real intervals (1h accumulation, 1h minimum age, the 14-day finding TTL), the claude harness, the Cilium
-FQDN policy, production-sized requests/limits, and **digest-pinned images**. The `sha256:0000…` values in
-`overlays/prod/kustomization.yaml` and `PATCHY_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` are placeholders —
-replace them with the digests your release pipeline published before applying anything. Bring your real Secrets and
-`Integration`/`Forge` resources with SOPS or external-secrets.
+DESIGN.md's real intervals (1h accumulation, 1h minimum age, the 14-day finding TTL), the claude harness (add codex by
+enabling its runner and supplying `patchy-openai`), the Cilium FQDN policies, production-sized requests/limits, and
+**digest-pinned images**. The `sha256:0000…` values in `overlays/prod/kustomization.yaml` and
+`PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` are placeholders — replace them with the digests
+your release pipeline published before applying anything. Bring your real Secrets and `Integration`/`Forge` resources
+with SOPS or external-secrets.
 
 Ingress/TLS for the webhook endpoint is deliberately absent: add it in an environment overlay, in front of
 `patchy-integration-controller:8080`.

@@ -39,7 +39,7 @@ kubectl -n patchy-agents create secret generic patchy-anthropic \
 
 No Anthropic API key? A Claude subscription works too: mint a long-lived OAuth token with
 [`claude setup-token`](https://code.claude.com/docs/en/cli-reference), store it in the same secret, and set
-`anthropic.secretEnv: CLAUDE_CODE_OAUTH_TOKEN` (Helm) or `PATCHY_ANTHROPIC_SECRET_ENV=CLAUDE_CODE_OAUTH_TOKEN`
+`agent.runners.claude.secretEnv: CLAUDE_CODE_OAUTH_TOKEN` (Helm) or `PATCHY_CLAUDE_SECRET_ENV=CLAUDE_CODE_OAUTH_TOKEN`
 (kustomize) so the Job builder injects it under the env var the `claude` CLI expects:
 
 ```sh
@@ -47,19 +47,27 @@ kubectl -n patchy-agents create secret generic patchy-anthropic \
   --from-literal=api-key="$(claude setup-token)"
 ```
 
-| Secret             | Namespace       | Keys                                                 | Consumed by                                                                                       |
-| ------------------ | --------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `patchy-github`    | `patchy`        | `appID` + `privateKey` (or `token`), `webhookSecret` | The `Integration`/`Forge` CRs' `spec.secretRef` — read on demand through the API, never mounted   |
-| `patchy-anthropic` | `patchy-agents` | `api-key`                                            | Agent Job pods only (`ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` via `anthropic.secretEnv`) |
+To let the investigation choose OpenAI models for remediation, enable the codex runner
+(`agent.runners.codex.enabled: true` / add `codex` to `PATCHY_HARNESSES`) and create its credential:
+
+```sh
+kubectl -n patchy-agents create secret generic patchy-openai --from-literal=api-key="$OPENAI_API_KEY"
+```
+
+| Secret             | Namespace       | Keys                                                 | Consumed by                                                                                             |
+| ------------------ | --------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `patchy-github`    | `patchy`        | `appID` + `privateKey` (or `token`), `webhookSecret` | The `Integration`/`Forge` CRs' `spec.secretRef` — read on demand through the API, never mounted         |
+| `patchy-anthropic` | `patchy-agents` | `api-key`                                            | Claude runner Job pods (`ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` via the runner's `secretEnv`) |
+| `patchy-openai`    | `patchy-agents` | `api-key`                                            | Codex runner Job pods (`OPENAI_API_KEY`) — only when the codex runner is enabled                        |
 
 A `token` key (a personal access token) is the dev-only fallback and wins over App auth when set. One GitHub Secret may
 serve both CRs, or you can split read and write identities across two GitHub Apps and two Secrets.
 
-!!! warning "The Anthropic secret is not optional"
+!!! warning "Each enabled harness needs its credential"
 
-    The Job builder wires the credential (`ANTHROPIC_API_KEY` by default) into every agent pod via a
-    `secretKeyRef`. A missing `patchy-anthropic` secret means every agent Job sits in
-    `CreateContainerConfigError` — even with the fake harness.
+    A harness is enabled only when its credential Secret exists (the controllers validate this at startup and refuse to
+    start otherwise). The Job builder wires the credential of the harness a Job runs into that pod via a `secretKeyRef`.
+    The `fake` harness (dev only) needs no credential.
 
 There is deliberately **no** GitHub credential in the agent namespace — not even a per-Job one. The repository arrives
 as a digest-verified tarball from the source-controller's in-cluster artifact server. See the

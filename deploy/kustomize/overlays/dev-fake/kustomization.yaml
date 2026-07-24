@@ -22,8 +22,10 @@ resources:
     - networkpolicy-fakegithub.yaml
 
 patches:
-    # The scripted agent image (hack/fake-agent) instead of the real
-    # agent-runner: prints canned PATCHY-EVENT lines, needs no model key.
+    # The scripted agent image (hack/fake-agent) as the fake runner instead of
+    # the real agent-runner: prints canned PATCHY-EVENT lines, needs no model
+    # key. The dev overlay already restricts the enabled set to the fake
+    # harness (PATCHY_HARNESSES: fake); this just swaps its image.
     - patch: |
           apiVersion: v1
           kind: ConfigMap
@@ -31,7 +33,7 @@ patches:
               name: patchy-config
               namespace: patchy
           data:
-              PATCHY_AGENT_IMAGE: patchy/fake-agent:dev
+              PATCHY_FAKE_AGENT_IMAGE: patchy/fake-agent:dev
     # Point the Integration and Forge at the in-cluster fake GitHub.
     - target:
           group: patchy.bitwisemedia.uk

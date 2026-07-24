@@ -5,7 +5,7 @@
 #
 # Every key is a PATCHY_* environment variable, which internal/cli/options.go
 # maps back onto a cobra flag: prefix PATCHY, dashes become underscores
-# (--agent-image -> PATCHY_AGENT_IMAGE). Precedence is flag > env > default,
+# (--claude-agent-image -> PATCHY_CLAUDE_AGENT_IMAGE). Precedence is flag > env > default,
 # and the Deployments pass no flags other than the `serve` subcommand, so what
 # is here is what runs.
 #
@@ -68,24 +68,34 @@ data:
     # ---- the agent Jobs (both job controllers) ------------------------------
     PATCHY_AGENT_NAMESPACE: patchy-agents
     PATCHY_AGENT_SERVICE_ACCOUNT: patchy-agent
-    # Required. The image is also pinned by the `images:` block in
-    # kustomization.yaml for the Deployments; this string is what the job
-    # controllers stamp into the Jobs they create, so overlays must keep the
-    # two in step.
-    PATCHY_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/agent-runner:latest
-    PATCHY_ANTHROPIC_SECRET: patchy-anthropic
-    PATCHY_ANTHROPIC_SECRET_KEY: api-key
+    # The per-harness runner fleet. A harness is enabled only when it is in
+    # PATCHY_HARNESSES AND its credential Secret exists; the model chosen for a
+    # stage decides which runner (image + credential + egress policy) the Job
+    # uses. Each runner image is ALSO pinned by the `images:` block in
+    # kustomization.yaml for provenance, so overlays must keep the two in step
+    # (the `images:` block does not rewrite these ConfigMap values).
+    PATCHY_HARNESSES: claude
+    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:latest
+    PATCHY_CLAUDE_SECRET: patchy-anthropic
+    PATCHY_CLAUDE_SECRET_KEY: api-key
     # Env var the credential is injected as: ANTHROPIC_API_KEY for an API
     # key, or CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token.
-    PATCHY_ANTHROPIC_SECRET_ENV: ANTHROPIC_API_KEY
+    PATCHY_CLAUDE_SECRET_ENV: ANTHROPIC_API_KEY
+    # Enable the codex runner by adding `codex` to PATCHY_HARNESSES and
+    # supplying the OpenAI credential Secret (patchy-openai):
+    PATCHY_CODEX_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/codex-agent-runner:latest
+    PATCHY_CODEX_SECRET: patchy-openai
+    PATCHY_CODEX_SECRET_KEY: api-key
+    PATCHY_CODEX_SECRET_ENV: OPENAI_API_KEY
     PATCHY_JOB_DEADLINE: 1h
     PATCHY_JOB_TTL: 1h
 
     # ---- the agent stages ---------------------------------------------------
     # The job controllers pass these through to every agent pod, where
-    # agentrun.FromEnv reads them. The two stages are configured symmetrically
-    # and independently (DESIGN.md: the investigation harness may differ from
-    # the remediation one).
+    # agentrun.FromEnv reads them. Models are canonical, provider-qualified ids
+    # (e.g. anthropic/claude-sonnet-5); the harness that runs a model is
+    # derived from it, so an OpenAI model routes to the codex runner and an
+    # Anthropic model to the claude runner.
     #
     # The INVESTIGATE_* limits are absolute — that stage runs on exactly
     # these. The REMEDIATE_MAX_TURNS / REMEDIATE_TOKEN_BUDGET limits are
@@ -93,21 +103,20 @@ data:
     # token_budget for the remediation stage, and both the controller and the
     # runner clamp those requests to these bounds (and to the allowlist), so a
     # compromised or over-eager investigation cannot spend more than an
-    # operator permits.
+    # operator permits. Every allowlisted model must have an enabled harness
+    # that supports it, or the controllers refuse to start.
     #
     # The token budgets are enforced by the runner watching the harness's
     # streamed usage events and killing the process group when the cumulative
-    # output-token count is exceeded — the claude CLI has no such flag itself.
-    PATCHY_MODEL_ALLOWLIST: claude-sonnet-5,claude-opus-4-8
+    # output-token count is exceeded — the CLI has no such flag itself.
+    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
 
-    PATCHY_INVESTIGATE_HARNESS: claude
-    PATCHY_INVESTIGATE_MODEL: claude-sonnet-5
+    PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet-5
     PATCHY_INVESTIGATE_TIMEOUT: 15m
     PATCHY_INVESTIGATE_MAX_TURNS: "25"
     PATCHY_INVESTIGATE_TOKEN_BUDGET: "150000"
 
-    PATCHY_REMEDIATE_HARNESS: claude
-    PATCHY_REMEDIATE_MODEL: claude-sonnet-5
+    PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet-5
     PATCHY_REMEDIATE_TIMEOUT: 45m
     PATCHY_REMEDIATE_MAX_TURNS: "80"
     PATCHY_REMEDIATE_TOKEN_BUDGET: "400000"

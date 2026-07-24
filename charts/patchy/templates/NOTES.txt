@@ -15,10 +15,13 @@ The pipeline idles until two things exist:
        * the forge/provider credential (keys: appID + privateKey, or token,
          plus webhookSecret on Integration secrets) in namespace
          {{ .Release.Namespace }}, named by each CR's spec.secretRef.
-       * {{ .Values.anthropic.secret }} (namespace {{ .Values.agent.namespace }})
-         key: {{ .Values.anthropic.secretKey }} — the model credential,
-         injected as {{ .Values.anthropic.secretEnv }}. Without it every
-         agent Job pod fails with CreateContainerConfigError.
+       * a model credential per enabled harness in namespace
+         {{ .Values.agent.namespace }} — one Secret for each enabled
+         agent.runners.<harness> (default:
+         {{- range $id, $r := .Values.agent.runners }}{{ if $r.enabled }} {{ $r.secret }} (key {{ $r.secretKey }}, as {{ $r.secretEnv }}){{ end }}{{- end }}).
+         A harness is enabled only when its runner is enabled AND its
+         credential exists; every allowlisted model needs one enabled harness
+         that supports it, or the controllers refuse to start.
      See deploy/kustomize/base/secrets.example.yaml in the patchy repository
      for the exact shapes and kubectl one-liners.
 {{- if not (and .Values.integrations .Values.forges) }}

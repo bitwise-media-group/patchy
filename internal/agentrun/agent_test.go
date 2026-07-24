@@ -53,7 +53,7 @@ priority: high
 severity: high
 confidence: 0.9
 breaking_change_available: false
-model: claude-sonnet-5
+model: anthropic/claude-sonnet-5
 max_turns: 40
 token_budget: 200000
 ---
@@ -174,8 +174,8 @@ func newConfig(t *testing.T, ws string, out io.Writer) Config {
 	return Config{
 		Workspace: ws, Repo: "acme/shop", Finding: "finding-abc123def0-1", Phase: PhaseInvestigate,
 		InvestigateHarness: "fake", RemediateHarness: "fake",
-		InvestigateModel: "claude-sonnet-5", RemediateModel: "claude-sonnet-5",
-		ModelAllowlist:         []string{"claude-sonnet-5"},
+		InvestigateModel: "anthropic/claude-sonnet-5", RemediateModel: "anthropic/claude-sonnet-5",
+		ModelAllowlist:         []string{"anthropic/claude-sonnet-5"},
 		InvestigateMaxTurns:    25,
 		InvestigateTokenBudget: 150000,
 		RemediateMaxTurns:      80,
@@ -269,7 +269,7 @@ func TestInvestigationEvent(t *testing.T) {
 		t.Errorf("dimensions = %s/%s/%s, want high/medium/high",
 			inv.Exploitability.Rating, inv.Likelihood.Rating, inv.Impact.Rating)
 	}
-	if inv.RemediationModel != "claude-sonnet-5" || inv.MaxTurns != 40 || inv.TokenBudget != 200000 {
+	if inv.RemediationModel != "anthropic/claude-sonnet-5" || inv.MaxTurns != 40 || inv.TokenBudget != 200000 {
 		t.Errorf("stage-2 params = %q/%d/%d, want the report's (in-bounds) values",
 			inv.RemediationModel, inv.MaxTurns, inv.TokenBudget)
 	}
@@ -409,7 +409,7 @@ priority: high
 severity: high
 confidence: %v
 breaking_change_available: %v
-model: claude-sonnet-5
+model: anthropic/claude-sonnet-5
 max_turns: 40
 token_budget: 200000
 ---
@@ -659,7 +659,11 @@ func TestInvestigateBudgetKillSwitch(t *testing.T) {
 	}
 }
 
-func TestClampsRogueInvestigation(t *testing.T) {
+// TestClampsRogueTurnsBudget: the investigate stage clamps a rogue report's
+// turns/budget to the ceilings but passes its suggested model through raw —
+// the remediation spawner (controller-side) clamps the model to the allowlist,
+// because the model choice decides which runner image the pod must run in.
+func TestClampsRogueTurnsBudget(t *testing.T) {
 	ws := newWorkspace(t)
 	var out bytes.Buffer
 	rogue := `---
@@ -685,8 +689,8 @@ analysis
 		t.Fatalf("Run() error = %v", err)
 	}
 	inv := events(t, out.String())[0].Investigation
-	if inv.RemediationModel != "claude-sonnet-5" {
-		t.Errorf("model = %q, want the allowlisted default", inv.RemediationModel)
+	if inv.RemediationModel != "evil-model-9000" {
+		t.Errorf("model = %q, want the raw suggestion (the controller clamps it)", inv.RemediationModel)
 	}
 	if inv.MaxTurns != 80 {
 		t.Errorf("max_turns = %d, want clamped to the 80 ceiling", inv.MaxTurns)

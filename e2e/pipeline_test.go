@@ -56,6 +56,13 @@ const (
 	agentsNS      = "patchy-agents"
 )
 
+// runnerArgs configures both per-harness runner images on a job controller; the
+// credential Secrets created in newCluster enable both harnesses.
+var runnerArgs = []string{
+	"--claude-agent-image", "patchy/claude-agent-runner:e2e",
+	"--codex-agent-image", "patchy/codex-agent-runner:e2e",
+}
+
 // ---- binaries --------------------------------------------------------------
 
 var (
@@ -155,6 +162,18 @@ func startCluster(t *testing.T) *cluster {
 			ObjectMeta: metav1.ObjectMeta{Name: ns},
 		}); err != nil {
 			t.Fatalf("create namespace %s: %v", ns, err)
+		}
+	}
+	// The per-harness model credentials the job controllers probe at startup
+	// to decide which harnesses are enabled: with both present, the claude and
+	// codex runners are both enabled, so a finding routes to whichever the
+	// chosen model belongs to.
+	for _, name := range []string{"patchy-anthropic", "patchy-openai"} {
+		if err := c.Create(context.Background(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: agentsNS},
+			StringData: map[string]string{"api-key": "e2e-model-key"},
+		}); err != nil {
+			t.Fatalf("create agent credential %s: %v", name, err)
 		}
 	}
 	return cl
@@ -338,7 +357,7 @@ func TestPipeline(t *testing.T) {
 		"--artifact-dir", t.TempDir())
 	cl.controller(t, "context-controller", "--static-context-file", contextFile)
 	cl.controller(t, "investigation-controller",
-		"--finding-min-age", "1s", "--agent-image", "patchy/agent-runner:e2e")
+		append([]string{"--finding-min-age", "1s"}, runnerArgs...)...)
 
 	webhookURL := "http://" + listen + "/github/webhooks"
 
@@ -612,8 +631,10 @@ func TestRemediationPriorityOrder(t *testing.T) {
 	}
 
 	// Both Remediations exist, Pending, before the scheduler starts — the
-	// grant decision then depends on priority alone, not arrival order.
-	mkRem := func(fnd *v1alpha1.Finding, prio int32) {
+	// grant decision then depends on priority alone, not arrival order. Each
+	// carries a spawner-resolved (model, harness): the critical one runs an
+	// OpenAI model on the codex harness, so its Job must run the codex runner.
+	mkRem := func(fnd *v1alpha1.Finding, prio int32, model, harness string) {
 		if err := cl.client.Create(ctx, &v1alpha1.Remediation{
 			ObjectMeta: metav1.ObjectMeta{Name: fnd.Name + "-rem-1", Namespace: namespace},
 			Spec: v1alpha1.RemediationSpec{
@@ -622,13 +643,14 @@ func TestRemediationPriorityOrder(t *testing.T) {
 				RepositoryRef:    v1alpha1.LocalObjectReference{Name: fnd.Name + "-src"},
 				Attempt:          1,
 				Priority:         prio,
+				Parameters:       v1alpha1.AgentParameters{Model: model, Harness: harness},
 			},
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	mkRem(low, 10)
-	mkRem(high, 90)
+	mkRem(low, 10, "anthropic/claude-sonnet-5", "claude")
+	mkRem(high, 90, "openai/gpt-5.3-codex", "codex")
 
 	cl.controller(t, "source-controller",
 		"--artifact-addr", fmt.Sprintf("127.0.0.1:%d", freePort(t)),
@@ -645,8 +667,7 @@ func TestRemediationPriorityOrder(t *testing.T) {
 	}
 
 	cl.controller(t, "remediation-controller",
-		"--agent-image", "patchy/agent-runner:e2e",
-		"--max-concurrent-remediations", "1")
+		append([]string{"--max-concurrent-remediations", "1"}, runnerArgs...)...)
 
 	// The critical finding wins the single slot: its Remediation runs and
 	// its Job exists.
@@ -663,8 +684,17 @@ func TestRemediationPriorityOrder(t *testing.T) {
 	if len(jobsList.Items) != 1 {
 		t.Fatalf("agent jobs = %d, want exactly the granted remediation's", len(jobsList.Items))
 	}
-	if got := jobsList.Items[0].Labels[v1alpha1.LabelFinding]; got != high.Name {
+	grantedJob := jobsList.Items[0]
+	if got := grantedJob.Labels[v1alpha1.LabelFinding]; got != high.Name {
 		t.Errorf("running job belongs to %q, want the critical finding %q", got, high.Name)
+	}
+	// The critical remediation chose an OpenAI model, so its Job runs the codex
+	// runner: the codex harness label and image, not claude's.
+	if got := grantedJob.Labels[v1alpha1.LabelHarness]; got != "codex" {
+		t.Errorf("job harness label = %q, want codex", got)
+	}
+	if got := grantedJob.Spec.Template.Spec.Containers[0].Image; got != "patchy/codex-agent-runner:e2e" {
+		t.Errorf("job image = %q, want the codex runner image", got)
 	}
 
 	// The low-priority one keeps waiting for the slot (the Job above never
@@ -745,8 +775,7 @@ func TestSignalsRollupTTL(t *testing.T) {
 	listen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "integration-controller", "--listen-addr", listen)
 	cl.controller(t, "remediation-controller",
-		"--agent-image", "patchy/agent-runner:e2e",
-		"--finding-ttl", "3s")
+		append([]string{"--finding-ttl", "3s"}, runnerArgs...)...)
 	webhookURL := "http://" + listen + "/github/webhooks"
 
 	// The merged PR completes the finding.

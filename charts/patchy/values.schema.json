@@ -34,13 +34,29 @@
         "agentStage": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["harness", "model", "timeout", "maxTurns", "tokenBudget"],
+            "required": ["model", "timeout", "maxTurns", "tokenBudget"],
             "properties": {
-                "harness": { "type": "string" },
                 "model": { "type": "string" },
                 "timeout": { "$ref": "#/definitions/duration" },
                 "maxTurns": { "type": "integer", "minimum": 1 },
                 "tokenBudget": { "type": "integer", "minimum": 1 }
+            }
+        },
+        "agentRunner": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["enabled"],
+            "properties": {
+                "enabled": { "type": "boolean" },
+                "image": { "$ref": "#/definitions/imageOverride" },
+                "secret": { "type": "string" },
+                "secretKey": { "type": "string" },
+                "secretEnv": {
+                    "type": "string",
+                    "enum": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]
+                },
+                "hosts": { "type": "array", "items": { "type": "string" } },
+                "dnsPatterns": { "type": "array", "items": { "type": "string" } }
             }
         },
         "serviceAccount": {
@@ -111,19 +127,6 @@
         },
         "commonLabels": { "type": "object" },
         "commonAnnotations": { "type": "object" },
-        "anthropic": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["secret", "secretKey", "secretEnv"],
-            "properties": {
-                "secret": { "type": "string" },
-                "secretKey": { "type": "string" },
-                "secretEnv": {
-                    "type": "string",
-                    "enum": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"]
-                }
-            }
-        },
         "webhook": {
             "type": "object",
             "description": "The single external entry point for the provider webhook URL, fronting the integration-controller (path /github/webhooks)",
@@ -370,18 +373,22 @@
                 "modelAllowlist",
                 "investigate",
                 "remediate",
+                "runners",
                 "networkPolicy"
             ],
             "properties": {
                 "namespace": { "type": "string" },
                 "createNamespace": { "type": "boolean" },
                 "serviceAccount": { "type": "string" },
-                "image": { "$ref": "#/definitions/imageOverride" },
                 "jobDeadline": { "$ref": "#/definitions/duration" },
                 "jobTTL": { "$ref": "#/definitions/duration" },
                 "modelAllowlist": { "type": "string" },
                 "investigate": { "$ref": "#/definitions/agentStage" },
                 "remediate": { "$ref": "#/definitions/agentStage" },
+                "runners": {
+                    "type": "object",
+                    "additionalProperties": { "$ref": "#/definitions/agentRunner" }
+                },
                 "networkPolicy": {
                     "type": "object",
                     "additionalProperties": false,
@@ -389,14 +396,7 @@
                     "properties": {
                         "create": { "type": "boolean" },
                         "clusterCIDRs": { "type": "array", "items": { "type": "string" } },
-                        "hosts": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "anthropic": { "type": "array", "items": { "type": "string" } },
-                                "dnsPatterns": { "type": "array", "items": { "type": "string" } }
-                            }
-                        },
+                        "clusterDNSPatterns": { "type": "array", "items": { "type": "string" } },
                         "cilium": {
                             "type": "object",
                             "additionalProperties": false,

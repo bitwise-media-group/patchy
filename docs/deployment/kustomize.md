@@ -39,9 +39,9 @@ does not bind is inert, which is why one ConfigMap serves all five controllers �
 
 !!! warning "The agent image is pinned in two places"
 
-    `PATCHY_AGENT_IMAGE` is the string the job controllers stamp into the Jobs they create, and kustomize's
-    `images:` transformer does **not** rewrite ConfigMap values. An overlay that pins the agent-runner image must
-    patch both the `images:` entry and this key — the prod overlay does exactly that.
+    The per-harness `PATCHY_<HARNESS>_AGENT_IMAGE` keys are the strings the job controllers stamp into the Jobs they
+    create, and kustomize's `images:` transformer does **not** rewrite ConfigMap values. An overlay that pins a runner
+    image must patch both the `images:` entry and the matching key — the prod overlay does exactly that.
 
 ## The overlays
 
@@ -60,7 +60,7 @@ does not bind is inert, which is why one ConfigMap serves all five controllers �
   [Colima walkthrough](colima.md#credential-less-end-to-end-the-dev-fake-overlay) shows the full loop.
 - **prod** uses the real intervals (1h accumulation and min-age, the 14-day TTL), the `claude` harness, the Cilium FQDN
   component, production-sized requests, and **digest-pinned images** — the checked-in `sha256:0000…` values are
-  placeholders to replace with your release's published digests, including the `PATCHY_AGENT_IMAGE` value in the
+  placeholders to replace with your release's published digests, including the `PATCHY_CLAUDE_AGENT_IMAGE` value in the
   ConfigMap patch. Bring real Secrets and CRs with SOPS or external-secrets, and put your Ingress or Gateway in front of
   `patchy-integration-controller:8080` in your own overlay — the base deliberately ships none.
 

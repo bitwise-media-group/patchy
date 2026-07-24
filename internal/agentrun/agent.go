@@ -11,11 +11,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/harness"
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/runner"
 	"github.com/bitwise-media-group/patchy/internal/templates"
@@ -57,9 +58,10 @@ func New(cfg Config, exec Executor) *Agent {
 	return &Agent{cfg: cfg, exec: exec, newSessionID: sessionID}
 }
 
-// remediationParams are the clamped stage-2 knobs.
+// remediationParams are the clamped stage-2 knobs. The model and harness are
+// not here: the controller resolves them and passes them per-Job, so the pod
+// runs the model its runner image was built for.
 type remediationParams struct {
-	model    string
 	maxTurns int
 	budget   int
 }
@@ -113,7 +115,7 @@ func (a *Agent) prepare() error {
 func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelope.Remediation {
 	ev := &envelope.Remediation{Stage: envelope.Stage{
 		Harness: a.cfg.RemediateHarness,
-		Model:   params.model,
+		Model:   a.cfg.RemediateModel,
 	}}
 
 	h, ok := harness.ByID(a.cfg.RemediateHarness)
@@ -155,7 +157,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:          prompt,
-		Model:           params.model,
+		Model:           cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
 		MaxTurns:        params.maxTurns,
 		AllowedTools:    remediateAllowedTools,
 		DisallowedTools: remediateDisallowedTools,
@@ -258,7 +260,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:          prompt,
-		Model:           a.cfg.InvestigateModel,
+		Model:           cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
 		MaxTurns:        a.cfg.InvestigateMaxTurns,
 		AllowedTools:    investigateAllowedTools,
 		DisallowedTools: investigateDisallowedTools,
@@ -306,16 +308,20 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	ev.Confidence = *inv.Confidence
 	ev.AwaitApproval = inv.Recommendation == report.RecommendRemediate && inv.BreakingChangeAvailable
 	if inv.Recommendation == report.RecommendRemediate {
-		params := a.clampInvestigation(inv)
-		ev.RemediationModel = params.model
-		ev.MaxTurns = params.maxTurns
-		ev.TokenBudget = params.budget
+		// The agent's raw suggested (canonical) model rides the envelope; the
+		// remediation spawner clamps it to the allowlist and resolves the
+		// harness that runs it. Turns/budget are clamped to the ceilings here
+		// for the informational stage-2 preview.
+		ev.RemediationModel = inv.Model
+		ev.MaxTurns, ev.TokenBudget = a.clampTurnsBudget(inv.MaxTurns, inv.TokenBudget)
 	}
 	return ev
 }
 
-// remediationInput reads the controller-provided investigation.md and clamps
-// its suggested stage-2 parameters.
+// remediationInput reads the controller-provided investigation.md for the
+// suggested stage-2 turns/budget and clamps them to the ceilings. The model
+// and harness are not read from here — the controller resolved them and passed
+// them per-Job, so the pod runs exactly what its runner image was built for.
 func (a *Agent) remediationInput() (remediationParams, error) {
 	raw, err := os.ReadFile(a.cfg.inputInvestigation())
 	if err != nil {
@@ -325,29 +331,41 @@ func (a *Agent) remediationInput() (remediationParams, error) {
 	if err != nil {
 		return remediationParams{}, err
 	}
-	return a.clampInvestigation(inv), nil
+	maxTurns, budget := a.clampTurnsBudget(inv.MaxTurns, inv.TokenBudget)
+	return remediationParams{maxTurns: maxTurns, budget: budget}, nil
 }
 
-// clampInvestigation holds the investigation's suggested stage-2 parameters
-// to the configured ceilings/allowlist, logging every correction.
-func (a *Agent) clampInvestigation(inv *report.Investigation) remediationParams {
-	p := remediationParams{model: inv.Model, maxTurns: inv.MaxTurns, budget: inv.TokenBudget}
-	if !slices.Contains(a.cfg.ModelAllowlist, p.model) {
-		a.cfg.Log.Warn("investigation model not allowlisted; using default",
-			"suggested", p.model, "default", a.cfg.RemediateModel)
-		p.model = a.cfg.RemediateModel
-	}
-	if p.maxTurns < 1 || p.maxTurns > a.cfg.RemediateMaxTurns {
+// clampTurnsBudget holds the investigation's suggested turns and token budget
+// to the configured ceilings, logging every correction.
+func (a *Agent) clampTurnsBudget(maxTurns, budget int) (int, int) {
+	if maxTurns < 1 || maxTurns > a.cfg.RemediateMaxTurns {
 		a.cfg.Log.Warn("investigation max_turns clamped",
-			"suggested", p.maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
-		p.maxTurns = a.cfg.RemediateMaxTurns
+			"suggested", maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
+		maxTurns = a.cfg.RemediateMaxTurns
 	}
-	if p.budget < 1 || p.budget > a.cfg.RemediateTokenBudget {
+	if budget < 1 || budget > a.cfg.RemediateTokenBudget {
 		a.cfg.Log.Warn("investigation token_budget clamped",
-			"suggested", p.budget, "ceiling", a.cfg.RemediateTokenBudget)
-		p.budget = a.cfg.RemediateTokenBudget
+			"suggested", budget, "ceiling", a.cfg.RemediateTokenBudget)
+		budget = a.cfg.RemediateTokenBudget
 	}
-	return p
+	return maxTurns, budget
+}
+
+// cliModel translates a canonical model id into the CLI model-id the given
+// harness's --model flag expects. The controller validated the model against
+// the registry before launching, so this defends against an unknown id by
+// falling back to the bare (provider-stripped) id — which is also what the
+// fake harness receives and ignores.
+func cliModel(canonical, harnessID string) string {
+	if m, ok := model.ModelByID(model.Builtins(), canonical); ok {
+		if id, ok := m.CLIModelID(harnessID); ok {
+			return id
+		}
+	}
+	if _, id, ok := strings.Cut(canonical, "/"); ok {
+		return id
+	}
+	return canonical
 }
 
 // packageChangeset runs commit.sh, verifies the repository state, and

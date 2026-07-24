@@ -25,25 +25,22 @@ Values are validated against `values.schema.json` — a typo'd or relocated key 
 silently ignored. Everything specific to one controller lives under that controller's top-level key; only genuinely
 shared settings stay global.
 
-### Global: images, CRDs, Anthropic
+### Global: images, CRDs
 
-| Key                   | Default                              | Purpose                                                                                                             |
-| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `image.repository`    | `ghcr.io/bitwise-media-group/patchy` | Repository prefix (registry included); the binary name is appended                                                  |
-| `image.tag`           | `""`                                 | Empty = `v<appVersion>`                                                                                             |
-| `image.pullPolicy`    | `IfNotPresent`                       |                                                                                                                     |
-| `image.pullSecrets`   | `[]`                                 |                                                                                                                     |
-| `crds.install`        | `true`                               | Render the CRDs as templates (so upgrades track schema changes)                                                     |
-| `crds.keep`           | `true`                               | Stamp `helm.sh/resource-policy: keep` — uninstall never deletes the CRDs, or the FindingRollup statistics with them |
-| `commonLabels`        | `{}`                                 | Extra labels on every rendered object                                                                               |
-| `commonAnnotations`   | `{}`                                 | Extra annotations on every rendered object, pods included (per-object annotations win)                              |
-| `anthropic.secret`    | `patchy-anthropic`                   | Secret (**agent** ns) with the model credential                                                                     |
-| `anthropic.secretKey` | `api-key`                            | Key within it                                                                                                       |
-| `anthropic.secretEnv` | `ANTHROPIC_API_KEY`                  | Env var it is injected as; `CLAUDE_CODE_OAUTH_TOKEN` for a `claude setup-token` OAuth token                         |
+| Key                 | Default                              | Purpose                                                                                                             |
+| ------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `image.repository`  | `ghcr.io/bitwise-media-group/patchy` | Repository prefix (registry included); the binary name is appended                                                  |
+| `image.tag`         | `""`                                 | Empty = `v<appVersion>`                                                                                             |
+| `image.pullPolicy`  | `IfNotPresent`                       |                                                                                                                     |
+| `image.pullSecrets` | `[]`                                 |                                                                                                                     |
+| `crds.install`      | `true`                               | Render the CRDs as templates (so upgrades track schema changes)                                                     |
+| `crds.keep`         | `true`                               | Stamp `helm.sh/resource-policy: keep` — uninstall never deletes the CRDs, or the FindingRollup statistics with them |
+| `commonLabels`      | `{}`                                 | Extra labels on every rendered object                                                                               |
+| `commonAnnotations` | `{}`                                 | Extra annotations on every rendered object, pods included (per-object annotations win)                              |
 
-Per-component image overrides win key-by-key, and a `digest` pins over any tag: `<controller>.image` and `agent.image` —
-the latter is the agent-runner image both job controllers stamp into every Job (`PATCHY_AGENT_IMAGE`). Unlike kustomize,
-pinning the agent digest here is one knob, not two.
+Per-component image overrides win key-by-key, and a `digest` pins over any tag: `<controller>.image` and
+`agent.runners.<harness>.image` — the latter is the runner image the job controllers stamp into every Job that harness
+runs (`PATCHY_<HARNESS>_AGENT_IMAGE`). Unlike kustomize, pinning a runner's digest here is one knob, not two.
 
 ### The pipeline switch-on: the `patchy-config` chart
 
@@ -107,22 +104,22 @@ Everything else a binary binds (see the [configuration reference](../configurati
 
 ### Agent sandbox
 
-| Key                                     | Default                                                | Purpose                                                                                |
-| --------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `agent.namespace`                       | `patchy-agents`                                        | Created by the chart with the `restricted` PSS labels                                  |
-| `agent.createNamespace`                 | `true`                                                 | Set `false` when the namespace is managed elsewhere                                    |
-| `agent.serviceAccount`                  | `patchy-agent`                                         | The Job identity: no Role, token not mounted                                           |
-| `agent.image`                           | `{}`                                                   | The agent-runner image (`PATCHY_AGENT_IMAGE`); `digest` pins                           |
-| `agent.jobDeadline` / `agent.jobTTL`    | `1h` / `1h`                                            | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                    |
-| `agent.modelAllowlist`                  | `claude-sonnet-5,claude-opus-4-8`                      | Models the investigation may request for remediation                                   |
-| `agent.investigate.*`                   | `claude` / `claude-sonnet-5` / `15m` / `25` / `150000` | harness/model/timeout/maxTurns/tokenBudget — **absolute**                              |
-| `agent.remediate.*`                     | `claude` / `claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to |
-| `agent.networkPolicy.create`            | `true`                                                 | Default-deny both directions + DNS + artifact + TCP-443-only egress                    |
-| `agent.networkPolicy.clusterCIDRs`      | RFC-1918 + link-local                                  | Cluster-internal ranges excluded from agent egress                                     |
-| `agent.networkPolicy.hosts.anthropic`   | `api.anthropic.com`                                    | The hostname allowlist — deliberately **no** forge hosts                               |
-| `agent.networkPolicy.hosts.dnsPatterns` | `*.anthropic.com`, `*.svc.cluster.local`               | Cilium only: names the pod may resolve at all                                          |
-| `agent.networkPolicy.cilium.enabled`    | `false`                                                | CiliumNetworkPolicy FQDN egress (needs the DNS proxy)                                  |
-| `agent.networkPolicy.istio.enabled`     | `false`                                                | Sidecar (REGISTRY_ONLY) + ServiceEntry (needs native sidecars + Istio CNI)             |
+| Key                                      | Default                                               | Purpose                                                                                |
+| ---------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `agent.namespace`                        | `patchy-agents`                                       | Created by the chart with the `restricted` PSS labels                                  |
+| `agent.createNamespace`                  | `true`                                                | Set `false` when the namespace is managed elsewhere                                    |
+| `agent.serviceAccount`                   | `patchy-agent`                                        | The Job identity: no Role, token not mounted                                           |
+| `agent.jobDeadline` / `agent.jobTTL`     | `1h` / `1h`                                           | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                    |
+| `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-4-8` | Canonical model ids the investigation may request for remediation                      |
+| `agent.investigate.*`                    | `anthropic/claude-sonnet-5` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)     |
+| `agent.remediate.*`                      | `anthropic/claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to |
+| `agent.runners.<harness>`                | claude enabled, codex disabled                        | Per-harness `enabled`/`image`/`secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`   |
+| `agent.networkPolicy.create`             | `true`                                                | Default-deny both directions + DNS + artifact + TCP-443-only egress                    |
+| `agent.networkPolicy.clusterCIDRs`       | RFC-1918 + link-local                                 | Cluster-internal ranges excluded from agent egress                                     |
+| `agent.runners.<harness>.hosts`          | claude: `api.anthropic.com`                           | Per-runner egress allowlist — deliberately **no** forge hosts                          |
+| `agent.networkPolicy.clusterDNSPatterns` | `*.svc.cluster.local`                                 | Cilium only: cluster-local names every runner may resolve (for the artifact fetch)     |
+| `agent.networkPolicy.cilium.enabled`     | `false`                                               | One CiliumNetworkPolicy per enabled runner, by harness label (needs the DNS proxy)     |
+| `agent.networkPolicy.istio.enabled`      | `false`                                               | Sidecar (REGISTRY_ONLY) + ServiceEntry (needs native sidecars + Istio CNI)             |
 
 Enabling both Cilium and Istio fails the render — pick one. See the
 [isolation model](isolation.md#network-egress-the-floor-and-the-fence) for what each layer requires and what it doesn't

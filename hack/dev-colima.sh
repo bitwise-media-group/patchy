@@ -39,7 +39,7 @@ mise run snapshot
 # retag the host-arch snapshot images as patchy/<app>:dev (dev overlay names)
 arch=$(uname -m)
 [ "$arch" = x86_64 ] && arch=amd64
-for app in integration-controller source-controller context-controller investigation-controller remediation-controller agent-runner status-server; do
+for app in integration-controller source-controller context-controller investigation-controller remediation-controller claude-agent-runner codex-agent-runner status-server; do
   tag=$(docker images "ghcr.io/bitwise-media-group/patchy/$app" --format '{{.Tag}}' |
     grep -- "-$arch$" | head -1)
   [ -n "$tag" ] || {

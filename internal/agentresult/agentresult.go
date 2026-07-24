@@ -13,6 +13,7 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/envelope"
+	"github.com/bitwise-media-group/patchy/internal/model"
 )
 
 // Size caps (bytes) for CRD string fields.
@@ -34,11 +35,30 @@ func FromStage(st *envelope.Stage) *v1alpha1.StageResult {
 			OutputTokens:        int64(st.Usage.OutputTokens),
 			CacheReadTokens:     int64(st.Usage.CacheReadTokens),
 			CacheCreationTokens: int64(st.Usage.CacheCreationTokens),
-			CostUSD:             FormatCost(st.Usage.CostUSD),
+			CostUSD:             FormatCost(stageCost(st)),
 		},
 		ElapsedMilliseconds: int64(st.ElapsedSeconds * 1000),
 		Detail:              TruncateDetail(st.Detail),
 	}
+}
+
+// stageCost is the harness-reported cost, or a fallback priced from the token
+// counts at the model's published rates when the harness reports none (codex
+// reports tokens but not cost). Zero when neither is available.
+func stageCost(st *envelope.Stage) float64 {
+	if st.Usage.CostUSD > 0 {
+		return st.Usage.CostUSD
+	}
+	m, ok := model.ModelByID(model.Builtins(), st.Model)
+	if !ok {
+		return 0
+	}
+	priced := model.UsageCostUSD(m,
+		st.Usage.InputTokens, st.Usage.CacheReadTokens, st.Usage.CacheCreationTokens, st.Usage.OutputTokens)
+	if priced == nil {
+		return 0
+	}
+	return *priced
 }
 
 // Analysis maps one envelope analysis dimension; nil when unassessed.

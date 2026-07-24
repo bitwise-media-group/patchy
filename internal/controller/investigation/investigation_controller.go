@@ -61,6 +61,11 @@ type InvestigationReconciler struct {
 	ConfidenceThreshold float64
 	// Aging lifts long-waiting investigations.
 	Aging schedule.AgingPolicy
+	// InvestigateHarness/InvestigateModel are the harness id and canonical
+	// model the analysis stage runs on, resolved at startup; the Job carries
+	// them so its pod runs the harness its runner image was built for.
+	InvestigateHarness string
+	InvestigateModel   string
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
@@ -197,6 +202,8 @@ func (r *InvestigationReconciler) launch(ctx context.Context, inv *v1alpha1.Inve
 		Repo:           repoName,
 		Attempt:        int(inv.Spec.Attempt),
 		Phase:          "investigate",
+		Harness:        r.InvestigateHarness,
+		Model:          r.InvestigateModel,
 		BaseSHA:        repo.Status.ResolvedSHA,
 		IssueMarkdown:  handoff,
 		Kind:           string(v1alpha1.RunKindInvestigation),

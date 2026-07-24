@@ -38,12 +38,18 @@ type Config struct {
 	BaseSHA string
 	Phase   Phase
 
+	// InvestigateHarness/RemediateHarness are the harness ids the stages run
+	// on, resolved controller-side from the stage model and passed per-Job.
 	InvestigateHarness string
 	RemediateHarness   string
-	InvestigateModel   string
-	// RemediateModel is the model the remediation stage runs on when the
-	// investigation's suggestion is missing or not allowlisted.
-	RemediateModel string
+	// InvestigateModel/RemediateModel are canonical provider-qualified model
+	// ids (e.g. "anthropic/claude-sonnet-5"). The controller resolves the
+	// harness and clamps the remediation model to the allowlist before the
+	// Job is created, so these already match the runner image the pod is in.
+	InvestigateModel string
+	RemediateModel   string
+	// ModelAllowlist is the canonical model ids the investigation may suggest
+	// for remediation; rendered into the analysis prompt.
 	ModelAllowlist []string
 
 	// The investigation stage's limits are absolute: it runs on exactly
@@ -105,8 +111,8 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		Phase:              Phase(get("PHASE", string(PhaseInvestigate))),
 		InvestigateHarness: get("INVESTIGATE_HARNESS", "claude"),
 		RemediateHarness:   get("REMEDIATE_HARNESS", "claude"),
-		InvestigateModel:   get("INVESTIGATE_MODEL", "claude-sonnet-5"),
-		RemediateModel:     get("REMEDIATE_MODEL", "claude-sonnet-5"),
+		InvestigateModel:   get("INVESTIGATE_MODEL", "anthropic/claude-sonnet-5"),
+		RemediateModel:     get("REMEDIATE_MODEL", "anthropic/claude-sonnet-5"),
 	}
 	if list := get("MODEL_ALLOWLIST", cfg.RemediateModel); list != "" {
 		for m := range strings.SplitSeq(list, ",") {

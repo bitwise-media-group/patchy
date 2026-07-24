@@ -36,14 +36,32 @@ A real CMDB integration implements the same interface: resolve the repository, r
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the
 highest-leverage integration in the system.
 
-## Harnesses
+## Harnesses and models
 
 The agent stages are harness-agnostic by construction — the harness builds the CLI argv and parses its stdout, the
-runner executes and enforces budgets, and the two stages are configured independently (`--investigate-harness` on the
-[investigation-controller](configuration/investigation-controller.md), `--remediate-harness` on the
-[remediation-controller](configuration/remediation-controller.md)). Today `claude` is the production harness and `fake`
-replays recorded stream fixtures for tests and the dev overlay; the seam exists so investigation and remediation could
-run on different agents without touching the controllers.
+runner executes and enforces budgets. Today `claude` (Claude Code, Anthropic models) and `codex` (the OpenAI Codex CLI,
+OpenAI models) are the built-in harnesses, and `fake` replays recorded stream fixtures for tests and the dev overlay.
+
+**Models are associated with harnesses, not chosen alongside them.** `internal/model` is a registry of canonical,
+provider-qualified model ids (`anthropic/claude-sonnet-5`, `openai/gpt-5.3-codex`); each model records the harnesses
+that can run it (with the CLI-specific model id each expects) and a preferred harness. Everything an operator or the
+agent names a model with — the allowlist, the stage defaults, the investigation report's `model:` — is a canonical id.
+The harness that runs a model is then _derived_: `harness.ResolveModel` picks the model's preferred harness when it is
+enabled, so an OpenAI model routes to codex and an Anthropic model to claude. Adding a model (or teaching an existing
+harness a new one) is a registry edit; adding a whole new provider is a new harness plus its registry entries.
+
+Each harness has its own **runner image** (`claude-agent-runner`, `codex-agent-runner`) bundling just that CLI, its own
+credential Secret, and its own egress network policy. The remediation controller resolves the investigation's chosen
+model to a harness _before_ launching, so the Job runs the matching image with the matching credential — a claude pod
+reaching only `api.anthropic.com`, a codex pod only `api.openai.com`. Which harnesses a deployment enables is
+configuration (`--harnesses`, defaulting to any whose credential Secret exists); startup fails unless every allowlisted
+model has an enabled harness that can run it.
+
+The `codex` harness runs `codex exec --json` with codex's own sandbox disabled — patchy confines the agent at the pod
+layer (no network beyond the model API, no credentials), so the CLI's kernel sandbox is redundant there. Codex has no
+equivalents for the tool allow/deny grammar or a turn ceiling; the wall-clock timeout and output-token budget are
+enforced by the runner as usual, though codex reports usage only per completed turn, so the budget cannot fire mid-turn.
+Codex reports token usage but not cost, so the rollup prices its tokens from the model registry's published rates.
 
 ## Ground rules
 

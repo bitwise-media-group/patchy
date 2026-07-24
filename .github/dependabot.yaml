@@ -35,8 +35,9 @@ updates:
       schedule:
           interval: daily
 
-    # The base-image references in Dockerfile.controller / Dockerfile.agent-runner
-    # are tag + digest pinned; this bumps the digests (and LTS tag rolls).
+    # The base-image references in Dockerfile.controller and the per-harness
+    # Dockerfile.{claude,codex}-agent-runner are tag + digest pinned; this bumps
+    # the digests (and LTS tag rolls).
     - package-ecosystem: docker
       directory: /
       cooldown:

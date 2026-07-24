@@ -6,7 +6,7 @@ and the rollup/TTL loop, which makes it the one deleter of expired Findings.
 
 ```sh
 remediation-controller serve --namespace patchy \
-  --agent-image ghcr.io/bitwise-media-group/patchy/agent-runner:v0.3.3
+  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.6.0
 ```
 
 ## Pipeline flags
@@ -34,33 +34,36 @@ The four weights combine the investigation's ratings into the 0–100 scheduling
 
 ## Agent Job flags
 
-The same Job-construction flags as the [investigation-controller](investigation-controller.md#agent-job-flags):
-`--agent-image` (**required**), `--agent-namespace`, `--agent-service-account`, `--anthropic-secret`,
-`--anthropic-secret-key`, `--anthropic-secret-env`, `--job-deadline`, `--job-ttl`. This binary additionally validates
-`--anthropic-secret-env` against the credential env vars the built-in harnesses accept (`ANTHROPIC_API_KEY`,
-`CLAUDE_CODE_OAUTH_TOKEN`, …) and refuses to start otherwise.
+The same per-harness runner flags as the [investigation-controller](investigation-controller.md#agent-job-flags):
+`--claude-agent-image` / `--codex-agent-image` / `--fake-agent-image`, `--harnesses`, the per-harness credential triples
+(`--claude-secret{,-key,-env}`, `--codex-secret{,-key,-env}`), `--agent-namespace`, `--agent-service-account`,
+`--job-deadline`, `--job-ttl`. Each `--<harness>-secret-env` is validated against the credential env vars that harness
+accepts (claude: `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`; codex: `OPENAI_API_KEY`) and the controller refuses to
+start on a mismatch, on a missing credential for an enabled harness, or on an allowlisted model no enabled harness can
+run.
 
 ## Stage flags
 
 The remediation stage's `max-turns` and `token-budget` are **ceilings**: the investigation report requests its own
-model, turn count, and token budget for the fix, and both the controller and the runner clamp those requests to these
-bounds (and the model to the allowlist). The model here is the fallback when the report's suggestion is missing or not
-allowlisted.
+model, turn count, and token budget for the fix. This controller's spawner clamps the requested model to the allowlist
+and resolves the harness that runs it (the model's provider decides the runner image and credential); the runner clamps
+the turns and budget. The `--remediate-model` here is the canonical fallback model when the report's suggestion is
+missing or off the allowlist; its harness is derived from it.
 
 <div class="nowrap-first" markdown>
 
-| Flag                       | Env                             | Default           | Purpose                                      |
-| -------------------------- | ------------------------------- | ----------------- | -------------------------------------------- |
-| `--remediate-harness`      | `PATCHY_REMEDIATE_HARNESS`      | `claude`          | Harness the remediation stage runs on        |
-| `--remediate-model`        | `PATCHY_REMEDIATE_MODEL`        | `claude-sonnet-5` | Default model when the report requests none  |
-| `--remediate-timeout`      | `PATCHY_REMEDIATE_TIMEOUT`      | `45m`             | Wall-clock limit for the remediation stage   |
-| `--remediate-max-turns`    | `PATCHY_REMEDIATE_MAX_TURNS`    | `80`              | Ceiling on requested turns                   |
-| `--remediate-token-budget` | `PATCHY_REMEDIATE_TOKEN_BUDGET` | `400000`          | Ceiling on the requested output-token budget |
+| Flag                       | Env                             | Default                     | Purpose                                         |
+| -------------------------- | ------------------------------- | --------------------------- | ----------------------------------------------- |
+| `--model-allowlist`        | `PATCHY_MODEL_ALLOWLIST`        | canonical ids               | Canonical model ids remediation may run         |
+| `--remediate-model`        | `PATCHY_REMEDIATE_MODEL`        | `anthropic/claude-sonnet-5` | Canonical default when the report requests none |
+| `--remediate-timeout`      | `PATCHY_REMEDIATE_TIMEOUT`      | `45m`                       | Wall-clock limit for the remediation stage      |
+| `--remediate-max-turns`    | `PATCHY_REMEDIATE_MAX_TURNS`    | `80`                        | Ceiling on requested turns                      |
+| `--remediate-token-budget` | `PATCHY_REMEDIATE_TOKEN_BUDGET` | `400000`                    | Ceiling on the requested output-token budget    |
 
 </div>
 
 Token budgets are enforced live — the runner watches the harness's streamed usage events and kills the process group
-when the cumulative output-token count is exceeded; the `claude` CLI has no such flag itself.
+when the cumulative output-token count is exceeded; the harness CLI has no such flag itself.
 
 ## Behavior
 

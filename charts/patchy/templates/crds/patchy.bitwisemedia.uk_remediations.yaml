@@ -123,13 +123,21 @@ spec:
               parameters:
                 description: Parameters bound this run (clamped controller-side).
                 properties:
+                  harness:
+                    description: |-
+                      Harness that runs Model, resolved from the model by the remediation
+                      spawner (the model's provider decides which agent-runner image and
+                      credential the Job uses). Empty until resolution.
+                    type: string
                   maxTurns:
                     description: MaxTurns caps agent turns.
                     format: int32
                     minimum: 0
                     type: integer
                   model:
-                    description: Model the harness runs.
+                    description: |-
+                      Model the harness runs, as a canonical provider-qualified id
+                      (e.g. "anthropic/claude-sonnet-5").
                     type: string
                   tokenBudget:
                     description: TokenBudget caps output tokens (the runner kill switch).

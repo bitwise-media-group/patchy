@@ -25,20 +25,17 @@ data:
     # ConfigMap; see deployment-context-controller-patch.yaml.
     PATCHY_STATIC_CONTEXT_FILE: /etc/patchy/context/cmdb.yaml
 
-    # Local images loaded into kind. This string is what the job controllers
-    # write into the Job spec, so it must match the `images:` rename in
-    # kustomization.yaml (kustomize does not rewrite ConfigMap values).
-    PATCHY_AGENT_IMAGE: patchy/agent-runner:dev
-
     # ---- the fake harness --------------------------------------------------
-    # The job controllers pass these through to every agent pod
-    # (cmd/*/serve.go:agentEnv), where agentrun.FromEnv resolves them. "fake"
-    # selects internal/harness.Fake: scripted output, no model call, so no
-    # Anthropic key is needed in dev. (The Job still wires ANTHROPIC_API_KEY
-    # from the patchy-anthropic Secret, so the placeholder in secret-dev.yaml
-    # must exist for pods to start.)
-    PATCHY_INVESTIGATE_HARNESS: fake
-    PATCHY_REMEDIATE_HARNESS: fake
+    # PATCHY_HARNESSES restricts the enabled set to just the fake runner
+    # (internal/harness.Fake: scripted output, no model call), so dev needs no
+    # model credential at all — the fake runner wires no Secret, and the
+    # claude/codex runners configured in the base are simply not enabled. The
+    # model choices stay canonical; the fake harness runs any model. This
+    # string is what the job controllers write into the Job spec, so it must
+    # match the `images:` rename in kustomization.yaml (kustomize does not
+    # rewrite ConfigMap values).
+    PATCHY_HARNESSES: fake
+    PATCHY_FAKE_AGENT_IMAGE: patchy/claude-agent-runner:dev
 
     # Fail fast in dev rather than burning an hour of wall clock.
     PATCHY_JOB_DEADLINE: 10m

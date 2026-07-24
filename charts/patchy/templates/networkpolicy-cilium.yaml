@@ -3,38 +3,47 @@
 #
 # Defence in depth for the agent sandbox on Cilium CNIs: FQDN matching on top
 # of the base "TCP 443 anywhere" NetworkPolicy. Requires Cilium with
-# DNS-based policy enabled (the DNS proxy).
+# DNS-based policy enabled (the DNS proxy). One policy is rendered per enabled
+# runner, selecting that harness's pods by their harness label, so a claude pod
+# may reach only api.anthropic.com and a codex pod only api.openai.com.
 #
-# The agent pod needs exactly two destinations:
+# Each runner's pods need exactly two destinations:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
 #     container's credential-less, digest-verified tarball fetch. No forge
 #     host appears in this policy at all — the pod never talks to GitHub.
-#   * api.anthropic.com: the agent container's `claude -p`.
+#   * the runner's own model API (agent.runners.<harness>.hosts): the agent
+#     container's harness CLI.
 #
 # If your CNI is not Cilium, leave this disabled; the base NetworkPolicy
 # still applies and is the floor. See deploy/kustomize/components/cilium.
 {{- if and .Values.agent.networkPolicy.create .Values.agent.networkPolicy.cilium.enabled }}
-{{- $hosts := .Values.agent.networkPolicy.hosts }}
+{{- $root := . }}
+{{- $clusterDNS := .Values.agent.networkPolicy.clusterDNSPatterns | default list }}
+{{- range $id, $r := .Values.agent.runners }}
+{{- if $r.enabled }}
+---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-    name: {{ include "patchy.fullname" . }}-agent-egress
-    namespace: {{ .Values.agent.namespace }}
+    name: {{ include "patchy.fullname" $root }}-agent-egress-{{ $id }}
+    namespace: {{ $root.Values.agent.namespace }}
     labels:
-        {{- include "patchy.labels" (dict "root" . "name" "patchy-agents") | nindent 8 }}
-    {{- with include "patchy.annotations" (dict "root" .) }}
+        {{- include "patchy.labels" (dict "root" $root "name" "patchy-agents") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" $root) }}
     annotations:
         {{- . | nindent 8 }}
     {{- end }}
 spec:
     endpointSelector:
         matchLabels:
-            {{- include "patchy.agentPodSelector" . | nindent 12 }}
+            {{- include "patchy.agentPodSelector" $root | nindent 12 }}
+            patchy.bitwisemedia.uk/harness: {{ $id | quote }}
     egress:
         # DNS via Cilium's proxy — this is what makes toFQDNs work at all:
         # the proxy watches the answers and programs the resolved IPs into
-        # the policy. Only the patterns below may be resolved.
+        # the policy. Only this runner's model host and the cluster-local
+        # names (for the artifact fetch) may be resolved.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: kube-system
@@ -45,7 +54,7 @@ spec:
                       protocol: ANY
                 rules:
                     dns:
-                        {{- range $hosts.dnsPatterns }}
+                        {{- range concat ($r.dnsPatterns | default list) $clusterDNS }}
                         - matchPattern: {{ . | quote }}
                         {{- end }}
 
@@ -53,20 +62,22 @@ spec:
         # server, in-cluster, credential-less, digest-verified.
         - toEndpoints:
               - matchLabels:
-                    io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+                    io.kubernetes.pod.namespace: {{ $root.Release.Namespace }}
                     app.kubernetes.io/name: source-controller
           toPorts:
               - ports:
                     - port: "9790"
                       protocol: TCP
 
-        # The agent container: `claude -p` and nothing else.
+        # The agent container: this runner's model API and nothing else.
         - toFQDNs:
-              {{- range $hosts.anthropic }}
+              {{- range $r.hosts | default list }}
               - matchName: {{ . | quote }}
               {{- end }}
           toPorts:
               - ports:
                     - port: "443"
                       protocol: TCP
+{{- end }}
+{{- end }}
 {{- end }}

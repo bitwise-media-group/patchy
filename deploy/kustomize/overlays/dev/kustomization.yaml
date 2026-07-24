@@ -43,8 +43,11 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       newName: patchy/remediation-controller
       newTag: dev
-    - name: ghcr.io/bitwise-media-group/patchy/agent-runner
-      newName: patchy/agent-runner
+    - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
+      newName: patchy/claude-agent-runner
+      newTag: dev
+    - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
+      newName: patchy/codex-agent-runner
       newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newName: patchy/status-server

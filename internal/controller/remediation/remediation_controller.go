@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -69,6 +70,11 @@ type RemediationReconciler struct {
 	MaxAttempts int32
 	// Aging lifts long-waiting remediations.
 	Aging schedule.AgingPolicy
+	// Enabled is the set of harness ids this deployment can run. launch
+	// re-checks the spawner-resolved harness against it, so an enabled-set
+	// change between spawn and launch fails the run cleanly instead of
+	// creating an unrunnable Job.
+	Enabled []string
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
@@ -216,6 +222,16 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 		return err
 	}
 
+	// The spawner resolved the model to a harness (and thus a runner image and
+	// credential). Re-check it is still enabled; an enabled-set change between
+	// spawn and launch fails the run cleanly rather than creating a Job for a
+	// runner that no longer exists.
+	harnessID := rem.Spec.Parameters.Harness
+	if harnessID == "" || !slices.Contains(r.Enabled, harnessID) {
+		return r.fail(ctx, rem, "aborted",
+			fmt.Sprintf("harness %q for model %q is not enabled", harnessID, rem.Spec.Parameters.Model))
+	}
+
 	repoName := ""
 	if fnd.Spec.Repository != nil {
 		repoName = fnd.Spec.Repository.Name
@@ -224,6 +240,8 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 		Repo:                  repoName,
 		Attempt:               int(rem.Spec.Attempt),
 		Phase:                 "remediate",
+		Harness:               harnessID,
+		Model:                 rem.Spec.Parameters.Model,
 		BaseSHA:               repo.Status.ResolvedSHA,
 		IssueMarkdown:         handoff,
 		InvestigationMarkdown: inv.Status.Report,

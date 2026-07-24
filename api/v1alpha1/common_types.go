@@ -32,6 +32,10 @@ const (
 	// the two job controllers sharing one namespace never touch each other's
 	// Jobs.
 	LabelRunKind = "patchy.bitwisemedia.uk/kind"
+	// LabelHarness names the agent harness a Job's pod runs ("claude"/"codex"),
+	// the selector the per-harness egress network policies match on so each
+	// runner reaches only its own model API.
+	LabelHarness = "patchy.bitwisemedia.uk/harness"
 	// LabelScope carries the rollup scope type on FindingRollup objects.
 	LabelScope = "patchy.bitwisemedia.uk/scope"
 
@@ -155,9 +159,15 @@ const (
 // AgentParameters bound one agent run: which model it uses and how much it
 // may spend. Ceilings are clamped controller-side before they land here.
 type AgentParameters struct {
-	// Model the harness runs.
+	// Model the harness runs, as a canonical provider-qualified id
+	// (e.g. "anthropic/claude-sonnet-5").
 	// +optional
 	Model string `json:"model,omitempty"`
+	// Harness that runs Model, resolved from the model by the remediation
+	// spawner (the model's provider decides which agent-runner image and
+	// credential the Job uses). Empty until resolution.
+	// +optional
+	Harness string `json:"harness,omitempty"`
 	// MaxTurns caps agent turns.
 	// +optional
 	// +kubebuilder:validation:Minimum=0

@@ -7,7 +7,7 @@
 // an AgentResult — harnesses never touch os/exec themselves, so every caller
 // can be tested against captured output.
 //
-// Two harnesses register: Claude (the claude CLI, patchy's real agent) and
-// Fake (replays a fixture file through cat, for tests and the agent-runner's
-// --fake mode).
+// Three harnesses register: Claude (the claude CLI, patchy's default agent),
+// Codex (the codex CLI, driving OpenAI models) and Fake (replays a fixture
+// file through cat, for tests and the agent-runner's --fake mode).
 package harness

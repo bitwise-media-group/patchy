@@ -1,9 +1,10 @@
 # agent-runner
 
-The in-pod coding-agent runtime: one stage per Job — `investigate` or `remediate` — via `claude -p`. It never talks to
-GitHub or the Kubernetes API, holds no credentials beyond the model key, and has no flags — configuration is exclusively
-`PATCHY_*` environment variables, injected into the Job pod by the job controllers. Results leave the pod as a
-`PATCHY-EVENT:` JSONL stream on stdout (which is why all patchy logging goes to stderr).
+The in-pod coding-agent runtime: one stage per Job — `investigate` or `remediate` — via the harness CLI its runner image
+bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image). It never talks to
+GitHub or the Kubernetes API, holds no credentials beyond the one model key of the harness it runs, and has no flags —
+configuration is exclusively `PATCHY_*` environment variables, injected into the Job pod by the job controllers. Results
+leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why all patchy logging goes to stderr).
 
 You normally never configure the agent-runner directly: the
 [investigation-controller](investigation-controller.md#stage-flags) and
@@ -26,12 +27,14 @@ matters when debugging a Job spec or running the runtime standalone.
 
 ## Stage configuration
 
-Mirrors of the controllers' stage flags, same defaults: `PATCHY_INVESTIGATE_HARNESS`, `PATCHY_INVESTIGATE_MODEL`,
-`PATCHY_INVESTIGATE_TIMEOUT` (`15m`), `PATCHY_INVESTIGATE_MAX_TURNS` (`25`), `PATCHY_INVESTIGATE_TOKEN_BUDGET`
-(`150000`), `PATCHY_REMEDIATE_HARNESS`, `PATCHY_REMEDIATE_MODEL`, `PATCHY_REMEDIATE_TIMEOUT` (`45m`),
-`PATCHY_REMEDIATE_MAX_TURNS` (`80`), `PATCHY_REMEDIATE_TOKEN_BUDGET` (`400000`), and `PATCHY_MODEL_ALLOWLIST` (defaults
-to the remediate model). The investigate limits are absolute; the remediate max-turns/token-budget values are ceilings
-that clamp whatever the investigation report requested — the runner clamps again even though the controller already did.
+Mirrors of the controllers' stage flags: `PATCHY_INVESTIGATE_TIMEOUT` (`15m`), `PATCHY_INVESTIGATE_MAX_TURNS` (`25`),
+`PATCHY_INVESTIGATE_TOKEN_BUDGET` (`150000`), `PATCHY_REMEDIATE_TIMEOUT` (`45m`), `PATCHY_REMEDIATE_MAX_TURNS` (`80`),
+`PATCHY_REMEDIATE_TOKEN_BUDGET` (`400000`), and `PATCHY_MODEL_ALLOWLIST` (canonical model ids, rendered into the
+analysis prompt). The **per-Job** `PATCHY_<STAGE>_HARNESS` and `PATCHY_<STAGE>_MODEL` (a canonical, provider-qualified
+id) are set by the controller from the harness and model it resolved for this Job — so the pod runs the harness its
+runner image was built for on the model the controller chose, and translates that canonical id to the CLI's own model
+id. The investigate limits are absolute; the remediate max-turns/token-budget values are ceilings that clamp whatever
+the investigation report requested.
 
 Two knobs exist only here:
 
@@ -59,16 +62,18 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 
 <div class="nowrap-first" markdown>
 
-| Env                       | Source                                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`       | `patchy-anthropic` Secret via `secretKeyRef` (the default `--anthropic-secret-env`)                        |
-| `CLAUDE_CODE_OAUTH_TOKEN` | The same Secret when `--anthropic-secret-env=CLAUDE_CODE_OAUTH_TOKEN` — a `claude setup-token` OAuth token |
+| Env                       | Source                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`       | The claude runner's Secret via `secretKeyRef` (`--claude-secret`, the default `--claude-secret-env`)         |
+| `CLAUDE_CODE_OAUTH_TOKEN` | The claude runner's Secret when `--claude-secret-env=CLAUDE_CODE_OAUTH_TOKEN` — a `claude setup-token` token |
+| `OPENAI_API_KEY`          | The codex runner's Secret via `secretKeyRef` (`--codex-secret`) — injected only into codex-harness Jobs      |
 
 </div>
 
-That is the complete list. The agent container's environment passes through to the harness CLI child process, so the
-injected key is inherited by `claude` automatically. The `fake` harness needs no credential value — but the Secret must
-still exist, because the Job wires the `secretKeyRef` unconditionally.
+Only **one** of these reaches a given pod: the Job wires the `secretKeyRef` of the harness it runs, so a claude Job
+carries only the Anthropic credential and a codex Job only the OpenAI one. The agent container's environment passes
+through to the harness CLI child process, so the injected key is inherited by `claude` (or `codex`) automatically. The
+`fake` harness needs no credential value and its runner has no Secret, so its Jobs carry no model key at all.
 
 ## The event stream
 

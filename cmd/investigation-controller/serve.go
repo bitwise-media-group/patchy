@@ -19,6 +19,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
@@ -43,18 +44,16 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("priority-aging-interval", 24*time.Hour, "wait per effective-priority point of aging boost")
 	f.Int("priority-aging-cap", 25, "maximum aging boost")
 
-	f.String("agent-image", "", "agent-runner container image (required)")
 	f.String("agent-namespace", "patchy-agents", "namespace the agent Jobs run in")
 	f.String("agent-service-account", "patchy-agent", "service account for the agent Jobs")
-	f.String("anthropic-secret", "patchy-anthropic", "Secret holding the model credential")
-	f.String("anthropic-secret-key", "api-key", "key within the model credential Secret")
-	f.String("anthropic-secret-env", "ANTHROPIC_API_KEY", "env var the credential is injected as")
+	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
-	f.String("model-allowlist", "claude-sonnet-5", "models the investigation may request for remediation")
+	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-4-8",
+		"canonical model ids the investigation may request for remediation")
 
-	f.String("investigate-harness", "claude", "harness the analysis stage runs on")
-	f.String("investigate-model", "claude-sonnet-5", "model the analysis stage runs on")
+	f.String("investigate-model", "anthropic/claude-sonnet-5",
+		"canonical model id the analysis stage runs on (its harness is derived)")
 	f.Duration("investigate-timeout", 15*time.Minute, "wall-clock limit for the analysis stage")
 	f.Int("investigate-max-turns", 25, "agent turns allowed for the analysis stage")
 	f.Int("investigate-token-budget", 150000, "output-token budget for the analysis stage")
@@ -64,12 +63,11 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 }
 
 // agentEnv is the PATCHY_* configuration every investigation pod receives.
+// The per-Job harness and model are carried on the Job spec, not here.
 func agentEnv(opts *cli.Options) map[string]string {
 	return map[string]string{
 		"PATCHY_MODEL_ALLOWLIST": opts.String("model-allowlist"),
 
-		"PATCHY_INVESTIGATE_HARNESS":      opts.String("investigate-harness"),
-		"PATCHY_INVESTIGATE_MODEL":        opts.String("investigate-model"),
 		"PATCHY_INVESTIGATE_TIMEOUT":      opts.Duration("investigate-timeout").String(),
 		"PATCHY_INVESTIGATE_MAX_TURNS":    fmt.Sprint(opts.Int("investigate-max-turns")),
 		"PATCHY_INVESTIGATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("investigate-token-budget")),
@@ -99,9 +97,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if namespace == "" {
 		return errors.New("namespace is required (--namespace or POD_NAMESPACE)")
 	}
-	image := opts.String("agent-image")
-	if image == "" {
-		return errors.New("agent-image is required")
+	runners, err := runnercfg.Runners(opts)
+	if err != nil {
+		return err
 	}
 
 	mgr, err := kube.NewManager(kube.Options{
@@ -125,16 +123,28 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if err != nil {
 		return fmt.Errorf("kubernetes clientset: %w", err)
 	}
+
+	agentNS := opts.String("agent-namespace")
+	investigateModel := opts.String("investigate-model")
+	enabled, err := runnercfg.Resolve(ctx, cs, agentNS, runners,
+		runnercfg.Restrict(opts), runnercfg.SplitList(opts.String("model-allowlist")), investigateModel)
+	if err != nil {
+		return err
+	}
+	investigateHarness, _, err := runnercfg.ResolveHarness(investigateModel, enabled)
+	if err != nil {
+		return err
+	}
+	log.LogAttrs(ctx, slog.LevelInfo, "harnesses enabled",
+		slog.Any("enabled", enabled), slog.String("investigate_harness", investigateHarness))
+
 	runner := jobs.New(cs, jobs.Config{
-		Namespace:          opts.String("agent-namespace"),
-		Image:              image,
-		ServiceAccount:     opts.String("agent-service-account"),
-		Deadline:           opts.Duration("job-deadline"),
-		TTL:                opts.Duration("job-ttl"),
-		AnthropicSecret:    opts.String("anthropic-secret"),
-		AnthropicSecretKey: opts.String("anthropic-secret-key"),
-		AnthropicSecretEnv: opts.String("anthropic-secret-env"),
-		Env:                agentEnv(opts),
+		Namespace:      agentNS,
+		ServiceAccount: opts.String("agent-service-account"),
+		Deadline:       opts.Duration("job-deadline"),
+		TTL:            opts.Duration("job-ttl"),
+		Runners:        runners,
+		Env:            agentEnv(opts),
 	}, log)
 
 	gate := &investigation.GateReconciler{
@@ -143,7 +153,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Namespace: namespace,
 		MinAge:    opts.Duration("finding-min-age"),
 		Parameters: v1alpha1.AgentParameters{
-			Model:       opts.String("investigate-model"),
+			Model:       investigateModel,
+			Harness:     investigateHarness,
 			MaxTurns:    int32(opts.Int("investigate-max-turns")),
 			TokenBudget: int64(opts.Int("investigate-token-budget")),
 		},
@@ -163,7 +174,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 			Interval: opts.Duration("priority-aging-interval"),
 			Cap:      int32(opts.Int("priority-aging-cap")),
 		},
-		Log: log,
+		InvestigateHarness: investigateHarness,
+		InvestigateModel:   investigateModel,
+		Log:                log,
 	}
 	if err := inv.SetupWithManager(mgr); err != nil {
 		return err

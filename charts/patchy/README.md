@@ -64,10 +64,11 @@ Created out of band (SOPS, external-secrets, or `kubectl` for dev) — the chart
 See [`deploy/kustomize/base/secrets.example.yaml`](../../deploy/kustomize/base/secrets.example.yaml) for shapes and
 one-liners:
 
-| Secret               | Namespace         | Keys                                                 | What                                                                                                                                                       |
-| -------------------- | ----------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| e.g. `patchy-github` | release namespace | `appID` + `privateKey` (or `token`), `webhookSecret` | The forge/provider credential, named by each Integration/Forge CR's `spec.secretRef` — **not** mounted into any Deployment; read on demand through the API |
-| `patchy-anthropic`   | `patchy-agents`   | `api-key`                                            | The model credential for the agent Jobs — an Anthropic API key, or a `claude setup-token` OAuth token with `anthropic.secretEnv: CLAUDE_CODE_OAUTH_TOKEN`  |
+| Secret               | Namespace         | Keys                                                 | What                                                                                                                                                                                                                     |
+| -------------------- | ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| e.g. `patchy-github` | release namespace | `appID` + `privateKey` (or `token`), `webhookSecret` | The forge/provider credential, named by each Integration/Forge CR's `spec.secretRef` — **not** mounted into any Deployment; read on demand through the API                                                               |
+| `patchy-anthropic`   | `patchy-agents`   | `api-key`                                            | The claude runner's credential — an Anthropic API key, or a `claude setup-token` OAuth token with `agent.runners.claude.secretEnv: CLAUDE_CODE_OAUTH_TOKEN`. Required while the `claude` runner is enabled (the default) |
+| `patchy-openai`      | `patchy-agents`   | `api-key`                                            | The codex runner's OpenAI API key. Only needed when `agent.runners.codex.enabled: true`                                                                                                                                  |
 
 One GitHub Secret may serve both CRs, or you can split read and write identities across two GitHub Apps. The provider
 has exactly one webhook URL; point it at `https://<webhook.host>/github/webhooks` and enable one flavour of the chart's
@@ -82,13 +83,15 @@ labels; `helm uninstall` deletes it, killing any running agent Job). The isolati
 
 1. **Credential absence** — the agent pod holds no forge credential at all, not even in an init container. The
    repository arrives as a digest-verified tarball fetched from the source-controller's in-cluster artifact server
-   (:9790); the only Secrets in the pod are the model credential and the per-Job handoff markdown. The agent
-   ServiceAccount has no Role and its token is not mounted.
+   (:9790); the only Secrets in the pod are the one model credential of the harness the Job runs and the per-Job handoff
+   markdown. The agent ServiceAccount has no Role and its token is not mounted.
 2. **NetworkPolicy** (`agent.networkPolicy.create`) — default-deny both directions, re-permitting only DNS, the artifact
-   server, and TCP 443 externally (`claude -p` → `api.anthropic.com`), with `clusterCIDRs` excluded.
+   server, and TCP 443 externally (the harness CLI → its model API), with `clusterCIDRs` excluded.
 3. **Hostname policy** (defence in depth) — enable exactly one of `agent.networkPolicy.cilium.enabled` (FQDN policy,
    needs Cilium's DNS proxy) or `agent.networkPolicy.istio.enabled` (REGISTRY_ONLY sidecar, needs native sidecars + the
-   Istio CNI node agent). Both allow only `api.anthropic.com` and the in-cluster artifact endpoint — no GitHub hosts,
+   Istio CNI node agent). Either renders **one policy per enabled runner**, selecting that harness's pods by their
+   `patchy.bitwisemedia.uk/harness` label, so each reaches only its own model API (`agent.runners.<harness>.hosts` —
+   `api.anthropic.com` for claude, `api.openai.com` for codex) plus the in-cluster artifact endpoint. No GitHub hosts,
    because the pod never talks to GitHub.
 
 ## Values worth knowing
@@ -113,11 +116,15 @@ The genuinely shared settings stay global:
 - `image.*` — repository prefix (registry included), tag (default `v<appVersion>`), pull policy, pull secrets.
 - `webhook.*` — the single external entry point (`host`, plus one of `ingress` / `httpRoute`) in front of the
   integration-controller; a provider has one webhook URL, so exposure is a chart-level concern.
-- `anthropic.*` — the model-credential Secret name/key and the env var it is injected as.
-- `agent.*` — the sandbox: namespace, service account, `agent.image` (the agent-runner image both job controllers stamp
-  into every Job as `PATCHY_AGENT_IMAGE` — pinning its digest is one knob, unlike kustomize's two),
-  `jobDeadline`/`jobTTL`, and the two stages' limits: `modelAllowlist`, `investigate.*` (absolute), `remediate.*`
-  (`maxTurns`/`tokenBudget` are ceilings the investigation report's requests are clamped to).
+- `agent.*` — the sandbox: namespace, service account, `jobDeadline`/`jobTTL`, and the two stages' limits:
+  `modelAllowlist` (canonical, provider-qualified model ids), `investigate.*` (absolute), `remediate.*`
+  (`maxTurns`/`tokenBudget` are ceilings the investigation report's requests are clamped to; `model` is the fallback
+  when its choice is off the allowlist).
+- `agent.runners.<harness>` — the per-harness runner fleet: `enabled`, the runner `image` (default
+  `<prefix>/<harness>-agent-runner`; pinning its digest is one knob, unlike kustomize's two), the credential
+  `secret`/`secretKey`/`secretEnv`, and the egress `hosts`/`dnsPatterns`. A harness is enabled only when its runner is
+  enabled and its credential exists; the model chosen for a stage decides which runner (image + credential + egress
+  policy) the Job runs, so an OpenAI model routes to `codex` and an Anthropic model to `claude`.
 - `agent.networkPolicy.*` — the sandbox policies (above).
 - `commonLabels` / `commonAnnotations` — stamped on every object the chart renders (annotations reach the pods too;
   per-object annotations win key-by-key).

@@ -49,20 +49,31 @@ controller, so the URL minted into Repository statuses is pinned here.
 {{- else if or (eq $c.name "investigation-controller") (eq $c.name "remediation-controller") }}
 {{/*
 The job-controller block, shared by both: how the agent Jobs run, and the
-ceilings the investigation report's remediation requests are clamped to.
-PATCHY_AGENT_IMAGE is the string the controllers stamp into every Job they
-create — derived from the same values as the container images, so pinning
-the agent-runner digest is one edit, not kustomize's two.
+ceilings the investigation report's remediation requests are clamped to. One
+runner per enabled harness stamps its own PATCHY_<HARNESS>_AGENT_IMAGE and
+credential keys, and PATCHY_HARNESSES restricts the controllers to exactly the
+harnesses enabled here (network-policy rendering can't probe credentials, so
+enablement is explicit). Pinning a runner's image digest is one edit under
+agent.runners.<harness>.image.
 */}}
 {{- $_ := set $data "PATCHY_MAX_ATTEMPTS" ($own.maxAttempts | default $g.maxAttempts) }}
 {{- $_ := set $data "PATCHY_PRIORITY_AGING_INTERVAL" ($own.priorityAgingInterval | default $g.priorityAgingInterval) }}
 {{- $_ := set $data "PATCHY_PRIORITY_AGING_CAP" ($own.priorityAgingCap | default $g.priorityAgingCap) }}
 {{- $_ := set $data "PATCHY_AGENT_NAMESPACE" $.Values.agent.namespace }}
 {{- $_ := set $data "PATCHY_AGENT_SERVICE_ACCOUNT" $.Values.agent.serviceAccount }}
-{{- $_ := set $data "PATCHY_AGENT_IMAGE" (include "patchy.image" (dict "root" $ "binary" "agent-runner" "image" $.Values.agent.image)) }}
-{{- $_ := set $data "PATCHY_ANTHROPIC_SECRET" $.Values.anthropic.secret }}
-{{- $_ := set $data "PATCHY_ANTHROPIC_SECRET_KEY" $.Values.anthropic.secretKey }}
-{{- $_ := set $data "PATCHY_ANTHROPIC_SECRET_ENV" $.Values.anthropic.secretEnv }}
+{{- $enabled := list }}
+{{- range $id, $r := $.Values.agent.runners }}
+{{- if $r.enabled }}
+{{- $enabled = append $enabled $id }}
+{{- $_ := set $data (printf "PATCHY_%s_AGENT_IMAGE" (upper $id)) (include "patchy.image" (dict "root" $ "binary" (printf "%s-agent-runner" $id) "image" $r.image)) }}
+{{- if $r.secret }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET" (upper $id)) $r.secret }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET_KEY" (upper $id)) $r.secretKey }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET_ENV" (upper $id)) $r.secretEnv }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $_ := set $data "PATCHY_HARNESSES" (join "," $enabled) }}
 {{- $_ := set $data "PATCHY_JOB_DEADLINE" $.Values.agent.jobDeadline }}
 {{- $_ := set $data "PATCHY_JOB_TTL" $.Values.agent.jobTTL }}
 {{- $_ := set $data "PATCHY_MODEL_ALLOWLIST" $.Values.agent.modelAllowlist }}
@@ -72,7 +83,6 @@ the agent-runner digest is one edit, not kustomize's two.
 {{- $_ := set $data "PATCHY_FINDING_MIN_AGE" $own.findingMinAge }}
 {{- $_ := set $data "PATCHY_MAX_CONCURRENT_INVESTIGATIONS" $own.maxConcurrentInvestigations }}
 {{- $_ := set $data "PATCHY_CONFIDENCE_THRESHOLD" $own.confidenceThreshold }}
-{{- $_ := set $data "PATCHY_INVESTIGATE_HARNESS" $.Values.agent.investigate.harness }}
 {{- $_ := set $data "PATCHY_INVESTIGATE_MODEL" $.Values.agent.investigate.model }}
 {{- $_ := set $data "PATCHY_INVESTIGATE_TIMEOUT" $.Values.agent.investigate.timeout }}
 {{- $_ := set $data "PATCHY_INVESTIGATE_MAX_TURNS" $.Values.agent.investigate.maxTurns }}
@@ -80,7 +90,6 @@ the agent-runner digest is one edit, not kustomize's two.
 {{- else }}
 {{- $_ := set $data "PATCHY_MAX_CONCURRENT_REMEDIATIONS" $own.maxConcurrentRemediations }}
 {{- $_ := set $data "PATCHY_FINDING_TTL" $own.findingTTL }}
-{{- $_ := set $data "PATCHY_REMEDIATE_HARNESS" $.Values.agent.remediate.harness }}
 {{- $_ := set $data "PATCHY_REMEDIATE_MODEL" $.Values.agent.remediate.model }}
 {{- $_ := set $data "PATCHY_REMEDIATE_TIMEOUT" $.Values.agent.remediate.timeout }}
 {{- end }}

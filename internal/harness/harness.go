@@ -80,7 +80,7 @@ type UsageScanner interface {
 
 // All returns the builtin harness set.
 func All() []Harness {
-	return []Harness{NewClaude(), NewFake()}
+	return []Harness{NewClaude(), NewCodex(), NewFake()}
 }
 
 // ByID returns the builtin harness with the given id, if any.

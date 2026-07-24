@@ -14,6 +14,15 @@
 #
 # WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
 #
+# One Sidecar per harness, scoped by the patchy.bitwisemedia.uk/harness label,
+# each permitting only its own model host (plus the patchy namespace's Services
+# for the artifact fetch) — so a claude pod cannot reach api.openai.com and a
+# codex pod cannot reach api.anthropic.com even though both ServiceEntries are
+# registered in the namespace. The codex Sidecar is inert until the codex
+# runner is enabled (no codex pod carries the label otherwise).
+#
+# WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
+#
 #   * A Sidecar serves the whole POD, not one container: the model-API
 #     route the agent container needs is reachable from the init container
 #     too, and vice versa for the artifact server. Credential absence is the
@@ -31,7 +40,7 @@
 apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
-    name: patchy-agent-egress
+    name: patchy-agent-egress-claude
     namespace: patchy-agents
     labels:
         app.kubernetes.io/part-of: patchy
@@ -40,14 +49,34 @@ spec:
         labels:
             app.kubernetes.io/name: patchy-agent
             app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: claude
     # Drop anything not in the registry instead of passing it through.
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
-        # Two slices of the registry are visible: this namespace's (the
-        # api.anthropic.com ServiceEntry, exportTo: ".") and the patchy
-        # namespace's Services — which is how the init container reaches
-        # source-controller's artifact server.
+        # This harness's model host (the api.anthropic.com ServiceEntry,
+        # exportTo: ".") and the patchy namespace's Services — which is how the
+        # init container reaches source-controller's artifact server.
         - hosts:
-              - ./*
+              - ./api.anthropic.com
+              - patchy/*
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+    name: patchy-agent-egress-codex
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    workloadSelector:
+        labels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: codex
+    outboundTrafficPolicy:
+        mode: REGISTRY_ONLY
+    egress:
+        - hosts:
+              - ./api.openai.com
               - patchy/*

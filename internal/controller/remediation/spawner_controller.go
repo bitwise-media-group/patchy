@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -18,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/harness"
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/priority"
 )
 
@@ -31,10 +34,46 @@ type SpawnerReconciler struct {
 	Namespace string
 	// Weights tune the scheduling-priority computation.
 	Weights priority.Weights
+	// Enabled is the set of harness ids this deployment can run (those with a
+	// credential). Allowlist is the canonical model ids the investigation may
+	// suggest; DefaultModel is the fallback when the suggestion is unusable.
+	// Together they resolve the investigation's chosen model to the harness
+	// (and thus the runner image + credential) the Remediation will run on.
+	Enabled      []string
+	Allowlist    []string
+	DefaultModel string
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
+}
+
+// resolveParams clamps the investigation's suggested remediation model to the
+// allowlist and resolves the harness that runs it, stamping both onto the
+// bound parameters. When the suggestion is missing, off the allowlist, or has
+// no enabled harness, it falls back to the controller default (validated
+// runnable at startup). Turns/budget are left for the runner to clamp.
+func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alpha1.AgentParameters {
+	enabled := harness.EnabledSet(r.Enabled)
+	if params.Model != "" && slices.Contains(r.Allowlist, params.Model) {
+		if m, ok := model.ModelByID(model.Builtins(), params.Model); ok {
+			if h, _, ok := harness.ResolveModel(m, enabled); ok {
+				params.Harness = h
+				return params
+			}
+		}
+	}
+	if params.Model != "" && params.Model != r.DefaultModel {
+		r.log().Warn("suggested remediation model not usable; using default",
+			"suggested", params.Model, "default", r.DefaultModel)
+	}
+	params.Model = r.DefaultModel
+	if m, ok := model.ModelByID(model.Builtins(), r.DefaultModel); ok {
+		if h, _, ok := harness.ResolveModel(m, enabled); ok {
+			params.Harness = h
+		}
+	}
+	return params
 }
 
 // Reconcile advances one finding through queue admission.
@@ -173,13 +212,17 @@ func (r *SpawnerReconciler) spawn(ctx context.Context, fnd *v1alpha1.Finding) er
 	attempt := fnd.Status.Attempts.Remediation + 1
 	name := fmt.Sprintf("%s-rem-%d", fnd.Name, attempt)
 
-	// The suggested stage-2 parameters live on the Investigation child.
+	// The suggested stage-2 parameters live on the Investigation child. Clamp
+	// the suggested model to the allowlist and resolve the harness that will
+	// run it — the model's provider decides the runner image and credential,
+	// so this must be settled before the Job is created.
 	var params v1alpha1.AgentParameters
 	var invChild v1alpha1.Investigation
 	invKey := types.NamespacedName{Namespace: fnd.Namespace, Name: inv.Name}
 	if err := r.Get(ctx, invKey, &invChild); err == nil && invChild.Status.RemediationParameters != nil {
 		params = *invChild.Status.RemediationParameters
 	}
+	params = r.resolveParams(params)
 
 	score := priority.Score(fnd.Spec.Severity, inv.Exploitability, inv.Likelihood, inv.Impact, r.Weights)
 	rem := &v1alpha1.Remediation{

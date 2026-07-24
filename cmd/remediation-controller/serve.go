@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,10 +18,10 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/controller/remediation"
 	"github.com/bitwise-media-group/patchy/internal/controller/rollup"
 	"github.com/bitwise-media-group/patchy/internal/forge"
-	"github.com/bitwise-media-group/patchy/internal/harness"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/priority"
+	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
@@ -54,30 +52,28 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("finding-ttl", rollup.DefaultTTL,
 		"how long completed findings are kept before deletion; 0 keeps them forever")
 
-	f.String("agent-image", "", "agent-runner container image (required)")
 	f.String("agent-namespace", "patchy-agents", "namespace the agent Jobs run in")
 	f.String("agent-service-account", "patchy-agent", "service account for the agent Jobs")
-	f.String("anthropic-secret", "patchy-anthropic", "Secret holding the model credential")
-	f.String("anthropic-secret-key", "api-key", "key within the model credential Secret")
-	f.String("anthropic-secret-env", "ANTHROPIC_API_KEY",
-		"env var the credential is injected as: ANTHROPIC_API_KEY for an API key, "+
-			"or CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token")
+	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
 
-	f.String("remediate-harness", "claude", "harness the remediation stage runs on")
-	f.String("remediate-model", "claude-sonnet-5", "model the remediation stage runs on by default")
+	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-4-8",
+		"canonical model ids remediation may run (the investigation's choice is clamped to this)")
+	f.String("remediate-model", "anthropic/claude-sonnet-5",
+		"canonical default model when the report's suggestion is missing or unusable (its harness is derived)")
 	f.Duration("remediate-timeout", 45*time.Minute, "wall-clock limit for the remediation stage")
 	f.Int("remediate-max-turns", 80, "agent turns allowed for the remediation stage")
 	f.Int("remediate-token-budget", 400000, "output-token budget for the remediation stage")
 	return cmd
 }
 
-// agentEnv is the PATCHY_* configuration every remediation pod receives.
+// agentEnv is the PATCHY_* configuration every remediation pod receives. The
+// per-Job harness and model are carried on the Job spec, not here; the
+// allowlist is enforced controller-side (the spawner), so the pod does not
+// need it.
 func agentEnv(opts *cli.Options) map[string]string {
 	return map[string]string{
-		"PATCHY_REMEDIATE_HARNESS":      opts.String("remediate-harness"),
-		"PATCHY_REMEDIATE_MODEL":        opts.String("remediate-model"),
 		"PATCHY_REMEDIATE_TIMEOUT":      opts.Duration("remediate-timeout").String(),
 		"PATCHY_REMEDIATE_MAX_TURNS":    fmt.Sprint(opts.Int("remediate-max-turns")),
 		"PATCHY_REMEDIATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("remediate-token-budget")),
@@ -104,14 +100,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if namespace == "" {
 		return errors.New("namespace is required (--namespace or POD_NAMESPACE)")
 	}
-	image := opts.String("agent-image")
-	if image == "" {
-		return errors.New("agent-image is required")
-	}
-	secretEnv := opts.String("anthropic-secret-env")
-	if !slices.Contains(credentialEnvKeys(), secretEnv) {
-		return fmt.Errorf("--anthropic-secret-env %q is not a credential env var any harness accepts (one of: %s)",
-			secretEnv, strings.Join(credentialEnvKeys(), ", "))
+	runners, err := runnercfg.Runners(opts)
+	if err != nil {
+		return err
 	}
 
 	mgr, err := kube.NewManager(kube.Options{
@@ -135,16 +126,24 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if err != nil {
 		return fmt.Errorf("kubernetes clientset: %w", err)
 	}
+
+	agentNS := opts.String("agent-namespace")
+	remediateModel := opts.String("remediate-model")
+	allowlist := runnercfg.SplitList(opts.String("model-allowlist"))
+	enabled, err := runnercfg.Resolve(ctx, cs, agentNS, runners, runnercfg.Restrict(opts), allowlist, remediateModel)
+	if err != nil {
+		return err
+	}
+	log.LogAttrs(ctx, slog.LevelInfo, "harnesses enabled",
+		slog.Any("enabled", enabled), slog.String("default_remediate_model", remediateModel))
+
 	runner := jobs.New(cs, jobs.Config{
-		Namespace:          opts.String("agent-namespace"),
-		Image:              image,
-		ServiceAccount:     opts.String("agent-service-account"),
-		Deadline:           opts.Duration("job-deadline"),
-		TTL:                opts.Duration("job-ttl"),
-		AnthropicSecret:    opts.String("anthropic-secret"),
-		AnthropicSecretKey: opts.String("anthropic-secret-key"),
-		AnthropicSecretEnv: secretEnv,
-		Env:                agentEnv(opts),
+		Namespace:      agentNS,
+		ServiceAccount: opts.String("agent-service-account"),
+		Deadline:       opts.Duration("job-deadline"),
+		TTL:            opts.Duration("job-ttl"),
+		Runners:        runners,
+		Env:            agentEnv(opts),
 	}, log)
 
 	forges := forge.NewStore(mgr.GetAPIReader())
@@ -157,7 +156,10 @@ func serve(ctx context.Context, opts *cli.Options) error {
 			Likelihood:     opts.Float("priority-weight-likelihood"),
 			Impact:         opts.Float("priority-weight-impact"),
 		},
-		Log: log,
+		Enabled:      enabled,
+		Allowlist:    allowlist,
+		DefaultModel: remediateModel,
+		Log:          log,
 	}
 	if err := spawner.SetupWithManager(mgr); err != nil {
 		return err
@@ -173,7 +175,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 			Interval: opts.Duration("priority-aging-interval"),
 			Cap:      int32(opts.Int("priority-aging-cap")),
 		},
-		Log: log,
+		Enabled: enabled,
+		Log:     log,
 	}
 	if err := rem.SetupWithManager(mgr); err != nil {
 		return err
@@ -190,7 +193,6 @@ func serve(ctx context.Context, opts *cli.Options) error {
 
 	log.LogAttrs(ctx, slog.LevelInfo, "remediation-controller starting",
 		slog.String("namespace", namespace),
-		slog.String("agent_image", image),
 		slog.Int("max_concurrent", opts.Int("max-concurrent-remediations")),
 		slog.Duration("finding_ttl", opts.Duration("finding-ttl")))
 
@@ -198,19 +200,4 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 	return nil
-}
-
-// credentialEnvKeys is the union of the credential env vars the builtin
-// harnesses accept, in registry order — the legal values for
-// --anthropic-secret-env.
-func credentialEnvKeys() []string {
-	var keys []string
-	for _, h := range harness.All() {
-		for _, k := range h.EnvKeys() {
-			if !slices.Contains(keys, k) {
-				keys = append(keys, k)
-			}
-		}
-	}
-	return keys
 }

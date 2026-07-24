@@ -8,7 +8,7 @@ Secrets referenced by your `Integration` and `Forge` custom resources
 ## Flags, environment, precedence
 
 Every controller flag `--foo-bar` is bound to the environment variable `PATCHY_FOO_BAR` (dashes become underscores,
-uppercased, `PATCHY_` prefix — so `--agent-image` is `PATCHY_AGENT_IMAGE`). Precedence, highest first:
+uppercased, `PATCHY_` prefix — so `--claude-agent-image` is `PATCHY_CLAUDE_AGENT_IMAGE`). Precedence, highest first:
 
 1. An explicit flag on the command line
 2. The `PATCHY_*` environment variable

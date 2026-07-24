@@ -62,7 +62,7 @@ func invChild() *v1alpha1.Investigation {
 			Phase:  v1alpha1.RunComplete,
 			Report: "---\ninvestigation frontmatter\n---\nanalysis",
 			RemediationParameters: &v1alpha1.AgentParameters{
-				Model: "claude-sonnet-5", MaxTurns: 40, TokenBudget: 200000,
+				Model: "anthropic/claude-sonnet-5", MaxTurns: 40, TokenBudget: 200000,
 			},
 		},
 	}
@@ -76,9 +76,12 @@ func newSpawner(t *testing.T, objs ...client.Object) (*SpawnerReconciler, client
 		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.Remediation{}).
 		Build()
 	return &SpawnerReconciler{
-		Client:    c,
-		Namespace: "patchy",
-		Now:       func() time.Time { return crdClock },
+		Client:       c,
+		Namespace:    "patchy",
+		Enabled:      []string{"claude", "codex"},
+		Allowlist:    []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-4-8", "openai/gpt-5.3-codex"},
+		DefaultModel: "anthropic/claude-sonnet-5",
+		Now:          func() time.Time { return crdClock },
 	}, c
 }
 
@@ -117,6 +120,12 @@ func TestSpawnerCreatesRemediation(t *testing.T) {
 	if rem.Spec.Parameters.MaxTurns != 40 {
 		t.Errorf("parameters = %+v, want investigation's clamped suggestion", rem.Spec.Parameters)
 	}
+	// The suggested model is allowlisted; its harness (claude) is resolved and
+	// stamped so the launch knows which runner image/credential to use.
+	if rem.Spec.Parameters.Model != "anthropic/claude-sonnet-5" || rem.Spec.Parameters.Harness != "claude" {
+		t.Errorf("resolved params = %q/%q, want anthropic/claude-sonnet-5 on claude",
+			rem.Spec.Parameters.Model, rem.Spec.Parameters.Harness)
+	}
 	if rem.Spec.InvestigationRef.Name != "finding-aa-1-inv-1" {
 		t.Errorf("investigationRef = %+v", rem.Spec.InvestigationRef)
 	}
@@ -132,6 +141,45 @@ func TestSpawnerCreatesRemediation(t *testing.T) {
 	}
 	if len(list.Items) != 1 {
 		t.Errorf("remediations = %d after re-reconcile, want 1", len(list.Items))
+	}
+}
+
+// TestSpawnerResolvesCrossProviderHarness: an OpenAI model chosen by the
+// investigation resolves to the codex harness, so the Remediation runs the
+// codex runner image and credential.
+func TestSpawnerResolvesCrossProviderHarness(t *testing.T) {
+	inv := invChild()
+	inv.Status.RemediationParameters.Model = "openai/gpt-5.3-codex"
+	r, c := newSpawner(t, queuedFinding(v1alpha1.PhaseQueued), inv)
+	spawnOnce(t, r)
+
+	var rem v1alpha1.Remediation
+	key := types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1-rem-1"}
+	if err := c.Get(t.Context(), key, &rem); err != nil {
+		t.Fatalf("Remediation not created: %v", err)
+	}
+	if rem.Spec.Parameters.Model != "openai/gpt-5.3-codex" || rem.Spec.Parameters.Harness != "codex" {
+		t.Errorf("resolved params = %q/%q, want openai/gpt-5.3-codex on codex",
+			rem.Spec.Parameters.Model, rem.Spec.Parameters.Harness)
+	}
+}
+
+// TestSpawnerFallsBackWhenModelNotAllowlisted: a suggestion off the allowlist
+// is replaced by the controller default and its harness.
+func TestSpawnerFallsBackWhenModelNotAllowlisted(t *testing.T) {
+	inv := invChild()
+	inv.Status.RemediationParameters.Model = "openai/gpt-5.5" // not in the test allowlist
+	r, c := newSpawner(t, queuedFinding(v1alpha1.PhaseQueued), inv)
+	spawnOnce(t, r)
+
+	var rem v1alpha1.Remediation
+	key := types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1-rem-1"}
+	if err := c.Get(t.Context(), key, &rem); err != nil {
+		t.Fatalf("Remediation not created: %v", err)
+	}
+	if rem.Spec.Parameters.Model != "anthropic/claude-sonnet-5" || rem.Spec.Parameters.Harness != "claude" {
+		t.Errorf("resolved params = %q/%q, want the default anthropic/claude-sonnet-5 on claude",
+			rem.Spec.Parameters.Model, rem.Spec.Parameters.Harness)
 	}
 }
 
@@ -324,6 +372,7 @@ func runningRemediation() []client.Object {
 			RepositoryRef:    v1alpha1.LocalObjectReference{Name: "finding-aa-1-src"},
 			Attempt:          1,
 			Priority:         83,
+			Parameters:       v1alpha1.AgentParameters{Model: "anthropic/claude-sonnet-5", Harness: "claude"},
 		},
 		Status: v1alpha1.RemediationStatus{
 			Phase:  v1alpha1.RunRunning,
@@ -357,6 +406,7 @@ func newRemediation(
 		Namespace:     "patchy",
 		MaxConcurrent: 1,
 		MaxAttempts:   2,
+		Enabled:       []string{"claude", "codex"},
 		Now:           func() time.Time { return crdClock },
 	}, c
 }
@@ -375,7 +425,7 @@ func crdRemediationEvent(success bool) []envelope.Event {
 		V: envelope.Version, Type: envelope.TypeRemediation, Finding: "finding-aa-1",
 		Remediation: &envelope.Remediation{
 			Stage: envelope.Stage{Outcome: envelope.OutcomeOK, Harness: "claude",
-				Model: "claude-sonnet-5", Usage: envelope.Usage{CostUSD: 3.5}},
+				Model: "anthropic/claude-sonnet-5", Usage: envelope.Usage{CostUSD: 3.5}},
 			ReportMarkdown: "fix report",
 			Success:        success,
 			Confidence:     0.9,
@@ -560,7 +610,37 @@ func TestRemediationLaunchCarriesInvestigationReport(t *testing.T) {
 	if spec.Kind != "remediation" || spec.Phase != "remediate" {
 		t.Errorf("spec kind/phase = %q/%q", spec.Kind, spec.Phase)
 	}
+	// The spawner-resolved harness/model ride the Job spec so it runs the right
+	// runner image on the right model.
+	if spec.Harness != "claude" || spec.Model != "anthropic/claude-sonnet-5" {
+		t.Errorf("spec harness/model = %q/%q, want claude / anthropic/claude-sonnet-5", spec.Harness, spec.Model)
+	}
 	if spec.InvestigationMarkdown == "" {
 		t.Error("investigation report not handed to the remediation pod")
+	}
+}
+
+// TestRemediationLaunchFailsWhenHarnessDisabled: if the resolved harness is no
+// longer enabled at launch (enabled set changed since spawn), the run fails
+// cleanly instead of creating a Job for a runner that does not exist.
+func TestRemediationLaunchFailsWhenHarnessDisabled(t *testing.T) {
+	objs := runningRemediation()
+	rem := objs[1].(*v1alpha1.Remediation)
+	rem.Status.JobRef = nil
+	rem.Spec.Parameters = v1alpha1.AgentParameters{Model: "openai/gpt-5.3-codex", Harness: "codex"}
+	runner := &fakeCRRunner{}
+	r, c := newRemediation(t, runner, &fakeForge{}, objs...)
+	r.Enabled = []string{"claude"} // codex not enabled anymore
+	remOnce(t, r, "finding-aa-1-rem-1")
+
+	if len(runner.created) != 0 {
+		t.Fatalf("jobs = %d, want 0 (harness disabled)", len(runner.created))
+	}
+	var got v1alpha1.Remediation
+	if err := c.Get(t.Context(), types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1-rem-1"}, &got); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status.Phase != v1alpha1.RunFailed {
+		t.Errorf("phase = %q, want Failed", got.Status.Phase)
 	}
 }

@@ -104,8 +104,7 @@ func TestStatusServer(t *testing.T) {
 
 	// The spawner that reacts to the approval.
 	cl.controller(t, "remediation-controller",
-		"--agent-image", "patchy/agent-runner:e2e",
-		"--max-concurrent-remediations", "1")
+		append([]string{"--max-concurrent-remediations", "1"}, runnerArgs...)...)
 
 	// Instance A: auth mode none — full access, no sign-in.
 	authCfg := filepath.Join(t.TempDir(), "auth.yaml")

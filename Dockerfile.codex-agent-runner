@@ -1,0 +1,91 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Codex agent image. One of the per-harness agent-runner images (the claude
+# harness has its own, Dockerfile.claude-agent-runner); a Job runs the image of
+# the harness resolved for its model. Used for BOTH containers of the ephemeral
+# Job that internal/jobs creates:
+#
+#   initContainer "prepare" — runs /bin/sh with the clone script (needs sh,
+#     git and curl; no credential ever reaches it).
+#   container "agent"       — runs `agent-runner` (must be on PATH under that
+#     exact name: internal/jobs sets Command: []string{"agent-runner"}), which
+#     execs `codex exec ...` (internal/harness) and `git` (changeset diffing).
+#
+# So the image must carry: the agent-runner binary, git, /bin/sh, and the codex
+# CLI. codex ships as a self-contained native (musl-static) binary, so the
+# runtime base is plain debian:trixie-slim — no node, no npm. The fetch stage
+# below downloads the pinned version from the GitHub release and refuses
+# anything whose sha256 does not match the per-arch pin; only the verified
+# binary reaches the runtime stage.
+#
+# Built by GoReleaser (`dockers_v2` in .goreleaser.yaml): the agent-runner
+# binary is compiled by GoReleaser and arrives in the build context at
+# $TARGETPLATFORM/agent-runner — no Go toolchain or source here.
+#
+# readOnlyRootFilesystem: internal/jobs runs both containers with a read-only
+# root filesystem, uid 65532, all capabilities dropped. The only writable
+# paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir); codex keeps
+# its state under $HOME=/workspace.
+FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS fetch
+
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned codex CLI version. Renovate should bump this ARG and the two per-arch
+# sha256 pins together: codex publishes native binaries per GitHub release (tag
+# rust-v<version>) but no checksum manifest, so the digests are pinned inline
+# for a reproducible, attributable image.
+# renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>.*)$
+ARG CODEX_VERSION=0.145.0
+ARG CODEX_SHA256_AMD64=bfaf13c9ba34f2ad764e4a916c49cf7177aeba329cf0f719e2227566fc8d662a
+ARG CODEX_SHA256_ARM64=d384f90bc842450b42bd675feef06a12a46a3b1ca97efcb22566b270e4a11227
+
+# Fetch the static musl binary for the target platform from the GitHub release
+# and verify it against the pinned sha256 before it leaves this stage. The
+# tarball holds a single file named after the target triple; rename it to
+# /codex.
+ARG TARGETARCH
+# hadolint ignore=DL4006
+RUN case "${TARGETARCH}" in \
+        amd64) triple=x86_64-unknown-linux-musl; sha="${CODEX_SHA256_AMD64}" ;; \
+        arm64) triple=aarch64-unknown-linux-musl; sha="${CODEX_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && base="https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}" \
+    && curl -fsSL -o /tmp/codex.tar.gz "${base}/codex-${triple}.tar.gz" \
+    && echo "${sha}  /tmp/codex.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/codex.tar.gz -C /tmp \
+    && mv "/tmp/codex-${triple}" /codex \
+    && rm -f /tmp/codex.tar.gz \
+    && chmod 0755 /codex
+
+FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
+
+# curl serves the init container's credential-less artifact fetch (the
+# SHA-pinned repo tarball from source-controller); git serves the agent's
+# commit/diff flow.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=fetch /codex /usr/local/bin/codex
+
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
+
+# uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
+# convention). create it: a bare debian image has no non-root user.
+RUN groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+
+# HOME is overridden to /workspace by the Job (the only writable dir); this is
+# only the sane default for a bare `docker run`.
+ENV HOME=/workspace
+WORKDIR /workspace
+
+USER 65532:65532
+ENTRYPOINT ["agent-runner"]

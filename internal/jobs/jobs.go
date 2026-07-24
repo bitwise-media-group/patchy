@@ -83,21 +83,36 @@ if [ -f /patchy/input/investigation.md ]; then
 fi
 `
 
+// Runner is one harness's agent-runner deployment surface: the container image
+// bundling that harness's CLI and the Secret its model credential is injected
+// from. A Job picks its Runner by the harness resolved for its model, so a
+// claude Job runs the claude image with the Anthropic credential and a codex
+// Job the codex image with the OpenAI credential.
+type Runner struct {
+	Image     string // the agent-runner image bundling this harness's CLI
+	Secret    string // name of the Secret holding the model credential
+	SecretKey string // key within it (default "api-key")
+	// SecretEnv is the env var the credential is injected into the agent
+	// container as: ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN for claude,
+	// OPENAI_API_KEY for codex. The fake runner needs no credential and may
+	// leave Secret empty.
+	SecretEnv string
+}
+
 // Config configures Job creation.
 type Config struct {
-	Namespace          string        // where Jobs run, e.g. "patchy-agents"
-	Image              string        // agent-runner image
-	ServiceAccount     string        // pod service account
-	Deadline           time.Duration // activeDeadlineSeconds
-	TTL                time.Duration // ttlSecondsAfterFinished
-	AnthropicSecret    string        // name of the Secret holding the model credential
-	AnthropicSecretKey string        // key within it (default "api-key")
-	// AnthropicSecretEnv is the env var the credential is injected into the
-	// agent container as: ANTHROPIC_API_KEY (the default) for an API key, or
-	// CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token.
-	AnthropicSecretEnv string
+	Namespace      string        // where Jobs run, e.g. "patchy-agents"
+	ServiceAccount string        // pod service account
+	Deadline       time.Duration // activeDeadlineSeconds
+	TTL            time.Duration // ttlSecondsAfterFinished
+	// Runners is the per-harness runner fleet, keyed by harness id
+	// ("claude"/"codex"/"fake"). A Job whose Spec.Harness is not a key here
+	// fails to build — the controller resolves and enables harnesses before a
+	// Job is ever created.
+	Runners map[string]Runner
 	// Env is extra PATCHY_* configuration passed through to every runner
-	// (models, timeouts, ceilings, thresholds, harness selection).
+	// (models, timeouts, ceilings, thresholds). Per-Job harness and model are
+	// carried on the Spec, not here.
 	Env map[string]string
 	// Resource strings (Kubernetes quantities), optional.
 	CPURequest, MemoryRequest, CPULimit, MemoryLimit string
@@ -108,6 +123,12 @@ type Spec struct {
 	Repo    string // "owner/name"
 	Attempt int
 	Phase   string // agentrun phase: "investigate" | "remediate"
+	// Harness runs this Job ("claude"/"codex"/"fake"); selects the runner
+	// image, credential, and egress network policy. Model is the canonical
+	// provider-qualified model id the harness runs. Both are resolved
+	// controller-side before the Job is created.
+	Harness string
+	Model   string
 	// BaseSHA is the pinned commit the artifact tree corresponds to; the
 	// agent's changeset parents it.
 	BaseSHA       string
@@ -134,16 +155,29 @@ type Client struct {
 
 // New builds a Client, applying Config defaults.
 func New(cs kubernetes.Interface, cfg Config, log *slog.Logger) *Client {
-	if cfg.AnthropicSecretKey == "" {
-		cfg.AnthropicSecretKey = "api-key"
+	runners := make(map[string]Runner, len(cfg.Runners))
+	for id, r := range cfg.Runners {
+		if r.SecretKey == "" {
+			r.SecretKey = "api-key"
+		}
+		runners[id] = r
 	}
-	if cfg.AnthropicSecretEnv == "" {
-		cfg.AnthropicSecretEnv = "ANTHROPIC_API_KEY"
-	}
+	cfg.Runners = runners
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Client{cs: cs, cfg: cfg, log: log, logs: podLogs{cs: cs, namespace: cfg.Namespace}}
+}
+
+// runnerFor returns the runner configured for a Job's harness, or an error
+// naming the harness when none is configured (a controller bug — harnesses are
+// enabled at startup, before any Job is built).
+func (c *Client) runnerFor(harness string) (Runner, error) {
+	r, ok := c.cfg.Runners[harness]
+	if !ok {
+		return Runner{}, fmt.Errorf("jobs: no runner configured for harness %q", harness)
+	}
+	return r, nil
 }
 
 // NameFor is the deterministic Job (and per-Job Secret) name for one
@@ -232,6 +266,10 @@ func (c *Client) buildJob(name string, spec Spec) (*batchv1.Job, error) {
 	if err != nil {
 		return nil, err
 	}
+	runner, err := c.runnerFor(spec.Harness)
+	if err != nil {
+		return nil, err
+	}
 	lbls := jobLabels(spec)
 	ann := map[string]string{annotationRepo: spec.Repo}
 
@@ -257,8 +295,8 @@ func (c *Client) buildJob(name string, spec Spec) (*batchv1.Job, error) {
 						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 					},
 					Volumes:        volumes(name),
-					InitContainers: []corev1.Container{c.prepareContainer(spec, res)},
-					Containers:     []corev1.Container{c.agentContainer(spec, res)},
+					InitContainers: []corev1.Container{c.prepareContainer(runner, spec, res)},
+					Containers:     []corev1.Container{c.agentContainer(runner, spec, res)},
 				},
 			},
 		},
@@ -285,8 +323,10 @@ func volumes(secretName string) []corev1.Volume {
 }
 
 // prepareContainer fetches the artifact tarball and stages the handoff
-// files. No credential of any kind reaches it.
-func (c *Client) prepareContainer(spec Spec, res corev1.ResourceRequirements) corev1.Container {
+// files. No credential of any kind reaches it. It runs the same image as the
+// agent container — the init only needs /bin/sh, curl, and git, which both
+// runner images carry.
+func (c *Client) prepareContainer(runner Runner, spec Spec, res corev1.ResourceRequirements) corev1.Container {
 	env := []corev1.EnvVar{
 		{Name: "HOME", Value: workspaceDir},
 		{Name: "PATCHY_BASE_SHA", Value: spec.BaseSHA},
@@ -295,7 +335,7 @@ func (c *Client) prepareContainer(spec Spec, res corev1.ResourceRequirements) co
 	}
 	return corev1.Container{
 		Name:    initContainerName,
-		Image:   c.cfg.Image,
+		Image:   runner.Image,
 		Command: []string{"/bin/sh", "-c", prepareScript},
 		Env:     env,
 		VolumeMounts: []corev1.VolumeMount{
@@ -310,12 +350,12 @@ func (c *Client) prepareContainer(spec Spec, res corev1.ResourceRequirements) co
 
 // agentContainer runs agent-runner. No GitHub credential reaches it — that
 // is the isolation model.
-func (c *Client) agentContainer(spec Spec, res corev1.ResourceRequirements) corev1.Container {
+func (c *Client) agentContainer(runner Runner, spec Spec, res corev1.ResourceRequirements) corev1.Container {
 	return corev1.Container{
 		Name:    agentContainerName,
-		Image:   c.cfg.Image,
+		Image:   runner.Image,
 		Command: []string{"agent-runner"},
-		Env:     c.agentEnv(spec),
+		Env:     c.agentEnv(runner, spec),
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: volWorkspace, MountPath: workspaceDir},
 			{Name: volTmp, MountPath: "/tmp"},
@@ -327,24 +367,42 @@ func (c *Client) agentContainer(spec Spec, res corev1.ResourceRequirements) core
 
 // reservedEnv are the names Create owns; Config.Env entries with these names
 // are ignored so per-Job values (and the no-GitHub-token invariant) always
-// win. Every claude credential channel is reserved regardless of which one
-// AnthropicSecretEnv selects — credentials reach the pod only via the
-// secretKeyRef, never as a plaintext value in the Job spec.
+// win. Every model credential channel (claude's and codex's alike) is
+// reserved regardless of which one a runner injects — credentials reach the
+// pod only via the secretKeyRef, never as a plaintext value in the Job spec.
+// The per-Job harness/model vars are reserved too: they are resolved per Job
+// and set from the Spec, so a controller-global Env copy must never shadow
+// them.
 var reservedEnv = map[string]bool{
-	"HOME":                    true,
-	"PATCHY_WORKSPACE":        true,
-	"PATCHY_REPO":             true,
-	"PATCHY_PHASE":            true,
-	"PATCHY_FINDING":          true,
-	"PATCHY_BASE_SHA":         true,
-	"ANTHROPIC_API_KEY":       true,
-	"CLAUDE_CODE_OAUTH_TOKEN": true,
-	"ANTHROPIC_AUTH_TOKEN":    true,
-	"GITHUB_TOKEN":            true,
+	"HOME":                       true,
+	"PATCHY_WORKSPACE":           true,
+	"PATCHY_REPO":                true,
+	"PATCHY_PHASE":               true,
+	"PATCHY_FINDING":             true,
+	"PATCHY_BASE_SHA":            true,
+	"PATCHY_INVESTIGATE_HARNESS": true,
+	"PATCHY_INVESTIGATE_MODEL":   true,
+	"PATCHY_REMEDIATE_HARNESS":   true,
+	"PATCHY_REMEDIATE_MODEL":     true,
+	"ANTHROPIC_API_KEY":          true,
+	"CLAUDE_CODE_OAUTH_TOKEN":    true,
+	"ANTHROPIC_AUTH_TOKEN":       true,
+	"OPENAI_API_KEY":             true,
+	"GITHUB_TOKEN":               true,
 }
 
-func (c *Client) agentEnv(spec Spec) []corev1.EnvVar {
-	env := make([]corev1.EnvVar, 0, len(c.cfg.Env)+8)
+// stageEnvNames returns the harness and model env var names agent-runner reads
+// for a given phase; the controller resolves both per Job, so they are carried
+// on the Spec and injected here rather than in the controller-global Env.
+func stageEnvNames(phase string) (harnessEnv, modelEnv string) {
+	if phase == "remediate" {
+		return "PATCHY_REMEDIATE_HARNESS", "PATCHY_REMEDIATE_MODEL"
+	}
+	return "PATCHY_INVESTIGATE_HARNESS", "PATCHY_INVESTIGATE_MODEL"
+}
+
+func (c *Client) agentEnv(runner Runner, spec Spec) []corev1.EnvVar {
+	env := make([]corev1.EnvVar, 0, len(c.cfg.Env)+10)
 	env = append(env,
 		// HOME must be writable under readOnlyRootFilesystem.
 		corev1.EnvVar{Name: "HOME", Value: workspaceDir},
@@ -355,6 +413,17 @@ func (c *Client) agentEnv(spec Spec) []corev1.EnvVar {
 		// The remote base SHA stamps the changeset (the local base is a
 		// synthetic commit over the artifact tree).
 		corev1.EnvVar{Name: "PATCHY_BASE_SHA", Value: spec.BaseSHA})
+
+	// The harness and model resolved for this Job's stage. They match the
+	// runner image the pod runs in, so the agent runs the harness it was built
+	// for on the model the controller chose.
+	harnessEnv, modelEnv := stageEnvNames(spec.Phase)
+	if spec.Harness != "" {
+		env = append(env, corev1.EnvVar{Name: harnessEnv, Value: spec.Harness})
+	}
+	if spec.Model != "" {
+		env = append(env, corev1.EnvVar{Name: modelEnv, Value: spec.Model})
+	}
 
 	keys := make([]string, 0, len(c.cfg.Env))
 	for k := range c.cfg.Env {
@@ -367,10 +436,15 @@ func (c *Client) agentEnv(spec Spec) []corev1.EnvVar {
 		env = append(env, corev1.EnvVar{Name: k, Value: c.cfg.Env[k]})
 	}
 
-	return append(env, corev1.EnvVar{Name: c.cfg.AnthropicSecretEnv, ValueFrom: &corev1.EnvVarSource{
+	// The fake runner needs no credential; the fixture replay authenticates
+	// nothing.
+	if runner.Secret == "" {
+		return env
+	}
+	return append(env, corev1.EnvVar{Name: runner.SecretEnv, ValueFrom: &corev1.EnvVarSource{
 		SecretKeyRef: &corev1.SecretKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{Name: c.cfg.AnthropicSecret},
-			Key:                  c.cfg.AnthropicSecretKey,
+			LocalObjectReference: corev1.LocalObjectReference{Name: runner.Secret},
+			Key:                  runner.SecretKey,
 		},
 	}})
 }
@@ -387,7 +461,7 @@ func containerSecurity() *corev1.SecurityContext {
 }
 
 func jobLabels(spec Spec) map[string]string {
-	return map[string]string{
+	lbls := map[string]string{
 		labelApp:              appName,
 		labelManagedBy:        managedBy,
 		v1alpha1.LabelAttempt: strconv.Itoa(spec.Attempt),
@@ -395,6 +469,12 @@ func jobLabels(spec Spec) map[string]string {
 		v1alpha1.LabelOwner:   sanitizeLabelValue(spec.Owner),
 		v1alpha1.LabelFinding: sanitizeLabelValue(spec.Finding),
 	}
+	// The per-harness egress network policies select agent pods by this label,
+	// so each runner reaches only its own model API.
+	if spec.Harness != "" {
+		lbls[v1alpha1.LabelHarness] = spec.Harness
+	}
+	return lbls
 }
 
 // sanitizeLabelValue coerces owner/name into a legal label value: lowercase

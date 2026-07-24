@@ -1,19 +1,20 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The egress allowlist: the only external host REGISTRY_ONLY (sidecar.yaml)
-# lets an agent pod reach. Same list as the Cilium component's toFQDNs.
+# The egress allowlist: the external hosts REGISTRY_ONLY (sidecar.yaml) lets an
+# agent pod reach — one ServiceEntry per harness's model API, the same hosts as
+# the Cilium component's toFQDNs.
 #
-# exportTo: "." keeps the entry private to patchy-agents — no other
-# namespace's sidecar config grows an api.anthropic.com route because of the
-# agent sandbox.
+# exportTo: "." keeps each entry private to patchy-agents — no other
+# namespace's sidecar config grows a model-API route because of the agent
+# sandbox. The per-harness Sidecars (sidecar.yaml) then scope each host to only
+# its own harness's pods.
 #
 # There is deliberately NO GitHub entry: the repository arrives as a tarball
 # from source-controller's in-cluster artifact server (a mesh-registry
-# Service the Sidecar below already exposes), and the pod holds no forge
-# credential.
+# Service the Sidecar already exposes), and the pod holds no forge credential.
 ---
-# The agent container: `claude -p` and nothing else.
+# The claude harness's model API.
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
@@ -25,6 +26,25 @@ spec:
     exportTo: ["."]
     hosts:
         - api.anthropic.com
+    location: MESH_EXTERNAL
+    resolution: DNS
+    ports:
+        - number: 443
+          name: tls
+          protocol: TLS
+---
+# The codex harness's model API (inert until the codex runner is enabled).
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+    name: patchy-agent-openai
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    exportTo: ["."]
+    hosts:
+        - api.openai.com
     location: MESH_EXTERNAL
     resolution: DNS
     ports:

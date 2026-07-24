@@ -22,19 +22,6 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/templates"
 )
 
-// Tool policies per stage. Investigation reads the tree read-only (plus the
-// one Write for its report); remediation edits freely — network is denied at
-// the pod layer, not the tool layer.
-var (
-	investigateAllowedTools = []string{
-		"Read", "Glob", "Grep", "Write",
-		"Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)", "Bash(git diff:*)",
-	}
-	investigateDisallowedTools = []string{"WebFetch", "WebSearch", "Task"}
-	remediateAllowedTools      = []string{"Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash"}
-	remediateDisallowedTools   = []string{"WebFetch", "WebSearch"}
-)
-
 // Executor runs harness command specs; *runner.Exec satisfies it, tests
 // fake it.
 type Executor interface {
@@ -157,12 +144,11 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:          prompt,
-		Model:           cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
-		MaxTurns:        params.maxTurns,
-		AllowedTools:    remediateAllowedTools,
-		DisallowedTools: remediateDisallowedTools,
-		SessionID:       a.newSessionID(),
-		AddDirs:         []string{a.cfg.Workspace},
+		Model:     cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
+		MaxTurns:  params.maxTurns,
+		Sandbox:   harness.SandboxWorkspaceWrite,
+		SessionID: a.newSessionID(),
+		AddDirs:   []string{a.cfg.Workspace},
 	}), a.cfg.RemediateTimeout, a.budgetWatcher(h, params.budget))
 	a.fillStage(&ev.Stage, h, res)
 
@@ -260,12 +246,11 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:          prompt,
-		Model:           cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
-		MaxTurns:        a.cfg.InvestigateMaxTurns,
-		AllowedTools:    investigateAllowedTools,
-		DisallowedTools: investigateDisallowedTools,
-		SessionID:       a.newSessionID(),
-		AddDirs:         []string{a.cfg.Workspace},
+		Model:     cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
+		MaxTurns:  a.cfg.InvestigateMaxTurns,
+		Sandbox:   harness.SandboxReadOnly,
+		SessionID: a.newSessionID(),
+		AddDirs:   []string{a.cfg.Workspace},
 	}), a.cfg.InvestigateTimeout, a.budgetWatcher(h, a.cfg.InvestigateTokenBudget))
 	a.fillStage(&ev.Stage, h, res)
 

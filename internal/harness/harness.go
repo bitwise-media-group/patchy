@@ -21,6 +21,26 @@ type Usage struct {
 	CostUSD             *float64
 }
 
+// Sandbox is the filesystem/execution posture a run requires, declared
+// harness-neutrally so agentrun states intent once and each harness renders it
+// in its own vocabulary: claude as an allow/deny tool grammar, codex (once the
+// pod's kernel sandbox is confirmed) as a --sandbox mode backed by mounted
+// execpolicy rules. A harness that has no way to express a posture renders it
+// as its default — the request is advisory, not a guarantee every CLI can keep.
+type Sandbox int
+
+const (
+	// SandboxDefault imposes no tool policy: the CLI's own defaults apply. It
+	// is the zero value, so a bare PromptRequest stays unrestricted.
+	SandboxDefault Sandbox = iota
+	// SandboxReadOnly is the investigation posture: read the tree and write
+	// only the report — no source edits, no mutating commands, no network tools.
+	SandboxReadOnly
+	// SandboxWorkspaceWrite is the remediation posture: edit the workspace
+	// freely; network tools stay denied.
+	SandboxWorkspaceWrite
+)
+
 // PromptRequest describes one prompted agent run, harness-agnostically; the
 // harness maps it onto its CLI's flags.
 type PromptRequest struct {
@@ -29,8 +49,7 @@ type PromptRequest struct {
 	SystemPromptAppend string   // appended to the CLI's system prompt when set
 	SessionID          string   // pre-assigned UUID → claude --session-id
 	MaxTurns           int      // agent-turn ceiling; 0 leaves the CLI default
-	AllowedTools       []string // tool grammar entries, space-joined for claude
-	DisallowedTools    []string
+	Sandbox            Sandbox  // filesystem/exec posture; each harness renders it natively
 	AddDirs            []string // extra directories the agent may access
 	Env                []string // extras appended to os.Environ() by the runner
 }

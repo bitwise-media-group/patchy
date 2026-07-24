@@ -35,10 +35,16 @@ func NewCodex() *Codex {
 // egress beyond the model API, no credentials, locked-down securityContext),
 // where codex's kernel sandbox is redundant and unavailable anyway.
 //
-// codex exec has no equivalents for MaxTurns, AllowedTools/DisallowedTools,
-// AddDirs, or a pre-assigned SessionID, so those request fields do not map;
-// budget and timeout enforcement stay with the runner, and the session id is
-// read back from the stream's thread.started event instead.
+// codex exec has no equivalents for MaxTurns or a pre-assigned SessionID, so
+// those request fields do not map; budget and timeout enforcement stay with
+// the runner, and the session id is read back from the stream's thread.started
+// event instead. The neutral Sandbox posture is not rendered here either:
+// codex writes its report through the same apply_patch tool it edits source
+// with, so the read-only posture cannot be expressed as a tool grammar the way
+// claude does — the restriction is instead (to be) carried by execpolicy rules
+// mounted at $CODEX_HOME/rules, and --sandbox stays danger-full-access until
+// the pod's kernel sandbox is confirmed to initialise. AddDirs is left unmapped
+// for now (codex 0.145 gained --add-dir; wiring it is a follow-up).
 // SystemPromptAppend has no system-prompt channel either and is folded into
 // the prompt so its instructions still reach the agent.
 func (c *Codex) PromptSpec(ws string, req PromptRequest) runner.CommandSpec {

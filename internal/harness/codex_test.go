@@ -44,12 +44,11 @@ func TestCodexPromptSpec(t *testing.T) {
 		Prompt: "fix the finding",
 		Model:  "gpt-5.2-codex",
 		// No codex mapping exists for these; they must not leak into argv.
-		SessionID:       codexThreadID,
-		MaxTurns:        30,
-		AllowedTools:    []string{"Read", "Edit"},
-		DisallowedTools: []string{"WebSearch"},
-		AddDirs:         []string{"/scratch"},
-		Env:             []string{"OPENAI_API_KEY=k"},
+		SessionID: codexThreadID,
+		MaxTurns:  30,
+		Sandbox:   SandboxReadOnly,
+		AddDirs:   []string{"/scratch"},
+		Env:       []string{"OPENAI_API_KEY=k"},
 	})
 	want := []string{
 		"codex", "exec", "fix the finding",

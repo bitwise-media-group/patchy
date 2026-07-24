@@ -29,6 +29,26 @@ func NewClaude() *Claude {
 	}}
 }
 
+// claudeTools renders each sandbox posture into Claude Code's allow/deny tool
+// grammar. Network tools stay denied in both postures — the pod has no egress
+// and the stages never fetch; the read-only posture additionally denies edits
+// and subagents and narrows Bash to read-only git (Write stays allowed so the
+// agent can emit its report). SandboxDefault is absent by design: an unset
+// posture imposes no grammar and leaves the CLI's defaults.
+var claudeTools = map[Sandbox]struct{ allow, deny []string }{
+	SandboxReadOnly: {
+		allow: []string{
+			"Read", "Glob", "Grep", "Write",
+			"Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)", "Bash(git diff:*)",
+		},
+		deny: []string{"WebFetch", "WebSearch", "Task"},
+	},
+	SandboxWorkspaceWrite: {
+		allow: []string{"Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash"},
+		deny:  []string{"WebFetch", "WebSearch"},
+	},
+}
+
 // PromptSpec builds the headless claude invocation for one prompted run.
 // stream-json with --verbose emits one JSON event per line, which is what
 // ParseResult and ScanUsage parse. Optional request fields append their flag
@@ -43,11 +63,9 @@ func (c *Claude) PromptSpec(ws string, req PromptRequest) runner.CommandSpec {
 	if req.MaxTurns > 0 {
 		argv = append(argv, "--max-turns", strconv.Itoa(req.MaxTurns))
 	}
-	if len(req.AllowedTools) > 0 {
-		argv = append(argv, "--allowedTools", strings.Join(req.AllowedTools, " "))
-	}
-	if len(req.DisallowedTools) > 0 {
-		argv = append(argv, "--disallowedTools", strings.Join(req.DisallowedTools, " "))
+	if t, ok := claudeTools[req.Sandbox]; ok {
+		argv = append(argv, "--allowedTools", strings.Join(t.allow, " "))
+		argv = append(argv, "--disallowedTools", strings.Join(t.deny, " "))
 	}
 	for _, dir := range req.AddDirs {
 		argv = append(argv, "--add-dir", dir)

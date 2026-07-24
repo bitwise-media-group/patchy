@@ -49,8 +49,7 @@ func TestClaudePromptSpecAllFlags(t *testing.T) {
 		SystemPromptAppend: "never push",
 		SessionID:          claudeSessionID,
 		MaxTurns:           30,
-		AllowedTools:       []string{"Read", "Edit", "Bash(go *)"},
-		DisallowedTools:    []string{"WebSearch", "WebFetch"},
+		Sandbox:            SandboxWorkspaceWrite,
 		AddDirs:            []string{"/scratch", "/fixtures"},
 		Env:                []string{"ANTHROPIC_API_KEY=k"},
 	})
@@ -60,8 +59,8 @@ func TestClaudePromptSpecAllFlags(t *testing.T) {
 		"--output-format", "stream-json",
 		"--verbose",
 		"--max-turns", "30",
-		"--allowedTools", "Read Edit Bash(go *)",
-		"--disallowedTools", "WebSearch WebFetch",
+		"--allowedTools", "Read Glob Grep Edit Write NotebookEdit Bash",
+		"--disallowedTools", "WebFetch WebSearch",
 		"--add-dir", "/scratch",
 		"--add-dir", "/fixtures",
 		"--session-id", claudeSessionID,
@@ -82,8 +81,22 @@ func TestClaudePromptSpecMinimal(t *testing.T) {
 	c := NewClaude()
 	spec := c.PromptSpec("/ws", PromptRequest{Prompt: "hi", Model: "m"})
 	want := []string{"claude", "-p", "hi", "--model", "m", "--output-format", "stream-json", "--verbose"}
+	// SandboxDefault (the zero value) imposes no tool grammar.
 	if !slices.Equal(spec.Argv, want) {
 		t.Errorf("Argv = %q, want no optional flags: %q", spec.Argv, want)
+	}
+}
+
+func TestClaudePromptSpecReadOnly(t *testing.T) {
+	c := NewClaude()
+	spec := c.PromptSpec("/ws", PromptRequest{Prompt: "look", Model: "m", Sandbox: SandboxReadOnly})
+	want := []string{
+		"claude", "-p", "look", "--model", "m", "--output-format", "stream-json", "--verbose",
+		"--allowedTools", "Read Glob Grep Write Bash(git log:*) Bash(git show:*) Bash(git blame:*) Bash(git diff:*)",
+		"--disallowedTools", "WebFetch WebSearch Task",
+	}
+	if !slices.Equal(spec.Argv, want) {
+		t.Errorf("Argv =\n%q\nwant\n%q", spec.Argv, want)
 	}
 }
 

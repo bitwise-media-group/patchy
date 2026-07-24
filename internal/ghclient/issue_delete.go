@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,13 @@ import (
 
 	"github.com/google/go-github/v89/github"
 )
+
+// ErrDeleteUnauthorized reports the credential cannot delete issues:
+// GitHub restricts the deleteIssue mutation to admin-permission user
+// tokens — App installation tokens and fine-grained PATs are always
+// refused ("Viewer not authorized to delete"). Callers may fall back
+// to closing the issue.
+var ErrDeleteUnauthorized = errors.New("credential not authorized to delete issues")
 
 // DeleteIssue permanently deletes an issue. The REST API cannot delete
 // issues at all — only the GraphQL deleteIssue mutation can, and it needs
@@ -57,6 +65,7 @@ func (c *Client) DeleteIssue(ctx context.Context, repo Repo, number int) error {
 	// GraphQL reports failure as 200 + errors; surface the first message.
 	var out struct {
 		Errors []struct {
+			Type    string `json:"type"`
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
@@ -64,7 +73,11 @@ func (c *Client) DeleteIssue(ctx context.Context, repo Repo, number int) error {
 		return fmt.Errorf("ghclient: delete issue %s#%d: decode graphql response: %w", repo, number, err)
 	}
 	if len(out.Errors) > 0 {
-		return fmt.Errorf("ghclient: delete issue %s#%d: %s", repo, number, out.Errors[0].Message)
+		e := out.Errors[0]
+		if e.Type == "FORBIDDEN" || strings.Contains(strings.ToLower(e.Message), "not authorized") {
+			return fmt.Errorf("ghclient: delete issue %s#%d: %s: %w", repo, number, e.Message, ErrDeleteUnauthorized)
+		}
+		return fmt.Errorf("ghclient: delete issue %s#%d: %s", repo, number, e.Message)
 	}
 	return nil
 }

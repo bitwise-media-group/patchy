@@ -22,16 +22,26 @@ import (
 
 // fakeResetClient records the demo reset's forge calls.
 type fakeResetClient struct {
-	deleted    []string
-	opened     []string
-	failDelete bool
+	deleted      []string
+	closed       []string
+	opened       []string
+	failDelete   bool
+	unauthorized bool
 }
 
 func (f *fakeResetClient) DeleteIssue(_ context.Context, repo ghclient.Repo, number int) error {
 	if f.failDelete {
 		return errors.New("boom")
 	}
+	if f.unauthorized {
+		return fmt.Errorf("delete issue %s#%d: %w", repo, number, ghclient.ErrDeleteUnauthorized)
+	}
 	f.deleted = append(f.deleted, fmt.Sprintf("%s#%d", repo, number))
+	return nil
+}
+
+func (f *fakeResetClient) Close(_ context.Context, repo ghclient.Repo, number int) error {
+	f.closed = append(f.closed, fmt.Sprintf("%s#%d", repo, number))
 	return nil
 }
 
@@ -103,6 +113,31 @@ func TestRunReset(t *testing.T) {
 	}
 	if len(integs.Items) != 1 {
 		t.Errorf("integrations = %d, want the configuration untouched", len(integs.Items))
+	}
+}
+
+func TestRunResetClosesWhenDeleteUnauthorized(t *testing.T) {
+	tracked := projectable(v1alpha1.PhaseDismissed)
+	tracked.Status.Tracking = &v1alpha1.TrackingStatus{Integration: "gh", IssueNumber: 7}
+	fc := &fakeResetClient{unauthorized: true}
+	r, c := newResetReconciler(t, fc, testIntegration(), tracked)
+
+	if err := r.runReset(t.Context(), "patchy"); err != nil {
+		t.Fatalf("runReset() error = %v, want the close fallback to succeed", err)
+	}
+	if len(fc.deleted) != 0 {
+		t.Errorf("deleted issues = %v, want none", fc.deleted)
+	}
+	if want := []string{"acme/orders#7"}; !slices.Equal(fc.closed, want) {
+		t.Errorf("closed issues = %v, want %v", fc.closed, want)
+	}
+
+	var findings v1alpha1.FindingList
+	if err := c.List(t.Context(), &findings, client.InNamespace("patchy")); err != nil {
+		t.Fatalf("list findings: %v", err)
+	}
+	if len(findings.Items) != 0 {
+		t.Errorf("findings = %d after reset, want 0", len(findings.Items))
 	}
 }
 

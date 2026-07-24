@@ -5,6 +5,7 @@ package ghclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,6 +68,37 @@ func TestDeleteIssueMissingIsSuccess(t *testing.T) {
 
 	if err := c.DeleteIssue(context.Background(), testRepo, 7); err != nil {
 		t.Errorf("DeleteIssue() error = %v, want nil for a missing issue", err)
+	}
+}
+
+func TestDeleteIssueUnauthorized(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "forbidden type",
+			body: `{"data":null,"errors":[{"type":"FORBIDDEN","message":"Viewer not authorized to delete"}]}`,
+		},
+		{
+			name: "message only",
+			body: `{"data":null,"errors":[{"message":"Viewer not authorized to delete"}]}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rest, c := newFakeGraphQLClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(t, w, tt.body)
+			})
+			rest.HandleFunc("GET /repos/o/r/issues/7", func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(t, w, `{"number":7,"node_id":"I_node7"}`)
+			})
+
+			err := c.DeleteIssue(context.Background(), testRepo, 7)
+			if !errors.Is(err, ErrDeleteUnauthorized) {
+				t.Errorf("DeleteIssue() error = %v, want ErrDeleteUnauthorized", err)
+			}
+		})
 	}
 }
 

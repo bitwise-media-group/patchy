@@ -20,6 +20,7 @@ import (
 // ghclient.Client; tests substitute a fake.
 type resetClient interface {
 	DeleteIssue(ctx context.Context, repo ghclient.Repo, number int) error
+	Close(ctx context.Context, repo ghclient.Repo, number int) error
 	OpenAlert(ctx context.Context, repo ghclient.Repo, number int) error
 }
 
@@ -70,6 +71,10 @@ func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) 
 // resetFinding runs the GitHub cleanup for one finding: delete its tracking
 // issue (when a tracker Integration exists) and, for dismissed findings,
 // reopen its code-scanning alerts (when a scanner Integration exists).
+// Only admin-permission user tokens may delete issues — with any other
+// credential the delete falls back to closing the issue, which keeps a
+// replayed demo from duplicating open trackers at the cost of leaving
+// closed ones behind.
 func (r *IntegrationReconciler) resetFinding(
 	ctx context.Context, tracker, scanner *v1alpha1.Integration, fnd *v1alpha1.Finding,
 ) []error {
@@ -85,7 +90,7 @@ func (r *IntegrationReconciler) resetFinding(
 		c, err := r.resetClientFor(ctx, tracker, repo)
 		if err != nil {
 			errs = append(errs, err)
-		} else if err := c.DeleteIssue(ctx, repo, int(tr.IssueNumber)); err != nil {
+		} else if err := r.deleteOrCloseIssue(ctx, c, repo, int(tr.IssueNumber)); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -106,6 +111,21 @@ func (r *IntegrationReconciler) resetFinding(
 		}
 	}
 	return errs
+}
+
+// deleteOrCloseIssue deletes a tracking issue, closing it instead when
+// the credential cannot delete (both are idempotent — a missing issue
+// deletes as success and a closed issue closes as a no-op).
+func (r *IntegrationReconciler) deleteOrCloseIssue(
+	ctx context.Context, c resetClient, repo ghclient.Repo, number int,
+) error {
+	err := c.DeleteIssue(ctx, repo, number)
+	if !errors.Is(err, ghclient.ErrDeleteUnauthorized) {
+		return err
+	}
+	r.log().LogAttrs(ctx, slog.LevelWarn, "issue delete unauthorized; closing instead",
+		slog.String("repo", repo.String()), slog.Int("issue", number))
+	return c.Close(ctx, repo, number)
 }
 
 // resetIntegration resolves the Integration providing a capability; a

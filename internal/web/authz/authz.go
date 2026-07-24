@@ -14,38 +14,42 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/bitwise-media-group/patchy/internal/action"
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
 )
 
-// Verbs the status server understands.
+// The verb vocabulary is owned by internal/action, which also holds the
+// state-machine gating behind each verb; authz only resolves who may use them.
+// Re-exported here so the server keeps reading its grants and its actions from
+// one place.
 const (
 	// VerbApprove is the custom RBAC verb behind the approve action.
-	VerbApprove = "approve"
+	VerbApprove = action.VerbApprove
 	// VerbRetry is the custom RBAC verb behind the retry action (recover a
 	// Failed finding to the state it failed from).
-	VerbRetry = "retry"
+	VerbRetry = action.VerbRetry
 	// VerbExpedite is the custom RBAC verb behind the expedite action (skip
 	// the waiting stages: accumulation, minimum age, queue position).
-	VerbExpedite = "expedite"
+	VerbExpedite = action.VerbExpedite
 	// VerbSuspend is the custom RBAC verb behind the suspend action.
-	VerbSuspend = "suspend"
+	VerbSuspend = action.VerbSuspend
 	// VerbResume is the custom RBAC verb behind the resume action.
-	VerbResume = "resume"
+	VerbResume = action.VerbResume
 	// VerbReplay is the custom RBAC verb behind the namespace-wide replay
 	// action (redeliver the webhook delivery log — demo tooling).
-	VerbReplay = "replay"
+	VerbReplay = action.VerbReplay
 	// VerbReset is the custom RBAC verb behind the namespace-wide reset
 	// action (delete every pipeline resource — demo tooling).
-	VerbReset = "reset"
+	VerbReset = action.VerbReset
 )
 
 // ActionVerbs lists the per-finding custom verbs in the order the UI
 // receives them.
-var ActionVerbs = []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume}
+var ActionVerbs = action.ActionVerbs
 
 // AdminVerbs lists the namespace-wide custom verbs, resolved the same way
 // but surfaced on the dataset's user rather than per finding.
-var AdminVerbs = []string{VerbReplay, VerbReset}
+var AdminVerbs = action.AdminVerbs
 
 // findingsGroup is the API group carrying the custom verbs.
 const findingsGroup = "patchy.bitwisemedia.uk"

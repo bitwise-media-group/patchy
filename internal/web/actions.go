@@ -11,11 +11,11 @@ import (
 	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/action"
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
@@ -89,90 +89,25 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// apply performs one verb against fresh state. Semantics mirror the status
-// page's own state-machine gating (ui/src/actions.ts): approve needs
-// AwaitingApproval or HandedOff, suspend needs a non-terminal phase, resume
-// needs a suspension — with repeats degrading to no-op successes.
+// apply performs one verb against fresh state. The gating lives in
+// internal/action so the CLI applies identical semantics; this maps its
+// outcomes onto HTTP and writes. A no-op (the action's effect is already
+// recorded) skips the write and still reports success.
 func (s *Server) apply(r *http.Request, cur *v1alpha1.Finding, verb string, id auth.Identity) error {
-	unavailable := func() error {
+	changed, err := action.Apply(cur, verb, id.Username, approveNote, s.now())
+	switch {
+	case errors.Is(err, action.ErrUnavailable):
 		return &statusError{
 			code: http.StatusForbidden,
 			msg: fmt.Sprintf("Action %s is not available for finding %s (phase %s).",
 				verb, cur.Name, cur.Status.Phase),
 		}
-	}
-	switch verb {
-	case authz.VerbSuspend:
-		if cur.Spec.Suspend {
-			return nil
-		}
-		if v1alpha1.Terminal(cur.Status.Phase) {
-			return unavailable()
-		}
-		cur.Spec.Suspend = true
-	case authz.VerbResume:
-		if !cur.Spec.Suspend {
-			return nil
-		}
-		cur.Spec.Suspend = false
-	case authz.VerbApprove:
-		phase := cur.Status.Phase
-		if phase != v1alpha1.PhaseAwaitingApproval && phase != v1alpha1.PhaseHandedOff {
-			return unavailable()
-		}
-		// First approval wins — except a HandedOff finding whose recorded
-		// approval predates completion: that approval can never revive it
-		// (the spawner requires approval newer than completedAt), so a
-		// fresh one replaces it.
-		if cur.Spec.Approval != nil && !staleApproval(cur) {
-			return nil
-		}
-		cur.Spec.Approval = &v1alpha1.Approval{
-			By:   id.Username,
-			At:   metav1.NewTime(s.now()),
-			Note: approveNote,
-		}
-	case authz.VerbRetry:
-		if v1alpha1.RetryTarget(cur) == "" {
-			return unavailable() // not Failed, or no recoverable history
-		}
-		if v1alpha1.RetryRequested(cur) {
-			return nil // a fresh retry is already pending consumption
-		}
-		cur.Spec.Retry = &v1alpha1.ActionRequest{By: id.Username, At: metav1.NewTime(s.now())}
-	case authz.VerbExpedite:
-		if cur.Spec.Expedite != nil {
-			return nil // expedite is standing; first request wins
-		}
-		if !expeditable(cur.Status.Phase) {
-			return unavailable()
-		}
-		cur.Spec.Expedite = &v1alpha1.ActionRequest{By: id.Username, At: metav1.NewTime(s.now())}
-	default:
+	case errors.Is(err, action.ErrUnknownVerb):
 		return &statusError{code: http.StatusNotFound, msg: "unknown action"}
+	case err != nil:
+		return err
+	case !changed:
+		return nil
 	}
 	return s.client.Update(r.Context(), cur)
-}
-
-// expeditable reports the phases where an expedite still has waiting stages
-// ahead of it to skip: everything up to and including Queued. A run already
-// in flight (Remediating) or a PR under review gains nothing from it.
-func expeditable(p v1alpha1.Phase) bool {
-	switch p {
-	case v1alpha1.PhaseOpened, v1alpha1.PhaseEnhanced, v1alpha1.PhaseInvestigating,
-		v1alpha1.PhaseAwaitingApproval, v1alpha1.PhaseQueued:
-		return true
-	}
-	return false
-}
-
-// staleApproval reports a HandedOff finding whose approval is too old to
-// revive it: remediation-controller's revival gate requires the approval to
-// be newer than status.completedAt.
-func staleApproval(f *v1alpha1.Finding) bool {
-	if f.Status.Phase != v1alpha1.PhaseHandedOff || f.Spec.Approval == nil {
-		return false
-	}
-	done := f.Status.CompletedAt
-	return done != nil && !f.Spec.Approval.At.After(done.Time)
 }

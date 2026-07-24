@@ -19,5 +19,5 @@ maintainers:
 # Both stamped by release-please (extra-files generic updater, see
 # release-please-config.json): the chart version tracks the app release 1:1,
 # matching the patchy chart it configures.
-version: 0.6.0 # x-release-please-version
-appVersion: 0.6.0 # x-release-please-version
+version: 0.6.1 # x-release-please-version
+appVersion: 0.6.1 # x-release-please-version

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.1](https://github.com/bitwise-media-group/patchy/compare/v0.6.0...v0.6.1) (2026-07-24)
+
+
+### Features
+
+* **cli:** add the patchy workstation CLI ([70feb58](https://github.com/bitwise-media-group/patchy/commit/70feb58a49602deb1c958c741dff8d49b9a4d34e))
+* **deploy:** enforce the finding action verbs with a ValidatingAdmissionPolicy ([a369d5e](https://github.com/bitwise-media-group/patchy/commit/a369d5e418e0379c07219867892e1cfa926a5462))
+* **kube:** add ClientConfig for kubeconfig context resolution ([8f7a925](https://github.com/bitwise-media-group/patchy/commit/8f7a9252328e72466bd15fb749734d4278b1d5a1))
+* **release:** publish the patchy CLI as a homebrew cask ([02cfb69](https://github.com/bitwise-media-group/patchy/commit/02cfb693f947579f1ad44a3a19f5fd1d0e5205df))
+
 ## [0.6.0](https://github.com/bitwise-media-group/patchy/compare/v0.5.7...v0.6.0) (2026-07-24)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/bitwise-media-group/patchy/compare/v0.5.7...v0.6.0) (2026-07-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **harness:** --agent-image and --anthropic-secret{,-key,-env} (env PATCHY_AGENT_IMAGE / PATCHY_ANTHROPIC_*, helm anthropic.*) are replaced by per-harness --{claude,codex,fake}-agent-image, --{claude,codex}-secret{,-key,-env}, and --harnesses (helm agent.runners.<harness>.*). The --investigate-harness and --remediate-harness flags are removed; the harness is derived from the model. Model ids in the allowlist and stage config are now provider-qualified (e.g. anthropic/claude-sonnet-5). The published agent-runner image is renamed to claude-agent-runner and a codex-agent-runner image is added.
+
+### Features
+
+* **chart:** render FQDN egress in the dialect the cluster enforces ([318a830](https://github.com/bitwise-media-group/patchy/commit/318a830c767958632840069a5ba84ae08b6cfac8))
+* **harness:** add codex harness and per-harness agent runners ([134b246](https://github.com/bitwise-media-group/patchy/commit/134b2467382fdcc3343e92976452532f1df9f18d))
+* **integration-controller:** close tracking issues when delete is unauthorized ([f0e1d4d](https://github.com/bitwise-media-group/patchy/commit/f0e1d4df45dbe86fbda1662fc808c65569b9536f))
+
+
+### Bug Fixes
+
+* **ghclient:** treat an already-open alert as reopen success ([085b570](https://github.com/bitwise-media-group/patchy/commit/085b570a8d0b1ae1ce89fd73598955149bfe21c7))
+
 ## [0.5.7](https://github.com/bitwise-media-group/patchy/compare/v0.5.6...v0.5.7) (2026-07-23)
 
 

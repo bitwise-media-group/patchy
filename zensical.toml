@@ -46,6 +46,7 @@ nav = [
     { "Isolation model" = "deployment/isolation.md" },
   ] },
   { "The status page" = "status-ui.md" },
+  { "The patchy CLI" = "cli.md" },
   { "Observability" = "observability.md" },
   { "Extending" = "extending.md" },
 ]

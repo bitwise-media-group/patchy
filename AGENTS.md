@@ -14,7 +14,7 @@ hour, get context-enhanced, then a sandboxed `claude -p` run investigates each o
 remediated in priority order into pull requests, everything else routes to humans. Completed findings expire on a
 TTL; `FindingRollup` resources keep the all-time statistics.
 
-Seven binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Eight binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
   provider webhooks (`/github/webhooks`, per-Integration HMAC secrets), ingests scanner alerts into Findings
@@ -38,6 +38,12 @@ Seven binaries, one module. "Not monolithic" means separate binaries/deployments
   approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
   `spec.replay`; reset → delete all pipeline CRs). Rollup statistics are public; the findings surface always
   requires auth. Writes SPEC only (`spec.approval`, `spec.suspend`, `spec.replay`) — never status, never a phase.
+- `cmd/patchy` — the workstation CLI (the only binary not deployed): `patchy <verb> <noun>` over the
+  caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
+  action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API
+  writes is the ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`, NOT the CLI's
+  own SelfSubjectAccessReview (that is ergonomics). Builds for windows too, and ships a `kubectl-patchy`
+  alias. Ships no container image.
 
 ## Layout
 
@@ -46,6 +52,9 @@ api/v1alpha1/       The CRD types: one <kind>_types.go per kind, transitions.go 
                     SetPhase), conditions.go, generated deepcopy. `mise run codegen` regenerates
                     deepcopy + the CRD manifests (kustomize + helm); CI fails on drift.
 cmd/<binary>/       package main, thin: build root command, delegate to internal/cli.Execute.
+                    cmd/patchy is the exception — the CLI, with its own internal/ tree
+                    (cli = one file per VERB, render = one file per NOUN; the two are separate
+                    axes on purpose, since `get` resolves nouns through a registry at runtime).
 internal/           All private code, one package per concern (see "Packages" below).
 pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
                     enhancers). Exported signatures must not reference internal/ types.
@@ -90,6 +99,10 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
   templates with golden tests.
 - `webhook`, `telemetry`, `cli`, `version` — service plumbing (the webhook server is used by
   integration-controller only).
+- `action` — the human-action vocabulary (the custom verbs) and the state-machine gating behind each one:
+  `Apply` mutates spec, `Available` reports what a finding currently admits. Owned here so the status
+  server and the CLI cannot drift; `web/authz` re-exports the verb constants. It decides whether an action
+  is MEANINGFUL, never whether the caller may take it.
 - `web` (+ `web/auth`, `web/authz`) — the status-server backend: wire types mirroring the SPA's
   `ui/src/types.ts` (keep the two in lockstep), the action handlers, SSE broker + cache-informer watcher, and
   the embedded UI (`internal/web/ui`, Vite/Preact, single-file build embedded behind the `withui` tag; `mise run

@@ -20,6 +20,8 @@ statistics.
 | `investigation-controller` | Gate eligible findings, run analysis agent Jobs, route the verdicts                                                                        |
 | `remediation-controller`   | Queue admission, priority-ordered remediation Jobs, changeset push + pull requests, rollup statistics and the finding TTL                  |
 | `agent-runner`             | In-pod coding-agent runtime: investigate or remediate via `claude -p`                                                                      |
+| `status-server`            | The human-facing status page: findings/rollup projection, OIDC sign-in, the RBAC-gated actions                                             |
+| `patchy`                   | The workstation CLI: list, review and act on findings over your own kubeconfig — never through a controller                                |
 
 See [DESIGN.md](DESIGN.md) for the full requirements and the state machine, and [AGENTS.md](AGENTS.md) for a map of the
 repository. Full documentation — getting started, configuration and deployment references — lives at
@@ -32,7 +34,7 @@ The toolchain comes from the `.mise/` submodule ([mise](https://mise.jdx.dev) pr
 
 ```sh
 git submodule update --init
-make build   # all six binaries into bin/
+make build   # every binary into bin/
 make test    # unit tests with race + coverage
 make lint    # golangci-lint, govulncheck, license headers, prose linters
 make pr      # the full local gate before a pull request

@@ -19,6 +19,32 @@ helm install patchy-config oci://ghcr.io/bitwise-media-group/patchy/charts/patch
 The chart requires Kubernetes ≥ 1.34 (the oldest line not yet end-of-life) and references (never creates) the
 [two Secrets](../getting-started/install.md#create-the-secrets).
 
+## Human access: the admission policy
+
+Findings carry five custom RBAC verbs — `approve`, `retry`, `expedite`, `suspend`, `resume` — that let a grant say "this
+developer may approve findings, and nothing else". The [status page](../status-ui.md) honours them on its own because it
+writes as its ServiceAccount and asks first; the [CLI](../cli.md) writes as the user, so the API server authorizes it,
+and RBAC has no notion of a field: `update` on findings grants the whole object.
+
+`admissionPolicy.enabled` (default `true`) renders a `ValidatingAdmissionPolicy` that binds each human-writable spec
+field to its own verb, inside the API server's admission chain — so it holds for the CLI, `kubectl edit`,
+`kubectl patch`, server-side apply and raw `curl` alike.
+
+```yaml
+admissionPolicy:
+  enabled: true
+  # A controller of your own that legitimately writes Finding spec.
+  # The chart's own components are exempted automatically, from their
+  # resolved ServiceAccount names — so renaming the release or overriding
+  # a serviceAccount.name cannot lock a controller out.
+  extraExemptSubjects: []
+```
+
+Disabling it is a real reduction in privilege separation, not a cosmetic toggle: every custom verb becomes advisory, and
+anyone holding `update` on findings can change any field, including forging an approval. The template refuses to render
+on a cluster below 1.30 rather than silently omitting itself, because a missing policy looks exactly like a working one
+until someone tests it.
+
 ## Values
 
 Values are validated against `values.schema.json` — a typo'd or relocated key fails the install instead of being

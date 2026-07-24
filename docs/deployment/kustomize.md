@@ -44,6 +44,43 @@ does not bind is inert, which is why one ConfigMap serves all five controllers �
     create, and kustomize's `images:` transformer does **not** rewrite ConfigMap values. An overlay that pins a runner
     image must patch both the `images:` entry and the matching key — the prod overlay does exactly that.
 
+## Human access: RBAC and the admission policy
+
+Two things consume the custom verbs `approve` / `retry` / `expedite` / `suspend` / `resume` on
+`findings.patchy.bitwisemedia.uk`: the [status page](../status-ui.md), which resolves them per signed-in user via
+SubjectAccessReview, and the [CLI](../cli.md), which acts as the user's own kubeconfig identity.
+
+Those two need different enforcement. The status page writes as its own ServiceAccount, so it can check the verb itself.
+The CLI writes as the user, so the API server authorizes it — and RBAC has no notion of a field, meaning `update` on
+findings grants the _whole_ object. Granting a developer permission to suspend a finding would also let them rewrite its
+severity or forge an approval.
+
+`base/admission-policy.yaml` closes that gap with a `ValidatingAdmissionPolicy` binding each spec field to its verb. It
+is part of the base, so both overlays get it. Because it runs in the API server's admission chain it applies to every
+client equally — `patchy`, `kubectl edit`, `kubectl patch`, server-side apply, raw `curl`. There is no path around it
+short of privileges that already exceed the grant being protected.
+
+It enforces, for everyone except the patchy controllers:
+
+- each human-writable spec field changes only with its own verb (`spec.suspend` needs `suspend` to set and `resume` to
+  clear; `spec.approval` needs `approve`; and so on);
+- every other spec field is frozen — the pipeline owns it;
+- `metadata.finalizers`, `ownerReferences` and `labels` are frozen, because the rollup finalizers are what guarantee
+  spend is aggregated before deletion and the selector labels are what accumulation and child lookup key on.
+
+`findings/status` is deliberately not matched, so controller status writes and phase transitions are unaffected.
+
+!!! warning "Requires Kubernetes 1.30+"
+
+    `ValidatingAdmissionPolicy` reached GA in 1.30. On an older cluster this resource will not apply and
+    enforcement degrades **silently** to "whoever holds `update` owns the whole resource". Confirm with
+    `kubectl api-resources | grep validatingadmissionpolic` before relying on the verb ladder.
+
+`base/rbac.users.example.yaml` is documentation rather than an applied resource: copy the role ladder into your overlay
+and bind it to your own users or SSO groups. Roles above viewer grant `update` on findings — that is what lets the CLI
+write at all, and the admission policy is what makes it safe. `create` and `delete` are deliberately withheld, so nobody
+can launder an approval by deleting a finding and recreating it with one preset.
+
 ## The overlays
 
 - **dev** targets a local kind or [Colima](colima.md) cluster: local `patchy/*:dev` images (`make snapshot`, retag,

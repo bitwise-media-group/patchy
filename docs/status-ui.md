@@ -6,6 +6,9 @@ Patchy's human surface beyond the tracking issues: a web dashboard served by the
 embedded artifact — one self-contained HTML file compiled into the binary — with live updates: the server watches the
 Finding and FindingRollup resources and nudges open browsers over Server-Sent Events to refetch.
 
+The same findings, the same actions and the same RBAC are available from a terminal via the [patchy CLI](cli.md) — it
+reads and writes the identical custom resources, so the two surfaces never disagree about state.
+
 ## Views
 
 The screenshots below show the [canned dev data](#canned-data-in-dev) — every finding deliberately suspended, hence the

@@ -83,6 +83,39 @@ func RestConfig(kubeconfig string) (*rest.Config, error) {
 	return cfg, nil
 }
 
+// ClientConfig resolves the REST config the way kubectl does — the standard
+// loading rules (explicit path, then $KUBECONFIG, then ~/.kube/config), with an
+// optional context override — and additionally returns the namespace that
+// context selects.
+//
+// Controllers use RestConfig: they run with a ServiceAccount and one identity.
+// ClientConfig is for the CLI, which carries a human's kubeconfig and has to
+// honour --context and the per-context namespace the same way every other
+// Kubernetes tool does. The namespace follows kubectl's rule exactly, including
+// its "default" when nothing declares one, so `patchy get` and `kubectl get`
+// never disagree about where they are looking.
+func ClientConfig(kubeconfig, context string) (*rest.Config, string, error) {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		rules.ExplicitPath = kubeconfig
+	}
+	overrides := &clientcmd.ConfigOverrides{}
+	if context != "" {
+		overrides.CurrentContext = context
+	}
+	cc := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+
+	cfg, err := cc.ClientConfig()
+	if err != nil {
+		return nil, "", fmt.Errorf("kubernetes client config: %w", err)
+	}
+	ns, _, err := cc.Namespace()
+	if err != nil {
+		return nil, "", fmt.Errorf("kubernetes namespace: %w", err)
+	}
+	return cfg, ns, nil
+}
+
 // NewManager builds a controller manager per Options. Secrets are never
 // cached: provider/forge secretRefs are read on demand through the API
 // reader, so no controller needs a namespace-wide secret list/watch grant.

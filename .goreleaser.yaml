@@ -145,6 +145,48 @@ builds:
       goarch:
           - amd64
           - arm64
+    # The CLI is the one binary here that runs on a workstation rather than in
+    # the cluster, which is why it alone builds for windows and has no container
+    # image: nothing would ever run it in a pod.
+    - id: patchy
+      main: ./cmd/patchy
+      binary: patchy
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+          - windows
+      goarch:
+          - amd64
+          - arm64
+    # The same program under the name kubectl looks for on PATH, so
+    # `kubectl patchy get findings` works for anyone who would rather not learn
+    # a second binary. Built rather than symlinked because the archives have to
+    # stay extractable on windows, where symlinks need a privilege most users
+    # do not have.
+    - id: kubectl-patchy
+      main: ./cmd/patchy
+      binary: kubectl-patchy
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+          - windows
+      goarch:
+          - amd64
+          - arm64
 
 archives:
     - id: patchy
@@ -354,8 +396,19 @@ binary_signs:
           - --yes
       output: true
 
+# One SBOM per BINARY, not per archive.
+#
+# The archive is a tarball of every binary, so an archive-scoped SBOM lists the
+# union of all seven dependency trees and cannot answer "does this CVE affect
+# source-controller?". A binary-scoped SBOM can: syft reads the module list Go
+# embeds at link time, which contains only what that binary actually links.
+# The CLI's rendering stack (glamour, chroma, bluemonday) therefore appears in
+# patchy's SBOM and in none of the controllers' — the dependency boundary as
+# evidence attached to the shipped artifact, rather than as an assertion about
+# how the Go linker behaves. Verify by hand with:
+#   go version -m bin/source-controller | grep charmbracelet
 sboms:
-    - artifacts: archive
+    - artifacts: binary
       # syft is pinned by the toolchain submodule's mise config and on PATH for
       # whoever runs goreleaser (make snapshot locally, the release workflow in CI).
       cmd: syft

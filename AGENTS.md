@@ -56,6 +56,10 @@ cmd/<binary>/       package main, thin: build root command, delegate to internal
                     cmd/patchy is the exception — the CLI, with its own internal/ tree
                     (cli = one file per VERB, render = one file per NOUN; the two are separate
                     axes on purpose, since `get` resolves nouns through a registry at runtime).
+                    cmd/patchy/internal/tools/docgen is dev tooling, not a binary: it renders
+                    docs/cli from the cobra tree. It sits there because the internal rule puts
+                    cmd/patchy/internal/cli out of reach of the repo root, and NOT under cmd/
+                    because hack/build.sh builds everything there.
 internal/           All private code, one package per concern (see "Packages" below).
 pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
                     enhancers). Exported signatures must not reference internal/ types.
@@ -73,7 +77,15 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
                     docs/stylesheets/extra.css + overrides/). `mise run serve` to preview,
                     `mise run docs-build` to build; the reusable release workflow publishes it
                     to GitHub Pages (oss.bitwisemedia.uk/patchy). uv provisions zensical
-                    (pyproject.toml / uv.lock).
+                    (pyproject.toml / uv.lock). docs/cli/ is GENERATED (docgen, above) — edit
+                    the commands' Short/Long/Example, not the markdown; docs/cli.md beside it
+                    is the hand-written tour.
+completions/        GENERATED shell completions, committed so the Homebrew cask installs them
+                    as static files (executing a freshly-downloaded binary at install time
+                    trips Gatekeeper). `mise run docs` writes both this and docs/cli/.
+                    kubectl_complete-patchy is the exception — hand-written, and the reason
+                    `kubectl patchy` completes: kubectl ignores a plugin's completion script
+                    and instead runs kubectl_complete-<plugin> from PATH.
 .mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +
                     the go-cli task archetype. Makefile is a one-line forwarder; repo-local tasks
                     (multi-binary build, e2e, envtest, codegen, replay) live in tasks.toml.

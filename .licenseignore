@@ -5,4 +5,5 @@ deploy/**
 commit.sh
 docs/**
 site/**
+completions/**
 internal/web/ui/**

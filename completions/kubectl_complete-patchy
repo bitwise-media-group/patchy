@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# Shell completion for `kubectl patchy …`.
+#
+# kubectl (1.26+) does not read the plugin's own completion script. When the
+# user tabs after a plugin name it strips its own global flags, looks for an
+# executable called kubectl_complete-<plugin> on PATH, and runs it with the
+# remaining words — so this file has to be installed alongside kubectl-patchy,
+# not into a shell's completion directory. Whatever it prints is consumed
+# verbatim: cobra's __complete protocol, one candidate per line followed by a
+# `:<directive>` line.
+#
+# kubectl-patchy already speaks that protocol, so forwarding is the whole job.
+
+kubectl-patchy __complete "$@"

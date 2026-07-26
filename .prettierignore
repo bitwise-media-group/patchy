@@ -5,9 +5,17 @@ DESIGN.md
 **/testdata/
 dist/
 bin/
+
 AGENTS.md
 CLAUDE.md
 .claude/
+
+# Generated from the cobra command tree (mise run docs); same reasoning as the
+# fixtures above — a reformat would surface as drift on the next regeneration.
+# docs/cli.md, the hand-written page that navs to them, is deliberately not
+# covered.
+docs/cli/
+completions/
 
 # goreleaser config carries Go templates prettier mangles
 .goreleaser.yaml

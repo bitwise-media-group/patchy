@@ -7,6 +7,9 @@ It talks to the Kubernetes API with **your** kubeconfig — never through a cont
 server. There is no patchy-specific auth, no separate endpoint to expose, and no service account acting on your behalf:
 what you can do is exactly what your RBAC allows.
 
+This page is the tour. For every command, flag and default, generated from the binary itself, see the
+[command reference](cli/patchy.md).
+
 ## Install
 
 On macOS and linux, from the Homebrew tap:
@@ -33,11 +36,29 @@ there yourself. Either way every command below also works as `kubectl patchy …
 kubectl patchy get findings
 ```
 
-Shell completion covers verbs, nouns, and the enumerated flag values (phases, severities, output formats):
+## Shell completion
+
+Completion covers verbs, nouns, and the enumerated flag values (phases, severities, output formats). The cask installs
+all of it; from an archive, install what your shell reads — the scripts ship pre-generated under `completions/`:
 
 ```sh
-patchy completion zsh > "${fpath[1]}/_patchy"
+install -m 0644 completions/patchy.zsh "${fpath[1]}/_patchy"                     # zsh
+install -m 0644 completions/patchy.bash /usr/local/etc/bash_completion.d/patchy  # bash
+install -m 0644 completions/patchy.fish ~/.config/fish/completions/patchy.fish   # fish
 ```
+
+`patchy completion <shell>` prints the same script, and adds `powershell`.
+
+`kubectl patchy …` completes through a different mechanism, and needs one more file. kubectl never reads a plugin's own
+completion script: it strips its own global flags, then looks for an executable named `kubectl_complete-<plugin>` on
+your `PATH` and asks that for candidates. So the hook belongs in `bin`, not in a completion directory:
+
+```sh
+install -m 0755 completions/kubectl_complete-patchy /usr/local/bin/kubectl_complete-patchy
+```
+
+It is a one-line forward to `kubectl-patchy __complete`, so both spellings complete from the same command tree and
+cannot drift. Requires kubectl 1.26 or newer; the cask installs it for you.
 
 ## Grammar
 

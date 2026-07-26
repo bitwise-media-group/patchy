@@ -73,8 +73,10 @@ archive for anything brew does not cover:
 brew install bitwise-media-group/tap/patchy
 ```
 
-It talks to the Kubernetes API with your own kubeconfig, so what you can do is exactly what your RBAC allows. See
-[`docs/cli.md`](docs/cli.md).
+It talks to the Kubernetes API with your own kubeconfig, so what you can do is exactly what your RBAC allows. The cask
+also installs `kubectl-patchy`, so every command works as `kubectl patchy …`, with shell completion for both spellings.
+See [`docs/cli.md`](docs/cli.md) for the tour and [`docs/cli/patchy.md`](docs/cli/patchy.md) for the generated command
+reference.
 
 ## Status
 

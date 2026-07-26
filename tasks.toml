@@ -106,6 +106,30 @@ description = "lint and render the helm charts"
 dir = "{{cwd}}"
 run = "./hack/helm-lint.sh"
 
+# Everything derived from the CLI's cobra command tree: the per-command
+# reference under docs/cli (nav'd from docs/cli.md) and the shell completions.
+# Kept repo-local because the archetype leaves `docs` to the app — see the
+# comment at the head of .mise/tasks/go-cli.toml.
+#
+# Both are committed rather than generated at release time: the Homebrew cask
+# installs the completions as static files, because a cask that executed the
+# binary at install time would trip Gatekeeper on the still-quarantined
+# download (see homebrew_casks in .goreleaser.yaml).
+#
+# `go run` rather than bin/patchy: the CLI is the one binary the multi-binary
+# build task is not needed for, and nothing here depends on the status page
+# SPA that `build` compiles first.
+[docs]
+description = "regenerate the CLI reference (docs/cli) and shell completions"
+dir = "{{cwd}}"
+run = [
+  "go run ./cmd/patchy/internal/tools/docgen --out docs/cli --format markdown",
+  "mkdir -p completions",
+  "go run ./cmd/patchy completion bash > completions/patchy.bash",
+  "go run ./cmd/patchy completion zsh > completions/patchy.zsh",
+  "go run ./cmd/patchy completion fish > completions/patchy.fish",
+]
+
 # Redefined gates: the archetype's ci/pr plus the zensical docs build, so a
 # broken site fails CI instead of surfacing at release time (the reusable
 # release workflow's docs job publishes the site, keyed off zensical.toml).
@@ -126,6 +150,7 @@ run = [
   { task = "lint" },
   { task = "test" },
   { task = "build" },
+  { task = "docs" },
   { task = "docs-build" },
   { task = "commit" },
 ]

@@ -21,6 +21,8 @@ ignores:
     - "DESIGN.md"
     # Golden test fixtures are generated; byte-stability matters more than style.
     - "**/testdata/**"
+    # The CLI reference is generated from the cobra command tree (mise run docs).
+    - "docs/cli/**"
     - "node_modules/**"
     - "dist/**"
     - ".claude/**"

@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"testing"
 
+	"github.com/google/go-github/v89/github"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,11 +29,15 @@ type fakeResetClient struct {
 	opened       []string
 	failDelete   bool
 	unauthorized bool
+	gone         bool // every call answers 404, as a deleted repository does
 }
 
 func (f *fakeResetClient) DeleteIssue(_ context.Context, repo ghclient.Repo, number int) error {
 	if f.failDelete {
 		return errors.New("boom")
+	}
+	if f.gone {
+		return notFoundErr(fmt.Sprintf("delete issue %s#%d", repo, number))
 	}
 	if f.unauthorized {
 		return fmt.Errorf("delete issue %s#%d: %w", repo, number, ghclient.ErrDeleteUnauthorized)
@@ -46,8 +52,20 @@ func (f *fakeResetClient) Close(_ context.Context, repo ghclient.Repo, number in
 }
 
 func (f *fakeResetClient) OpenAlert(_ context.Context, repo ghclient.Repo, number int) error {
+	if f.gone {
+		return notFoundErr(fmt.Sprintf("open alert %s#%d", repo, number))
+	}
 	f.opened = append(f.opened, fmt.Sprintf("%s#%d", repo, number))
 	return nil
+}
+
+// notFoundErr builds the wrapped GitHub 404 a call against a deleted or
+// recreated repository returns.
+func notFoundErr(op string) error {
+	return fmt.Errorf("ghclient: %s: %w", op, &github.ErrorResponse{
+		Response: &http.Response{StatusCode: http.StatusNotFound},
+		Message:  "Not Found",
+	})
 }
 
 func newResetReconciler(
@@ -130,6 +148,51 @@ func TestRunResetClosesWhenDeleteUnauthorized(t *testing.T) {
 	}
 	if want := []string{"acme/orders#7"}; !slices.Equal(fc.closed, want) {
 		t.Errorf("closed issues = %v, want %v", fc.closed, want)
+	}
+
+	var findings v1alpha1.FindingList
+	if err := c.List(t.Context(), &findings, client.InNamespace("patchy")); err != nil {
+		t.Fatalf("list findings: %v", err)
+	}
+	if len(findings.Items) != 0 {
+		t.Errorf("findings = %d after reset, want 0", len(findings.Items))
+	}
+}
+
+// The benchmark repositories a demo runs against get deleted and recreated
+// between runs, so the issues and alerts a reset cleans up may be gone. The
+// pipeline resources must still be deleted.
+func TestRunResetIgnoresMissingForgeObjects(t *testing.T) {
+	tracked := projectable(v1alpha1.PhaseDismissed)
+	tracked.Status.Tracking = &v1alpha1.TrackingStatus{Integration: "gh", IssueNumber: 7}
+	fc := &fakeResetClient{gone: true}
+	r, c := newResetReconciler(t, fc, testIntegration(), tracked)
+
+	if err := r.runReset(t.Context(), "patchy"); err != nil {
+		t.Fatalf("runReset() error = %v, want the missing issue and alert ignored", err)
+	}
+
+	var findings v1alpha1.FindingList
+	if err := c.List(t.Context(), &findings, client.InNamespace("patchy")); err != nil {
+		t.Fatalf("list findings: %v", err)
+	}
+	if len(findings.Items) != 0 {
+		t.Errorf("findings = %d after reset, want 0", len(findings.Items))
+	}
+}
+
+// A repository that is gone takes its credential with it: the App
+// installation lookup 404s before any issue or alert call is made.
+func TestRunResetIgnoresMissingRepository(t *testing.T) {
+	tracked := projectable(v1alpha1.PhaseDismissed)
+	tracked.Status.Tracking = &v1alpha1.TrackingStatus{Integration: "gh", IssueNumber: 7}
+	r, c := newResetReconciler(t, &fakeResetClient{}, testIntegration(), tracked)
+	r.ClientFor = func(_ context.Context, _ *v1alpha1.Integration, repo ghclient.Repo) (resetClient, error) {
+		return nil, notFoundErr(fmt.Sprintf("resolve installation for %s", repo))
+	}
+
+	if err := r.runReset(t.Context(), "patchy"); err != nil {
+		t.Fatalf("runReset() error = %v, want the missing repository ignored", err)
 	}
 
 	var findings v1alpha1.FindingList

@@ -31,7 +31,8 @@ type resetClient interface {
 // older lingers), then delete every pipeline resource. GitHub cleanup runs
 // first and any failure aborts before the deletes — the Findings carry the
 // issue numbers, repositories, and alert numbers the cleanup needs, so
-// state must outlive a retried attempt. Everything here is idempotent.
+// state must outlive a retried attempt. Everything here is idempotent, and
+// forge objects that are already gone are skipped rather than failed.
 func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) error {
 	var findings v1alpha1.FindingList
 	if err := r.List(ctx, &findings, client.InNamespace(namespace)); err != nil {
@@ -87,30 +88,66 @@ func (r *IntegrationReconciler) resetFinding(
 	}
 	var errs []error
 	if tr := fnd.Status.Tracking; tracker != nil && tr != nil && tr.IssueNumber != 0 {
-		c, err := r.resetClientFor(ctx, tracker, repo)
-		if err != nil {
-			errs = append(errs, err)
-		} else if err := r.deleteOrCloseIssue(ctx, c, repo, int(tr.IssueNumber)); err != nil {
+		if err := r.resetIssue(ctx, tracker, repo, int(tr.IssueNumber)); err != nil && !r.forgeGone(ctx, repo, err) {
 			errs = append(errs, err)
 		}
 	}
 	if scanner == nil || fnd.Status.Phase != v1alpha1.PhaseDismissed {
 		return errs
 	}
+	return append(errs, r.resetAlerts(ctx, scanner, repo, fnd.Spec.Alerts)...)
+}
+
+// resetIssue removes one finding's tracking issue from the forge.
+func (r *IntegrationReconciler) resetIssue(
+	ctx context.Context, tracker *v1alpha1.Integration, repo ghclient.Repo, number int,
+) error {
+	c, err := r.resetClientFor(ctx, tracker, repo)
+	if err != nil {
+		return err
+	}
+	return r.deleteOrCloseIssue(ctx, c, repo, number)
+}
+
+// resetAlerts reopens the code-scanning alerts a dismissed finding closed.
+// Alert ids that are not GitHub alert numbers come from a foreign source
+// and have nothing to reopen.
+func (r *IntegrationReconciler) resetAlerts(
+	ctx context.Context, scanner *v1alpha1.Integration, repo ghclient.Repo, alerts []v1alpha1.Alert,
+) []error {
 	c, err := r.resetClientFor(ctx, scanner, repo)
 	if err != nil {
-		return append(errs, err)
+		if r.forgeGone(ctx, repo, err) {
+			return nil
+		}
+		return []error{err}
 	}
-	for _, a := range fnd.Spec.Alerts {
+	var errs []error
+	for _, a := range alerts {
 		num, err := strconv.Atoi(a.ID)
 		if err != nil {
-			continue // foreign-source alert id; nothing to reopen on GitHub
+			continue
 		}
-		if err := c.OpenAlert(ctx, repo, num); err != nil {
+		if err := c.OpenAlert(ctx, repo, num); err != nil && !r.forgeGone(ctx, repo, err) {
 			errs = append(errs, err)
 		}
 	}
 	return errs
+}
+
+// forgeGone reports whether err is GitHub answering "no such thing" — a 404
+// for the repository, its installation, an issue, or an alert. The reset
+// converges on "no forge state left", so anything already absent is success:
+// the benchmark repositories a demo runs against get deleted and recreated
+// between runs, and failing on their remains would strand the pipeline
+// resources the reset exists to delete.
+func (r *IntegrationReconciler) forgeGone(ctx context.Context, repo ghclient.Repo, err error) bool {
+	if !ghclient.IsNotFound(err) {
+		return false
+	}
+	r.log().LogAttrs(ctx, slog.LevelInfo, "reset skipping forge object that no longer exists",
+		slog.String("repo", repo.String()), slog.String("error", err.Error()))
+	return true
 }
 
 // deleteOrCloseIssue deletes a tracking issue, closing it instead when

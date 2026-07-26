@@ -37,23 +37,27 @@ supports it, refusing to start otherwise.
 
 <div class="nowrap-first" markdown>
 
-| Flag                      | Env                            | Default             | Purpose                                                                                                                             |
-| ------------------------- | ------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `--claude-agent-image`    | `PATCHY_CLAUDE_AGENT_IMAGE`    | —                   | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                                |
-| `--codex-agent-image`     | `PATCHY_CODEX_AGENT_IMAGE`     | —                   | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                                   |
-| `--fake-agent-image`      | `PATCHY_FAKE_AGENT_IMAGE`      | —                   | fake agent image for dev/e2e (replays fixtures, no credential)                                                                      |
-| `--harnesses`             | `PATCHY_HARNESSES`             | — (auto)            | Restrict enabled harnesses to this comma list; empty = any harness whose credential exists                                          |
-| `--claude-secret`         | `PATCHY_CLAUDE_SECRET`         | `patchy-anthropic`  | Secret (agent namespace) holding the Anthropic credential                                                                           |
-| `--claude-secret-key`     | `PATCHY_CLAUDE_SECRET_KEY`     | `api-key`           | Key within the Anthropic credential Secret                                                                                          |
-| `--claude-secret-env`     | `PATCHY_CLAUDE_SECRET_ENV`     | `ANTHROPIC_API_KEY` | Env var it is injected as: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token` token), or `ANTHROPIC_AUTH_TOKEN` |
-| `--codex-secret`          | `PATCHY_CODEX_SECRET`          | `patchy-openai`     | Secret (agent namespace) holding the OpenAI credential                                                                              |
-| `--codex-secret-key`      | `PATCHY_CODEX_SECRET_KEY`      | `api-key`           | Key within the OpenAI credential Secret                                                                                             |
-| `--codex-secret-env`      | `PATCHY_CODEX_SECRET_ENV`      | `OPENAI_API_KEY`    | Env var it is injected as: `OPENAI_API_KEY`, or `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` for a ChatGPT-plan workspace token           |
-| `--agent-namespace`       | `PATCHY_AGENT_NAMESPACE`       | `patchy-agents`     | Namespace the agent Jobs run in                                                                                                     |
-| `--agent-service-account` | `PATCHY_AGENT_SERVICE_ACCOUNT` | `patchy-agent`      | ServiceAccount for the agent pods                                                                                                   |
-| `--job-deadline`          | `PATCHY_JOB_DEADLINE`          | `1h`                | `activeDeadlineSeconds` for an agent Job                                                                                            |
-| `--job-ttl`               | `PATCHY_JOB_TTL`               | `1h`                | `ttlSecondsAfterFinished` for a finished Job                                                                                        |
-| `--model-allowlist`       | `PATCHY_MODEL_ALLOWLIST`       | canonical ids       | Canonical model ids the investigation may request for remediation (comma-separated)                                                 |
+| Flag                      | Env                            | Default                | Purpose                                                                                                                             |
+| ------------------------- | ------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `--claude-agent-image`    | `PATCHY_CLAUDE_AGENT_IMAGE`    | —                      | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                                |
+| `--codex-agent-image`     | `PATCHY_CODEX_AGENT_IMAGE`     | —                      | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                                   |
+| `--copilot-agent-image`   | `PATCHY_COPILOT_AGENT_IMAGE`   | —                      | copilot-agent-runner image (bundles the copilot CLI); unset disables the copilot runner                                             |
+| `--fake-agent-image`      | `PATCHY_FAKE_AGENT_IMAGE`      | —                      | fake agent image for dev/e2e (replays fixtures, no credential)                                                                      |
+| `--harnesses`             | `PATCHY_HARNESSES`             | — (auto)               | Restrict enabled harnesses to this comma list; empty = any harness whose credential exists                                          |
+| `--claude-secret`         | `PATCHY_CLAUDE_SECRET`         | `patchy-anthropic`     | Secret (agent namespace) holding the Anthropic credential                                                                           |
+| `--claude-secret-key`     | `PATCHY_CLAUDE_SECRET_KEY`     | `api-key`              | Key within the Anthropic credential Secret                                                                                          |
+| `--claude-secret-env`     | `PATCHY_CLAUDE_SECRET_ENV`     | `ANTHROPIC_API_KEY`    | Env var it is injected as: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token` token), or `ANTHROPIC_AUTH_TOKEN` |
+| `--codex-secret`          | `PATCHY_CODEX_SECRET`          | `patchy-openai`        | Secret (agent namespace) holding the OpenAI credential                                                                              |
+| `--codex-secret-key`      | `PATCHY_CODEX_SECRET_KEY`      | `api-key`              | Key within the OpenAI credential Secret                                                                                             |
+| `--codex-secret-env`      | `PATCHY_CODEX_SECRET_ENV`      | `OPENAI_API_KEY`       | Env var it is injected as: `OPENAI_API_KEY`, or `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` for a ChatGPT-plan workspace token           |
+| `--copilot-secret`        | `PATCHY_COPILOT_SECRET`        | `patchy-copilot`       | Secret (agent namespace) holding the GitHub Copilot credential — a GitHub token, not a model API key                                |
+| `--copilot-secret-key`    | `PATCHY_COPILOT_SECRET_KEY`    | `token`                | Key within the GitHub Copilot credential Secret                                                                                     |
+| `--copilot-secret-env`    | `PATCHY_COPILOT_SECRET_ENV`    | `COPILOT_GITHUB_TOKEN` | Env var it is injected as: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`                                                    |
+| `--agent-namespace`       | `PATCHY_AGENT_NAMESPACE`       | `patchy-agents`        | Namespace the agent Jobs run in                                                                                                     |
+| `--agent-service-account` | `PATCHY_AGENT_SERVICE_ACCOUNT` | `patchy-agent`         | ServiceAccount for the agent pods                                                                                                   |
+| `--job-deadline`          | `PATCHY_JOB_DEADLINE`          | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                            |
+| `--job-ttl`               | `PATCHY_JOB_TTL`               | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                        |
+| `--model-allowlist`       | `PATCHY_MODEL_ALLOWLIST`       | canonical ids          | Canonical model ids the investigation may request for remediation (comma-separated)                                                 |
 
 </div>
 

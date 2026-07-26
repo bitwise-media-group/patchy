@@ -34,6 +34,13 @@ func TestResolveModel(t *testing.T) {
 		{"preferred enabled", sonnet, []string{"claude", "codex"}, "claude", "claude-sonnet-5", true},
 		{"codex model to codex", codex, []string{"claude", "codex"}, "codex", "gpt-5.3-codex", true},
 		{"preferred disabled, no other supporter", sonnet, []string{"codex"}, "", "", false},
+		// Copilot brokers both vendors, so it covers a model whose own harness
+		// is disabled — but never preempts that harness when both are enabled.
+		{"copilot covers an anthropic model", sonnet, []string{"copilot"}, "copilot", "claude-sonnet-5", true},
+		{"copilot covers an openai model", codex, []string{"copilot"}, "copilot", "gpt-5.3-codex", true},
+		{"copilot does not preempt the preferred harness", sonnet,
+			[]string{"claude", "copilot"}, "claude", "claude-sonnet-5", true},
+		{"copilot does not preempt codex", codex, []string{"codex", "copilot"}, "codex", "gpt-5.3-codex", true},
 		{"fake fallback runs anything", codex, []string{"fake"}, "fake", "gpt-5.3-codex", true},
 		{"fake does not preempt a real harness", sonnet, []string{"claude", "fake"}, "claude", "claude-sonnet-5", true},
 		{"nothing enabled", sonnet, nil, "", "", false},

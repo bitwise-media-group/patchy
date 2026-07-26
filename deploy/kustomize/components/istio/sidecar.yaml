@@ -18,8 +18,9 @@
 # each permitting only its own model host (plus the patchy namespace's Services
 # for the artifact fetch) — so a claude pod cannot reach api.openai.com and a
 # codex pod cannot reach api.anthropic.com even though both ServiceEntries are
-# registered in the namespace. The codex Sidecar is inert until the codex
-# runner is enabled (no codex pod carries the label otherwise).
+# registered in the namespace — and only a copilot pod can reach the GitHub
+# hosts its authentication needs. The codex and copilot Sidecars are inert until
+# those runners are enabled (no pod carries the label otherwise).
 #
 # WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
 #
@@ -79,4 +80,29 @@ spec:
     egress:
         - hosts:
               - ./api.openai.com
+              - patchy/*
+---
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+    name: patchy-agent-egress-copilot
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    workloadSelector:
+        labels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: copilot
+    outboundTrafficPolicy:
+        mode: REGISTRY_ONLY
+    egress:
+        # api.github.com is this harness's auth dependency, not forge access —
+        # the CLI exchanges its token there before reaching a model, and
+        # --disable-builtin-mcps keeps any tool in the session off that API.
+        # Scoping it here means only copilot pods ever see the route.
+        - hosts:
+              - ./api.github.com
+              - ./*.githubcopilot.com
               - patchy/*

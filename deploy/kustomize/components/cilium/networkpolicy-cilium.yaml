@@ -19,9 +19,9 @@
 #     host appears in this policy at all — the pod never talks to GitHub.
 #   * its own model API: the agent container's harness CLI.
 #
-# The codex policy is inert until the codex runner is enabled (no codex pod
-# carries the label otherwise). Requires: Cilium with DNS-based policy enabled
-# (the DNS proxy). If your CNI is not Cilium, drop this component;
+# The codex and copilot policies are inert until those runners are enabled (no
+# pod carries the label otherwise). Requires: Cilium with DNS-based policy
+# enabled (the DNS proxy). If your CNI is not Cilium, drop this component;
 # base/networkpolicy.yaml still applies and is the floor.
 ---
 apiVersion: cilium.io/v2
@@ -114,6 +114,68 @@ spec:
         # The agent container: the codex harness's model API and nothing else.
         - toFQDNs:
               - matchName: api.openai.com
+          toPorts:
+              - ports:
+                    - port: "443"
+                      protocol: TCP
+---
+# The copilot harness is the one that needs a GitHub host, and the only reason
+# is authentication: the CLI validates its token and exchanges it against
+# api.github.com before it will talk to a model, so denying that host does not
+# harden the pod, it just stops the harness working. The agent still cannot use
+# it as a forge — the runner passes --disable-builtin-mcps, so no tool in the
+# session speaks the GitHub API, and patchy's own forge traffic never happens
+# in a pod. Inference then goes to a *.githubcopilot.com endpoint chosen at
+# token-exchange time, and WHICH one depends on the plan behind the token
+# (individual, business, enterprise), so all three are pinned below. The DNS
+# rule takes the wildcard because resolution has to cover whichever the token
+# selects; the toFQDNs list stays exact, so a plan that resolves somewhere else
+# fails closed and the fix is to add that name here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+    name: patchy-agent-egress-copilot
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    endpointSelector:
+        matchLabels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: copilot
+    egress:
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: kube-system
+                    k8s-app: kube-dns
+          toPorts:
+              - ports:
+                    - port: "53"
+                      protocol: ANY
+                rules:
+                    dns:
+                        - matchPattern: "*.githubcopilot.com"
+                        - matchPattern: "api.github.com"
+                        - matchPattern: "*.patchy.svc.cluster.local"
+                        - matchPattern: "*.svc.cluster.local"
+
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: patchy
+                    app.kubernetes.io/name: source-controller
+          toPorts:
+              - ports:
+                    - port: "9790"
+                      protocol: TCP
+
+        # The agent container: the Copilot inference endpoints plus the auth
+        # host they are brokered through, and nothing else.
+        - toFQDNs:
+              - matchName: api.github.com
+              - matchName: api.githubcopilot.com
+              - matchName: api.business.githubcopilot.com
+              - matchName: api.enterprise.githubcopilot.com
           toPorts:
               - ports:
                     - port: "443"

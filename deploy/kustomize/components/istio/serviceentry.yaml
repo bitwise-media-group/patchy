@@ -10,9 +10,11 @@
 # sandbox. The per-harness Sidecars (sidecar.yaml) then scope each host to only
 # its own harness's pods.
 #
-# There is deliberately NO GitHub entry: the repository arrives as a tarball
-# from source-controller's in-cluster artifact server (a mesh-registry
-# Service the Sidecar already exposes), and the pod holds no forge credential.
+# There is deliberately no GitHub entry for the claude or codex harnesses: the
+# repository arrives as a tarball from source-controller's in-cluster artifact
+# server (a mesh-registry Service the Sidecar already exposes), and those pods
+# hold no forge credential. The copilot entry below is the sole exception, and
+# only for authentication — see it for why.
 ---
 # The claude harness's model API.
 apiVersion: networking.istio.io/v1
@@ -45,6 +47,33 @@ spec:
     exportTo: ["."]
     hosts:
         - api.openai.com
+    location: MESH_EXTERNAL
+    resolution: DNS
+    ports:
+        - number: 443
+          name: tls
+          protocol: TLS
+---
+# The copilot harness's model API (inert until the copilot runner is enabled).
+# api.github.com is here because the Copilot CLI validates and exchanges its
+# token there before it will talk to a model — this is an auth dependency, not
+# forge access: the runner passes --disable-builtin-mcps so no tool in the
+# session can speak the GitHub API, and the Sidecar below scopes this host to
+# copilot pods only. Inference goes to a *.githubcopilot.com endpoint chosen at
+# token-exchange time, so the wildcard host covers the individual, business and
+# enterprise routes without pinning one.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+    name: patchy-agent-copilot
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    exportTo: ["."]
+    hosts:
+        - api.github.com
+        - "*.githubcopilot.com"
     location: MESH_EXTERNAL
     resolution: DNS
     ports:

@@ -36,8 +36,10 @@ updates:
           interval: daily
 
     # The base-image references in Dockerfile.controller and the per-harness
-    # Dockerfile.{claude,codex}-agent-runner are tag + digest pinned; this bumps
-    # the digests (and LTS tag rolls).
+    # Dockerfile.{claude,codex,copilot}-agent-runner are tag + digest pinned;
+    # this bumps the digests (and LTS tag rolls). The pinned CLI versions inside
+    # those images are ARGs with renovate annotations, not base images, so they
+    # are out of scope here.
     - package-ecosystem: docker
       directory: /
       cooldown:

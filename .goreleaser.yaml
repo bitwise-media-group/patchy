@@ -351,6 +351,22 @@ dockers_v2:
           org.opencontainers.image.licenses: MIT
           org.opencontainers.image.revision: "{{ .FullCommit }}"
           org.opencontainers.image.version: "{{ .Version }}"
+    - id: copilot-agent-runner
+      ids: [agent-runner]
+      dockerfile: Dockerfile.copilot-agent-runner
+      images:
+          - ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
     - id: status-server
       ids: [status-server]
       dockerfile: Dockerfile.controller

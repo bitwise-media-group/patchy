@@ -1,10 +1,11 @@
 # agent-runner
 
 The in-pod coding-agent runtime: one stage per Job — `investigate` or `remediate` — via the harness CLI its runner image
-bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image). It never talks to
-GitHub or the Kubernetes API, holds no credentials beyond the one model key of the harness it runs, and has no flags —
-configuration is exclusively `PATCHY_*` environment variables, injected into the Job pod by the job controllers. Results
-leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why all patchy logging goes to stderr).
+bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image, `copilot -p` in the
+copilot-agent-runner image). It never talks to GitHub or the Kubernetes API, holds no credentials beyond the one model
+key of the harness it runs, and has no flags — configuration is exclusively `PATCHY_*` environment variables, injected
+into the Job pod by the job controllers. Results leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why
+all patchy logging goes to stderr).
 
 You normally never configure the agent-runner directly: the
 [investigation-controller](investigation-controller.md#stage-flags) and
@@ -62,21 +63,31 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 
 <div class="nowrap-first" markdown>
 
-| Env                       | Source                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY`       | The claude runner's Secret via `secretKeyRef` (`--claude-secret`, the default `--claude-secret-env`)         |
-| `CLAUDE_CODE_OAUTH_TOKEN` | The claude runner's Secret when `--claude-secret-env=CLAUDE_CODE_OAUTH_TOKEN` — a `claude setup-token` token |
-| `ANTHROPIC_AUTH_TOKEN`    | The claude runner's Secret when `--claude-secret-env=ANTHROPIC_AUTH_TOKEN`                                   |
-| `OPENAI_API_KEY`          | The codex runner's Secret via `secretKeyRef` (`--codex-secret`) — injected only into codex-harness Jobs      |
-| `CODEX_API_KEY`           | The codex runner's Secret when `--codex-secret-env=CODEX_API_KEY`                                            |
-| `CODEX_ACCESS_TOKEN`      | The codex runner's Secret when `--codex-secret-env=CODEX_ACCESS_TOKEN` — a ChatGPT-plan workspace token      |
+| Env                         | Source                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`         | The claude runner's Secret via `secretKeyRef` (`--claude-secret`, the default `--claude-secret-env`)         |
+| `CLAUDE_CODE_OAUTH_TOKEN`   | The claude runner's Secret when `--claude-secret-env=CLAUDE_CODE_OAUTH_TOKEN` — a `claude setup-token` token |
+| `ANTHROPIC_AUTH_TOKEN`      | The claude runner's Secret when `--claude-secret-env=ANTHROPIC_AUTH_TOKEN`                                   |
+| `OPENAI_API_KEY`            | The codex runner's Secret via `secretKeyRef` (`--codex-secret`) — injected only into codex-harness Jobs      |
+| `CODEX_API_KEY`             | The codex runner's Secret when `--codex-secret-env=CODEX_API_KEY`                                            |
+| `CODEX_ACCESS_TOKEN`        | The codex runner's Secret when `--codex-secret-env=CODEX_ACCESS_TOKEN` — a ChatGPT-plan workspace token      |
+| `COPILOT_GITHUB_TOKEN`      | The copilot runner's Secret via `secretKeyRef` (`--copilot-secret`) — a GitHub token, not a model API key    |
+| `GH_TOKEN` / `GITHUB_TOKEN` | The copilot runner's Secret when `--copilot-secret-env` names one of them                                    |
 
 </div>
 
 Only **one** of these reaches a given pod: the Job wires the `secretKeyRef` of the harness it runs, so a claude Job
 carries only the Anthropic credential and a codex Job only the OpenAI one. The agent container's environment passes
-through to the harness CLI child process, so the injected key is inherited by `claude` (or `codex`) automatically. The
-`fake` harness needs no credential value and its runner has no Secret, so its Jobs carry no model key at all.
+through to the harness CLI child process, so the injected key is inherited by `claude` (or `codex`, or `copilot`)
+automatically. The `fake` harness needs no credential value and its runner has no Secret, so its Jobs carry no model key
+at all.
+
+The copilot rows are the exception to "no forge credential ever reaches the pod": the Copilot CLI authenticates with a
+GitHub token, so a copilot Job does carry one. It is a model credential by role, not a forge one — the runner passes
+`--disable-builtin-mcps`, so no tool in the session speaks the GitHub API, and the harness's egress policy admits only
+`api.github.com` (the token exchange) and the `*.githubcopilot.com` inference endpoints. patchy's own forge traffic is
+still controller-side only. Scope the token to Copilot with no repository permissions, and note the copilot runner ships
+disabled for exactly this reason.
 
 ## The event stream
 

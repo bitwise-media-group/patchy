@@ -139,7 +139,7 @@ Everything else a binary binds (see the [configuration reference](../configurati
 | `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-5`   | Canonical model ids the investigation may request for remediation                      |
 | `agent.investigate.*`                    | `anthropic/claude-sonnet-5` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)     |
 | `agent.remediate.*`                      | `anthropic/claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to |
-| `agent.runners.<harness>`                | claude enabled, codex disabled                        | Per-harness `enabled`/`image`/`secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`   |
+| `agent.runners.<harness>`                | claude enabled; codex, copilot disabled               | Per-harness `enabled`/`image`/`secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`   |
 | `agent.networkPolicy.create`             | `true`                                                | Default-deny both directions + DNS + artifact + TCP-443-only egress                    |
 | `agent.networkPolicy.clusterCIDRs`       | RFC-1918 + link-local                                 | Cluster-internal ranges excluded from agent egress                                     |
 | `agent.runners.<harness>.hosts`          | claude: `api.anthropic.com`                           | Per-runner egress allowlist — deliberately **no** forge hosts                          |

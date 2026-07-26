@@ -448,6 +448,40 @@ agent:
                 - api.openai.com
             dnsPatterns:
                 - "*.openai.com"
+        copilot:
+            # Off by default. Copilot brokers BOTH vendors' models, so enabling
+            # this one runner makes every allowlisted model runnable — but weigh
+            # that against its credential, which is the reason it ships off:
+            # the Copilot CLI authenticates with a GitHub token, the credential
+            # class every other agent pod is built never to hold. The agent
+            # cannot spend it as a forge (the runner passes
+            # --disable-builtin-mcps, so no tool in the session speaks the
+            # GitHub API), but scope the token to Copilot alone — a fine-grained
+            # token with no repository permissions; the CLI rejects classic PATs
+            # outright.
+            enabled: false
+            image: {}
+            # Named for the harness, not a vendor: this is not a model API key.
+            secret: patchy-copilot
+            secretKey: token
+            # COPILOT_GITHUB_TOKEN, or GH_TOKEN / GITHUB_TOKEN.
+            secretEnv: COPILOT_GITHUB_TOKEN
+            # api.github.com is an AUTH dependency, not forge access: the CLI
+            # validates and exchanges its token there before it will reach a
+            # model, so denying it breaks the harness without hardening the pod.
+            # Inference lands on a *.githubcopilot.com endpoint chosen at
+            # token-exchange time, and which one depends on the plan behind the
+            # token — GKE's FQDN dialect takes exact names only, so all three
+            # routes are listed here; Cilium gets the pattern below instead. Add
+            # your own host here if your plan resolves elsewhere.
+            hosts:
+                - api.github.com
+                - api.githubcopilot.com
+                - api.business.githubcopilot.com
+                - api.enterprise.githubcopilot.com
+            dnsPatterns:
+                - "*.githubcopilot.com"
+                - api.github.com
     # The sandbox policies: default-deny both directions plus DNS, the
     # artifact server, and TCP-443-only external egress. A plain
     # NetworkPolicy cannot match hostnames; enforcement at that level needs

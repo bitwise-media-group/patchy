@@ -30,8 +30,8 @@
 #     from base/networkpolicy.yaml — which kustomization.yaml keeps, minus its
 #     broad 443 rule.
 #
-# The codex policy is inert until the codex runner is enabled (no codex pod
-# carries the label otherwise).
+# The codex and copilot policies are inert until those runners are enabled (no
+# pod carries the label otherwise).
 ---
 apiVersion: networking.gke.io/v1alpha1
 kind: FQDNNetworkPolicy
@@ -71,6 +71,42 @@ spec:
         # The agent container: the codex harness's model API and nothing else.
         - matches:
               - name: api.openai.com
+          ports:
+              - protocol: TCP
+                port: 443
+---
+# The copilot harness needs api.github.com because the CLI validates and
+# exchanges its token there before it will talk to a model; denying it does not
+# harden the pod, it stops the harness working. The agent still cannot use it as
+# a forge — the runner passes --disable-builtin-mcps, so no tool in the session
+# speaks the GitHub API.
+#
+# Inference then goes to a *.githubcopilot.com endpoint chosen at token-exchange
+# time, and WHICH one depends on the plan behind the token (individual,
+# business, enterprise). FQDNNetworkPolicy takes exact names only, so all three
+# are listed rather than a pattern; if your plan resolves somewhere else the
+# agent container will fail to reach the model with this component applied, and
+# the fix is to add that name here. The Cilium component expresses the same
+# allowlist as a *.githubcopilot.com pattern instead.
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+    name: patchy-agent-egress-copilot
+    namespace: patchy-agents
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: patchy-agent
+            app.kubernetes.io/managed-by: patchy
+            patchy.bitwisemedia.uk/harness: copilot
+    egress:
+        - matches:
+              - name: api.github.com
+              - name: api.githubcopilot.com
+              - name: api.business.githubcopilot.com
+              - name: api.enterprise.githubcopilot.com
           ports:
               - protocol: TCP
                 port: 443

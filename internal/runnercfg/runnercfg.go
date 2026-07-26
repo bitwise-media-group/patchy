@@ -30,6 +30,8 @@ import (
 func RegisterFlags(f *pflag.FlagSet) {
 	f.String("claude-agent-image", "", "claude-agent-runner image (claude CLI); unset disables the claude runner")
 	f.String("codex-agent-image", "", "codex-agent-runner image (codex CLI); unset disables the codex runner")
+	f.String("copilot-agent-image", "",
+		"copilot-agent-runner image (copilot CLI); unset disables the copilot runner")
 	f.String("fake-agent-image", "", "fake agent image for dev/e2e (replays fixtures, no credential)")
 
 	f.String("claude-secret", "patchy-anthropic", "Secret (agent namespace) holding the Anthropic credential")
@@ -39,6 +41,12 @@ func RegisterFlags(f *pflag.FlagSet) {
 	f.String("codex-secret", "patchy-openai", "Secret (agent namespace) holding the OpenAI credential")
 	f.String("codex-secret-key", "api-key", "key within the OpenAI credential Secret")
 	f.String("codex-secret-env", "OPENAI_API_KEY", secretEnvUsage("OpenAI", model.HarnessCodex))
+
+	// Copilot's credential is a GitHub token rather than a model API key, so
+	// the default Secret is named for the harness, not a vendor.
+	f.String("copilot-secret", "patchy-copilot", "Secret (agent namespace) holding the GitHub Copilot credential")
+	f.String("copilot-secret-key", "token", "key within the GitHub Copilot credential Secret")
+	f.String("copilot-secret-env", "COPILOT_GITHUB_TOKEN", secretEnvUsage("GitHub Copilot", model.HarnessCopilot))
 
 	f.String("harnesses", "",
 		"restrict enabled harnesses to this comma list (default: any harness whose credential Secret exists)")
@@ -73,13 +81,24 @@ func Runners(opts *cli.Options) (map[string]jobs.Runner, error) {
 			SecretKey: opts.String("codex-secret-key"), SecretEnv: env,
 		}
 	}
+	if img := opts.String("copilot-agent-image"); img != "" {
+		env := opts.String("copilot-secret-env")
+		if !accepts(model.HarnessCopilot, env) {
+			return nil, fmt.Errorf("--copilot-secret-env %q is not a credential the copilot harness accepts (one of %v)",
+				env, envKeys(model.HarnessCopilot))
+		}
+		runners[model.HarnessCopilot] = jobs.Runner{
+			Image: img, Secret: opts.String("copilot-secret"),
+			SecretKey: opts.String("copilot-secret-key"), SecretEnv: env,
+		}
+	}
 	if img := opts.String("fake-agent-image"); img != "" {
 		runners[model.HarnessFake] = jobs.Runner{Image: img} // no credential
 	}
 
 	if len(runners) == 0 {
-		return nil, errors.New("no agent runner configured " +
-			"(set at least one of --claude-agent-image / --codex-agent-image / --fake-agent-image)")
+		return nil, errors.New("no agent runner configured (set at least one of " +
+			"--claude-agent-image / --codex-agent-image / --copilot-agent-image / --fake-agent-image)")
 	}
 	return runners, nil
 }

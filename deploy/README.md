@@ -29,8 +29,9 @@ deploy/
 ```
 
 The Dockerfiles live at the repo root: `Dockerfile.controller` (all controllers, ARG `TARGET`) and one per-harness agent
-image — `Dockerfile.claude-agent-runner` (agent-runner + git + claude CLI) and `Dockerfile.codex-agent-runner`
-(agent-runner + git + codex CLI). A Job runs the image of the harness resolved for its model.
+image — `Dockerfile.claude-agent-runner` (agent-runner + git + claude CLI), `Dockerfile.codex-agent-runner`
+(agent-runner + git + codex CLI) and `Dockerfile.copilot-agent-runner` (agent-runner + git + copilot CLI). A Job runs
+the image of the harness resolved for its model.
 
 ## What gets deployed where
 
@@ -127,7 +128,9 @@ kubectl -n patchy-agents create secret generic patchy-anthropic \
 
 `patchy-anthropic` is the claude runner's credential; `internal/jobs` wires it into a claude Job's agent container from
 it, and the controllers refuse to start if an enabled harness's credential is missing. Enable the codex runner and it
-needs `patchy-openai` (an OpenAI key) the same way. A fake-harness run (dev) needs no model credential at all.
+needs `patchy-openai` (an OpenAI key) the same way; the copilot runner needs `patchy-copilot`, which holds a **GitHub
+token** rather than a model API key — the one credential class no other agent pod carries, so enable that runner
+deliberately and scope the token to Copilot alone. A fake-harness run (dev) needs no model credential at all.
 
 The pipeline is then switched on with two custom resources referencing that Secret — an `Integration` (webhook
 validation, alert ingestion, issue projection) and a `Forge` (repository read for the artifact, write for the push +
@@ -225,16 +228,16 @@ Three things to know about dev:
   not evidence of a working sandbox.
 - **The fake harness needs no model credential.** The dev overlay sets `PATCHY_HARNESSES: fake`, which restricts the
   enabled set to the fake runner — it carries no Secret, so `internal/jobs` wires no model key into its Jobs and dev
-  runs with zero real credentials. The claude/codex runners configured in the base are simply not enabled.
+  runs with zero real credentials. The claude/codex/copilot runners configured in the base are simply not enabled.
 
 ### prod
 
 DESIGN.md's real intervals (1h accumulation, 1h minimum age, the 14-day finding TTL), the claude harness (add codex by
-enabling its runner and supplying `patchy-openai`), the Cilium FQDN policies, production-sized requests/limits, and
-**digest-pinned images**. The `sha256:0000…` values in `overlays/prod/kustomization.yaml` and
-`PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` are placeholders — replace them with the digests
-your release pipeline published before applying anything. Bring your real Secrets and `Integration`/`Forge` resources
-with SOPS or external-secrets.
+enabling its runner and supplying `patchy-openai`, or copilot with `patchy-copilot`), the Cilium FQDN policies,
+production-sized requests/limits, and **digest-pinned images**. The `sha256:0000…` values in
+`overlays/prod/kustomization.yaml` and `PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` are
+placeholders — replace them with the digests your release pipeline published before applying anything. Bring your real
+Secrets and `Integration`/`Forge` resources with SOPS or external-secrets.
 
 Ingress/TLS for the webhook endpoint is deliberately absent: add it in an environment overlay, in front of
 `patchy-integration-controller:8080`.

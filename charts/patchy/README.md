@@ -69,6 +69,7 @@ one-liners:
 | e.g. `patchy-github` | release namespace | `appID` + `privateKey` (or `token`), `webhookSecret` | The forge/provider credential, named by each Integration/Forge CR's `spec.secretRef` — **not** mounted into any Deployment; read on demand through the API                                                               |
 | `patchy-anthropic`   | `patchy-agents`   | `api-key`                                            | The claude runner's credential — an Anthropic API key, or a `claude setup-token` OAuth token with `agent.runners.claude.secretEnv: CLAUDE_CODE_OAUTH_TOKEN`. Required while the `claude` runner is enabled (the default) |
 | `patchy-openai`      | `patchy-agents`   | `api-key`                                            | The codex runner's OpenAI API key. Only needed when `agent.runners.codex.enabled: true`                                                                                                                                  |
+| `patchy-copilot`     | `patchy-agents`   | `token`                                              | The copilot runner's **GitHub** token — not a model API key. Only needed when `agent.runners.copilot.enabled: true`; scope it to Copilot with no repository permissions                                                  |
 
 One GitHub Secret may serve both CRs, or you can split read and write identities across two GitHub Apps. The provider
 has exactly one webhook URL; point it at `https://<webhook.host>/github/webhooks` and enable one flavour of the chart's
@@ -90,8 +91,11 @@ labels; `helm uninstall` deletes it, killing any running agent Job). The isolati
 3. **Hostname policy** (defence in depth) — `agent.networkPolicy.mode` picks the dialect the cluster can actually
    enforce. Each renders **one policy per enabled runner**, selecting that harness's pods by their
    `patchy.bitwisemedia.uk/harness` label, so each reaches only its own model API (`agent.runners.<harness>.hosts` —
-   `api.anthropic.com` for claude, `api.openai.com` for codex) plus the in-cluster artifact endpoint. No GitHub hosts,
-   because the pod never talks to GitHub.
+   `api.anthropic.com` for claude, `api.openai.com` for codex) plus the in-cluster artifact endpoint. No GitHub hosts
+   for those two, because the pod never talks to GitHub. The `copilot` runner is the one exception: its CLI exchanges
+   its token at `api.github.com` before reaching a model, so that host and `*.githubcopilot.com` are in its allowlist —
+   an authentication dependency, not forge access, and the runner disables the built-in GitHub MCP server so no tool in
+   the session can spend the token against the API.
 
 | `mode`   | renders                                     | requires                                                                     |
 | -------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -153,7 +157,9 @@ The genuinely shared settings stay global:
   `<prefix>/<harness>-agent-runner`; pinning its digest is one knob, unlike kustomize's two), the credential
   `secret`/`secretKey`/`secretEnv`, and the egress `hosts`/`dnsPatterns`. A harness is enabled only when its runner is
   enabled and its credential exists; the model chosen for a stage decides which runner (image + credential + egress
-  policy) the Job runs, so an OpenAI model routes to `codex` and an Anthropic model to `claude`.
+  policy) the Job runs, so an OpenAI model routes to `codex` and an Anthropic model to `claude`. `copilot` brokers both
+  vendors, so it can run any model in the registry and is the fallback when a model's own harness is not enabled — never
+  the preferred one.
 - `agent.networkPolicy.*` — the sandbox policies (above).
 - `commonLabels` / `commonAnnotations` — stamped on every object the chart renders (annotations reach the pods too;
   per-object annotations win key-by-key).

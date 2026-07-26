@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
+	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/model"
 )
 
@@ -79,6 +80,39 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 			args: []string{"--codex-agent-image", "codex:1",
 				"--codex-secret-env", "CODEX_API_KEY"},
 			wantEnv: map[string]string{"codex": "CODEX_API_KEY"},
+		},
+		{
+			name:    "copilot defaults to the copilot github token",
+			args:    []string{"--copilot-agent-image", "copilot:1"},
+			wantEnv: map[string]string{"copilot": "COPILOT_GITHUB_TOKEN"},
+		},
+		{
+			// copilot authenticates with a GitHub token, so the gh CLI's own
+			// variable names are legitimate channels for it — and only for it.
+			name: "copilot accepts the gh token",
+			args: []string{"--copilot-agent-image", "copilot:1",
+				"--copilot-secret-env", "GH_TOKEN"},
+			wantEnv: map[string]string{"copilot": "GH_TOKEN"},
+		},
+		{
+			name: "copilot accepts the github token",
+			args: []string{"--copilot-agent-image", "copilot:1",
+				"--copilot-secret-env", "GITHUB_TOKEN"},
+			wantEnv: map[string]string{"copilot": "GITHUB_TOKEN"},
+		},
+		{
+			name: "copilot rejects a model api key",
+			args: []string{"--copilot-agent-image", "copilot:1",
+				"--copilot-secret-env", "ANTHROPIC_API_KEY"},
+			wantErrs: []string{"--copilot-secret-env", "ANTHROPIC_API_KEY", "COPILOT_GITHUB_TOKEN"},
+		},
+		{
+			// A GitHub token is copilot's channel and nobody else's; claude must
+			// not accept one just because it is a real credential variable.
+			name: "claude rejects a copilot channel",
+			args: []string{"--claude-agent-image", "claude:1",
+				"--claude-secret-env", "COPILOT_GITHUB_TOKEN"},
+			wantErrs: []string{"--claude-secret-env", "COPILOT_GITHUB_TOKEN", "ANTHROPIC_API_KEY"},
 		},
 		{
 			// A real credential variable, but the other vendor's: accepted
@@ -188,6 +222,27 @@ func TestRunnersCredentialWiring(t *testing.T) {
 		if got[k] != w {
 			t.Errorf("codex %s = %q, want %q", k, got[k], w)
 		}
+	}
+}
+
+// TestRunnersCopilotCredentialDefaults pins the copilot runner's defaults. They
+// deliberately differ from the vendor-native runners: the Secret is named for
+// the harness rather than a vendor because the credential is a GitHub token,
+// and its key is "token" for the same reason.
+func TestRunnersCopilotCredentialDefaults(t *testing.T) {
+	runners, err := Runners(newOpts(t, "--copilot-agent-image", "copilot:1"))
+	if err != nil {
+		t.Fatalf("Runners: %v", err)
+	}
+	copilot := runners["copilot"]
+	want := jobs.Runner{
+		Image:     "copilot:1",
+		Secret:    "patchy-copilot",
+		SecretKey: "token",
+		SecretEnv: "COPILOT_GITHUB_TOKEN",
+	}
+	if copilot != want {
+		t.Errorf("copilot runner = %+v, want %+v", copilot, want)
 	}
 }
 

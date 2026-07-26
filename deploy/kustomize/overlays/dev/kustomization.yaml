@@ -49,6 +49,9 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       newName: patchy/codex-agent-runner
       newTag: dev
+    - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
+      newName: patchy/copilot-agent-runner
+      newTag: dev
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newName: patchy/status-server
       newTag: dev

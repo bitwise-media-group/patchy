@@ -102,6 +102,42 @@ func TestCodexModel(t *testing.T) {
 	}
 }
 
+// TestCopilotSupportsEveryModel pins Copilot's role in the registry: it brokers
+// both vendors, so every model must name it as a supported harness, and it must
+// never be a model's Preferred — a vendor-native harness always wins when both
+// are enabled. It also guards the id divergence Supported exists to record:
+// Copilot spells Anthropic point releases with a dot.
+func TestCopilotSupportsEveryModel(t *testing.T) {
+	wantCLIID := map[string]string{
+		"anthropic/claude-haiku-4-5": "claude-haiku-4.5",
+		"anthropic/claude-sonnet-5":  "claude-sonnet-5",
+		"anthropic/claude-opus-5":    "claude-opus-5",
+		"anthropic/claude-fable-5":   "claude-fable-5",
+		"openai/gpt-5.3-codex":       "gpt-5.3-codex",
+		"openai/gpt-5.6-luna":        "gpt-5.6-luna",
+		"openai/gpt-5.6-terra":       "gpt-5.6-terra",
+		"openai/gpt-5.6-sol":         "gpt-5.6-sol",
+	}
+	models := builtins()
+	if len(models) != len(wantCLIID) {
+		t.Fatalf("registry has %d models, the copilot expectations cover %d — update both together",
+			len(models), len(wantCLIID))
+	}
+	for _, m := range models {
+		id, ok := m.CLIModelID(HarnessCopilot)
+		if !ok {
+			t.Errorf("model %q is not supported by copilot", m.ID)
+			continue
+		}
+		if want := wantCLIID[m.ID]; id != want {
+			t.Errorf("model %q copilot CLI id = %q, want %q", m.ID, id, want)
+		}
+		if m.Preferred == HarnessCopilot {
+			t.Errorf("model %q prefers copilot, want its vendor-native harness", m.ID)
+		}
+	}
+}
+
 func TestUsageCostUSD(t *testing.T) {
 	m, _ := ModelByID(builtins(), "anthropic/claude-sonnet-5") // 3 / 0.30 / 15 per MTok
 	// Fresh input and cache writes at 3/MTok, cache reads at the 0.30/MTok

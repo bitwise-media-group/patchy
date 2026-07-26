@@ -87,6 +87,19 @@ data:
     PATCHY_CODEX_SECRET: patchy-openai
     PATCHY_CODEX_SECRET_KEY: api-key
     PATCHY_CODEX_SECRET_ENV: OPENAI_API_KEY
+    # The copilot runner brokers BOTH vendors' models, so enabling it makes
+    # every allowlisted model runnable without the vendor's own key. Weigh that
+    # against its credential: copilot authenticates with a GitHub token, the one
+    # credential class every other agent pod is built to never hold. The agent
+    # cannot spend it on the GitHub API (the runner passes
+    # --disable-builtin-mcps and the egress policy admits only the Copilot
+    # endpoints), but it is still the broadest credential in any agent pod, so
+    # scope the token to Copilot alone and enable this deliberately. Add
+    # `copilot` to PATCHY_HARNESSES and supply the Secret (patchy-copilot):
+    PATCHY_COPILOT_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner:latest
+    PATCHY_COPILOT_SECRET: patchy-copilot
+    PATCHY_COPILOT_SECRET_KEY: token
+    PATCHY_COPILOT_SECRET_ENV: COPILOT_GITHUB_TOKEN
     PATCHY_JOB_DEADLINE: 1h
     PATCHY_JOB_TTL: 1h
 

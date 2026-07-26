@@ -61,5 +61,7 @@ images:
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
+      newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newTag: latest

@@ -67,8 +67,9 @@ in as webhook signals, never by re-parsing issue state.
 
 The agent execution harness is adapted from evolve (harness builds argv, runner executes, harness parses stdout), as is
 the model construct: a registry of canonical, provider-qualified model ids (`anthropic/claude-sonnet-5`,
-`openai/gpt-5.3-codex`), each associating the harnesses that can run it with a preferred one. Claude (Anthropic models)
-and Codex (OpenAI models) are the built-in harnesses; the harness that runs a model is derived from the model, so the
+`openai/gpt-5.3-codex`), each associating the harnesses that can run it with a preferred one. Claude (Anthropic models),
+Codex (OpenAI models) and Copilot (both vendors', as every model's fallback rather than any model's preference) are the
+built-in harnesses; the harness that runs a model is derived from the model, so the
 investigation may choose a remediation model from any provider and the remediation controller routes it to the matching
 harness — its own runner image, credential, and egress policy. Which harnesses are enabled is configuration, defaulting
 to any whose credential is supplied. The finding handoff, both prompts, and both report contracts are templated and

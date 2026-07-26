@@ -13,6 +13,7 @@ func TestByID(t *testing.T) {
 	}{
 		{"claude", true, "Claude Code"},
 		{"codex", true, "OpenAI Codex"},
+		{"copilot", true, "GitHub Copilot"},
 		{"fake", true, "Fake"},
 		{"cursor", false, ""},
 		{"", false, ""},

@@ -86,15 +86,17 @@ fi
 // Runner is one harness's agent-runner deployment surface: the container image
 // bundling that harness's CLI and the Secret its model credential is injected
 // from. A Job picks its Runner by the harness resolved for its model, so a
-// claude Job runs the claude image with the Anthropic credential and a codex
-// Job the codex image with the OpenAI credential.
+// claude Job runs the claude image with the Anthropic credential, a codex Job
+// the codex image with the OpenAI credential, and a copilot Job the copilot
+// image with the GitHub token that CLI authenticates with.
 type Runner struct {
 	Image     string // the agent-runner image bundling this harness's CLI
 	Secret    string // name of the Secret holding the model credential
 	SecretKey string // key within it (default "api-key")
 	// SecretEnv is the env var the credential is injected into the agent
 	// container as: ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN for claude,
-	// OPENAI_API_KEY for codex. The fake runner needs no credential and may
+	// OPENAI_API_KEY for codex, COPILOT_GITHUB_TOKEN (or GH_TOKEN /
+	// GITHUB_TOKEN) for copilot. The fake runner needs no credential and may
 	// leave Secret empty.
 	SecretEnv string
 }
@@ -106,7 +108,7 @@ type Config struct {
 	Deadline       time.Duration // activeDeadlineSeconds
 	TTL            time.Duration // ttlSecondsAfterFinished
 	// Runners is the per-harness runner fleet, keyed by harness id
-	// ("claude"/"codex"/"fake"). A Job whose Spec.Harness is not a key here
+	// ("claude"/"codex"/"copilot"/"fake"). A Job whose Spec.Harness is not a key here
 	// fails to build — the controller resolves and enables harnesses before a
 	// Job is ever created.
 	Runners map[string]Runner
@@ -123,7 +125,7 @@ type Spec struct {
 	Repo    string // "owner/name"
 	Attempt int
 	Phase   string // agentrun phase: "investigate" | "remediate"
-	// Harness runs this Job ("claude"/"codex"/"fake"); selects the runner
+	// Harness runs this Job ("claude"/"codex"/"copilot"/"fake"); selects the runner
 	// image, credential, and egress network policy. Model is the canonical
 	// provider-qualified model id the harness runs. Both are resolved
 	// controller-side before the Job is created.
@@ -367,9 +369,13 @@ func (c *Client) agentContainer(runner Runner, spec Spec, res corev1.ResourceReq
 
 // reservedEnv are the names Create owns; Config.Env entries with these names
 // are ignored so per-Job values (and the no-GitHub-token invariant) always
-// win. Every model credential channel (claude's and codex's alike) is
-// reserved regardless of which one a runner injects — credentials reach the
+// win. Every model credential channel (claude's, codex's and copilot's alike)
+// is reserved regardless of which one a runner injects — credentials reach the
 // pod only via the secretKeyRef, never as a plaintext value in the Job spec.
+// The copilot channels are why GH_TOKEN and COPILOT_GITHUB_TOKEN appear beside
+// GITHUB_TOKEN: copilot authenticates with a GitHub token, so the name that
+// carries its model credential is also a name the no-GitHub-token invariant
+// has to keep out of the controller-global Env.
 // The per-Job harness/model vars are reserved too: they are resolved per Job
 // and set from the Spec, so a controller-global Env copy must never shadow
 // them.
@@ -390,6 +396,8 @@ var reservedEnv = map[string]bool{
 	"OPENAI_API_KEY":             true,
 	"CODEX_API_KEY":              true,
 	"CODEX_ACCESS_TOKEN":         true,
+	"COPILOT_GITHUB_TOKEN":       true,
+	"GH_TOKEN":                   true,
 	"GITHUB_TOKEN":               true,
 }
 

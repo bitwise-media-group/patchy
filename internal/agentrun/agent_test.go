@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,12 +176,14 @@ func newConfig(t *testing.T, ws string, out io.Writer) Config {
 		Workspace: ws, Repo: "acme/shop", Finding: "finding-abc123def0-1", Phase: PhaseInvestigate,
 		InvestigateHarness: "fake", RemediateHarness: "fake",
 		InvestigateModel: "anthropic/claude-sonnet-5", RemediateModel: "anthropic/claude-sonnet-5",
-		ModelAllowlist:         []string{"anthropic/claude-sonnet-5"},
-		InvestigateMaxTurns:    25,
-		InvestigateTokenBudget: 150000,
-		RemediateMaxTurns:      80,
-		RemediateTokenBudget:   400000,
-		InvestigateTimeout:     time.Minute, RemediateTimeout: time.Minute,
+		ModelAllowlist:           []string{"anthropic/claude-sonnet-5"},
+		InvestigateMaxTurns:      25,
+		InvestigateTokenBudget:   150000,
+		RemediateMaxTurns:        80,
+		RemediateTokenBudget:     400000,
+		RemediateMaxTurnsHard:    240,
+		RemediateTokenBudgetHard: 1200000,
+		InvestigateTimeout:       time.Minute, RemediateTimeout: time.Minute,
 		ChangesetMaxBytes: 5 << 20,
 		Out:               out,
 		Log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -269,12 +272,75 @@ func TestInvestigationEvent(t *testing.T) {
 		t.Errorf("dimensions = %s/%s/%s, want high/medium/high",
 			inv.Exploitability.Rating, inv.Likelihood.Rating, inv.Impact.Rating)
 	}
-	if inv.RemediationModel != "anthropic/claude-sonnet-5" || inv.MaxTurns != 40 || inv.TokenBudget != 200000 {
-		t.Errorf("stage-2 params = %q/%d/%d, want the report's (in-bounds) values",
-			inv.RemediationModel, inv.MaxTurns, inv.TokenBudget)
+	if inv.RemediationModel != "anthropic/claude-sonnet-5" ||
+		inv.EstimatedMaxTurns != 40 || inv.EstimatedTokenBudget != 200000 {
+		t.Errorf("stage-2 estimate = %q/%d/%d, want the report's values verbatim",
+			inv.RemediationModel, inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
 	}
-	if inv.AwaitApproval {
-		t.Error("AwaitApproval = true without a breaking-change hold")
+	if inv.AwaitApproval || len(inv.HoldReasons) != 0 {
+		t.Errorf("holds = %v, want none for an in-budget non-breaking fix", inv.HoldReasons)
+	}
+}
+
+// TestEstimateBelowCeilingDoesNotBindTheRun is the regression guard for the
+// starvation bug: an investigation predicting a tiny budget must not shrink
+// the remediation that follows. The estimate is reported as-is, and the run
+// still gets the ceiling.
+func TestEstimateBelowCeilingDoesNotBindTheRun(t *testing.T) {
+	ws := newWorkspace(t)
+	var out bytes.Buffer
+	tiny := strings.Replace(goodInvestigation, "max_turns: 40", "max_turns: 3", 1)
+	tiny = strings.Replace(tiny, "token_budget: 200000", "token_budget: 500", 1)
+
+	fx := &fakeExec{steps: []step{
+		{ws: ws, stdout: streamSuccess, writes: map[string]string{"reports/investigation.md": tiny}},
+	}}
+	cfg := newConfig(t, ws, &out)
+	if err := New(cfg, fx).Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	inv := events(t, out.String())[0].Investigation
+	if inv.EstimatedMaxTurns != 3 || inv.EstimatedTokenBudget != 500 {
+		t.Errorf("estimate = %d/%d, want the low prediction reported unchanged",
+			inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
+	}
+	if len(inv.HoldReasons) != 0 {
+		t.Errorf("holds = %v, want none — an estimate UNDER the ceiling needs no approval", inv.HoldReasons)
+	}
+
+	// The remediation stage, given no grant, runs on the ceiling regardless.
+	a := New(cfg, fx)
+	turns, budget := a.grant()
+	if turns != cfg.RemediateMaxTurns || budget != cfg.RemediateTokenBudget {
+		t.Errorf("grant = %d turns/%d tokens, want the ceiling %d/%d — a low estimate must not starve the run",
+			turns, budget, cfg.RemediateMaxTurns, cfg.RemediateTokenBudget)
+	}
+}
+
+func TestGrant(t *testing.T) {
+	ws := newWorkspace(t)
+	var out bytes.Buffer
+	base := newConfig(t, ws, &out) // ceiling 80/400000, hard cap 240/1200000
+
+	tests := []struct {
+		name               string
+		granted            [2]int
+		wantTurns, wantTok int
+	}{
+		{"no grant falls back to the ceiling", [2]int{0, 0}, 80, 400000},
+		{"an approved over-ceiling grant is honoured", [2]int{140, 700000}, 140, 700000},
+		{"a grant below the ceiling cannot lower it", [2]int{5, 100}, 80, 400000},
+		{"the hard cap binds", [2]int{9000, 90000000}, 240, 1200000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base
+			cfg.GrantedMaxTurns, cfg.GrantedTokenBudget = tt.granted[0], tt.granted[1]
+			turns, budget := New(cfg, &fakeExec{}).grant()
+			if turns != tt.wantTurns || budget != tt.wantTok {
+				t.Errorf("grant() = %d/%d, want %d/%d", turns, budget, tt.wantTurns, tt.wantTok)
+			}
+		})
 	}
 }
 
@@ -600,22 +666,36 @@ func TestRemediationFatalWithoutAnalysis(t *testing.T) {
 	}
 }
 
+// TestBudgetKillSwitch pins the kill switch to the GRANT rather than the
+// estimate. goodInvestigation predicts 200000 output tokens; spending 300000
+// must not trip anything, because the run was granted the 400000 ceiling.
 func TestBudgetKillSwitch(t *testing.T) {
-	var out bytes.Buffer
-	cfg, ws := remediateConfig(t, goodInvestigation, &out)
-	fx := &fakeExec{steps: []step{
-		// Two assistant events at 150k output tokens each blow the 200k
-		// budget the investigation asked for.
-		{ws: ws, stdout: streamSuccess, budgetLines: []string{
-			`{"type":"assistant","message":{"usage":{"output_tokens":150000}}}`,
-			`{"type":"assistant","message":{"usage":{"output_tokens":150000}}}`,
-		}},
-	}}
-
-	if err := New(cfg, fx).Run(context.Background()); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	spend := func(t *testing.T, lines int) *envelope.Remediation {
+		t.Helper()
+		var out bytes.Buffer
+		cfg, ws := remediateConfig(t, goodInvestigation, &out)
+		budgetLines := make([]string, lines)
+		for i := range budgetLines {
+			budgetLines[i] = `{"type":"assistant","message":{"usage":{"output_tokens":150000}}}`
+		}
+		fx := &fakeExec{steps: []step{{
+			ws: ws, stdout: streamSuccess, budgetLines: budgetLines,
+			writes:    map[string]string{"reports/remediation.md": goodRemediation, "commit.sh": commitScript},
+			repoWrite: map[string]string{"app.js": "escaped();\n"},
+		}}}
+		if err := New(cfg, fx).Run(context.Background()); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		return events(t, out.String())[0].Remediation
 	}
-	rem := events(t, out.String())[0].Remediation
+
+	// 300000 tokens: over the estimate, under the granted ceiling.
+	if rem := spend(t, 2); rem.Outcome != envelope.OutcomeOK {
+		t.Errorf("outcome = %q, want ok — the estimate must not arm the kill switch", rem.Outcome)
+	}
+
+	// 450000 tokens: over the grant.
+	rem := spend(t, 3)
 	if rem.Outcome != envelope.OutcomeBudgetExceeded {
 		t.Fatalf("outcome = %q, want budget_exceeded", rem.Outcome)
 	}
@@ -692,11 +772,21 @@ analysis
 	if inv.RemediationModel != "evil-model-9000" {
 		t.Errorf("model = %q, want the raw suggestion (the controller clamps it)", inv.RemediationModel)
 	}
-	if inv.MaxTurns != 80 {
-		t.Errorf("max_turns = %d, want clamped to the 80 ceiling", inv.MaxTurns)
+	// The estimate rides out unclamped — clamping it here would erase the
+	// very signal the approval gate reads — but it does raise both holds.
+	if inv.EstimatedMaxTurns != 100000 || inv.EstimatedTokenBudget != 99999999 {
+		t.Errorf("estimate = %d/%d, want the outsized prediction reported verbatim",
+			inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
 	}
-	if inv.TokenBudget != 400000 {
-		t.Errorf("token_budget = %d, want clamped to the 400000 ceiling", inv.TokenBudget)
+	if !inv.AwaitApproval {
+		t.Error("AwaitApproval = false, want an over-ceiling estimate held for a human")
+	}
+	wantHolds := []envelope.HoldReason{
+		envelope.HoldEstimateExceedsTurnCeiling,
+		envelope.HoldEstimateExceedsTokenCeiling,
+	}
+	if !slices.Equal(inv.HoldReasons, wantHolds) {
+		t.Errorf("holds = %v, want %v", inv.HoldReasons, wantHolds)
 	}
 }
 

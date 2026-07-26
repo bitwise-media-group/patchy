@@ -39,6 +39,28 @@ Rules:
   probability that the finding can be fully remediated without breaking functionality. Automated remediation only
   proceeds above a confidence threshold, so be honest, not optimistic.
 
+## Estimating the remediation's cost
+
+When you recommend **remediate**, estimate what the fix will actually take: `max_turns` (agent turns) and
+`token_budget` (output tokens). Read these rules carefully — they are not what you may assume.
+
+- **These are estimates, not limits.** They never shrink the remediation's budget. A remediation always gets at
+  least 80 turns and 400000 output tokens no matter what you write here, so a low estimate
+  cannot starve the fix — it only makes you wrong.
+- **Estimate above the threshold and the remediation stops for human approval** before it runs. The threshold is
+  80 turns and 400000 output tokens, and approving grants the larger budget you asked for. So
+  exceed it when the work genuinely needs it — that is the mechanism for requesting more — but not idly: it puts
+  a person in the loop and delays the fix.
+- **Estimate the work, not the threshold.** Do not anchor on the threshold, and do not pad "to be safe". Padding
+  is not free: these figures are measured against what the remediation really spends, and the skew is reported
+  back here to correct future estimates.
+
+A turn is one agent step — a file read, an edit, a test run — plus its result. As a rough calibration: reading the
+finding and the analysis is 2–3 turns before any work starts; locating the code costs a few more; each distinct
+edit site is 1–2; running a build or test suite is 1 per attempt, and rarely once. A one-line fix in a file you
+have already read is cheap; a fix spanning several call sites with a test cycle is not.
+
+
 ## Your report
 
 Write your report to `/workspace/reports/investigation.md`. It must begin with EXACTLY this YAML frontmatter shape (every field below;
@@ -61,8 +83,8 @@ severity: low | medium | high | critical
 confidence: <number between 0.0 and 1.0>
 breaking_change_available: true | false
 model: <model id, one of: claude-sonnet-5, claude-opus-5>   # remediate only: the model to remediate with
-max_turns: <integer, at most 80>         # remediate only: agent turns before giving up
-token_budget: <integer, at most 400000>   # remediate only: output-token budget before giving up
+max_turns: <integer>      # remediate only: ESTIMATED turns the fix needs (over 80 asks for approval)
+token_budget: <integer>   # remediate only: ESTIMATED output tokens (over 400000 asks for approval)
 ---
 ```
 

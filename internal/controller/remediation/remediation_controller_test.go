@@ -62,9 +62,59 @@ func invChild() *v1alpha1.Investigation {
 			Phase:  v1alpha1.RunComplete,
 			Report: "---\ninvestigation frontmatter\n---\nanalysis",
 			RemediationParameters: &v1alpha1.AgentParameters{
-				Model: "anthropic/claude-sonnet-5", MaxTurns: 40, TokenBudget: 200000,
+				Model:    "anthropic/claude-sonnet-5",
+				Estimate: &v1alpha1.AgentEstimate{MaxTurns: 40, TokenBudget: 200000},
 			},
 		},
+	}
+}
+
+// TestSpawnerGrantsApprovedEstimate covers the one path where the estimate
+// changes what a run may spend: over the ceiling, and approved by a human.
+// The ceiling is an authorization threshold, so approving grants the estimate
+// itself — bounded by the hard cap.
+func TestSpawnerGrantsApprovedEstimate(t *testing.T) {
+	tests := []struct {
+		name       string
+		estimate   *v1alpha1.AgentEstimate
+		approved   bool
+		wantTurns  int32
+		wantBudget int64
+	}{
+		{"unapproved over-ceiling estimate does not raise the grant",
+			&v1alpha1.AgentEstimate{MaxTurns: 140, TokenBudget: 700000}, false, 80, 400000},
+		{"approved over-ceiling estimate is granted",
+			&v1alpha1.AgentEstimate{MaxTurns: 140, TokenBudget: 700000}, true, 140, 700000},
+		{"approval cannot exceed the hard cap",
+			&v1alpha1.AgentEstimate{MaxTurns: 9000, TokenBudget: 90000000}, true, 240, 1200000},
+		{"approval does not lower an under-ceiling estimate",
+			&v1alpha1.AgentEstimate{MaxTurns: 5, TokenBudget: 100}, true, 80, 400000},
+		{"no estimate at all still gets the ceiling", nil, true, 80, 400000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fnd := queuedFinding(v1alpha1.PhaseQueued)
+			if tt.approved {
+				fnd.Spec.Approval = &v1alpha1.Approval{By: "someone", At: metav1.Now()}
+			}
+			inv := invChild()
+			inv.Status.RemediationParameters.Estimate = tt.estimate
+
+			r, c := newSpawner(t, fnd, inv)
+			spawnOnce(t, r)
+
+			var rem v1alpha1.Remediation
+			key := types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1-rem-1"}
+			if err := c.Get(t.Context(), key, &rem); err != nil {
+				t.Fatalf("Remediation not created: %v", err)
+			}
+			if rem.Spec.Parameters.MaxTurns != tt.wantTurns ||
+				rem.Spec.Parameters.TokenBudget != tt.wantBudget {
+				t.Errorf("grant = %d/%d, want %d/%d",
+					rem.Spec.Parameters.MaxTurns, rem.Spec.Parameters.TokenBudget,
+					tt.wantTurns, tt.wantBudget)
+			}
+		})
 	}
 }
 
@@ -81,7 +131,13 @@ func newSpawner(t *testing.T, objs ...client.Object) (*SpawnerReconciler, client
 		Enabled:      []string{"claude", "codex"},
 		Allowlist:    []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-5", "openai/gpt-5.3-codex"},
 		DefaultModel: "anthropic/claude-sonnet-5",
-		Now:          func() time.Time { return crdClock },
+
+		MaxTurnsCeiling:    80,
+		TokenBudgetCeiling: 400000,
+		MaxTurnsHard:       240,
+		TokenBudgetHard:    1200000,
+
+		Now: func() time.Time { return crdClock },
 	}, c
 }
 
@@ -117,8 +173,14 @@ func TestSpawnerCreatesRemediation(t *testing.T) {
 	if rem.Spec.Priority != 73 {
 		t.Errorf("priority = %d, want 73", rem.Spec.Priority)
 	}
-	if rem.Spec.Parameters.MaxTurns != 40 {
-		t.Errorf("parameters = %+v, want investigation's clamped suggestion", rem.Spec.Parameters)
+	// The estimate is recorded but does not bind: an unapproved run is
+	// granted the ceiling, never the (lower) prediction.
+	if rem.Spec.Parameters.MaxTurns != 80 || rem.Spec.Parameters.TokenBudget != 400000 {
+		t.Errorf("grant = %d/%d, want the ceiling 80/400000",
+			rem.Spec.Parameters.MaxTurns, rem.Spec.Parameters.TokenBudget)
+	}
+	if est := rem.Spec.Parameters.Estimate; est == nil || est.MaxTurns != 40 || est.TokenBudget != 200000 {
+		t.Errorf("estimate = %+v, want the investigation's 40/200000 recorded alongside the grant", est)
 	}
 	// The suggested model is allowlisted; its harness (claude) is resolved and
 	// stamped so the launch knows which runner image/credential to use.

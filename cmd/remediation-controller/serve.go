@@ -63,8 +63,14 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("remediate-model", "anthropic/claude-sonnet-5",
 		"canonical default model when the report's suggestion is missing or unusable (its harness is derived)")
 	f.Duration("remediate-timeout", 45*time.Minute, "wall-clock limit for the remediation stage")
-	f.Int("remediate-max-turns", 80, "agent turns allowed for the remediation stage")
-	f.Int("remediate-token-budget", 400000, "output-token budget for the remediation stage")
+	f.Int("remediate-max-turns", 80,
+		"agent turns every remediation gets, and the threshold above which an estimate needs approval")
+	f.Int("remediate-token-budget", 400000,
+		"output tokens every remediation gets, and the threshold above which an estimate needs approval")
+	f.Int("remediate-max-turns-hard", 240,
+		"absolute turn limit; approving an over-ceiling estimate can grant up to this and no further")
+	f.Int("remediate-token-budget-hard", 1200000,
+		"absolute output-token limit; approving an over-ceiling estimate can grant up to this and no further")
 	return cmd
 }
 
@@ -74,9 +80,11 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 // need it.
 func agentEnv(opts *cli.Options) map[string]string {
 	return map[string]string{
-		"PATCHY_REMEDIATE_TIMEOUT":      opts.Duration("remediate-timeout").String(),
-		"PATCHY_REMEDIATE_MAX_TURNS":    fmt.Sprint(opts.Int("remediate-max-turns")),
-		"PATCHY_REMEDIATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("remediate-token-budget")),
+		"PATCHY_REMEDIATE_TIMEOUT":           opts.Duration("remediate-timeout").String(),
+		"PATCHY_REMEDIATE_MAX_TURNS":         fmt.Sprint(opts.Int("remediate-max-turns")),
+		"PATCHY_REMEDIATE_TOKEN_BUDGET":      fmt.Sprint(opts.Int("remediate-token-budget")),
+		"PATCHY_REMEDIATE_MAX_TURNS_HARD":    fmt.Sprint(opts.Int("remediate-max-turns-hard")),
+		"PATCHY_REMEDIATE_TOKEN_BUDGET_HARD": fmt.Sprint(opts.Int("remediate-token-budget-hard")),
 	}
 }
 
@@ -159,7 +167,13 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Enabled:      enabled,
 		Allowlist:    allowlist,
 		DefaultModel: remediateModel,
-		Log:          log,
+		// The same ceilings the pods get, so the grant the spawner resolves
+		// and the floor the runner enforces agree.
+		MaxTurnsCeiling:    int32(opts.Int("remediate-max-turns")),
+		TokenBudgetCeiling: int64(opts.Int("remediate-token-budget")),
+		MaxTurnsHard:       int32(opts.Int("remediate-max-turns-hard")),
+		TokenBudgetHard:    int64(opts.Int("remediate-token-budget-hard")),
+		Log:                log,
 	}
 	if err := spawner.SetupWithManager(mgr); err != nil {
 		return err

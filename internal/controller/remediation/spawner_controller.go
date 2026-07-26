@@ -42,17 +42,35 @@ type SpawnerReconciler struct {
 	Enabled      []string
 	Allowlist    []string
 	DefaultModel string
+	// MaxTurnsCeiling/TokenBudgetCeiling are the budget every remediation is
+	// entitled to, and the threshold above which an estimate needs human
+	// approval. They must match the runner's PATCHY_REMEDIATE_* configuration
+	// — the pod re-derives the same floor, so a mismatch merely wastes the
+	// larger of the two rather than misbehaving.
+	MaxTurnsCeiling    int32
+	TokenBudgetCeiling int64
+	// MaxTurnsHard/TokenBudgetHard bound what approving an over-ceiling
+	// estimate can grant.
+	MaxTurnsHard    int32
+	TokenBudgetHard int64
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
 }
 
+// Ceiling defaults, mirroring the agent-runner's own (internal/agentrun).
+const (
+	defaultMaxTurnsCeiling    int32 = 80
+	defaultTokenBudgetCeiling int64 = 400000
+)
+
 // resolveParams clamps the investigation's suggested remediation model to the
 // allowlist and resolves the harness that runs it, stamping both onto the
 // bound parameters. When the suggestion is missing, off the allowlist, or has
 // no enabled harness, it falls back to the controller default (validated
-// runnable at startup). Turns/budget are left for the runner to clamp.
+// runnable at startup). The turn/token grant is resolved separately, by
+// resolveGrant — the model is a choice to be validated, the budget is not.
 func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alpha1.AgentParameters {
 	enabled := harness.EnabledSet(r.Enabled)
 	if params.Model != "" && slices.Contains(r.Allowlist, params.Model) {
@@ -74,6 +92,46 @@ func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alp
 		}
 	}
 	return params
+}
+
+// resolveGrant decides what a remediation may spend.
+//
+// The floor is the ceiling: every remediation gets it, whatever the
+// investigation estimated — including nothing at all. The estimate can only
+// raise the grant, and only with a human behind it, because an estimate above
+// the ceiling is precisely what held the finding in AwaitingApproval. So an
+// approved over-ceiling estimate is granted (bounded by the hard cap, the
+// backstop on what one approval can authorize), and an unapproved one cannot
+// reach here in the first place.
+//
+// Note the asymmetry with resolveParams: a bad model suggestion falls back to
+// the default, but a low estimate is simply ignored. Nothing the agent writes
+// may shrink the budget of the run that follows it.
+func (r *SpawnerReconciler) resolveGrant(est *v1alpha1.AgentEstimate, approved bool) (int32, int64) {
+	turns, budget := r.MaxTurnsCeiling, r.TokenBudgetCeiling
+	if turns <= 0 {
+		turns = defaultMaxTurnsCeiling
+	}
+	if budget <= 0 {
+		budget = defaultTokenBudgetCeiling
+	}
+	hardTurns, hardBudget := r.MaxTurnsHard, r.TokenBudgetHard
+	if hardTurns < turns {
+		hardTurns = turns
+	}
+	if hardBudget < budget {
+		hardBudget = budget
+	}
+	if est == nil || !approved {
+		return turns, budget
+	}
+	if est.MaxTurns > turns {
+		turns = min(est.MaxTurns, hardTurns)
+	}
+	if est.TokenBudget > budget {
+		budget = min(est.TokenBudget, hardBudget)
+	}
+	return turns, budget
 }
 
 // Reconcile advances one finding through queue admission.
@@ -215,7 +273,8 @@ func (r *SpawnerReconciler) spawn(ctx context.Context, fnd *v1alpha1.Finding) er
 	// The suggested stage-2 parameters live on the Investigation child. Clamp
 	// the suggested model to the allowlist and resolve the harness that will
 	// run it — the model's provider decides the runner image and credential,
-	// so this must be settled before the Job is created.
+	// so this must be settled before the Job is created — then resolve what
+	// the run may actually spend.
 	var params v1alpha1.AgentParameters
 	var invChild v1alpha1.Investigation
 	invKey := types.NamespacedName{Namespace: fnd.Namespace, Name: inv.Name}
@@ -223,6 +282,7 @@ func (r *SpawnerReconciler) spawn(ctx context.Context, fnd *v1alpha1.Finding) er
 		params = *invChild.Status.RemediationParameters
 	}
 	params = r.resolveParams(params)
+	params.MaxTurns, params.TokenBudget = r.resolveGrant(params.Estimate, fnd.Spec.Approval != nil)
 
 	score := priority.Score(fnd.Spec.Severity, inv.Exploitability, inv.Likelihood, inv.Impact, r.Weights)
 	rem := &v1alpha1.Remediation{

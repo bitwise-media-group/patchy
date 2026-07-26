@@ -229,7 +229,7 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 	harnessID := rem.Spec.Parameters.Harness
 	if harnessID == "" || !slices.Contains(r.Enabled, harnessID) {
 		return r.fail(ctx, rem, "aborted",
-			fmt.Sprintf("harness %q for model %q is not enabled", harnessID, rem.Spec.Parameters.Model))
+			fmt.Sprintf("harness %q for model %q is not enabled", harnessID, rem.Spec.Parameters.Model), nil)
 	}
 
 	repoName := ""
@@ -250,6 +250,11 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 		Finding:               fnd.Name,
 		ArtifactURL:           repo.Status.Artifact.URL,
 		ArtifactDigest:        repo.Status.Artifact.Digest,
+		// The grant the spawner resolved. The pod treats its own ceiling as a
+		// floor beneath this, so a run is never starved by what the
+		// investigation predicted.
+		MaxTurns:    rem.Spec.Parameters.MaxTurns,
+		TokenBudget: rem.Spec.Parameters.TokenBudget,
 	})
 	if err != nil {
 		return fmt.Errorf("launch remediation job: %w", err)
@@ -269,7 +274,7 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 	st, err := r.Runner.Status(ctx, rem.Status.JobRef.Name)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job vanished before reporting")
+			return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job vanished before reporting", nil)
 		}
 		return ctrl.Result{}, err
 	}
@@ -287,14 +292,14 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 		case envelope.TypeRemediation:
 			result = e.Remediation
 		case envelope.TypeFatal:
-			return ctrl.Result{}, r.fail(ctx, rem, "aborted", e.Error)
+			return ctrl.Result{}, r.fail(ctx, rem, "aborted", e.Error, stageOf(result))
 		}
 	}
 	switch {
 	case result == nil:
-		return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job produced no remediation event")
+		return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job produced no remediation event", nil)
 	case result.Outcome != envelope.OutcomeOK:
-		return ctrl.Result{}, r.fail(ctx, rem, string(result.Outcome), result.Detail)
+		return ctrl.Result{}, r.fail(ctx, rem, string(result.Outcome), result.Detail, &result.Stage)
 	case !result.Success:
 		return ctrl.Result{}, r.handOff(ctx, rem, result)
 	default:
@@ -313,7 +318,7 @@ func (r *RemediationReconciler) succeed(
 		return client.IgnoreNotFound(err)
 	}
 	if fnd.Spec.Repository == nil || result.Changeset == nil {
-		return r.fail(ctx, rem, "aborted", "success without changeset or repository")
+		return r.fail(ctx, rem, "aborted", "success without changeset or repository", &result.Stage)
 	}
 	branch := "patchy/" + fnd.Name
 	if err := r.Forge.Push(ctx, rem.Namespace, fnd.Spec.Repository.URL, branch, result.Changeset); err != nil {
@@ -380,9 +385,23 @@ func (r *RemediationReconciler) handOff(
 	return r.finishFinding(ctx, rem, result, v1alpha1.PhaseHandedOff, "agent reported the finding is not safely fixable")
 }
 
-// fail retries (edge 12) or exhausts (edge 15).
-func (r *RemediationReconciler) fail(ctx context.Context, rem *v1alpha1.Remediation, outcome, detail string) error {
-	result := &envelope.Remediation{Stage: envelope.Stage{Outcome: envelope.Outcome(outcome), Detail: detail}}
+// stageOf is the stage of a remediation event that may not have arrived.
+func stageOf(result *envelope.Remediation) *envelope.Stage {
+	if result == nil {
+		return nil
+	}
+	return &result.Stage
+}
+
+// fail retries (edge 12) or exhausts (edge 15). reported is the agent's own
+// stage when it emitted one; its accounting survives the failure so the run's
+// turns, tokens and cost still reach the child and the rollups — a failed run
+// spent real money, and the estimate-against-actual averages depend on it
+// being counted. Nil when no event arrived at all.
+func (r *RemediationReconciler) fail(
+	ctx context.Context, rem *v1alpha1.Remediation, outcome, detail string, reported *envelope.Stage,
+) error {
+	result := &envelope.Remediation{Stage: agentresult.FailedStage(reported, outcome, detail)}
 	if err := r.stampChild(ctx, rem, result, v1alpha1.RunFailed, nil); err != nil {
 		return err
 	}

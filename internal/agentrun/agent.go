@@ -237,6 +237,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		AllowedModels:      a.cfg.ModelAllowlist,
 		MaxTurnsCeiling:    a.cfg.RemediateMaxTurns,
 		TokenBudgetCeiling: a.cfg.RemediateTokenBudget,
+		Calibration:        a.cfg.Calibration,
 	})
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -291,47 +292,93 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	ev.Priority = string(inv.Priority)
 	ev.Severity = string(inv.Severity)
 	ev.Confidence = *inv.Confidence
-	ev.AwaitApproval = inv.Recommendation == report.RecommendRemediate && inv.BreakingChangeAvailable
 	if inv.Recommendation == report.RecommendRemediate {
 		// The agent's raw suggested (canonical) model rides the envelope; the
 		// remediation spawner clamps it to the allowlist and resolves the
-		// harness that runs it. Turns/budget are clamped to the ceilings here
-		// for the informational stage-2 preview.
+		// harness that runs it. The turn and token figures ride it verbatim,
+		// unclamped: they are the agent's ESTIMATE of the fix's cost, and
+		// clamping them would destroy the very signal the approval gate and
+		// the calibration averages are reading.
 		ev.RemediationModel = inv.Model
-		ev.MaxTurns, ev.TokenBudget = a.clampTurnsBudget(inv.MaxTurns, inv.TokenBudget)
+		ev.EstimatedMaxTurns = inv.MaxTurns
+		ev.EstimatedTokenBudget = inv.TokenBudget
+		ev.HoldReasons = a.holdReasons(inv)
 	}
+	ev.AwaitApproval = len(ev.HoldReasons) > 0
 	return ev
 }
 
-// remediationInput reads the controller-provided investigation.md for the
-// suggested stage-2 turns/budget and clamps them to the ceilings. The model
-// and harness are not read from here — the controller resolved them and passed
-// them per-Job, so the pod runs exactly what its runner image was built for.
+// holdReasons decides why — if at all — a remediate verdict must wait for a
+// human before it runs. An estimate above the ceiling is a hold rather than a
+// clamp: the ceiling is the threshold above which spend needs authorizing,
+// and approving grants the estimate rather than merely permitting the ceiling.
+// Confidence is NOT judged here; the controller owns that threshold.
+func (a *Agent) holdReasons(inv *report.Investigation) []envelope.HoldReason {
+	var reasons []envelope.HoldReason
+	if inv.BreakingChangeAvailable {
+		reasons = append(reasons, envelope.HoldBreakingChangeAvailable)
+	}
+	if inv.MaxTurns > a.cfg.RemediateMaxTurns {
+		reasons = append(reasons, envelope.HoldEstimateExceedsTurnCeiling)
+	}
+	if inv.TokenBudget > a.cfg.RemediateTokenBudget {
+		reasons = append(reasons, envelope.HoldEstimateExceedsTokenCeiling)
+	}
+	return reasons
+}
+
+// remediationInput validates that the controller-provided analysis is present
+// and parseable, and resolves what this run may spend.
+//
+// The investigation's numbers are NOT read as limits. They are an estimate:
+// the controller already compared them to the ceiling, held the finding for
+// approval if they exceeded it, and resolved the grant it passed per-Job. A
+// low estimate must never starve the run — that is exactly the failure this
+// separation exists to prevent. The model and harness are likewise not read
+// from here: the controller resolved them, so the pod runs what its runner
+// image was built for.
 func (a *Agent) remediationInput() (remediationParams, error) {
 	raw, err := os.ReadFile(a.cfg.inputInvestigation())
 	if err != nil {
 		return remediationParams{}, fmt.Errorf("input analysis: %w", err)
 	}
-	inv, err := report.ParseInvestigation(raw)
-	if err != nil {
+	if _, err := report.ParseInvestigation(raw); err != nil {
 		return remediationParams{}, err
 	}
-	maxTurns, budget := a.clampTurnsBudget(inv.MaxTurns, inv.TokenBudget)
+	maxTurns, budget := a.grant()
 	return remediationParams{maxTurns: maxTurns, budget: budget}, nil
 }
 
-// clampTurnsBudget holds the investigation's suggested turns and token budget
-// to the configured ceilings, logging every correction.
-func (a *Agent) clampTurnsBudget(maxTurns, budget int) (int, int) {
-	if maxTurns < 1 || maxTurns > a.cfg.RemediateMaxTurns {
-		a.cfg.Log.Warn("investigation max_turns clamped",
-			"suggested", maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
+// grant resolves the remediation's spend. The controller's per-Job grant wins
+// when present; otherwise the run gets the ceiling, which is the floor every
+// remediation is entitled to. Either way the hard cap binds — the runner is
+// what actually spends the money, so it re-checks rather than trusting the
+// grant it was handed.
+func (a *Agent) grant() (maxTurns, budget int) {
+	maxTurns, budget = a.cfg.GrantedMaxTurns, a.cfg.GrantedTokenBudget
+	if maxTurns < a.cfg.RemediateMaxTurns {
+		if maxTurns > 0 {
+			a.cfg.Log.Warn("granted max_turns below the ceiling; using the ceiling",
+				"granted", maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
+		}
 		maxTurns = a.cfg.RemediateMaxTurns
 	}
-	if budget < 1 || budget > a.cfg.RemediateTokenBudget {
-		a.cfg.Log.Warn("investigation token_budget clamped",
-			"suggested", budget, "ceiling", a.cfg.RemediateTokenBudget)
+	if budget < a.cfg.RemediateTokenBudget {
+		if budget > 0 {
+			a.cfg.Log.Warn("granted token_budget below the ceiling; using the ceiling",
+				"granted", budget, "ceiling", a.cfg.RemediateTokenBudget)
+		}
 		budget = a.cfg.RemediateTokenBudget
+	}
+	if maxTurns > a.cfg.RemediateMaxTurnsHard {
+		a.cfg.Log.Warn("granted max_turns clamped to the hard cap",
+			"granted", maxTurns, "hard", a.cfg.RemediateMaxTurnsHard)
+		maxTurns = a.cfg.RemediateMaxTurnsHard
+	}
+	if budget > a.cfg.RemediateTokenBudgetHard {
+		a.cfg.Log.Warn("granted token_budget clamped to the hard cap",
+			"granted", budget, "hard", a.cfg.RemediateTokenBudgetHard)
+		budget = a.cfg.RemediateTokenBudgetHard
 	}
 	return maxTurns, budget
 }
@@ -406,6 +453,9 @@ func (a *Agent) fillStage(st *envelope.Stage, h harness.Harness, res runner.Resu
 
 // stageOutcome folds run error, timeout, and the harness's runtime-error
 // gate into an outcome; OK means the stage's report can be trusted to exist.
+// A run that exhausted its turn or token limit is reported as budget
+// exceeded rather than a generic runtime error — it names the cause, and it
+// is the same outcome the runner's own kill switch raises.
 func stageOutcome(h harness.Harness, res runner.Result, runErr error) (envelope.Outcome, string) {
 	if runErr != nil {
 		return envelope.OutcomeRuntimeError, runErr.Error()
@@ -414,6 +464,9 @@ func stageOutcome(h harness.Harness, res runner.Result, runErr error) (envelope.
 		return envelope.OutcomeTimeout, fmt.Sprintf("stage timed out after %s", res.Elapsed.Round(time.Second))
 	}
 	if msg := h.RuntimeError(res.Stdout, res.ExitCode, res.TimedOut); msg != "" {
+		if b, ok := h.(harness.BudgetReporter); ok && b.Exhausted(res.Stdout) {
+			return envelope.OutcomeBudgetExceeded, msg
+		}
 		return envelope.OutcomeRuntimeError, msg
 	}
 	return envelope.OutcomeOK, ""

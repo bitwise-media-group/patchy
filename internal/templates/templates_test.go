@@ -78,6 +78,23 @@ func TestGoldens(t *testing.T) {
 				TokenBudgetCeiling: 400000,
 			})
 		}},
+		// The calibrated variant: the feedback loop's rendered form, with a
+		// history skewing hard in both directions (turns badly under-predicted,
+		// tokens over-predicted) so the sign handling is pinned.
+		{"prompt_investigate_calibrated.md", func() (string, error) {
+			return RenderInvestigatePrompt(InvestigatePrompt{
+				IssuePath:          "/workspace/input/issue.md",
+				ReportPath:         "/workspace/reports/investigation.md",
+				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-5"},
+				MaxTurnsCeiling:    80,
+				TokenBudgetCeiling: 400000,
+				Calibration: &Calibration{
+					Scope: "acme/orders", Runs: 12,
+					AvgPredictedTurns: 12, AvgActualTurns: 34,
+					AvgPredictedOutputTokens: 50000, AvgActualOutputTokens: 41000,
+				},
+			})
+		}},
 		{"prompt_remediate.md", func() (string, error) {
 			return RenderRemediatePrompt(RemediatePrompt{
 				IssuePath:         "/workspace/input/issue.md",

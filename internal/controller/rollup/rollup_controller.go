@@ -118,6 +118,9 @@ func (r *Reconciler) ReconcileRemediation(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, r.child(ctx, &rem, childObj{
 		kind: "remediation", ledger: "r:" + string(rem.UID),
 		stage: rem.Status.Stage, succeeded: succeeded, settled: settled,
+		// The estimate rides the spec, so a run that died before reporting
+		// still contributes its prediction against whatever it managed.
+		estimate:   rem.Spec.Parameters.Estimate,
 		conditions: &rem.Status.Conditions,
 		update:     func() error { return r.Status().Update(ctx, &rem) },
 	})
@@ -125,11 +128,14 @@ func (r *Reconciler) ReconcileRemediation(ctx context.Context, req ctrl.Request)
 
 // childObj adapts the two child kinds for aggregation.
 type childObj struct {
-	kind       string
-	ledger     string
-	stage      *v1alpha1.StageResult
-	succeeded  bool
-	settled    bool
+	kind      string
+	ledger    string
+	stage     *v1alpha1.StageResult
+	succeeded bool
+	settled   bool
+	// estimate is the investigation's prediction for this run; nil for
+	// investigation runs, which predict nothing about themselves.
+	estimate   *v1alpha1.AgentEstimate
 	conditions *[]metav1.Condition
 	update     func() error
 }
@@ -141,7 +147,7 @@ func (r *Reconciler) child(ctx context.Context, obj client.Object, c childObj) e
 	if !c.settled && !deleting {
 		return nil
 	}
-	delta, err := stats.StageDeltaFrom(c.kind, c.stage, c.succeeded)
+	delta, err := stats.StageDeltaFrom(c.kind, c.stage, c.succeeded, c.estimate)
 	if err != nil {
 		r.log().LogAttrs(ctx, slog.LevelWarn, "unparseable stage cost; counted as zero",
 			slog.String(c.kind, obj.GetName()), slog.Any("error", err))

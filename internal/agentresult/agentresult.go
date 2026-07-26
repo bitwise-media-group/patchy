@@ -22,6 +22,24 @@ const (
 	maxDetail = 4096
 )
 
+// FailedStage builds the stage to record for a run the controller is failing.
+//
+// When the agent reported a stage, that stage is kept and only the verdict is
+// overwritten: a run that failed still burned turns, tokens and money, and
+// throwing its accounting away is what blanks a child's usage and leaves the
+// harness/model rollup scopes with nothing to key on. reported is nil only
+// when no event arrived at all (a vanished or unparseable Job), and then
+// there is genuinely nothing but the verdict to record.
+func FailedStage(reported *envelope.Stage, outcome, detail string) envelope.Stage {
+	st := envelope.Stage{}
+	if reported != nil {
+		st = *reported
+	}
+	st.Outcome = envelope.Outcome(outcome)
+	st.Detail = detail
+	return st
+}
+
 // FromStage maps an envelope stage onto the CRD stage result.
 func FromStage(st *envelope.Stage) *v1alpha1.StageResult {
 	return &v1alpha1.StageResult{

@@ -145,6 +145,16 @@ type Spec struct {
 	ArtifactDigest string
 	// InvestigationMarkdown is the analysis handed to a remediation run.
 	InvestigationMarkdown string
+	// MaxTurns/TokenBudget are the budget granted to a remediation run,
+	// already resolved controller-side against the ceiling, the estimate and
+	// the hard cap. Zero leaves the pod on its configured ceiling.
+	MaxTurns    int32
+	TokenBudget int64
+	// Calibration is pre-serialized JSON describing how earlier estimates
+	// compared to reality, passed opaquely to the investigation prompt. Empty
+	// omits it. This package deliberately does not know its shape — it is
+	// prompt garnish, not job configuration.
+	Calibration string
 }
 
 // Client creates and observes agent Jobs in one namespace.
@@ -380,25 +390,28 @@ func (c *Client) agentContainer(runner Runner, spec Spec, res corev1.ResourceReq
 // and set from the Spec, so a controller-global Env copy must never shadow
 // them.
 var reservedEnv = map[string]bool{
-	"HOME":                       true,
-	"PATCHY_WORKSPACE":           true,
-	"PATCHY_REPO":                true,
-	"PATCHY_PHASE":               true,
-	"PATCHY_FINDING":             true,
-	"PATCHY_BASE_SHA":            true,
-	"PATCHY_INVESTIGATE_HARNESS": true,
-	"PATCHY_INVESTIGATE_MODEL":   true,
-	"PATCHY_REMEDIATE_HARNESS":   true,
-	"PATCHY_REMEDIATE_MODEL":     true,
-	"ANTHROPIC_API_KEY":          true,
-	"CLAUDE_CODE_OAUTH_TOKEN":    true,
-	"ANTHROPIC_AUTH_TOKEN":       true,
-	"OPENAI_API_KEY":             true,
-	"CODEX_API_KEY":              true,
-	"CODEX_ACCESS_TOKEN":         true,
-	"COPILOT_GITHUB_TOKEN":       true,
-	"GH_TOKEN":                   true,
-	"GITHUB_TOKEN":               true,
+	"HOME":                        true,
+	"PATCHY_WORKSPACE":            true,
+	"PATCHY_REPO":                 true,
+	"PATCHY_PHASE":                true,
+	"PATCHY_FINDING":              true,
+	"PATCHY_BASE_SHA":             true,
+	"PATCHY_INVESTIGATE_HARNESS":  true,
+	"PATCHY_INVESTIGATE_MODEL":    true,
+	"PATCHY_REMEDIATE_HARNESS":    true,
+	"PATCHY_REMEDIATE_MODEL":      true,
+	"PATCHY_GRANTED_MAX_TURNS":    true,
+	"PATCHY_GRANTED_TOKEN_BUDGET": true,
+	"PATCHY_CALIBRATION":          true,
+	"ANTHROPIC_API_KEY":           true,
+	"CLAUDE_CODE_OAUTH_TOKEN":     true,
+	"ANTHROPIC_AUTH_TOKEN":        true,
+	"OPENAI_API_KEY":              true,
+	"CODEX_API_KEY":               true,
+	"CODEX_ACCESS_TOKEN":          true,
+	"COPILOT_GITHUB_TOKEN":        true,
+	"GH_TOKEN":                    true,
+	"GITHUB_TOKEN":                true,
 }
 
 // stageEnvNames returns the harness and model env var names agent-runner reads
@@ -433,6 +446,21 @@ func (c *Client) agentEnv(runner Runner, spec Spec) []corev1.EnvVar {
 	}
 	if spec.Model != "" {
 		env = append(env, corev1.EnvVar{Name: modelEnv, Value: spec.Model})
+	}
+
+	// The per-run budget grant and the estimate calibration. Both are decided
+	// per Job, so like harness and model they are injected from the Spec
+	// rather than the controller-global Env.
+	if spec.MaxTurns > 0 {
+		env = append(env, corev1.EnvVar{
+			Name: "PATCHY_GRANTED_MAX_TURNS", Value: strconv.FormatInt(int64(spec.MaxTurns), 10)})
+	}
+	if spec.TokenBudget > 0 {
+		env = append(env, corev1.EnvVar{
+			Name: "PATCHY_GRANTED_TOKEN_BUDGET", Value: strconv.FormatInt(spec.TokenBudget, 10)})
+	}
+	if spec.Calibration != "" {
+		env = append(env, corev1.EnvVar{Name: "PATCHY_CALIBRATION", Value: spec.Calibration})
 	}
 
 	keys := make([]string, 0, len(c.cfg.Env))

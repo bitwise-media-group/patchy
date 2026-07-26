@@ -5,6 +5,7 @@ package investigation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/priority"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
+	"github.com/bitwise-media-group/patchy/internal/stats"
 	"github.com/bitwise-media-group/patchy/internal/templates"
 )
 
@@ -180,7 +182,7 @@ func (r *InvestigationReconciler) launch(ctx context.Context, inv *v1alpha1.Inve
 	}
 	var repo v1alpha1.Repository
 	if inv.Spec.RepositoryRef == nil {
-		return r.fail(ctx, inv, &fnd, "aborted", "investigation has no repository artifact")
+		return r.fail(ctx, inv, &fnd, "aborted", "investigation has no repository artifact", nil)
 	}
 	repoKey := types.NamespacedName{Namespace: inv.Namespace, Name: inv.Spec.RepositoryRef.Name}
 	if err := r.Get(ctx, repoKey, &repo); err != nil {
@@ -211,6 +213,7 @@ func (r *InvestigationReconciler) launch(ctx context.Context, inv *v1alpha1.Inve
 		Finding:        fnd.Name,
 		ArtifactURL:    repo.Status.Artifact.URL,
 		ArtifactDigest: repo.Status.Artifact.Digest,
+		Calibration:    r.calibration(ctx, repoName),
 	})
 	if err != nil {
 		return fmt.Errorf("launch investigation job: %w", err)
@@ -241,7 +244,7 @@ func (r *InvestigationReconciler) collect(ctx context.Context, inv *v1alpha1.Inv
 			if err := r.Get(ctx, key, &fnd); err != nil {
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
-			return ctrl.Result{}, r.fail(ctx, inv, &fnd, "aborted", "agent job vanished before reporting")
+			return ctrl.Result{}, r.fail(ctx, inv, &fnd, "aborted", "agent job vanished before reporting", nil)
 		}
 		return ctrl.Result{}, err
 	}
@@ -272,14 +275,14 @@ func (r *InvestigationReconciler) apply(
 		case envelope.TypeInvestigation:
 			result = e.Investigation
 		case envelope.TypeFatal:
-			return r.fail(ctx, inv, &fnd, "aborted", e.Error)
+			return r.fail(ctx, inv, &fnd, "aborted", e.Error, stageOf(result))
 		}
 	}
 	if result == nil {
-		return r.fail(ctx, inv, &fnd, "aborted", "agent job produced no investigation event")
+		return r.fail(ctx, inv, &fnd, "aborted", "agent job produced no investigation event", nil)
 	}
 	if result.Outcome != envelope.OutcomeOK {
-		return r.fail(ctx, inv, &fnd, string(result.Outcome), result.Detail)
+		return r.fail(ctx, inv, &fnd, string(result.Outcome), result.Detail, &result.Stage)
 	}
 
 	// Stamp the child (single writer: this controller).
@@ -288,7 +291,7 @@ func (r *InvestigationReconciler) apply(
 	}
 
 	// Route the finding.
-	to, priorityLevel := r.route(&fnd, result)
+	to, priorityLevel, holds := r.route(&fnd, result)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Finding
 		if err := r.Get(ctx, key, &cur); err != nil {
@@ -303,7 +306,9 @@ func (r *InvestigationReconciler) apply(
 			Exploitability: v1alpha1.Rating(result.Exploitability.Rating),
 			Likelihood:     v1alpha1.Rating(result.Likelihood.Rating),
 			Impact:         v1alpha1.Rating(result.Impact.Rating),
-			AwaitApproval:  result.AwaitApproval,
+			AwaitApproval:  len(holds) > 0,
+			HoldReasons:    holds,
+			Estimate:       estimateOf(result),
 			CompletedAt:    timePtr(r.now()),
 		}
 		cur.Status.Investigation = summary
@@ -324,36 +329,123 @@ func (r *InvestigationReconciler) apply(
 	})
 }
 
-// route maps a completed analysis onto the finding's next phase (edges 5–8)
-// and the display priority level.
+// route maps a completed analysis onto the finding's next phase (edges 5–8),
+// the display priority level, and every reason the remediation must wait for
+// a human. A non-empty reason set is exactly what sends the finding to
+// AwaitingApproval.
 func (r *InvestigationReconciler) route(
 	fnd *v1alpha1.Finding, result *envelope.Investigation,
-) (v1alpha1.Phase, v1alpha1.Level) {
+) (v1alpha1.Phase, v1alpha1.Level, []v1alpha1.HoldReason) {
 	level := v1alpha1.Level(result.Priority)
 	switch v1alpha1.Recommendation(result.Recommendation) {
 	case v1alpha1.RecommendationIgnore:
-		return v1alpha1.PhaseDismissed, level
+		return v1alpha1.PhaseDismissed, level, nil
 	case v1alpha1.RecommendationManual:
-		return v1alpha1.PhaseHandedOff, level
+		return v1alpha1.PhaseHandedOff, level, nil
 	case v1alpha1.RecommendationRemediate:
 		if fnd.Spec.Repository == nil {
-			return v1alpha1.PhaseHandedOff, level
+			return v1alpha1.PhaseHandedOff, level, nil
 		}
-		if result.AwaitApproval || result.Confidence < r.ConfidenceThreshold {
-			return v1alpha1.PhaseAwaitingApproval, level
+		holds := holdReasons(result)
+		// Confidence is the controller's threshold, so it joins the set here
+		// rather than in the pod.
+		if result.Confidence < r.ConfidenceThreshold {
+			holds = append(holds, v1alpha1.HoldLowConfidence)
 		}
-		return v1alpha1.PhaseQueued, level
+		if len(holds) > 0 {
+			return v1alpha1.PhaseAwaitingApproval, level, holds
+		}
+		return v1alpha1.PhaseQueued, level, nil
 	default:
-		return v1alpha1.PhaseHandedOff, level
+		return v1alpha1.PhaseHandedOff, level, nil
+	}
+}
+
+// holdReasons maps the runner's hold vocabulary onto the API's. The runner
+// raises the reasons only it can see (the breaking-change flag, the estimate
+// against the ceiling it was configured with); AwaitApproval is honoured as a
+// bare fallback so an older runner that reports no reasons still holds.
+func holdReasons(result *envelope.Investigation) []v1alpha1.HoldReason {
+	holds := make([]v1alpha1.HoldReason, 0, len(result.HoldReasons))
+	for _, h := range result.HoldReasons {
+		holds = append(holds, v1alpha1.HoldReason(h))
+	}
+	if len(holds) == 0 && result.AwaitApproval {
+		holds = append(holds, v1alpha1.HoldBreakingChangeAvailable)
+	}
+	return holds
+}
+
+// calibration renders how earlier estimates in this repository compared to
+// reality, as JSON for the investigation prompt. It prefers the repository's
+// own history and falls back to the estate-wide one when that is too thin;
+// with neither it returns empty, and the prompt omits the section rather than
+// anchoring the agent on an average of nothing.
+//
+// This is advisory garnish: every failure path here returns empty rather than
+// failing the run, because a missing rollup must never cost an investigation.
+func (r *InvestigationReconciler) calibration(ctx context.Context, repo string) string {
+	scopes := []struct {
+		scope v1alpha1.RollupScope
+		label string
+	}{
+		{v1alpha1.RollupScope{Type: v1alpha1.ScopeRepository, Key: repo}, repo},
+		{v1alpha1.RollupScope{Type: v1alpha1.ScopeTotal}, "all repositories"},
+	}
+	for _, s := range scopes {
+		if s.scope.Type == v1alpha1.ScopeRepository && repo == "" {
+			continue
+		}
+		var ru v1alpha1.FindingRollup
+		key := types.NamespacedName{Namespace: r.Namespace, Name: stats.ScopeObjectName(s.scope)}
+		if err := r.Get(ctx, key, &ru); err != nil {
+			continue
+		}
+		c := stats.CalibrationFrom(&ru.Status, s.label)
+		if c == nil {
+			continue
+		}
+		blob, err := json.Marshal(c)
+		if err != nil {
+			if r.Log != nil {
+				r.Log.Warn("encode estimate calibration", "error", err)
+			}
+			return ""
+		}
+		return string(blob)
+	}
+	return ""
+}
+
+// stageOf is the stage of an investigation event that may not have arrived.
+func stageOf(result *envelope.Investigation) *envelope.Stage {
+	if result == nil {
+		return nil
+	}
+	return &result.Stage
+}
+
+// estimateOf lifts the analysis's cost prediction, or nil when it made none.
+func estimateOf(result *envelope.Investigation) *v1alpha1.AgentEstimate {
+	if result.EstimatedMaxTurns <= 0 && result.EstimatedTokenBudget <= 0 {
+		return nil
+	}
+	return &v1alpha1.AgentEstimate{
+		MaxTurns:    int32(result.EstimatedMaxTurns),
+		TokenBudget: int64(result.EstimatedTokenBudget),
 	}
 }
 
 // fail stamps a failed run and either reverts the finding for a retry or
-// exhausts it (edges 4 and 9).
+// exhausts it (edges 4 and 9). reported is the agent's own stage when it got
+// far enough to emit one; its accounting is preserved rather than discarded,
+// so a failed run still lands its harness, model, turns, tokens and cost on
+// the child and in the rollups. Nil for a run that produced no event at all.
 func (r *InvestigationReconciler) fail(
-	ctx context.Context, inv *v1alpha1.Investigation, fnd *v1alpha1.Finding, outcome, detail string,
+	ctx context.Context, inv *v1alpha1.Investigation, fnd *v1alpha1.Finding,
+	outcome, detail string, reported *envelope.Stage,
 ) error {
-	result := &envelope.Investigation{Stage: envelope.Stage{Outcome: envelope.Outcome(outcome), Detail: detail}}
+	result := &envelope.Investigation{Stage: agentresult.FailedStage(reported, outcome, detail)}
 	if err := r.stampChild(ctx, inv, result, v1alpha1.RunFailed); err != nil {
 		return err
 	}
@@ -402,12 +494,16 @@ func (r *InvestigationReconciler) stampChild(
 			cur.Status.Confidence = agentresult.FormatConfidence(result.Confidence)
 			cur.Status.Severity = v1alpha1.Level(result.Severity)
 			cur.Status.Priority = v1alpha1.Level(result.Priority)
-			cur.Status.AwaitApproval = result.AwaitApproval
-			if result.RemediationModel != "" || result.MaxTurns > 0 || result.TokenBudget > 0 {
+			holds := holdReasons(result)
+			cur.Status.AwaitApproval = len(holds) > 0
+			cur.Status.HoldReasons = holds
+			// Model plus the prediction. The turn/token grant is NOT set
+			// here: the spawner resolves it against the ceiling, the hard
+			// cap, and whether a human approved the estimate.
+			if est := estimateOf(result); result.RemediationModel != "" || est != nil {
 				cur.Status.RemediationParameters = &v1alpha1.AgentParameters{
-					Model:       result.RemediationModel,
-					MaxTurns:    int32(result.MaxTurns),
-					TokenBudget: int64(result.TokenBudget),
+					Model:    result.RemediationModel,
+					Estimate: est,
 				}
 			}
 		}

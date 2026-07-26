@@ -16,8 +16,10 @@ const Prefix = "PATCHY-EVENT: "
 // Version is the current envelope schema version. Version 2 replaced the
 // git-bundle payload with the structured Changeset; version 3 added the
 // investigation event (exploitability/likelihood/impact analyses) and keys
-// events by finding name.
-const Version = 3
+// events by finding name; version 4 turned the investigation's max_turns and
+// token_budget into the unclamped estimated_max_turns/estimated_token_budget
+// and added hold_reasons beside await_approval.
+const Version = 4
 
 // Type discriminates events.
 type Type string
@@ -78,7 +80,7 @@ type AnalysisResult struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-// Investigation is the analysis-stage event payload (version 3): the agent's
+// Investigation is the analysis-stage event payload (version 4): the agent's
 // exploitability, likelihood, and impact assessments plus its verdict. The
 // runner never decides continuation — the controller routes on the verdict.
 type Investigation struct {
@@ -91,16 +93,32 @@ type Investigation struct {
 	Priority       string         `json:"priority,omitempty"`
 	Severity       string         `json:"severity,omitempty"`
 	Confidence     float64        `json:"confidence,omitempty"`
-	// RemediationModel/MaxTurns/TokenBudget are the clamped stage-2
-	// parameters the analysis suggested (the controller re-clamps before
-	// launching the remediation job).
+	// RemediationModel is the stage-2 model the analysis suggested; the
+	// controller clamps it to the allowlist before launching the job.
 	RemediationModel string `json:"remediation_model,omitempty"`
-	MaxTurns         int    `json:"max_turns,omitempty"`
-	TokenBudget      int    `json:"token_budget,omitempty"`
-	// AwaitApproval marks the breaking-change hold (a better-but-breaking
-	// fix exists): remediation waits for a human approval.
-	AwaitApproval bool `json:"await_approval"`
+	// EstimatedMaxTurns/EstimatedTokenBudget are the analysis's PREDICTION of
+	// what the fix will cost, reported verbatim. They never bind the
+	// remediation — it runs on the grant the controller resolves — and they
+	// are never clamped, because the approval gate and the calibration
+	// averages both read the raw prediction.
+	EstimatedMaxTurns    int `json:"estimated_max_turns,omitempty"`
+	EstimatedTokenBudget int `json:"estimated_token_budget,omitempty"`
+	// AwaitApproval marks an approval hold; HoldReasons says why.
+	AwaitApproval bool         `json:"await_approval"`
+	HoldReasons   []HoldReason `json:"hold_reasons,omitempty"`
 }
+
+// HoldReason names why a remediate verdict must wait for a human. It mirrors
+// v1alpha1.HoldReason; the controller maps one onto the other.
+type HoldReason string
+
+// Approval-hold reasons the runner can raise. Low confidence is absent by
+// design: the controller owns that threshold, not the pod.
+const (
+	HoldBreakingChangeAvailable     HoldReason = "breakingChangeAvailable"
+	HoldEstimateExceedsTurnCeiling  HoldReason = "estimateExceedsTurnCeiling"
+	HoldEstimateExceedsTokenCeiling HoldReason = "estimateExceedsTokenCeiling"
+)
 
 // FileChange is one file created or modified on the remediation branch.
 type FileChange struct {

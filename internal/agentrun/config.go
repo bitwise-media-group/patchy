@@ -4,6 +4,7 @@
 package agentrun
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bitwise-media-group/patchy/internal/templates"
 )
 
 // Phase selects which stage runs.
@@ -53,15 +56,37 @@ type Config struct {
 	ModelAllowlist []string
 
 	// The investigation stage's limits are absolute: it runs on exactly
-	// these. The remediation stage's are ceilings — the investigation
-	// requests its own max_turns and token_budget, and Agent.clamp holds
-	// those requests to these bounds.
+	// these.
 	InvestigateMaxTurns    int
 	InvestigateTokenBudget int
-	RemediateMaxTurns      int
-	RemediateTokenBudget   int
-	InvestigateTimeout     time.Duration
-	RemediateTimeout       time.Duration
+
+	// RemediateMaxTurns/RemediateTokenBudget are the remediation CEILINGS —
+	// the auto-approve threshold, not a cap. Every remediation runs with at
+	// least this much whatever the investigation predicted (including when it
+	// predicted nothing); an investigation that predicts MORE than this holds
+	// the finding for human approval. The investigation stage renders them
+	// into its prompt as that threshold.
+	RemediateMaxTurns    int
+	RemediateTokenBudget int
+	// RemediateMaxTurnsHard/RemediateTokenBudgetHard are the absolute limits.
+	// Approving an over-ceiling estimate grants the estimate, but never more
+	// than these — they are the backstop on what one human click can spend.
+	RemediateMaxTurnsHard    int
+	RemediateTokenBudgetHard int
+	// GrantedMaxTurns/GrantedTokenBudget are what the controller granted THIS
+	// remediation run, already resolved against the estimate and the hard
+	// cap. Zero means "no per-run grant" and falls back to the ceiling.
+	GrantedMaxTurns    int
+	GrantedTokenBudget int
+
+	// Calibration is how previous remediations in this repository actually
+	// compared to their estimates, rendered into the investigation prompt so
+	// its next estimate can correct for the observed skew. Nil on a cold
+	// start, and the prompt then omits the section entirely.
+	Calibration *templates.Calibration
+
+	InvestigateTimeout time.Duration
+	RemediateTimeout   time.Duration
 
 	// ChangesetMaxBytes caps the cumulative raw content of the changeset the
 	// remediation stage may emit.
@@ -144,9 +169,33 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	cfg.InvestigateTokenBudget = number("INVESTIGATE_TOKEN_BUDGET", "150000")
 	cfg.RemediateMaxTurns = number("REMEDIATE_MAX_TURNS", "80")
 	cfg.RemediateTokenBudget = number("REMEDIATE_TOKEN_BUDGET", "400000")
+	cfg.RemediateMaxTurnsHard = number("REMEDIATE_MAX_TURNS_HARD", "240")
+	cfg.RemediateTokenBudgetHard = number("REMEDIATE_TOKEN_BUDGET_HARD", "1200000")
+	cfg.GrantedMaxTurns = number("GRANTED_MAX_TURNS", "0")
+	cfg.GrantedTokenBudget = number("GRANTED_TOKEN_BUDGET", "0")
 	cfg.ChangesetMaxBytes = number("CHANGESET_MAX_BYTES", strconv.Itoa(5<<20))
 	cfg.InvestigateTimeout = duration("INVESTIGATE_TIMEOUT", "15m")
 	cfg.RemediateTimeout = duration("REMEDIATE_TIMEOUT", "45m")
+
+	if raw := get("CALIBRATION", ""); raw != "" {
+		var c templates.Calibration
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			// Advisory prompt garnish: a malformed blob must not cost a run.
+			errs = append(errs, fmt.Sprintf("PATCHY_CALIBRATION is not valid JSON: %v", err))
+		} else {
+			cfg.Calibration = &c
+		}
+	}
+	// A hard cap below the ceiling would silently invert the model — the
+	// ceiling is the auto-approve threshold, so a run may always spend it.
+	if cfg.RemediateMaxTurnsHard < cfg.RemediateMaxTurns {
+		errs = append(errs, fmt.Sprintf("PATCHY_REMEDIATE_MAX_TURNS_HARD=%d is below the ceiling %d",
+			cfg.RemediateMaxTurnsHard, cfg.RemediateMaxTurns))
+	}
+	if cfg.RemediateTokenBudgetHard < cfg.RemediateTokenBudget {
+		errs = append(errs, fmt.Sprintf("PATCHY_REMEDIATE_TOKEN_BUDGET_HARD=%d is below the ceiling %d",
+			cfg.RemediateTokenBudgetHard, cfg.RemediateTokenBudget))
+	}
 
 	if cfg.Repo == "" {
 		errs = append(errs, "PATCHY_REPO is required")

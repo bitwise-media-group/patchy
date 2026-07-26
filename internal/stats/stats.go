@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/templates"
 )
 
 // maxLedger bounds the per-object exactly-once ledger.
@@ -75,10 +76,27 @@ type StageDelta struct {
 	CostMicroUSD int64
 	// ElapsedMilliseconds of wall clock.
 	ElapsedMilliseconds int64
+	// Turns the run took.
+	Turns int64
+	// Estimate is what the investigation predicted this run would cost, when
+	// it predicted anything. Nil contributes nothing to the estimate
+	// aggregate — including its Runs denominator, which is what keeps the
+	// predicted and actual sums covering the same set of runs.
+	Estimate *EstimateDelta
 }
 
-// StageDeltaFrom derives the delta from a child's stage result.
-func StageDeltaFrom(stage string, st *v1alpha1.StageResult, succeeded bool) (StageDelta, error) {
+// EstimateDelta is one run's predicted cost, paired with the actual cost of
+// that same run so the two accumulate together.
+type EstimateDelta struct {
+	PredictedTurns, ActualTurns               int64
+	PredictedOutputTokens, ActualOutputTokens int64
+}
+
+// StageDeltaFrom derives the delta from a child's stage result. estimate is
+// the investigation's prediction for this run, or nil when there was none.
+func StageDeltaFrom(
+	stage string, st *v1alpha1.StageResult, succeeded bool, estimate *v1alpha1.AgentEstimate,
+) (StageDelta, error) {
 	d := StageDelta{Stage: stage, Outcome: "aborted", Succeeded: succeeded}
 	if st == nil {
 		return d, nil
@@ -98,7 +116,45 @@ func StageDeltaFrom(stage string, st *v1alpha1.StageResult, succeeded bool) (Sta
 	d.CacheCreationTokens = st.Usage.CacheCreationTokens
 	d.CostMicroUSD = cost
 	d.ElapsedMilliseconds = st.ElapsedMilliseconds
+	d.Turns = int64(st.NumTurns)
+	// A prediction of nothing is not a prediction: an investigation that
+	// omitted both figures must not enter the averages as a pair of zeroes.
+	if estimate != nil && (estimate.MaxTurns > 0 || estimate.TokenBudget > 0) {
+		d.Estimate = &EstimateDelta{
+			PredictedTurns:        int64(estimate.MaxTurns),
+			ActualTurns:           d.Turns,
+			PredictedOutputTokens: estimate.TokenBudget,
+			ActualOutputTokens:    d.OutputTokens,
+		}
+	}
 	return d, nil
+}
+
+// MinCalibrationRuns is the fewest runs an estimate history must hold before
+// it is worth showing an agent as guidance. Below this the average is noise,
+// and anchoring the next estimate on noise is worse than saying nothing.
+const MinCalibrationRuns = 3
+
+// CalibrationFrom derives the estimate-accuracy summary for a scope from its
+// rollup, or nil when the history is too thin to be meaningful. scope names
+// the source for the prompt ("owner/repo", "all repositories").
+func CalibrationFrom(st *v1alpha1.FindingRollupStatus, scope string) *templates.Calibration {
+	if st == nil {
+		return nil
+	}
+	agg, ok := st.Bucket.Stages["remediation"]
+	if !ok || agg.Estimate == nil || agg.Estimate.Runs < MinCalibrationRuns {
+		return nil
+	}
+	e := agg.Estimate
+	return &templates.Calibration{
+		Scope:                    scope,
+		Runs:                     e.Runs,
+		AvgPredictedTurns:        e.PredictedTurns / e.Runs,
+		AvgActualTurns:           e.ActualTurns / e.Runs,
+		AvgPredictedOutputTokens: e.PredictedOutputTokens / e.Runs,
+		AvgActualOutputTokens:    e.ActualOutputTokens / e.Runs,
+	}
 }
 
 // applyStage folds the delta into a bucket's stage aggregate.
@@ -121,6 +177,19 @@ func applyStage(b *v1alpha1.RollupBucket, d StageDelta) {
 	agg.CacheCreationTokens += d.CacheCreationTokens
 	agg.CostMicroUSD += d.CostMicroUSD
 	agg.ElapsedMilliseconds += d.ElapsedMilliseconds
+	agg.Turns += d.Turns
+	if e := d.Estimate; e != nil {
+		est := agg.Estimate
+		if est == nil {
+			est = &v1alpha1.EstimateAggregate{}
+		}
+		est.Runs++
+		est.PredictedTurns += e.PredictedTurns
+		est.ActualTurns += e.ActualTurns
+		est.PredictedOutputTokens += e.PredictedOutputTokens
+		est.ActualOutputTokens += e.ActualOutputTokens
+		agg.Estimate = est
+	}
 	b.Stages[d.Stage] = agg
 }
 
@@ -232,8 +301,10 @@ func Apply(
 	if slices.Contains(st.Recent, ledgerKey) {
 		return false
 	}
-	if st.SchemaVersion == 0 {
-		st.SchemaVersion = 1
+	// Upgraded in place: every bump has been additive, so an older bucket is
+	// already a valid newer one — it just has no history for the new fields.
+	if st.SchemaVersion < v1alpha1.RollupSchemaVersion {
+		st.SchemaVersion = v1alpha1.RollupSchemaVersion
 	}
 	mt := metav1.NewTime(now.UTC())
 	if st.FirstProcessed == nil {

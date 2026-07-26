@@ -350,7 +350,14 @@ func investigationEvent(rec string, confidence float64, await bool) []envelope.E
 			Impact:         envelope.AnalysisResult{Rating: "critical", Summary: "rce"},
 			Recommendation: rec, Priority: "high", Severity: "high",
 			Confidence: confidence, AwaitApproval: await,
-			RemediationModel: "claude-sonnet-5", MaxTurns: 40, TokenBudget: 200000,
+			HoldReasons: func() []envelope.HoldReason {
+				if await {
+					return []envelope.HoldReason{envelope.HoldBreakingChangeAvailable}
+				}
+				return nil
+			}(),
+			RemediationModel:  "claude-sonnet-5",
+			EstimatedMaxTurns: 40, EstimatedTokenBudget: 200000,
 		},
 	}}
 }

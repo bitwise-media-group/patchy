@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/bitwise-media-group/patchy/compare/v0.6.1...v0.7.0) (2026-07-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **model:** anthropic/claude-opus-4-8 and openai/gpt-5.5 are no longer in the model registry. A deployment whose PATCHY_MODEL_ALLOWLIST, PATCHY_INVESTIGATE_MODEL or PATCHY_REMEDIATE_MODEL still names either id will fail controller startup, since every allowlisted model must resolve to an enabled harness that supports it. Replace anthropic/claude-opus-4-8 with anthropic/claude-opus-5, and openai/gpt-5.5 with one of openai/gpt-5.6-sol, openai/gpt-5.6-terra or openai/gpt-5.6-luna.
+
+### Features
+
+* **harness:** accept CODEX_ACCESS_TOKEN and CODEX_API_KEY ([5da346a](https://github.com/bitwise-media-group/patchy/commit/5da346a32bad8e436d7bd2c1097a9dc24d6d0562))
+* **harness:** add the copilot harness and its agent runner ([93de403](https://github.com/bitwise-media-group/patchy/commit/93de40355b37831dd6eb45de91ade037324489aa))
+* **model:** add Claude Fable 5, Opus 5, and the priced GPT-5.6 tiers ([80abbfe](https://github.com/bitwise-media-group/patchy/commit/80abbfe831004870467036800ae44d0fbdae5c0c))
+
 ## [0.6.1](https://github.com/bitwise-media-group/patchy/compare/v0.6.0...v0.6.1) (2026-07-24)
 
 

@@ -1,9 +1,8 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command replay signs a recorded webhook fixture with the shared secret and
-// delivers it to a running integration-controller — the local stand-in for
-// GitHub.
+// Command replay delivers a recorded webhook fixture to a running
+// integration-controller — the local stand-in for whichever provider sent it.
 //
 //	replay -url http://localhost:30079/github/webhooks -secret-file my.secret \
 //	    -event code_scanning_alert ../fixtures/webhooks/code_scanning_alert.created.json
@@ -12,6 +11,18 @@
 // webhook secret so no secret file is needed:
 //
 //	replay -dev-secret ../fixtures/webhooks/code_scanning_alert.created.json
+//
+// A Security Command Center fixture is a Pub/Sub push envelope, which
+// authenticates with a bearer token rather than an HMAC — Pub/Sub composes the
+// message, so there is nothing for the sender to sign. Supply one Google
+// issued for the audience the Integration expects:
+//
+//	replay -bearer "$(gcloud auth print-identity-token \
+//	    --audiences=https://patchy.example/google-cloud/webhooks)" \
+//	    ../fixtures/webhooks/scc.notification.json
+//
+// The route is inferred from the fixture name, so -url is only needed when
+// the controller is not on the default port.
 package main
 
 import (
@@ -42,11 +53,17 @@ func main() {
 // needs no secret file.
 const devWebhookSecret = "dev-webhook-secret-replace-me"
 
+// defaultHost is where the dev overlay exposes the receiver.
+const defaultHost = "http://localhost:30079"
+
 func run() error {
-	url := flag.String("url", "http://localhost:30079/github/webhooks", "controller webhook endpoint")
+	url := flag.String("url", "", "controller webhook endpoint (default: inferred from the fixture)")
 	secretFile := flag.String("secret-file", "", "file holding the webhook secret")
 	devSecret := flag.Bool("dev-secret", false, "sign with the dev overlay's placeholder webhook secret")
-	event := flag.String("event", "", "X-GitHub-Event type (default: inferred from the fixture name)")
+	bearer := flag.String("bearer", "",
+		"OIDC token for a Pub/Sub push fixture, e.g. "+
+			"$(gcloud auth print-identity-token --audiences=<the Integration's audience>)")
+	event := flag.String("event", "", "event type (default: inferred from the fixture name)")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -58,37 +75,46 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	var secret []byte
-	switch {
-	case *devSecret && *secretFile != "":
-		return fmt.Errorf("-dev-secret and -secret-file are mutually exclusive")
-	case *devSecret:
-		secret = []byte(devWebhookSecret)
-	case *secretFile != "":
-		rawSecret, err := os.ReadFile(*secretFile)
-		if err != nil {
-			return err
-		}
-		secret = []byte(strings.TrimRight(string(rawSecret), "\r\n"))
-	default:
-		return fmt.Errorf("one of -secret-file or -dev-secret is required")
-	}
 
 	eventType := *event
 	if eventType == "" {
 		eventType = eventFromName(fixture)
 	}
+	// The provider decides both the route and how the delivery is
+	// authenticated, and the fixture name is what names the provider.
+	pubsub := isPubSub(fixture)
+	endpoint := *url
+	if endpoint == "" {
+		endpoint = defaultHost + defaultPath(pubsub)
+	}
 
-	req, err := http.NewRequest(http.MethodPost, *url, bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(payload)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-	req.Header.Set("X-GitHub-Event", eventType)
-	req.Header.Set("X-GitHub-Delivery", deliveryID())
+
+	if pubsub {
+		if *bearer == "" {
+			return fmt.Errorf(
+				"a Pub/Sub push fixture needs -bearer: the message is composed by Pub/Sub, so there is " +
+					"nothing for the sender to sign and the OIDC token is the only credential")
+		}
+		req.Header.Set("Authorization", "Bearer "+*bearer)
+	} else {
+		if *bearer != "" {
+			return fmt.Errorf("-bearer applies to Pub/Sub push fixtures; GitHub deliveries are signed")
+		}
+		secret, err := githubSecret(*devSecret, *secretFile)
+		if err != nil {
+			return err
+		}
+		mac := hmac.New(sha256.New, secret)
+		mac.Write(payload)
+		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("X-GitHub-Event", eventType)
+		req.Header.Set("X-GitHub-Delivery", deliveryID())
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -102,6 +128,38 @@ func run() error {
 		return fmt.Errorf("delivery rejected: %s", strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// githubSecret resolves the HMAC secret for a GitHub delivery.
+func githubSecret(dev bool, file string) ([]byte, error) {
+	switch {
+	case dev && file != "":
+		return nil, fmt.Errorf("-dev-secret and -secret-file are mutually exclusive")
+	case dev:
+		return []byte(devWebhookSecret), nil
+	case file != "":
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(strings.TrimRight(string(raw), "\r\n")), nil
+	default:
+		return nil, fmt.Errorf("one of -secret-file or -dev-secret is required")
+	}
+}
+
+// isPubSub reports whether the fixture is a Pub/Sub push envelope rather than
+// a GitHub delivery, by the provider prefix in its name.
+func isPubSub(path string) bool {
+	return strings.HasPrefix(filepath.Base(path), "scc.")
+}
+
+// defaultPath is the receiver route for the fixture's provider.
+func defaultPath(pubsub bool) string {
+	if pubsub {
+		return "/google-cloud/webhooks"
+	}
+	return "/github/webhooks"
 }
 
 // eventFromName infers the event type from the fixture's name

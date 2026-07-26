@@ -197,7 +197,7 @@ func (cl *cluster) githubCredentials(t *testing.T, ghURL string) {
 		ObjectMeta: metav1.ObjectMeta{Name: "github", Namespace: namespace},
 		Spec: v1alpha1.IntegrationSpec{
 			Provider:  v1alpha1.IntegrationProviderGitHub,
-			SecretRef: v1alpha1.LocalSecretReference{Name: "patchy-github"},
+			SecretRef: &v1alpha1.LocalSecretReference{Name: "patchy-github"},
 			GitHub: &v1alpha1.GitHubIntegration{
 				BaseURL:            ghURL,
 				Issues:             &v1alpha1.GitHubIssues{Enabled: true, ApproveComment: "/approve"},

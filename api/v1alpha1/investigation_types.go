@@ -71,12 +71,19 @@ type InvestigationStatus struct {
 	// computed controller-side).
 	// +optional
 	Priority Level `json:"priority,omitempty"`
-	// AwaitApproval marks the breaking-change hold: a better-but-breaking fix
-	// exists, so remediation waits for a human approval.
+	// AwaitApproval marks an approval hold: remediation waits for a human.
+	// HoldReasons says why.
 	// +optional
 	AwaitApproval bool `json:"awaitApproval,omitempty"`
-	// RemediationParameters are the clamped stage-2 parameters the
-	// investigation suggested.
+	// HoldReasons enumerates every reason the hold fired. Empty when
+	// AwaitApproval is false.
+	// +optional
+	// +listType=set
+	HoldReasons []HoldReason `json:"holdReasons,omitempty"`
+	// RemediationParameters are the stage-2 parameters the investigation
+	// suggested: the model to run, and (on Estimate) its prediction of the
+	// turns and tokens the fix will need. The prediction is advisory — the
+	// grant is resolved by the remediation spawner, never here.
 	// +optional
 	RemediationParameters *AgentParameters `json:"remediationParameters,omitempty"`
 	// Report is the full analysis report markdown (single copy — the Finding

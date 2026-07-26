@@ -69,6 +69,37 @@ type StageAggregate struct {
 	// ElapsedMilliseconds summed.
 	// +optional
 	ElapsedMilliseconds int64 `json:"elapsedMilliseconds,omitempty"`
+	// Turns summed across every run counted here.
+	// +optional
+	Turns int64 `json:"turns,omitempty"`
+	// Estimate accumulates how well the investigation predicted this stage's
+	// cost. Absent for the investigation stage, which estimates nothing.
+	// +optional
+	Estimate *EstimateAggregate `json:"estimate,omitempty"`
+}
+
+// EstimateAggregate accumulates predicted-against-actual cost over the runs
+// that carried an investigation estimate. The actual sums are matched — they
+// cover exactly the runs the predicted sums cover, not every run in the
+// StageAggregate — so predicted ÷ actual is a like-for-like ratio even when
+// some runs (older objects, runs that died before reporting) have no
+// estimate. Skew is computed client-side as actual ÷ predicted - 1.
+type EstimateAggregate struct {
+	// Runs that carried an estimate; the denominator for both averages.
+	// +optional
+	Runs int64 `json:"runs,omitempty"`
+	// PredictedTurns summed over those runs.
+	// +optional
+	PredictedTurns int64 `json:"predictedTurns,omitempty"`
+	// ActualTurns summed over those same runs.
+	// +optional
+	ActualTurns int64 `json:"actualTurns,omitempty"`
+	// PredictedOutputTokens summed over those runs.
+	// +optional
+	PredictedOutputTokens int64 `json:"predictedOutputTokens,omitempty"`
+	// ActualOutputTokens summed over those same runs.
+	// +optional
+	ActualOutputTokens int64 `json:"actualOutputTokens,omitempty"`
 }
 
 // RollupBucket accumulates finding-level counters within a scope. Total and
@@ -109,10 +140,21 @@ type MonthlyBucket struct {
 	CostMicroUSD int64 `json:"costMicroUSD,omitempty"`
 }
 
+// RollupSchemaVersion is the current bucket layout.
+//
+//	1 — the original counters.
+//	2 — StageAggregate.Turns and StageAggregate.Estimate.
+//
+// Every bump so far has been additive, so a bucket written at an older
+// version stays valid and is upgraded in place; the fields added by the bump
+// simply carry no history. EstimateAggregate.Runs is the denominator that
+// keeps that honest — it counts only the runs that actually contributed.
+const RollupSchemaVersion int32 = 2
+
 // FindingRollupStatus is the accumulated statistics. All data lives in
 // status; the ledger makes application exactly-once per contributing object.
 type FindingRollupStatus struct {
-	// SchemaVersion of the bucket layout (starts at 1).
+	// SchemaVersion of the bucket layout; see RollupSchemaVersion.
 	// +optional
 	SchemaVersion int32 `json:"schemaVersion,omitempty"`
 	// FirstProcessed is the stats epoch for this scope.

@@ -133,6 +133,27 @@ const (
 	RecommendationManual    Recommendation = "manual"
 )
 
+// HoldReason names why a finding stopped in AwaitingApproval instead of
+// going straight to Queued. A hold can have several reasons at once, so they
+// are reported as a set rather than folded into one flag.
+// +kubebuilder:validation:Enum=breakingChangeAvailable;lowConfidence;estimateExceedsTurnCeiling;estimateExceedsTokenCeiling
+type HoldReason string
+
+// Approval-hold reasons.
+const (
+	// HoldBreakingChangeAvailable: a better-but-breaking fix exists, so a
+	// human should choose between it and the backwards-compatible one.
+	HoldBreakingChangeAvailable HoldReason = "breakingChangeAvailable"
+	// HoldLowConfidence: the investigation's confidence fell below the
+	// configured threshold.
+	HoldLowConfidence HoldReason = "lowConfidence"
+	// HoldEstimateExceedsTurnCeiling: the predicted turns exceed the ceiling,
+	// so the run needs a human to authorize the larger budget.
+	HoldEstimateExceedsTurnCeiling HoldReason = "estimateExceedsTurnCeiling"
+	// HoldEstimateExceedsTokenCeiling: as above, for output tokens.
+	HoldEstimateExceedsTokenCeiling HoldReason = "estimateExceedsTokenCeiling"
+)
+
 // RunKind discriminates the two agent run kinds.
 // +kubebuilder:validation:Enum=investigation;remediation
 type RunKind string
@@ -156,8 +177,29 @@ const (
 	RunFailed   RunPhase = "Failed"
 )
 
+// AgentEstimate is the investigation's prediction of what a remediation will
+// need. It is advisory: it never reduces a run's budget. Its only operational
+// effect is the approval gate — an estimate above the configured ceiling
+// holds the finding in AwaitingApproval, and approving it grants the estimate
+// (clamped to the hard cap). Everything else it does is reporting: estimate
+// against granted against actual, and the skew averages in the rollups.
+type AgentEstimate struct {
+	// MaxTurns the investigation predicts the remediation will take.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	MaxTurns int32 `json:"maxTurns,omitempty"`
+	// TokenBudget is the predicted output-token spend.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	TokenBudget int64 `json:"tokenBudget,omitempty"`
+}
+
 // AgentParameters bound one agent run: which model it uses and how much it
-// may spend. Ceilings are clamped controller-side before they land here.
+// may spend. MaxTurns/TokenBudget are what the run was actually GRANTED —
+// the configured ceiling, or the investigation's estimate (clamped to the
+// hard cap) when a human approved an over-ceiling estimate. They are never
+// derived downward from the estimate: a run always gets at least the ceiling,
+// whatever the investigation predicted, including when it predicted nothing.
 type AgentParameters struct {
 	// Model the harness runs, as a canonical provider-qualified id
 	// (e.g. "anthropic/claude-sonnet-5").
@@ -168,14 +210,18 @@ type AgentParameters struct {
 	// credential the Job uses). Empty until resolution.
 	// +optional
 	Harness string `json:"harness,omitempty"`
-	// MaxTurns caps agent turns.
+	// MaxTurns granted to the run.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MaxTurns int32 `json:"maxTurns,omitempty"`
-	// TokenBudget caps output tokens (the runner kill switch).
+	// TokenBudget granted to the run (output tokens; the runner kill switch).
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	TokenBudget int64 `json:"tokenBudget,omitempty"`
+	// Estimate the investigation made for this run, recorded alongside the
+	// grant so the two can be compared after the fact.
+	// +optional
+	Estimate *AgentEstimate `json:"estimate,omitempty"`
 }
 
 // UsageSummary is one agent run's token and cost accounting. Zeroes mean the

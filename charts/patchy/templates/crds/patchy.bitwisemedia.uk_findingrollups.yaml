@@ -148,6 +148,35 @@ spec:
                           description: ElapsedMilliseconds summed.
                           format: int64
                           type: integer
+                        estimate:
+                          description: |-
+                            Estimate accumulates how well the investigation predicted this stage's
+                            cost. Absent for the investigation stage, which estimates nothing.
+                          properties:
+                            actualOutputTokens:
+                              description: ActualOutputTokens summed over those same
+                                runs.
+                              format: int64
+                              type: integer
+                            actualTurns:
+                              description: ActualTurns summed over those same runs.
+                              format: int64
+                              type: integer
+                            predictedOutputTokens:
+                              description: PredictedOutputTokens summed over those
+                                runs.
+                              format: int64
+                              type: integer
+                            predictedTurns:
+                              description: PredictedTurns summed over those runs.
+                              format: int64
+                              type: integer
+                            runs:
+                              description: Runs that carried an estimate; the denominator
+                                for both averages.
+                              format: int64
+                              type: integer
+                          type: object
                         inputTokens:
                           description: InputTokens summed.
                           format: int64
@@ -170,6 +199,10 @@ spec:
                         succeeded:
                           description: Succeeded runs (outcome ok; for remediation,
                             success=true).
+                          format: int64
+                          type: integer
+                        turns:
+                          description: Turns summed across every run counted here.
                           format: int64
                           type: integer
                       type: object
@@ -215,7 +248,7 @@ spec:
                 maxItems: 512
                 type: array
               schemaVersion:
-                description: SchemaVersion of the bucket layout (starts at 1).
+                description: SchemaVersion of the bucket layout; see RollupSchemaVersion.
                 format: int32
                 type: integer
             type: object

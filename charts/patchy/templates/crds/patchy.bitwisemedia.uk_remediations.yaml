@@ -123,6 +123,23 @@ spec:
               parameters:
                 description: Parameters bound this run (clamped controller-side).
                 properties:
+                  estimate:
+                    description: |-
+                      Estimate the investigation made for this run, recorded alongside the
+                      grant so the two can be compared after the fact.
+                    properties:
+                      maxTurns:
+                        description: MaxTurns the investigation predicts the remediation
+                          will take.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      tokenBudget:
+                        description: TokenBudget is the predicted output-token spend.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                    type: object
                   harness:
                     description: |-
                       Harness that runs Model, resolved from the model by the remediation
@@ -130,7 +147,7 @@ spec:
                       credential the Job uses). Empty until resolution.
                     type: string
                   maxTurns:
-                    description: MaxTurns caps agent turns.
+                    description: MaxTurns granted to the run.
                     format: int32
                     minimum: 0
                     type: integer
@@ -140,7 +157,8 @@ spec:
                       (e.g. "anthropic/claude-sonnet-5").
                     type: string
                   tokenBudget:
-                    description: TokenBudget caps output tokens (the runner kill switch).
+                    description: TokenBudget granted to the run (output tokens; the
+                      runner kill switch).
                     format: int64
                     minimum: 0
                     type: integer

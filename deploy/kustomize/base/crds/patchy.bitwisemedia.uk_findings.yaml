@@ -466,7 +466,8 @@ spec:
                     format: int32
                     type: integer
                   awaitApproval:
-                    description: AwaitApproval marks the breaking-change hold.
+                    description: AwaitApproval marks an approval hold; HoldReasons
+                      says why.
                     type: boolean
                   completedAt:
                     description: CompletedAt is when the investigation finished.
@@ -476,6 +477,23 @@ spec:
                     description: Confidence decimal string in [0, 1].
                     pattern: ^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$
                     type: string
+                  estimate:
+                    description: |-
+                      Estimate the investigation made for the remediation, mirrored here so
+                      the approving human can see what they are authorizing.
+                    properties:
+                      maxTurns:
+                        description: MaxTurns the investigation predicts the remediation
+                          will take.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      tokenBudget:
+                        description: TokenBudget is the predicted output-token spend.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                    type: object
                   exploitability:
                     description: Exploitability rating.
                     enum:
@@ -485,6 +503,21 @@ spec:
                     - high
                     - critical
                     type: string
+                  holdReasons:
+                    description: HoldReasons enumerates every reason the hold fired.
+                    items:
+                      description: |-
+                        HoldReason names why a finding stopped in AwaitingApproval instead of
+                        going straight to Queued. A hold can have several reasons at once, so they
+                        are reported as a set rather than folded into one flag.
+                      enum:
+                      - breakingChangeAvailable
+                      - lowConfidence
+                      - estimateExceedsTurnCeiling
+                      - estimateExceedsTokenCeiling
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
                   impact:
                     description: Impact rating.
                     enum:

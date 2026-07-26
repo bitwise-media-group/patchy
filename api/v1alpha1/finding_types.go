@@ -253,9 +253,17 @@ type InvestigationSummary struct {
 	// Impact rating.
 	// +optional
 	Impact Rating `json:"impact,omitempty"`
-	// AwaitApproval marks the breaking-change hold.
+	// AwaitApproval marks an approval hold; HoldReasons says why.
 	// +optional
 	AwaitApproval bool `json:"awaitApproval,omitempty"`
+	// HoldReasons enumerates every reason the hold fired.
+	// +optional
+	// +listType=set
+	HoldReasons []HoldReason `json:"holdReasons,omitempty"`
+	// Estimate the investigation made for the remediation, mirrored here so
+	// the approving human can see what they are authorizing.
+	// +optional
+	Estimate *AgentEstimate `json:"estimate,omitempty"`
 	// CompletedAt is when the investigation finished.
 	// +optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`

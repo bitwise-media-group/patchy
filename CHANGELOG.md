@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.1](https://github.com/bitwise-media-group/patchy/compare/v0.7.0...v0.7.1) (2026-07-26)
+
+
+### Features
+
+* **cli:** add `patchy get all` ([ee77a76](https://github.com/bitwise-media-group/patchy/commit/ee77a76c91e6076ead9a7b83bff4d98c18448722))
+* **cli:** generate the command reference and shell completions ([4c96904](https://github.com/bitwise-media-group/patchy/commit/4c969041e2f0de6f55fdcc26575692cd0effd6ec))
+* **release:** ship the CLI completions in the archive and cask ([81f8883](https://github.com/bitwise-media-group/patchy/commit/81f88836c85eeda34d3c4d7b1a17014ca7f03c27))
+
+
+### Bug Fixes
+
+* **ghclient:** reopen code-scanning alerts from their state ([769231c](https://github.com/bitwise-media-group/patchy/commit/769231c1ecb9dece6f51ae1ea65e6c22ae9bfc5b))
+* **helm:** accept every credential channel the harnesses declare ([6a4c5b6](https://github.com/bitwise-media-group/patchy/commit/6a4c5b62d3b7e08052eca0da83b7dfbd1b6498a1))
+* **integration-controller:** skip forge objects a reset cannot find ([5b89bce](https://github.com/bitwise-media-group/patchy/commit/5b89bced96644a0649538b83fdf42abe7251480b))
+
 ## [0.7.0](https://github.com/bitwise-media-group/patchy/compare/v0.6.1...v0.7.0) (2026-07-26)
 
 

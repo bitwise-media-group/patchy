@@ -122,8 +122,8 @@ export interface Usage {
 export type HoldReason =
   | 'breakingChangeAvailable'
   | 'lowConfidence'
-  | 'estimateExceedsTurnCeiling'
-  | 'estimateExceedsTokenCeiling';
+  | 'exceedsAutomatedTurns'
+  | 'exceedsAutomatedTokens';
 
 // Estimate is an investigation's prediction of a remediation's cost. It never
 // limits the run — see Budget.

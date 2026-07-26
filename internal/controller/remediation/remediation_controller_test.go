@@ -70,9 +70,9 @@ func invChild() *v1alpha1.Investigation {
 }
 
 // TestSpawnerGrantsApprovedEstimate covers the one path where the estimate
-// changes what a run may spend: over the ceiling, and approved by a human.
-// The ceiling is an authorization threshold, so approving grants the estimate
-// itself — bounded by the hard cap.
+// changes what a run may spend: over the automated budget, and approved by a
+// human. That budget is an authorization line, so approving grants the
+// estimate itself — bounded by the manual budget.
 func TestSpawnerGrantsApprovedEstimate(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -81,15 +81,15 @@ func TestSpawnerGrantsApprovedEstimate(t *testing.T) {
 		wantTurns  int32
 		wantBudget int64
 	}{
-		{"unapproved over-ceiling estimate does not raise the grant",
+		{"unapproved over-automated estimate does not raise the grant",
 			&v1alpha1.AgentEstimate{MaxTurns: 140, TokenBudget: 700000}, false, 80, 400000},
-		{"approved over-ceiling estimate is granted",
+		{"approved over-automated estimate is granted",
 			&v1alpha1.AgentEstimate{MaxTurns: 140, TokenBudget: 700000}, true, 140, 700000},
-		{"approval cannot exceed the hard cap",
+		{"approval cannot exceed the manual budget",
 			&v1alpha1.AgentEstimate{MaxTurns: 9000, TokenBudget: 90000000}, true, 240, 1200000},
-		{"approval does not lower an under-ceiling estimate",
+		{"approval does not lower an under-automated estimate",
 			&v1alpha1.AgentEstimate{MaxTurns: 5, TokenBudget: 100}, true, 80, 400000},
-		{"no estimate at all still gets the ceiling", nil, true, 80, 400000},
+		{"no estimate at all still gets the automated budget", nil, true, 80, 400000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,10 +132,10 @@ func newSpawner(t *testing.T, objs ...client.Object) (*SpawnerReconciler, client
 		Allowlist:    []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-5", "openai/gpt-5.3-codex"},
 		DefaultModel: "anthropic/claude-sonnet-5",
 
-		MaxTurnsCeiling:    80,
-		TokenBudgetCeiling: 400000,
-		MaxTurnsHard:       240,
-		TokenBudgetHard:    1200000,
+		AutoMaxTurns:      80,
+		AutoTokenBudget:   400000,
+		ManualMaxTurns:    240,
+		ManualTokenBudget: 1200000,
 
 		Now: func() time.Time { return crdClock },
 	}, c
@@ -173,10 +173,10 @@ func TestSpawnerCreatesRemediation(t *testing.T) {
 	if rem.Spec.Priority != 73 {
 		t.Errorf("priority = %d, want 73", rem.Spec.Priority)
 	}
-	// The estimate is recorded but does not bind: an unapproved run is
-	// granted the ceiling, never the (lower) prediction.
+	// The estimate is recorded but does not bind: an unapproved run is granted
+	// the automated budget, never the (lower) prediction.
 	if rem.Spec.Parameters.MaxTurns != 80 || rem.Spec.Parameters.TokenBudget != 400000 {
-		t.Errorf("grant = %d/%d, want the ceiling 80/400000",
+		t.Errorf("grant = %d/%d, want the automated budget 80/400000",
 			rem.Spec.Parameters.MaxTurns, rem.Spec.Parameters.TokenBudget)
 	}
 	if est := rem.Spec.Parameters.Estimate; est == nil || est.MaxTurns != 40 || est.TokenBudget != 200000 {

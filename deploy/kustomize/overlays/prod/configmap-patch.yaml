@@ -13,8 +13,8 @@ data:
     PATCHY_FINDING_MIN_AGE: 1h
 
     # The real models (canonical, provider-qualified; the harness is derived
-    # from the model) and the ceilings the investigation's stage-2 suggestions
-    # are clamped to. Only the claude runner is enabled here; add `codex` to
+    # from the model) the investigation may choose between. Only the claude
+    # runner is enabled here; add `codex` to
     # PATCHY_HARNESSES and OpenAI models to the allowlist to let the
     # investigation choose them. Adding `copilot` instead makes every
     # allowlisted model runnable through one credential — but that credential is

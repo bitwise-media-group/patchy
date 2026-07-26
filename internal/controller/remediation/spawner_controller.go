@@ -42,27 +42,28 @@ type SpawnerReconciler struct {
 	Enabled      []string
 	Allowlist    []string
 	DefaultModel string
-	// MaxTurnsCeiling/TokenBudgetCeiling are the budget every remediation is
-	// entitled to, and the threshold above which an estimate needs human
-	// approval. They must match the runner's PATCHY_REMEDIATE_* configuration
-	// — the pod re-derives the same floor, so a mismatch merely wastes the
-	// larger of the two rather than misbehaving.
-	MaxTurnsCeiling    int32
-	TokenBudgetCeiling int64
-	// MaxTurnsHard/TokenBudgetHard bound what approving an over-ceiling
-	// estimate can grant.
-	MaxTurnsHard    int32
-	TokenBudgetHard int64
+	// AutoMaxTurns/AutoTokenBudget is what patchy spends unattended: the
+	// budget every remediation is entitled to, and the line past which an
+	// estimate needs human approval. These must match the runner's
+	// PATCHY_REMEDIATE_AUTO_* configuration — the pod re-derives the same
+	// floor, so a mismatch merely wastes the larger of the two rather than
+	// misbehaving.
+	AutoMaxTurns    int32
+	AutoTokenBudget int64
+	// ManualMaxTurns/ManualTokenBudget bound what a human approval can grant.
+	ManualMaxTurns    int32
+	ManualTokenBudget int64
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
 }
 
-// Ceiling defaults, mirroring the agent-runner's own (internal/agentrun).
+// Automated-budget defaults, mirroring the agent-runner's own
+// (internal/agentrun).
 const (
-	defaultMaxTurnsCeiling    int32 = 80
-	defaultTokenBudgetCeiling int64 = 400000
+	defaultAutoMaxTurns    int32 = 80
+	defaultAutoTokenBudget int64 = 400000
 )
 
 // resolveParams clamps the investigation's suggested remediation model to the
@@ -96,40 +97,35 @@ func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alp
 
 // resolveGrant decides what a remediation may spend.
 //
-// The floor is the ceiling: every remediation gets it, whatever the
+// The floor is the automated budget: every remediation gets it, whatever the
 // investigation estimated — including nothing at all. The estimate can only
 // raise the grant, and only with a human behind it, because an estimate above
-// the ceiling is precisely what held the finding in AwaitingApproval. So an
-// approved over-ceiling estimate is granted (bounded by the hard cap, the
-// backstop on what one approval can authorize), and an unapproved one cannot
-// reach here in the first place.
+// the automated budget is precisely what held the finding in
+// AwaitingApproval. So an approved estimate is granted up to the manual
+// budget, and an unapproved one cannot reach here in the first place.
 //
 // Note the asymmetry with resolveParams: a bad model suggestion falls back to
 // the default, but a low estimate is simply ignored. Nothing the agent writes
 // may shrink the budget of the run that follows it.
 func (r *SpawnerReconciler) resolveGrant(est *v1alpha1.AgentEstimate, approved bool) (int32, int64) {
-	turns, budget := r.MaxTurnsCeiling, r.TokenBudgetCeiling
+	turns, budget := r.AutoMaxTurns, r.AutoTokenBudget
 	if turns <= 0 {
-		turns = defaultMaxTurnsCeiling
+		turns = defaultAutoMaxTurns
 	}
 	if budget <= 0 {
-		budget = defaultTokenBudgetCeiling
+		budget = defaultAutoTokenBudget
 	}
-	hardTurns, hardBudget := r.MaxTurnsHard, r.TokenBudgetHard
-	if hardTurns < turns {
-		hardTurns = turns
-	}
-	if hardBudget < budget {
-		hardBudget = budget
-	}
+	// A manual budget below the automated one would make approving a fix buy
+	// less than leaving it alone.
+	manualTurns, manualBudget := max(r.ManualMaxTurns, turns), max(r.ManualTokenBudget, budget)
 	if est == nil || !approved {
 		return turns, budget
 	}
 	if est.MaxTurns > turns {
-		turns = min(est.MaxTurns, hardTurns)
+		turns = min(est.MaxTurns, manualTurns)
 	}
 	if est.TokenBudget > budget {
-		budget = min(est.TokenBudget, hardBudget)
+		budget = min(est.TokenBudget, manualBudget)
 	}
 	return turns, budget
 }

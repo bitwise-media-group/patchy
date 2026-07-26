@@ -113,7 +113,7 @@ type Config struct {
 	// Job is ever created.
 	Runners map[string]Runner
 	// Env is extra PATCHY_* configuration passed through to every runner
-	// (models, timeouts, ceilings, thresholds). Per-Job harness and model are
+	// (models, timeouts, budgets, thresholds). Per-Job harness and model are
 	// carried on the Spec, not here.
 	Env map[string]string
 	// Resource strings (Kubernetes quantities), optional.
@@ -146,8 +146,9 @@ type Spec struct {
 	// InvestigationMarkdown is the analysis handed to a remediation run.
 	InvestigationMarkdown string
 	// MaxTurns/TokenBudget are the budget granted to a remediation run,
-	// already resolved controller-side against the ceiling, the estimate and
-	// the hard cap. Zero leaves the pod on its configured ceiling.
+	// already resolved controller-side against the automated budget, the
+	// estimate and the manual budget. Zero leaves the pod on its own
+	// configured automated budget.
 	MaxTurns    int32
 	TokenBudget int64
 	// Calibration is pre-serialized JSON describing how earlier estimates

@@ -102,10 +102,10 @@ function holdText(reason: HoldReason): string {
       return "a better fix exists but would break external callers";
     case "lowConfidence":
       return "the investigation's confidence is below the automation threshold";
-    case "estimateExceedsTurnCeiling":
-      return "the fix is predicted to need more turns than the ceiling allows";
-    case "estimateExceedsTokenCeiling":
-      return "the fix is predicted to need more output tokens than the ceiling allows";
+    case "exceedsAutomatedTurns":
+      return "the fix is predicted to need more turns than run unattended";
+    case "exceedsAutomatedTokens":
+      return "the fix is predicted to need more output tokens than run unattended";
     default:
       return reason;
   }

@@ -46,16 +46,33 @@
                 }
             }
         },
+        "agentBudget": {
+            "type": "object",
+            "description": "Turn and output-token budget for one authorization mode",
+            "additionalProperties": false,
+            "required": [
+                "maxTurns",
+                "tokenBudget"
+            ],
+            "properties": {
+                "maxTurns": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "tokenBudget": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
         "remediationStage": {
             "type": "object",
             "additionalProperties": false,
             "required": [
                 "model",
                 "timeout",
-                "maxTurns",
-                "tokenBudget",
-                "maxTurnsHard",
-                "tokenBudgetHard"
+                "auto",
+                "manual"
             ],
             "properties": {
                 "model": {
@@ -64,21 +81,13 @@
                 "timeout": {
                     "$ref": "#/definitions/duration"
                 },
-                "maxTurns": {
-                    "type": "integer",
-                    "minimum": 1
+                "auto": {
+                    "description": "What an unattended fix gets, and the line past which an estimate needs approval",
+                    "$ref": "#/definitions/agentBudget"
                 },
-                "tokenBudget": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "maxTurnsHard": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "tokenBudgetHard": {
-                    "type": "integer",
-                    "minimum": 1
+                "manual": {
+                    "description": "The most a human approval can grant; must be at or above auto",
+                    "$ref": "#/definitions/agentBudget"
                 }
             }
         },

@@ -57,8 +57,15 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("investigate-timeout", 15*time.Minute, "wall-clock limit for the analysis stage")
 	f.Int("investigate-max-turns", 25, "agent turns allowed for the analysis stage")
 	f.Int("investigate-token-budget", 150000, "output-token budget for the analysis stage")
-	f.Int("remediate-max-turns", 80, "ceiling for the analysis's suggested remediation turns")
-	f.Int("remediate-token-budget", 400000, "ceiling for the analysis's suggested remediation budget")
+	// The remediation budgets are rendered into the ANALYSIS prompt: they tell
+	// the agent what its estimate will buy unattended and what a human can
+	// approve. They must match the remediation controller's own configuration.
+	f.Int("remediate-auto-max-turns", 80, "turns an unattended fix gets; the analysis prompt's approval line")
+	f.Int("remediate-auto-token-budget", 400000,
+		"output tokens an unattended fix gets; the analysis prompt's approval line")
+	f.Int("remediate-manual-max-turns", 240, "most turns a human approval can grant, as told to the analysis")
+	f.Int("remediate-manual-token-budget", 1200000,
+		"most output tokens a human approval can grant, as told to the analysis")
 	return cmd
 }
 
@@ -72,8 +79,10 @@ func agentEnv(opts *cli.Options) map[string]string {
 		"PATCHY_INVESTIGATE_MAX_TURNS":    fmt.Sprint(opts.Int("investigate-max-turns")),
 		"PATCHY_INVESTIGATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("investigate-token-budget")),
 
-		"PATCHY_REMEDIATE_MAX_TURNS":    fmt.Sprint(opts.Int("remediate-max-turns")),
-		"PATCHY_REMEDIATE_TOKEN_BUDGET": fmt.Sprint(opts.Int("remediate-token-budget")),
+		"PATCHY_REMEDIATE_AUTO_MAX_TURNS":      fmt.Sprint(opts.Int("remediate-auto-max-turns")),
+		"PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET":   fmt.Sprint(opts.Int("remediate-auto-token-budget")),
+		"PATCHY_REMEDIATE_MANUAL_MAX_TURNS":    fmt.Sprint(opts.Int("remediate-manual-max-turns")),
+		"PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET": fmt.Sprint(opts.Int("remediate-manual-token-budget")),
 	}
 }
 

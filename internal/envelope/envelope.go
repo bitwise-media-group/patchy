@@ -115,9 +115,9 @@ type HoldReason string
 // Approval-hold reasons the runner can raise. Low confidence is absent by
 // design: the controller owns that threshold, not the pod.
 const (
-	HoldBreakingChangeAvailable     HoldReason = "breakingChangeAvailable"
-	HoldEstimateExceedsTurnCeiling  HoldReason = "estimateExceedsTurnCeiling"
-	HoldEstimateExceedsTokenCeiling HoldReason = "estimateExceedsTokenCeiling"
+	HoldBreakingChangeAvailable HoldReason = "breakingChangeAvailable"
+	HoldExceedsAutomatedTurns   HoldReason = "exceedsAutomatedTurns"
+	HoldExceedsAutomatedTokens  HoldReason = "exceedsAutomatedTokens"
 )
 
 // FileChange is one file created or modified on the remediation branch.

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -176,14 +177,14 @@ func newConfig(t *testing.T, ws string, out io.Writer) Config {
 		Workspace: ws, Repo: "acme/shop", Finding: "finding-abc123def0-1", Phase: PhaseInvestigate,
 		InvestigateHarness: "fake", RemediateHarness: "fake",
 		InvestigateModel: "anthropic/claude-sonnet-5", RemediateModel: "anthropic/claude-sonnet-5",
-		ModelAllowlist:           []string{"anthropic/claude-sonnet-5"},
-		InvestigateMaxTurns:      25,
-		InvestigateTokenBudget:   150000,
-		RemediateMaxTurns:        80,
-		RemediateTokenBudget:     400000,
-		RemediateMaxTurnsHard:    240,
-		RemediateTokenBudgetHard: 1200000,
-		InvestigateTimeout:       time.Minute, RemediateTimeout: time.Minute,
+		ModelAllowlist:             []string{"anthropic/claude-sonnet-5"},
+		InvestigateMaxTurns:        25,
+		InvestigateTokenBudget:     150000,
+		RemediateAutoMaxTurns:      80,
+		RemediateAutoTokenBudget:   400000,
+		RemediateManualMaxTurns:    240,
+		RemediateManualTokenBudget: 1200000,
+		InvestigateTimeout:         time.Minute, RemediateTimeout: time.Minute,
 		ChangesetMaxBytes: 5 << 20,
 		Out:               out,
 		Log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -282,11 +283,11 @@ func TestInvestigationEvent(t *testing.T) {
 	}
 }
 
-// TestEstimateBelowCeilingDoesNotBindTheRun is the regression guard for the
+// TestEstimateBelowAutomatedDoesNotBindTheRun is the regression guard for the
 // starvation bug: an investigation predicting a tiny budget must not shrink
 // the remediation that follows. The estimate is reported as-is, and the run
-// still gets the ceiling.
-func TestEstimateBelowCeilingDoesNotBindTheRun(t *testing.T) {
+// still gets the automated budget.
+func TestEstimateBelowAutomatedDoesNotBindTheRun(t *testing.T) {
 	ws := newWorkspace(t)
 	var out bytes.Buffer
 	tiny := strings.Replace(goodInvestigation, "max_turns: 40", "max_turns: 3", 1)
@@ -305,32 +306,33 @@ func TestEstimateBelowCeilingDoesNotBindTheRun(t *testing.T) {
 			inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
 	}
 	if len(inv.HoldReasons) != 0 {
-		t.Errorf("holds = %v, want none — an estimate UNDER the ceiling needs no approval", inv.HoldReasons)
+		t.Errorf("holds = %v, want none — an estimate within the automated budget needs no approval",
+			inv.HoldReasons)
 	}
 
-	// The remediation stage, given no grant, runs on the ceiling regardless.
+	// The remediation stage, given no grant, runs on the automated budget.
 	a := New(cfg, fx)
 	turns, budget := a.grant()
-	if turns != cfg.RemediateMaxTurns || budget != cfg.RemediateTokenBudget {
-		t.Errorf("grant = %d turns/%d tokens, want the ceiling %d/%d — a low estimate must not starve the run",
-			turns, budget, cfg.RemediateMaxTurns, cfg.RemediateTokenBudget)
+	if turns != cfg.RemediateAutoMaxTurns || budget != cfg.RemediateAutoTokenBudget {
+		t.Errorf("grant = %d turns/%d tokens, want the automated budget %d/%d — a low estimate must not starve the run",
+			turns, budget, cfg.RemediateAutoMaxTurns, cfg.RemediateAutoTokenBudget)
 	}
 }
 
 func TestGrant(t *testing.T) {
 	ws := newWorkspace(t)
 	var out bytes.Buffer
-	base := newConfig(t, ws, &out) // ceiling 80/400000, hard cap 240/1200000
+	base := newConfig(t, ws, &out) // auto 80/400000, manual 240/1200000
 
 	tests := []struct {
 		name               string
 		granted            [2]int
 		wantTurns, wantTok int
 	}{
-		{"no grant falls back to the ceiling", [2]int{0, 0}, 80, 400000},
-		{"an approved over-ceiling grant is honoured", [2]int{140, 700000}, 140, 700000},
-		{"a grant below the ceiling cannot lower it", [2]int{5, 100}, 80, 400000},
-		{"the hard cap binds", [2]int{9000, 90000000}, 240, 1200000},
+		{"no grant falls back to the automated budget", [2]int{0, 0}, 80, 400000},
+		{"an approved over-automated grant is honoured", [2]int{140, 700000}, 140, 700000},
+		{"a grant below the automated budget cannot lower it", [2]int{5, 100}, 80, 400000},
+		{"the manual budget binds", [2]int{9000, 90000000}, 240, 1200000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -668,7 +670,7 @@ func TestRemediationFatalWithoutAnalysis(t *testing.T) {
 
 // TestBudgetKillSwitch pins the kill switch to the GRANT rather than the
 // estimate. goodInvestigation predicts 200000 output tokens; spending 300000
-// must not trip anything, because the run was granted the 400000 ceiling.
+// must not trip anything: the run was granted the 400000 automated budget.
 func TestBudgetKillSwitch(t *testing.T) {
 	spend := func(t *testing.T, lines int) *envelope.Remediation {
 		t.Helper()
@@ -689,7 +691,7 @@ func TestBudgetKillSwitch(t *testing.T) {
 		return events(t, out.String())[0].Remediation
 	}
 
-	// 300000 tokens: over the estimate, under the granted ceiling.
+	// 300000 tokens: over the estimate, under the granted budget.
 	if rem := spend(t, 2); rem.Outcome != envelope.OutcomeOK {
 		t.Errorf("outcome = %q, want ok — the estimate must not arm the kill switch", rem.Outcome)
 	}
@@ -740,7 +742,7 @@ func TestInvestigateBudgetKillSwitch(t *testing.T) {
 }
 
 // TestClampsRogueTurnsBudget: the investigate stage clamps a rogue report's
-// turns/budget to the ceilings but passes its suggested model through raw —
+// turns/budget unclamped but passes its suggested model through raw —
 // the remediation spawner (controller-side) clamps the model to the allowlist,
 // because the model choice decides which runner image the pod must run in.
 func TestClampsRogueTurnsBudget(t *testing.T) {
@@ -779,11 +781,11 @@ analysis
 			inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
 	}
 	if !inv.AwaitApproval {
-		t.Error("AwaitApproval = false, want an over-ceiling estimate held for a human")
+		t.Error("AwaitApproval = false, want an over-automated estimate held for a human")
 	}
 	wantHolds := []envelope.HoldReason{
-		envelope.HoldEstimateExceedsTurnCeiling,
-		envelope.HoldEstimateExceedsTokenCeiling,
+		envelope.HoldExceedsAutomatedTurns,
+		envelope.HoldExceedsAutomatedTokens,
 	}
 	if !slices.Equal(inv.HoldReasons, wantHolds) {
 		t.Errorf("holds = %v, want %v", inv.HoldReasons, wantHolds)
@@ -803,5 +805,52 @@ func TestFatalWhenWorkspaceIncomplete(t *testing.T) {
 	}
 	if evs[0].Repo != "acme/shop" || evs[0].Finding != "finding-abc123def0-1" {
 		t.Errorf("fatal event lacks finding context: %+v", evs[0])
+	}
+}
+
+// TestManualBudgetBelowAutomatedIsRejected guards the one configuration that
+// inverts the model: approving a fix must never buy less than leaving it
+// alone. The chart's JSON Schema cannot express a cross-field comparison, so
+// this is the only place the mistake is caught.
+func TestManualBudgetBelowAutomatedIsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"turns inverted", map[string]string{
+			"PATCHY_REMEDIATE_AUTO_MAX_TURNS":   "80",
+			"PATCHY_REMEDIATE_MANUAL_MAX_TURNS": "10",
+		}, "PATCHY_REMEDIATE_MANUAL_MAX_TURNS=10 is below the automated budget 80"},
+		{"tokens inverted", map[string]string{
+			"PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET":   "400000",
+			"PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET": "1000",
+		}, "PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET=1000 is below the automated budget 400000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := map[string]string{
+				"PATCHY_REPO": "acme/shop", "PATCHY_FINDING": "f-1", "PATCHY_PHASE": "remediate",
+			}
+			maps.Copy(env, tt.env)
+			if _, err := FromEnv(func(k string) string { return env[k] }); err == nil {
+				t.Fatal("FromEnv() error = nil, want a rejection")
+			} else if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error = %v, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// TestEqualBudgetsAreAccepted: manual == auto simply means approving buys
+// nothing extra, which is a legitimate posture, not a misconfiguration.
+func TestEqualBudgetsAreAccepted(t *testing.T) {
+	env := map[string]string{
+		"PATCHY_REPO": "acme/shop", "PATCHY_FINDING": "f-1", "PATCHY_PHASE": "remediate",
+		"PATCHY_REMEDIATE_AUTO_MAX_TURNS":   "80",
+		"PATCHY_REMEDIATE_MANUAL_MAX_TURNS": "80",
+	}
+	if _, err := FromEnv(func(k string) string { return env[k] }); err != nil {
+		t.Errorf("FromEnv() error = %v, want equal budgets accepted", err)
 	}
 }

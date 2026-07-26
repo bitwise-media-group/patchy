@@ -29,9 +29,9 @@ matters when debugging a Job spec or running the runtime standalone.
 ## Stage configuration
 
 Mirrors of the controllers' stage flags: `PATCHY_INVESTIGATE_TIMEOUT` (`15m`), `PATCHY_INVESTIGATE_MAX_TURNS` (`25`),
-`PATCHY_INVESTIGATE_TOKEN_BUDGET` (`150000`), `PATCHY_REMEDIATE_TIMEOUT` (`45m`), `PATCHY_REMEDIATE_MAX_TURNS` (`80`),
-`PATCHY_REMEDIATE_TOKEN_BUDGET` (`400000`), `PATCHY_REMEDIATE_MAX_TURNS_HARD` (`240`),
-`PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` (`1200000`), and `PATCHY_MODEL_ALLOWLIST` (canonical model ids, rendered into the
+`PATCHY_INVESTIGATE_TOKEN_BUDGET` (`150000`), `PATCHY_REMEDIATE_TIMEOUT` (`45m`), `PATCHY_REMEDIATE_AUTO_MAX_TURNS`
+(`80`), `PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET` (`400000`), `PATCHY_REMEDIATE_MANUAL_MAX_TURNS` (`240`),
+`PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET` (`1200000`), and `PATCHY_MODEL_ALLOWLIST` (canonical model ids, rendered into the
 analysis prompt). The **per-Job** `PATCHY_<STAGE>_HARNESS` and `PATCHY_<STAGE>_MODEL` (a canonical, provider-qualified
 id) are set by the controller from the harness and model it resolved for this Job — so the pod runs the harness its
 runner image was built for on the model the controller chose, and translates that canonical id to the CLI's own model

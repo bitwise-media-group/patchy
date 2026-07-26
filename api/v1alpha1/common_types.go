@@ -136,7 +136,7 @@ const (
 // HoldReason names why a finding stopped in AwaitingApproval instead of
 // going straight to Queued. A hold can have several reasons at once, so they
 // are reported as a set rather than folded into one flag.
-// +kubebuilder:validation:Enum=breakingChangeAvailable;lowConfidence;estimateExceedsTurnCeiling;estimateExceedsTokenCeiling
+// +kubebuilder:validation:Enum=breakingChangeAvailable;lowConfidence;exceedsAutomatedTurns;exceedsAutomatedTokens
 type HoldReason string
 
 // Approval-hold reasons.
@@ -147,11 +147,12 @@ const (
 	// HoldLowConfidence: the investigation's confidence fell below the
 	// configured threshold.
 	HoldLowConfidence HoldReason = "lowConfidence"
-	// HoldEstimateExceedsTurnCeiling: the predicted turns exceed the ceiling,
-	// so the run needs a human to authorize the larger budget.
-	HoldEstimateExceedsTurnCeiling HoldReason = "estimateExceedsTurnCeiling"
-	// HoldEstimateExceedsTokenCeiling: as above, for output tokens.
-	HoldEstimateExceedsTokenCeiling HoldReason = "estimateExceedsTokenCeiling"
+	// HoldExceedsAutomatedTurns: the fix is predicted to need more turns than
+	// patchy will spend unattended, so a human must authorize the larger
+	// budget before it runs.
+	HoldExceedsAutomatedTurns HoldReason = "exceedsAutomatedTurns"
+	// HoldExceedsAutomatedTokens: as above, for output tokens.
+	HoldExceedsAutomatedTokens HoldReason = "exceedsAutomatedTokens"
 )
 
 // RunKind discriminates the two agent run kinds.
@@ -179,10 +180,11 @@ const (
 
 // AgentEstimate is the investigation's prediction of what a remediation will
 // need. It is advisory: it never reduces a run's budget. Its only operational
-// effect is the approval gate — an estimate above the configured ceiling
-// holds the finding in AwaitingApproval, and approving it grants the estimate
-// (clamped to the hard cap). Everything else it does is reporting: estimate
-// against granted against actual, and the skew averages in the rollups.
+// effect is the approval gate — an estimate above what patchy will spend
+// unattended holds the finding in AwaitingApproval, and approving it grants
+// the estimate (bounded by the manual budget). Everything else it does is
+// reporting: estimate against granted against actual, and the skew averages
+// in the rollups.
 type AgentEstimate struct {
 	// MaxTurns the investigation predicts the remediation will take.
 	// +optional
@@ -196,9 +198,9 @@ type AgentEstimate struct {
 
 // AgentParameters bound one agent run: which model it uses and how much it
 // may spend. MaxTurns/TokenBudget are what the run was actually GRANTED —
-// the configured ceiling, or the investigation's estimate (clamped to the
-// hard cap) when a human approved an over-ceiling estimate. They are never
-// derived downward from the estimate: a run always gets at least the ceiling,
+// the automated budget, or the investigation's estimate (bounded by the
+// manual budget) when a human approved it. They are never derived downward
+// from the estimate: a run always gets at least the automated budget,
 // whatever the investigation predicted, including when it predicted nothing.
 type AgentParameters struct {
 	// Model the harness runs, as a canonical provider-qualified id

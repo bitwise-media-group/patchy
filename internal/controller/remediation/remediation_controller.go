@@ -250,9 +250,9 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 		Finding:               fnd.Name,
 		ArtifactURL:           repo.Status.Artifact.URL,
 		ArtifactDigest:        repo.Status.Artifact.Digest,
-		// The grant the spawner resolved. The pod treats its own ceiling as a
-		// floor beneath this, so a run is never starved by what the
-		// investigation predicted.
+		// The grant the spawner resolved. The pod treats its own automated
+		// budget as a floor beneath this, so a run is never starved by what
+		// the investigation predicted.
 		MaxTurns:    rem.Spec.Parameters.MaxTurns,
 		TokenBudget: rem.Spec.Parameters.TokenBudget,
 	})

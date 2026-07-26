@@ -113,21 +113,23 @@ data:
     # The INVESTIGATE_* limits are absolute — that stage runs on exactly
     # these.
     #
-    # The remediation budget has three levels, and the investigation's
-    # max_turns / token_budget are an ESTIMATE at every one of them — never a
-    # limit. A low estimate cannot starve a fix.
+    # The remediation budget is split by who authorized the run:
     #
-    #   REMEDIATE_MAX_TURNS / REMEDIATE_TOKEN_BUDGET are the CEILING: what
-    #   every remediation gets whatever the investigation predicted (including
-    #   when it predicted nothing), and the threshold above which an estimate
-    #   holds the finding in AwaitingApproval instead of queueing it.
+    #   REMEDIATE_AUTO_* is what patchy will spend on a fix nobody is
+    #   watching. Every remediation gets it whatever the investigation
+    #   predicted (including when it predicted nothing), and it is the line
+    #   past which a fix stops being automatic — an estimate above it holds
+    #   the finding in AwaitingApproval instead of queueing it.
     #
-    #   REMEDIATE_MAX_TURNS_HARD / REMEDIATE_TOKEN_BUDGET_HARD are the
-    #   absolute limit. Approving an over-ceiling estimate GRANTS that
-    #   estimate, so these bound what one human click can authorize. They must
-    #   be at or above the ceiling; the runner refuses to start otherwise.
+    #   REMEDIATE_MANUAL_* is the most a human-approved run may spend.
+    #   Approving an over-auto estimate GRANTS that estimate, so these bound
+    #   what one approval can authorize. They must be at or above the AUTO
+    #   values — approving a fix must never buy less than leaving it alone —
+    #   and the runner refuses to start otherwise.
     #
-    # The model suggestion is still clamped to the allowlist, and every
+    # The investigation's own max_turns / token_budget are an ESTIMATE at
+    # every level and never a limit: a low estimate cannot starve a fix. The
+    # model suggestion IS still clamped to the allowlist, and every
     # allowlisted model must have an enabled harness that supports it, or the
     # controllers refuse to start.
     #
@@ -143,7 +145,7 @@ data:
 
     PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet-5
     PATCHY_REMEDIATE_TIMEOUT: 45m
-    PATCHY_REMEDIATE_MAX_TURNS: "80"
-    PATCHY_REMEDIATE_TOKEN_BUDGET: "400000"
-    PATCHY_REMEDIATE_MAX_TURNS_HARD: "240"
-    PATCHY_REMEDIATE_TOKEN_BUDGET_HARD: "1200000"
+    PATCHY_REMEDIATE_AUTO_MAX_TURNS: "80"
+    PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET: "400000"
+    PATCHY_REMEDIATE_MANUAL_MAX_TURNS: "240"
+    PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET: "1200000"

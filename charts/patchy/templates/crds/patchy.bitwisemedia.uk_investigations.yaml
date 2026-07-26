@@ -273,8 +273,8 @@ spec:
                   enum:
                   - breakingChangeAvailable
                   - lowConfidence
-                  - estimateExceedsTurnCeiling
-                  - estimateExceedsTokenCeiling
+                  - exceedsAutomatedTurns
+                  - exceedsAutomatedTokens
                   type: string
                 type: array
                 x-kubernetes-list-type: set

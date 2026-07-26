@@ -394,15 +394,23 @@ agent:
     # The agent stages. The investigate limits are absolute — that stage runs
     # on exactly these.
     #
-    # For remediation the investigation's max_turns/token_budget are an
-    # ESTIMATE, never a limit — a low estimate cannot starve a fix.
-    # maxTurns/tokenBudget are the CEILING: what every remediation gets
-    # regardless of the estimate, and the threshold above which an estimate
-    # holds the finding for human approval. maxTurnsHard/tokenBudgetHard are
-    # the absolute limit, bounding what approving an over-ceiling estimate can
-    # grant; they must be at or above the ceiling. The model suggestion is
-    # still clamped to the allowlist. Models are canonical, provider-qualified
-    # ids; the harness that runs a model is derived from it.
+    # The remediation budget is split by who authorized the run, because the
+    # two answers are genuinely different questions:
+    #
+    #   auto    what patchy will spend on a fix nobody is watching. Every
+    #           remediation gets this, whatever the investigation estimated
+    #           (including when it estimated nothing). It is also the line
+    #           past which a fix stops being automatic: an estimate above it
+    #           holds the finding for a human instead of queueing it.
+    #   manual  the most a human-approved run may spend. Approving an
+    #           over-auto estimate grants that estimate, so this bounds what
+    #           one approval can authorize. It must be at or above auto —
+    #           approving a fix must never buy less than leaving it alone.
+    #
+    # The investigation's own max_turns/token_budget are an ESTIMATE at every
+    # level and never a limit: a low estimate cannot starve a fix. The model
+    # suggestion IS still clamped to the allowlist. Models are canonical,
+    # provider-qualified ids; the harness that runs a model is derived from it.
     modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-5
     investigate:
         model: anthropic/claude-sonnet-5
@@ -414,10 +422,14 @@ agent:
         # missing or off the allowlist.
         model: anthropic/claude-sonnet-5
         timeout: 45m
-        maxTurns: 80
-        tokenBudget: 400000
-        maxTurnsHard: 240
-        tokenBudgetHard: 1200000
+        # Unattended: what a fix gets with nobody watching.
+        auto:
+            maxTurns: 80
+            tokenBudget: 400000
+        # Human-approved: the most one approval can authorize.
+        manual:
+            maxTurns: 240
+            tokenBudget: 1200000
     # The per-harness runner fleet. A harness is enabled only when its runner
     # is `enabled: true` AND its credential Secret exists (checked at
     # controller startup). A Job runs the image, credential, and egress policy

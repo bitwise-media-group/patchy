@@ -46,16 +46,17 @@ func holdText(r v1alpha1.HoldReason, p *v1alpha1.AgentParameters) string {
 		return "a better fix exists but it breaks compatibility"
 	case v1alpha1.HoldLowConfidence:
 		return "confidence is below the automation threshold"
-	case v1alpha1.HoldEstimateExceedsTurnCeiling:
+	case v1alpha1.HoldExceedsAutomatedTurns:
 		if est != nil {
-			return fmt.Sprintf("the fix is predicted to need %d turns, over the ceiling", est.MaxTurns)
+			return fmt.Sprintf("the fix is predicted to need %d turns, more than runs unattended", est.MaxTurns)
 		}
-		return "the fix is predicted to need more turns than the ceiling allows"
-	case v1alpha1.HoldEstimateExceedsTokenCeiling:
+		return "the fix is predicted to need more turns than run unattended"
+	case v1alpha1.HoldExceedsAutomatedTokens:
 		if est != nil {
-			return fmt.Sprintf("the fix is predicted to need %d output tokens, over the ceiling", est.TokenBudget)
+			return fmt.Sprintf("the fix is predicted to need %d output tokens, more than runs unattended",
+				est.TokenBudget)
 		}
-		return "the fix is predicted to need more output tokens than the ceiling allows"
+		return "the fix is predicted to need more output tokens than run unattended"
 	default:
 		return string(r)
 	}

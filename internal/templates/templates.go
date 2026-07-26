@@ -42,10 +42,14 @@ type InvestigatePrompt struct {
 	IssuePath     string
 	ReportPath    string
 	AllowedModels []string
-	// MaxTurnsCeiling/TokenBudgetCeiling are the thresholds above which an
-	// estimate needs human approval — NOT caps on the remediation.
-	MaxTurnsCeiling    int
-	TokenBudgetCeiling int
+	// AutoMaxTurns/AutoTokenBudget is what a remediation gets unattended, and
+	// the line past which an estimate needs human approval — NOT a cap.
+	AutoMaxTurns    int
+	AutoTokenBudget int
+	// ManualMaxTurns/ManualTokenBudget is the most a human-approved run can
+	// get. Rendered so the agent knows asking beyond it buys nothing.
+	ManualMaxTurns    int
+	ManualTokenBudget int
 	// Calibration is how earlier estimates compared to reality; nil omits the
 	// section (a cold start has nothing honest to say).
 	Calibration *Calibration

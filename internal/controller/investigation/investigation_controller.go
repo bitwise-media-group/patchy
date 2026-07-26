@@ -363,7 +363,7 @@ func (r *InvestigationReconciler) route(
 
 // holdReasons maps the runner's hold vocabulary onto the API's. The runner
 // raises the reasons only it can see (the breaking-change flag, the estimate
-// against the ceiling it was configured with); AwaitApproval is honoured as a
+// against the automated budget it was configured with); AwaitApproval is a
 // bare fallback so an older runner that reports no reasons still holds.
 func holdReasons(result *envelope.Investigation) []v1alpha1.HoldReason {
 	holds := make([]v1alpha1.HoldReason, 0, len(result.HoldReasons))
@@ -498,8 +498,8 @@ func (r *InvestigationReconciler) stampChild(
 			cur.Status.AwaitApproval = len(holds) > 0
 			cur.Status.HoldReasons = holds
 			// Model plus the prediction. The turn/token grant is NOT set
-			// here: the spawner resolves it against the ceiling, the hard
-			// cap, and whether a human approved the estimate.
+			// here: the spawner resolves it against the automated budget,
+			// the manual budget, and whether a human approved the estimate.
 			if est := estimateOf(result); result.RemediationModel != "" || est != nil {
 				cur.Status.RemediationParameters = &v1alpha1.AgentParameters{
 					Model:    result.RemediationModel,

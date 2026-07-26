@@ -276,7 +276,7 @@ func TestInvestigationHoldReasons(t *testing.T) {
 		absent  string
 	}{
 		{"budget hold quantifies the estimate",
-			[]v1alpha1.HoldReason{v1alpha1.HoldEstimateExceedsTurnCeiling},
+			[]v1alpha1.HoldReason{v1alpha1.HoldExceedsAutomatedTurns},
 			"predicted to need 140 turns", "breaks compatibility"},
 		{"low confidence names the threshold",
 			[]v1alpha1.HoldReason{v1alpha1.HoldLowConfidence},

@@ -71,11 +71,13 @@ func TestGoldens(t *testing.T) {
 		{"pr_body.md", func() (string, error) { return PRBody(123, "remediation report here") }},
 		{"prompt_investigate.md", func() (string, error) {
 			return RenderInvestigatePrompt(InvestigatePrompt{
-				IssuePath:          "/workspace/input/issue.md",
-				ReportPath:         "/workspace/reports/investigation.md",
-				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-5"},
-				MaxTurnsCeiling:    80,
-				TokenBudgetCeiling: 400000,
+				IssuePath:         "/workspace/input/issue.md",
+				ReportPath:        "/workspace/reports/investigation.md",
+				AllowedModels:     []string{"claude-sonnet-5", "claude-opus-5"},
+				AutoMaxTurns:      80,
+				AutoTokenBudget:   400000,
+				ManualMaxTurns:    240,
+				ManualTokenBudget: 1200000,
 			})
 		}},
 		// The calibrated variant: the feedback loop's rendered form, with a
@@ -83,11 +85,13 @@ func TestGoldens(t *testing.T) {
 		// tokens over-predicted) so the sign handling is pinned.
 		{"prompt_investigate_calibrated.md", func() (string, error) {
 			return RenderInvestigatePrompt(InvestigatePrompt{
-				IssuePath:          "/workspace/input/issue.md",
-				ReportPath:         "/workspace/reports/investigation.md",
-				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-5"},
-				MaxTurnsCeiling:    80,
-				TokenBudgetCeiling: 400000,
+				IssuePath:         "/workspace/input/issue.md",
+				ReportPath:        "/workspace/reports/investigation.md",
+				AllowedModels:     []string{"claude-sonnet-5", "claude-opus-5"},
+				AutoMaxTurns:      80,
+				AutoTokenBudget:   400000,
+				ManualMaxTurns:    240,
+				ManualTokenBudget: 1200000,
 				Calibration: &Calibration{
 					Scope: "acme/orders", Runs: 12,
 					AvgPredictedTurns: 12, AvgActualTurns: 34,

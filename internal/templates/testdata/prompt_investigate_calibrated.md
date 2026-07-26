@@ -47,13 +47,15 @@ When you recommend **remediate**, estimate what the fix will actually take: `max
 - **These are estimates, not limits.** They never shrink the remediation's budget. A remediation always gets at
   least 80 turns and 400000 output tokens no matter what you write here, so a low estimate
   cannot starve the fix — it only makes you wrong.
-- **Estimate above the threshold and the remediation stops for human approval** before it runs. The threshold is
-  80 turns and 400000 output tokens, and approving grants the larger budget you asked for. So
-  exceed it when the work genuinely needs it — that is the mechanism for requesting more — but not idly: it puts
-  a person in the loop and delays the fix.
-- **Estimate the work, not the threshold.** Do not anchor on the threshold, and do not pad "to be safe". Padding
-  is not free: these figures are measured against what the remediation really spends, and the skew is reported
-  back here to correct future estimates.
+- **Estimate within 80 turns and 400000 output tokens and the fix runs unattended.** That is what
+  this project will spend on a fix nobody is watching.
+- **Estimate above either figure and the fix waits for a human** to approve it, who can then grant up to
+  240 turns and 1200000 output tokens. Exceed the unattended budget when the work genuinely needs
+  it — that is how you ask for more — but not idly: it puts a person in the loop and delays the fix. Asking for
+  more than a human can grant buys nothing; it is simply cut back to that limit.
+- **Estimate the work, not the budget.** Do not anchor on either figure, and do not pad "to be safe". Padding is
+  not free: these figures are measured against what the remediation really spends, and the skew is reported back
+  here to correct future estimates.
 
 A turn is one agent step — a file read, an edit, a test run — plus its result. As a rough calibration: reading the
 finding and the analysis is 2–3 turns before any work starts; locating the code costs a few more; each distinct

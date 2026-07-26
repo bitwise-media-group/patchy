@@ -190,7 +190,7 @@ const findings: Finding[] = [
       likelihood: "medium",
       impact: "high",
       awaitApproval: true,
-      holdReasons: ["breakingChangeAvailable", "estimateExceedsTurnCeiling"],
+      holdReasons: ["breakingChangeAvailable", "exceedsAutomatedTurns"],
       estimate: { maxTurns: 140, tokenBudget: 260_000 },
       completedAt: "2026-07-18T10:41:36Z",
     },
@@ -414,7 +414,7 @@ const findings: Finding[] = [
       model: "claude-sonnet-5",
       numTurns: 37,
       // The estimate ran well under reality; the run still finished because
-      // it was granted the ceiling regardless of the prediction.
+      // it was granted the automated budget regardless of the prediction.
       budget: {
         estimated: { maxTurns: 12, tokenBudget: 50_000 },
         grantedMaxTurns: 80,

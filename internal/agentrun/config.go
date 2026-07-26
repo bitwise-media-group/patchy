@@ -60,22 +60,23 @@ type Config struct {
 	InvestigateMaxTurns    int
 	InvestigateTokenBudget int
 
-	// RemediateMaxTurns/RemediateTokenBudget are the remediation CEILINGS —
-	// the auto-approve threshold, not a cap. Every remediation runs with at
-	// least this much whatever the investigation predicted (including when it
-	// predicted nothing); an investigation that predicts MORE than this holds
-	// the finding for human approval. The investigation stage renders them
-	// into its prompt as that threshold.
-	RemediateMaxTurns    int
-	RemediateTokenBudget int
-	// RemediateMaxTurnsHard/RemediateTokenBudgetHard are the absolute limits.
-	// Approving an over-ceiling estimate grants the estimate, but never more
-	// than these — they are the backstop on what one human click can spend.
-	RemediateMaxTurnsHard    int
-	RemediateTokenBudgetHard int
+	// The remediation budget, split by who authorized the run.
+	//
+	// RemediateAutoMaxTurns/RemediateAutoTokenBudget is what patchy will spend
+	// UNATTENDED: every remediation gets at least this, whatever the
+	// investigation predicted (including when it predicted nothing). It is
+	// also the line past which a fix stops being automatic — an estimate above
+	// it holds the finding for a human instead of queueing it.
+	RemediateAutoMaxTurns    int
+	RemediateAutoTokenBudget int
+	// RemediateManualMaxTurns/RemediateManualTokenBudget is the most a
+	// human-approved run may spend. Approving an over-auto estimate grants
+	// that estimate, so this bounds what one approval can authorize.
+	RemediateManualMaxTurns    int
+	RemediateManualTokenBudget int
 	// GrantedMaxTurns/GrantedTokenBudget are what the controller granted THIS
-	// remediation run, already resolved against the estimate and the hard
-	// cap. Zero means "no per-run grant" and falls back to the ceiling.
+	// run, already resolved against the estimate and the manual bound. Zero
+	// means "no per-run grant" and falls back to the automated budget.
 	GrantedMaxTurns    int
 	GrantedTokenBudget int
 
@@ -167,10 +168,10 @@ func FromEnv(getenv func(string) string) (Config, error) {
 
 	cfg.InvestigateMaxTurns = number("INVESTIGATE_MAX_TURNS", "25")
 	cfg.InvestigateTokenBudget = number("INVESTIGATE_TOKEN_BUDGET", "150000")
-	cfg.RemediateMaxTurns = number("REMEDIATE_MAX_TURNS", "80")
-	cfg.RemediateTokenBudget = number("REMEDIATE_TOKEN_BUDGET", "400000")
-	cfg.RemediateMaxTurnsHard = number("REMEDIATE_MAX_TURNS_HARD", "240")
-	cfg.RemediateTokenBudgetHard = number("REMEDIATE_TOKEN_BUDGET_HARD", "1200000")
+	cfg.RemediateAutoMaxTurns = number("REMEDIATE_AUTO_MAX_TURNS", "80")
+	cfg.RemediateAutoTokenBudget = number("REMEDIATE_AUTO_TOKEN_BUDGET", "400000")
+	cfg.RemediateManualMaxTurns = number("REMEDIATE_MANUAL_MAX_TURNS", "240")
+	cfg.RemediateManualTokenBudget = number("REMEDIATE_MANUAL_TOKEN_BUDGET", "1200000")
 	cfg.GrantedMaxTurns = number("GRANTED_MAX_TURNS", "0")
 	cfg.GrantedTokenBudget = number("GRANTED_TOKEN_BUDGET", "0")
 	cfg.ChangesetMaxBytes = number("CHANGESET_MAX_BYTES", strconv.Itoa(5<<20))
@@ -186,15 +187,17 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			cfg.Calibration = &c
 		}
 	}
-	// A hard cap below the ceiling would silently invert the model — the
-	// ceiling is the auto-approve threshold, so a run may always spend it.
-	if cfg.RemediateMaxTurnsHard < cfg.RemediateMaxTurns {
-		errs = append(errs, fmt.Sprintf("PATCHY_REMEDIATE_MAX_TURNS_HARD=%d is below the ceiling %d",
-			cfg.RemediateMaxTurnsHard, cfg.RemediateMaxTurns))
+	// Approving a fix must never buy less than leaving it alone would: a
+	// manual budget below the automated one inverts the whole model.
+	if cfg.RemediateManualMaxTurns < cfg.RemediateAutoMaxTurns {
+		errs = append(errs, fmt.Sprintf(
+			"PATCHY_REMEDIATE_MANUAL_MAX_TURNS=%d is below the automated budget %d",
+			cfg.RemediateManualMaxTurns, cfg.RemediateAutoMaxTurns))
 	}
-	if cfg.RemediateTokenBudgetHard < cfg.RemediateTokenBudget {
-		errs = append(errs, fmt.Sprintf("PATCHY_REMEDIATE_TOKEN_BUDGET_HARD=%d is below the ceiling %d",
-			cfg.RemediateTokenBudgetHard, cfg.RemediateTokenBudget))
+	if cfg.RemediateManualTokenBudget < cfg.RemediateAutoTokenBudget {
+		errs = append(errs, fmt.Sprintf(
+			"PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET=%d is below the automated budget %d",
+			cfg.RemediateManualTokenBudget, cfg.RemediateAutoTokenBudget))
 	}
 
 	if cfg.Repo == "" {

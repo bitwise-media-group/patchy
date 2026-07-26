@@ -232,12 +232,14 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		return ev
 	}
 	prompt, err := templates.RenderInvestigatePrompt(templates.InvestigatePrompt{
-		IssuePath:          a.cfg.issuePath(),
-		ReportPath:         a.cfg.investigationPath(),
-		AllowedModels:      a.cfg.ModelAllowlist,
-		MaxTurnsCeiling:    a.cfg.RemediateMaxTurns,
-		TokenBudgetCeiling: a.cfg.RemediateTokenBudget,
-		Calibration:        a.cfg.Calibration,
+		IssuePath:         a.cfg.issuePath(),
+		ReportPath:        a.cfg.investigationPath(),
+		AllowedModels:     a.cfg.ModelAllowlist,
+		AutoMaxTurns:      a.cfg.RemediateAutoMaxTurns,
+		AutoTokenBudget:   a.cfg.RemediateAutoTokenBudget,
+		ManualMaxTurns:    a.cfg.RemediateManualMaxTurns,
+		ManualTokenBudget: a.cfg.RemediateManualTokenBudget,
+		Calibration:       a.cfg.Calibration,
 	})
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -309,20 +311,21 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 }
 
 // holdReasons decides why — if at all — a remediate verdict must wait for a
-// human before it runs. An estimate above the ceiling is a hold rather than a
-// clamp: the ceiling is the threshold above which spend needs authorizing,
-// and approving grants the estimate rather than merely permitting the ceiling.
-// Confidence is NOT judged here; the controller owns that threshold.
+// human before it runs. An estimate above the automated budget is a hold
+// rather than a clamp: that budget is the line past which spend needs
+// authorizing, and approving grants the estimate rather than merely
+// permitting the automated amount. Confidence is NOT judged here; the
+// controller owns that threshold.
 func (a *Agent) holdReasons(inv *report.Investigation) []envelope.HoldReason {
 	var reasons []envelope.HoldReason
 	if inv.BreakingChangeAvailable {
 		reasons = append(reasons, envelope.HoldBreakingChangeAvailable)
 	}
-	if inv.MaxTurns > a.cfg.RemediateMaxTurns {
-		reasons = append(reasons, envelope.HoldEstimateExceedsTurnCeiling)
+	if inv.MaxTurns > a.cfg.RemediateAutoMaxTurns {
+		reasons = append(reasons, envelope.HoldExceedsAutomatedTurns)
 	}
-	if inv.TokenBudget > a.cfg.RemediateTokenBudget {
-		reasons = append(reasons, envelope.HoldEstimateExceedsTokenCeiling)
+	if inv.TokenBudget > a.cfg.RemediateAutoTokenBudget {
+		reasons = append(reasons, envelope.HoldExceedsAutomatedTokens)
 	}
 	return reasons
 }
@@ -331,7 +334,7 @@ func (a *Agent) holdReasons(inv *report.Investigation) []envelope.HoldReason {
 // and parseable, and resolves what this run may spend.
 //
 // The investigation's numbers are NOT read as limits. They are an estimate:
-// the controller already compared them to the ceiling, held the finding for
+// the controller already compared them to the automated budget, held it for
 // approval if they exceeded it, and resolved the grant it passed per-Job. A
 // low estimate must never starve the run — that is exactly the failure this
 // separation exists to prevent. The model and harness are likewise not read
@@ -350,35 +353,35 @@ func (a *Agent) remediationInput() (remediationParams, error) {
 }
 
 // grant resolves the remediation's spend. The controller's per-Job grant wins
-// when present; otherwise the run gets the ceiling, which is the floor every
-// remediation is entitled to. Either way the hard cap binds — the runner is
-// what actually spends the money, so it re-checks rather than trusting the
-// grant it was handed.
+// when present; otherwise the run gets the automated budget, which is the
+// floor every remediation is entitled to. Either way the manual budget binds
+// — the runner is what actually spends the money, so it re-checks rather than
+// trusting the grant it was handed.
 func (a *Agent) grant() (maxTurns, budget int) {
 	maxTurns, budget = a.cfg.GrantedMaxTurns, a.cfg.GrantedTokenBudget
-	if maxTurns < a.cfg.RemediateMaxTurns {
+	if maxTurns < a.cfg.RemediateAutoMaxTurns {
 		if maxTurns > 0 {
-			a.cfg.Log.Warn("granted max_turns below the ceiling; using the ceiling",
-				"granted", maxTurns, "ceiling", a.cfg.RemediateMaxTurns)
+			a.cfg.Log.Warn("granted max_turns below the automated budget; using the automated budget",
+				"granted", maxTurns, "automated", a.cfg.RemediateAutoMaxTurns)
 		}
-		maxTurns = a.cfg.RemediateMaxTurns
+		maxTurns = a.cfg.RemediateAutoMaxTurns
 	}
-	if budget < a.cfg.RemediateTokenBudget {
+	if budget < a.cfg.RemediateAutoTokenBudget {
 		if budget > 0 {
-			a.cfg.Log.Warn("granted token_budget below the ceiling; using the ceiling",
-				"granted", budget, "ceiling", a.cfg.RemediateTokenBudget)
+			a.cfg.Log.Warn("granted token_budget below the automated budget; using the automated budget",
+				"granted", budget, "automated", a.cfg.RemediateAutoTokenBudget)
 		}
-		budget = a.cfg.RemediateTokenBudget
+		budget = a.cfg.RemediateAutoTokenBudget
 	}
-	if maxTurns > a.cfg.RemediateMaxTurnsHard {
-		a.cfg.Log.Warn("granted max_turns clamped to the hard cap",
-			"granted", maxTurns, "hard", a.cfg.RemediateMaxTurnsHard)
-		maxTurns = a.cfg.RemediateMaxTurnsHard
+	if maxTurns > a.cfg.RemediateManualMaxTurns {
+		a.cfg.Log.Warn("granted max_turns clamped to the manual budget",
+			"granted", maxTurns, "manual", a.cfg.RemediateManualMaxTurns)
+		maxTurns = a.cfg.RemediateManualMaxTurns
 	}
-	if budget > a.cfg.RemediateTokenBudgetHard {
-		a.cfg.Log.Warn("granted token_budget clamped to the hard cap",
-			"granted", budget, "hard", a.cfg.RemediateTokenBudgetHard)
-		budget = a.cfg.RemediateTokenBudgetHard
+	if budget > a.cfg.RemediateManualTokenBudget {
+		a.cfg.Log.Warn("granted token_budget clamped to the manual budget",
+			"granted", budget, "manual", a.cfg.RemediateManualTokenBudget)
+		budget = a.cfg.RemediateManualTokenBudget
 	}
 	return maxTurns, budget
 }

@@ -63,7 +63,8 @@ type Investigation struct {
 	// break external callers; the pipeline then holds for approval.
 	BreakingChangeAvailable bool `yaml:"breaking_change_available"`
 	// Model, MaxTurns and TokenBudget are required iff Recommendation is
-	// remediate; the controller clamps them against its ceilings/allowlist.
+	// remediate. The model is clamped to the allowlist; the turn and token
+	// figures are an ESTIMATE and never limit the run they describe.
 	Model       string `yaml:"model"`
 	MaxTurns    int    `yaml:"max_turns"`
 	TokenBudget int    `yaml:"token_budget"`

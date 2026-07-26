@@ -49,8 +49,8 @@ controller, so the URL minted into Repository statuses is pinned here.
 {{- else if or (eq $c.name "investigation-controller") (eq $c.name "remediation-controller") }}
 {{/*
 The job-controller block, shared by both: how the agent Jobs run, and the
-ceilings the investigation report's remediation requests are clamped to. One
-runner per enabled harness stamps its own PATCHY_<HARNESS>_AGENT_IMAGE and
+budgets a remediation may spend. One runner per enabled harness stamps its
+own PATCHY_<HARNESS>_AGENT_IMAGE and
 credential keys, and PATCHY_HARNESSES restricts the controllers to exactly the
 harnesses enabled here (network-policy rendering can't probe credentials, so
 enablement is explicit). Pinning a runner's image digest is one edit under
@@ -77,10 +77,10 @@ agent.runners.<harness>.image.
 {{- $_ := set $data "PATCHY_JOB_DEADLINE" $.Values.agent.jobDeadline }}
 {{- $_ := set $data "PATCHY_JOB_TTL" $.Values.agent.jobTTL }}
 {{- $_ := set $data "PATCHY_MODEL_ALLOWLIST" $.Values.agent.modelAllowlist }}
-{{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS" $.Values.agent.remediate.maxTurns }}
-{{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET" $.Values.agent.remediate.tokenBudget }}
-{{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS_HARD" $.Values.agent.remediate.maxTurnsHard }}
-{{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET_HARD" $.Values.agent.remediate.tokenBudgetHard }}
+{{- $_ := set $data "PATCHY_REMEDIATE_AUTO_MAX_TURNS" $.Values.agent.remediate.auto.maxTurns }}
+{{- $_ := set $data "PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET" $.Values.agent.remediate.auto.tokenBudget }}
+{{- $_ := set $data "PATCHY_REMEDIATE_MANUAL_MAX_TURNS" $.Values.agent.remediate.manual.maxTurns }}
+{{- $_ := set $data "PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET" $.Values.agent.remediate.manual.tokenBudget }}
 {{- if eq $c.name "investigation-controller" }}
 {{- $_ := set $data "PATCHY_FINDING_MIN_AGE" $own.findingMinAge }}
 {{- $_ := set $data "PATCHY_MAX_CONCURRENT_INVESTIGATIONS" $own.maxConcurrentInvestigations }}

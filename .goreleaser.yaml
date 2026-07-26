@@ -215,6 +215,14 @@ archives:
       name_template: "{{ .ProjectName }}-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
       files:
           - LICENSE
+          # Pre-generated shell completions (committed by `mise run docs`), so
+          # the cask installs them as static files instead of executing the
+          # binary at install time (see homebrew_casks.completions below).
+          # kubectl_complete-patchy is in there too — it is not a shell
+          # completion script but the executable kubectl runs to complete
+          # `kubectl patchy …`, so it ships as a cask binary rather than a
+          # completion.
+          - completions/*
 
 checksum:
     name_template: checksums.txt
@@ -504,7 +512,25 @@ homebrew_casks:
       # kubectl-patchy is the same program under the name kubectl looks for on
       # PATH; installing both is what makes `kubectl patchy get findings` work
       # for anyone who would rather not learn a second binary.
-      binaries: [patchy, kubectl-patchy]
+      #
+      # kubectl_complete-patchy is what makes that second form *complete*:
+      # kubectl ignores a plugin's own completion script and instead executes
+      # kubectl_complete-<plugin> from PATH, so the hook has to be linked into
+      # bin like a binary — a bash_completion/zsh_completion stanza would put
+      # it somewhere kubectl never looks.
+      binaries: [patchy, kubectl-patchy, completions/kubectl_complete-patchy]
+      # Static completion stanzas, NOT generate_completions_from_executable:
+      # Homebrew installs cask artifacts in a fixed type-based order, but
+      # GeneratedCompletion is missing from that sort table (as of brew 6.0),
+      # so its position is decided by an unstable sort — it can run before the
+      # quarantine-clearing preflight below, executing the still-quarantined
+      # binary and tripping Gatekeeper mid-install. Static bash_completion /
+      # zsh_completion / fish_completion artifacts are ordered deterministically
+      # and never execute the binary.
+      completions:
+          bash: completions/patchy.bash
+          zsh: completions/patchy.zsh
+          fish: completions/patchy.fish
       homepage: https://github.com/bitwise-media-group/patchy
       description: Triage and remediate security findings from the terminal, over your own kubeconfig
       # skip the tap push for snapshots and prereleases; publish on real tags
@@ -518,5 +544,5 @@ homebrew_casks:
           pre:
               install: |
                   if OS.mac?
-                    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/patchy", "#{staged_path}/kubectl-patchy"]
+                    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/patchy", "#{staged_path}/kubectl-patchy", "#{staged_path}/completions/kubectl_complete-patchy"]
                   end

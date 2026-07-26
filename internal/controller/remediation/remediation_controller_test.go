@@ -79,7 +79,7 @@ func newSpawner(t *testing.T, objs ...client.Object) (*SpawnerReconciler, client
 		Client:       c,
 		Namespace:    "patchy",
 		Enabled:      []string{"claude", "codex"},
-		Allowlist:    []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-4-8", "openai/gpt-5.3-codex"},
+		Allowlist:    []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-5", "openai/gpt-5.3-codex"},
 		DefaultModel: "anthropic/claude-sonnet-5",
 		Now:          func() time.Time { return crdClock },
 	}, c
@@ -168,7 +168,7 @@ func TestSpawnerResolvesCrossProviderHarness(t *testing.T) {
 // is replaced by the controller default and its harness.
 func TestSpawnerFallsBackWhenModelNotAllowlisted(t *testing.T) {
 	inv := invChild()
-	inv.Status.RemediationParameters.Model = "openai/gpt-5.5" // not in the test allowlist
+	inv.Status.RemediationParameters.Model = "openai/gpt-5.6-sol" // not in the test allowlist
 	r, c := newSpawner(t, queuedFinding(v1alpha1.PhaseQueued), inv)
 	spawnOnce(t, r)
 

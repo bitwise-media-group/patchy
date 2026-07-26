@@ -979,12 +979,12 @@ status:
 apiVersion: patchy.bitwisemedia.uk/v1alpha1
 kind: FindingRollup
 metadata:
-    name: demo-rollup-model-claude-opus-4-8
+    name: demo-rollup-model-claude-opus-5
     namespace: patchy
 spec:
     scope:
         type: model
-        key: claude-opus-4-8
+        key: claude-opus-5
 status:
     schemaVersion: 1
     firstProcessed: "2025-05-03T00:00:00Z"

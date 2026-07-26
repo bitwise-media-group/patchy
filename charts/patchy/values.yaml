@@ -397,7 +397,7 @@ agent:
     # remediation stage, and both the controller and the runner clamp those
     # requests to these bounds (and to the allowlist). Models are canonical,
     # provider-qualified ids; the harness that runs a model is derived from it.
-    modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
+    modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-5
     investigate:
         model: anthropic/claude-sonnet-5
         timeout: 15m

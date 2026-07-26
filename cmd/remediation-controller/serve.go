@@ -58,7 +58,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
 
-	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-4-8",
+	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-5",
 		"canonical model ids remediation may run (the investigation's choice is clamped to this)")
 	f.String("remediate-model", "anthropic/claude-sonnet-5",
 		"canonical default model when the report's suggestion is missing or unusable (its harness is derived)")

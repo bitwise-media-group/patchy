@@ -26,12 +26,23 @@ func TestFromStageCost(t *testing.T) {
 		t.Errorf("priced fallback = %q, want 6.000000", got)
 	}
 
-	// No reported cost and an unpriced model (codex): cost stays empty.
+	// Codex reports tokens but never a cost, so the fallback is the only thing
+	// that prices it. gpt-5.3-codex is 1.75/14 per MTok:
+	// 1000/1e6*1.75 + 500/1e6*14 = 0.00175 + 0.007 = 0.00875.
 	st = &envelope.Stage{
 		Model: "openai/gpt-5.3-codex",
 		Usage: envelope.Usage{InputTokens: 1000, OutputTokens: 500},
 	}
+	if got := FromStage(st).Usage.CostUSD; got != "0.008750" {
+		t.Errorf("codex priced fallback = %q, want 0.008750", got)
+	}
+
+	// A model outside the registry cannot be priced: cost stays empty.
+	st = &envelope.Stage{
+		Model: "openai/not-in-the-registry",
+		Usage: envelope.Usage{InputTokens: 1000, OutputTokens: 500},
+	}
 	if got := FromStage(st).Usage.CostUSD; got != "" {
-		t.Errorf("unpriced model cost = %q, want empty", got)
+		t.Errorf("unknown model cost = %q, want empty", got)
 	}
 }

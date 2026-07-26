@@ -109,7 +109,7 @@ data:
     # The token budgets are enforced by the runner watching the harness's
     # streamed usage events and killing the process group when the cumulative
     # output-token count is exceeded — the CLI has no such flag itself.
-    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
+    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-5
 
     PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet-5
     PATCHY_INVESTIGATE_TIMEOUT: 15m

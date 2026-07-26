@@ -73,7 +73,7 @@ func TestGoldens(t *testing.T) {
 			return RenderInvestigatePrompt(InvestigatePrompt{
 				IssuePath:          "/workspace/input/issue.md",
 				ReportPath:         "/workspace/reports/investigation.md",
-				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-4-8"},
+				AllowedModels:      []string{"claude-sonnet-5", "claude-opus-5"},
 				MaxTurnsCeiling:    80,
 				TokenBudgetCeiling: 400000,
 			})

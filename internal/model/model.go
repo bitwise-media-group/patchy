@@ -31,14 +31,17 @@ type Provider struct {
 // InputUSD/OutputUSD are USD per 1M tokens (standard tier, cache-miss rates);
 // nil means the vendor has not published per-token pricing. They exist so a
 // harness that reports token usage but not cost (codex) can still be priced.
+// CachedInputUSD is the cache-read (cache-hit) rate, an order of magnitude
+// below InputUSD on both vendors; nil falls back to InputUSD.
 type Model struct {
-	ID         string            `json:"id"`
-	ProviderID string            `json:"provider_id"`
-	Name       string            `json:"name"`
-	InputUSD   *float64          `json:"input_per_mtok"`
-	OutputUSD  *float64          `json:"output_per_mtok"`
-	Supported  map[string]string `json:"supported"`
-	Preferred  string            `json:"preferred"`
+	ID             string            `json:"id"`
+	ProviderID     string            `json:"provider_id"`
+	Name           string            `json:"name"`
+	InputUSD       *float64          `json:"input_per_mtok"`
+	CachedInputUSD *float64          `json:"cached_input_per_mtok"`
+	OutputUSD      *float64          `json:"output_per_mtok"`
+	Supported      map[string]string `json:"supported"`
+	Preferred      string            `json:"preferred"`
 }
 
 // Key is the canonical, provider-qualified id ("anthropic/claude-sonnet-5").
@@ -79,20 +82,37 @@ func (m Model) SupportedHarnessIDs() []string {
 
 // UsageCostUSD prices a measured token usage at the model's rates, or nil when
 // the model has no published pricing. It is the fallback for a harness that
-// reports no cost of its own: every input-side count (fresh input, cache reads,
-// and cache writes) is priced at the input rate so the figure still reflects
-// the whole session.
+// reports no cost of its own, so it prices every input-side count rather than
+// just the fresh tokens.
+//
+// Cache reads bill at CachedInputUSD, roughly a tenth of the base rate, which
+// is where the bulk of a long agent session's input lands. Cache writes bill
+// at the base input rate: OpenAI does not price them separately, and while
+// Anthropic charges a 1.25x premium on a 5m write, the claude CLI reports a
+// cost of its own, so that path only ever cross-checks a figure the harness
+// already gave us.
 func UsageCostUSD(m Model, inputTokens, cacheReadTokens, cacheCreationTokens, outputTokens int) *float64 {
 	if m.InputUSD == nil || m.OutputUSD == nil {
 		return nil
 	}
 	var cost float64
-	for _, in := range []int{inputTokens, cacheReadTokens, cacheCreationTokens} {
+	for _, in := range []int{inputTokens, cacheCreationTokens} {
 		cost += float64(in) / 1e6 * *m.InputUSD
 	}
+	cost += float64(cacheReadTokens) / 1e6 * cachedInputRate(m)
 	cost += float64(outputTokens) / 1e6 * *m.OutputUSD
 	cost = round6(cost)
 	return &cost
+}
+
+// cachedInputRate is the model's cache-read rate, falling back to the base
+// input rate when the vendor publishes none. Callers must have established
+// that InputUSD is non-nil.
+func cachedInputRate(m Model) float64 {
+	if m.CachedInputUSD != nil {
+		return *m.CachedInputUSD
+	}
+	return *m.InputUSD
 }
 
 func round6(x float64) float64 { return math.Round(x*1e6) / 1e6 }

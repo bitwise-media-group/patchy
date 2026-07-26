@@ -20,7 +20,7 @@ data:
     PATCHY_HARNESSES: claude
     PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet-5
     PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet-5
-    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-4-8
+    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-5
     PATCHY_CONFIDENCE_THRESHOLD: "0.75"
     PATCHY_MAX_ATTEMPTS: "2"
 

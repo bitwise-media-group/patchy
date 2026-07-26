@@ -874,7 +874,7 @@ const rollups: Rollup[] = [
     },
   },
   {
-    scope: { type: "model", key: "claude-opus-4-8" },
+    scope: { type: "model", key: "claude-opus-5" },
     firstProcessed: "2025-05-03T00:00:00Z",
     lastProcessed: "2026-07-21T08:45:00Z",
     bucket: {

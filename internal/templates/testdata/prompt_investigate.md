@@ -60,7 +60,7 @@ priority: low | medium | high | critical
 severity: low | medium | high | critical
 confidence: <number between 0.0 and 1.0>
 breaking_change_available: true | false
-model: <model id, one of: claude-sonnet-5, claude-opus-4-8>   # remediate only: the model to remediate with
+model: <model id, one of: claude-sonnet-5, claude-opus-5>   # remediate only: the model to remediate with
 max_turns: <integer, at most 80>         # remediate only: agent turns before giving up
 token_budget: <integer, at most 400000>   # remediate only: output-token budget before giving up
 ---

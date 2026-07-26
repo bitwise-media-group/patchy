@@ -43,6 +43,19 @@ func TestBuiltinInvariants(t *testing.T) {
 		if _, ok := m.Supported[m.Preferred]; !ok {
 			t.Errorf("model %q: Preferred %q not in Supported %v", m.ID, m.Preferred, m.Supported)
 		}
+		// Every builtin carries published rates. Pricing is optional in the
+		// type (a config override may name a model with none), but a builtin
+		// that lost them would silently record zero-cost runs for the codex
+		// harness, which reports no cost of its own.
+		if m.InputUSD == nil || m.OutputUSD == nil {
+			t.Errorf("model %q: missing pricing (%v/%v)", m.ID, m.InputUSD, m.OutputUSD)
+		}
+		// Both vendors publish a cache-read rate near a tenth of base input,
+		// and cache reads dominate a long agent session, so a builtin that
+		// omitted one would price them 10x over.
+		if m.CachedInputUSD == nil {
+			t.Errorf("model %q: missing cached-input rate", m.ID)
+		}
 	}
 }
 
@@ -79,22 +92,42 @@ func TestCodexModel(t *testing.T) {
 	if m.Preferred != HarnessCodex {
 		t.Errorf("Preferred = %q, want codex", m.Preferred)
 	}
-	if m.InputUSD != nil || m.OutputUSD != nil {
-		t.Errorf("pricing = %v/%v, want nil/nil (subscription-billed)", m.InputUSD, m.OutputUSD)
+	if m.InputUSD == nil || m.CachedInputUSD == nil || m.OutputUSD == nil {
+		t.Fatalf("pricing = %v/%v/%v, want 1.75/0.175/14.00 per MTok",
+			m.InputUSD, m.CachedInputUSD, m.OutputUSD)
+	}
+	if *m.InputUSD != 1.75 || *m.CachedInputUSD != 0.175 || *m.OutputUSD != 14.00 {
+		t.Errorf("pricing = %v/%v/%v, want 1.75/0.175/14.00 per MTok",
+			*m.InputUSD, *m.CachedInputUSD, *m.OutputUSD)
 	}
 }
 
 func TestUsageCostUSD(t *testing.T) {
-	m, _ := ModelByID(builtins(), "anthropic/claude-sonnet-5") // 3/15 per MTok
-	// input+cacheRead+cacheCreation priced at 3/MTok, output at 15/MTok:
-	// (1_000_000 + 500_000 + 200_000)/1e6*3 + 100_000/1e6*15 = 5.1 + 1.5 = 6.6
+	m, _ := ModelByID(builtins(), "anthropic/claude-sonnet-5") // 3 / 0.30 / 15 per MTok
+	// Fresh input and cache writes at 3/MTok, cache reads at the 0.30/MTok
+	// cache-read rate, output at 15/MTok:
+	// (1_000_000 + 200_000)/1e6*3 + 500_000/1e6*0.30 + 100_000/1e6*15
+	//   = 3.6 + 0.15 + 1.5 = 5.25
 	got := UsageCostUSD(m, 1_000_000, 500_000, 200_000, 100_000)
-	if got == nil || *got != 6.6 {
-		t.Errorf("UsageCostUSD = %v, want 6.6", got)
+	if got == nil || *got != 5.25 {
+		t.Errorf("UsageCostUSD = %v, want 5.25", got)
 	}
-	// A model without published pricing prices to nil.
-	codex, _ := ModelByID(builtins(), "openai/gpt-5.3-codex")
-	if got := UsageCostUSD(codex, 100, 0, 0, 50); got != nil {
+
+	// Without a published cache-read rate, cache reads fall back to the base
+	// input rate: (100 + 100)/1e6*3 + 100/1e6*3 + 50/1e6*15 = 0.00165.
+	noCache := m
+	noCache.CachedInputUSD = nil
+	if got := UsageCostUSD(noCache, 100, 100, 100, 50); got == nil || *got != 0.00165 {
+		t.Errorf("UsageCostUSD(no cached rate) = %v, want 0.00165", got)
+	}
+	// A model without published pricing prices to nil. Every builtin is
+	// priced, so this is the config-override case: a synthetic model whose
+	// vendor publishes no per-token rates.
+	unpriced := Model{
+		ID: "openai/private-preview", ProviderID: ProviderOpenAI, Name: "Private Preview",
+		Supported: map[string]string{HarnessCodex: "private-preview"}, Preferred: HarnessCodex,
+	}
+	if got := UsageCostUSD(unpriced, 100, 0, 0, 50); got != nil {
 		t.Errorf("UsageCostUSD(unpriced) = %v, want nil", *got)
 	}
 }
@@ -108,8 +141,8 @@ func TestAllModelsOverride(t *testing.T) {
 		}},
 	}
 	got := AllModels(override)
-	if _, ok := ModelByID(got, "openai/gpt-5.5"); ok {
-		t.Error("builtin openai/gpt-5.5 should be replaced by the override")
+	if _, ok := ModelByID(got, "openai/gpt-5.6-sol"); ok {
+		t.Error("builtin openai/gpt-5.6-sol should be replaced by the override")
 	}
 	if _, ok := ModelByID(got, "openai/gpt-6"); !ok {
 		t.Error("override openai/gpt-6 missing")

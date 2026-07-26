@@ -39,35 +39,57 @@ func builtins() []Model {
 		// Anthropic — driven by Claude Code.
 		{
 			ID: "anthropic/claude-haiku-4-5", ProviderID: ProviderAnthropic, Name: "Claude Haiku 4.5",
-			InputUSD: usd(1.00), OutputUSD: usd(5.00),
+			InputUSD: usd(1.00), CachedInputUSD: usd(0.10), OutputUSD: usd(5.00),
 			Supported: map[string]string{HarnessClaude: "claude-haiku-4-5"},
 			Preferred: HarnessClaude,
 		},
 		{
 			ID: "anthropic/claude-sonnet-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5",
-			InputUSD: usd(3.00), OutputUSD: usd(15.00),
+			InputUSD: usd(3.00), CachedInputUSD: usd(0.30), OutputUSD: usd(15.00),
 			Supported: map[string]string{HarnessClaude: "claude-sonnet-5"},
 			Preferred: HarnessClaude,
 		},
 		{
-			ID: "anthropic/claude-opus-4-8", ProviderID: ProviderAnthropic, Name: "Claude Opus 4.8",
-			InputUSD: usd(5.00), OutputUSD: usd(25.00),
-			Supported: map[string]string{HarnessClaude: "claude-opus-4-8"},
+			ID: "anthropic/claude-opus-5", ProviderID: ProviderAnthropic, Name: "Claude Opus 5",
+			InputUSD: usd(5.00), CachedInputUSD: usd(0.50), OutputUSD: usd(25.00),
+			Supported: map[string]string{HarnessClaude: "claude-opus-5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-fable-5", ProviderID: ProviderAnthropic, Name: "Claude Fable 5",
+			InputUSD: usd(10.00), CachedInputUSD: usd(1.00), OutputUSD: usd(50.00),
+			Supported: map[string]string{HarnessClaude: "claude-fable-5"},
 			Preferred: HarnessClaude,
 		},
 
-		// OpenAI — driven by Codex. The codex models carry no published
-		// per-token pricing, so measured cost renders from harness-reported
-		// figures where available and n/a otherwise.
+		// OpenAI — driven by Codex. The codex CLI reports token counts but no
+		// cost of its own, so unlike the Anthropic rates (a cross-check on a
+		// figure the harness already reports) these are the only thing that
+		// prices a codex run at all — see agentresult.stageCost. The GPT-5.6
+		// family is three named tiers rather than a size suffix: Luna is the
+		// nano-like tier, Terra the mini-like one, Sol the flagship.
 		{
 			ID: "openai/gpt-5.3-codex", ProviderID: ProviderOpenAI, Name: "GPT-5.3 Codex",
+			InputUSD: usd(1.75), CachedInputUSD: usd(0.175), OutputUSD: usd(14.00),
 			Supported: map[string]string{HarnessCodex: "gpt-5.3-codex"},
 			Preferred: HarnessCodex,
 		},
 		{
-			ID: "openai/gpt-5.5", ProviderID: ProviderOpenAI, Name: "GPT-5.5",
-			InputUSD: usd(5.00), OutputUSD: usd(30.00),
-			Supported: map[string]string{HarnessCodex: "gpt-5.5"},
+			ID: "openai/gpt-5.6-luna", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Luna",
+			InputUSD: usd(1.00), CachedInputUSD: usd(0.10), OutputUSD: usd(6.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-luna"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-5.6-terra", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Terra",
+			InputUSD: usd(2.50), CachedInputUSD: usd(0.25), OutputUSD: usd(15.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-terra"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-5.6-sol", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Sol",
+			InputUSD: usd(5.00), CachedInputUSD: usd(0.50), OutputUSD: usd(30.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-sol"},
 			Preferred: HarnessCodex,
 		},
 	}

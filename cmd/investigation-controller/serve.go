@@ -49,7 +49,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
-	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-4-8",
+	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-5",
 		"canonical model ids the investigation may request for remediation")
 
 	f.String("investigate-model", "anthropic/claude-sonnet-5",

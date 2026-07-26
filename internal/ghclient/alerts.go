@@ -5,10 +5,7 @@ package ghclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
-	"strings"
 
 	"github.com/google/go-github/v89/github"
 )
@@ -36,29 +33,38 @@ func (c *Client) DismissAlert(ctx context.Context, repo Repo, number int, reason
 	return nil
 }
 
-// OpenAlert reopens a code-scanning alert (undoes a dismissal). Only
-// dismissed alerts can be reopened; GitHub rejects the transition for
-// fixed alerts. An already-open alert is success: reopening is
-// idempotent, so a retried cleanup that reopened it last attempt
-// converges instead of failing on GitHub's 400.
+// alertStateDismissed is GitHub's state for an alert a triage decision
+// closed — the only state a reopen is legal from.
+const alertStateDismissed = "dismissed"
+
+// OpenAlert reopens a code-scanning alert (undoes a dismissal). Only a
+// dismissed alert can be reopened, so the current state is read first and
+// anything else is success: an alert that is already open, fixed, or gone
+// with the repository that held it has no dismissal left to undo.
+// Reopening is therefore convergent rather than authoritative — the retried
+// cleanup of a repository that was deleted or recreated since the dismissal
+// still succeeds. GitHub rejects every illegal transition with the same
+// opaque 400 ("There was an issue creating the request. Please try again."),
+// which is why the state is read rather than sniffed out of the error.
 func (c *Client) OpenAlert(ctx context.Context, repo Repo, number int) error {
+	alert, _, err := c.gh.CodeScanning.GetAlert(ctx, repo.Owner, repo.Name, int64(number))
+	if err != nil {
+		if IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("ghclient: get alert %s#%d: %w", repo, number, err)
+	}
+	if alert.GetState() != alertStateDismissed {
+		return nil
+	}
 	state := &github.CodeScanningAlertState{State: "open"}
 	if _, _, err := c.gh.CodeScanning.UpdateAlert(ctx, repo.Owner, repo.Name, int64(number), state); err != nil {
-		if alreadyOpen(err) {
+		if IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("ghclient: open alert %s#%d: %w", repo, number, err)
 	}
 	return nil
-}
-
-// alreadyOpen reports whether err is GitHub's 400 rejecting a reopen of
-// an alert that is already open.
-func alreadyOpen(err error) bool {
-	var ge *github.ErrorResponse
-	return errors.As(err, &ge) && ge.Response != nil &&
-		ge.Response.StatusCode == http.StatusBadRequest &&
-		strings.Contains(strings.ToLower(ge.Message), "already open")
 }
 
 // alertFromGitHub maps a go-github alert onto patchy's Alert: rule

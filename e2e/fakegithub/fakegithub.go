@@ -191,9 +191,18 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 func (s *Server) getAlert(w http.ResponseWriter, r *http.Request) {
 	number, _ := strconv.Atoi(r.PathValue("number"))
+	// The state has to reflect the dismissal log: reopening an alert reads
+	// its state first, and only a dismissed alert is reopened.
+	s.mu.Lock()
+	_, isDismissed := s.dismissed[number]
+	s.mu.Unlock()
+	state := "open"
+	if isDismissed {
+		state = "dismissed"
+	}
 	writeJSON(w, map[string]any{
 		"number":   number,
-		"state":    "open",
+		"state":    state,
 		"html_url": fmt.Sprintf("https://github.com/acme/shop/security/code-scanning/%d", number),
 		"rule": map[string]any{
 			"id":                      "js/reflected-xss",
@@ -223,8 +232,11 @@ func (s *Server) updateAlert(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
 	s.mu.Lock()
-	if body.State == "dismissed" {
+	switch body.State {
+	case "dismissed":
 		s.dismissed[number] = body.DismissedReason
+	case "open":
+		delete(s.dismissed, number) // the demo reset undoing a dismissal
 	}
 	s.mu.Unlock()
 	writeJSON(w, map[string]any{"number": number, "state": body.State})

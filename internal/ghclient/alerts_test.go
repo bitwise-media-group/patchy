@@ -85,7 +85,11 @@ func TestDismissAlert(t *testing.T) {
 
 func TestOpenAlert(t *testing.T) {
 	mux, c := newFakeClient(t)
+	mux.HandleFunc("GET /repos/o/r/code-scanning/alerts/4",
+		func(w http.ResponseWriter, _ *http.Request) { writeJSON(t, w, `{"number":4,"state":"dismissed"}`) })
+	patched := false
 	mux.HandleFunc("PATCH /repos/o/r/code-scanning/alerts/4", func(w http.ResponseWriter, r *http.Request) {
+		patched = true
 		if body := decodeBody[map[string]any](t, r); !reflect.DeepEqual(body, map[string]any{"state": "open"}) {
 			t.Errorf("open request = %v, want state open only", body)
 		}
@@ -95,28 +99,53 @@ func TestOpenAlert(t *testing.T) {
 	if err := c.OpenAlert(context.Background(), testRepo, 4); err != nil {
 		t.Errorf("OpenAlert() error = %v, want nil", err)
 	}
+	if !patched {
+		t.Error("OpenAlert() did not reopen the dismissed alert")
+	}
 }
 
-func TestOpenAlertAlreadyOpen(t *testing.T) {
-	mux, c := newFakeClient(t)
-	mux.HandleFunc("PATCH /repos/o/r/code-scanning/alerts/4", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(t, w, `{"message":"Alert is already open."}`)
-	})
+// An alert that carries no dismissal is left alone: GitHub rejects the
+// transition with an opaque 400, and there is nothing to undo anyway.
+func TestOpenAlertSkipsUndismissed(t *testing.T) {
+	for _, state := range []string{"open", "fixed"} {
+		t.Run(state, func(t *testing.T) {
+			mux, c := newFakeClient(t)
+			mux.HandleFunc("GET /repos/o/r/code-scanning/alerts/4",
+				func(w http.ResponseWriter, _ *http.Request) {
+					writeJSON(t, w, `{"number":4,"state":"`+state+`"}`)
+				})
+			mux.HandleFunc("PATCH /repos/o/r/code-scanning/alerts/4", func(w http.ResponseWriter, _ *http.Request) {
+				t.Errorf("OpenAlert() patched a %s alert", state)
+				w.WriteHeader(http.StatusBadRequest)
+			})
+
+			if err := c.OpenAlert(context.Background(), testRepo, 4); err != nil {
+				t.Errorf("OpenAlert() on %s alert = %v, want nil", state, err)
+			}
+		})
+	}
+}
+
+// The repository (or the alert with it) can be deleted between the dismissal
+// and the reset; a 404 is nothing left to reopen, not a failure.
+func TestOpenAlertMissing(t *testing.T) {
+	_, c := newFakeClient(t)
 
 	if err := c.OpenAlert(context.Background(), testRepo, 4); err != nil {
-		t.Errorf("OpenAlert() on already-open alert = %v, want nil", err)
+		t.Errorf("OpenAlert() on missing alert = %v, want nil", err)
 	}
 }
 
 func TestOpenAlertOtherError(t *testing.T) {
 	mux, c := newFakeClient(t)
+	mux.HandleFunc("GET /repos/o/r/code-scanning/alerts/4",
+		func(w http.ResponseWriter, _ *http.Request) { writeJSON(t, w, `{"number":4,"state":"dismissed"}`) })
 	mux.HandleFunc("PATCH /repos/o/r/code-scanning/alerts/4", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(t, w, `{"message":"Alert cannot be reopened because it was fixed."}`)
+		writeJSON(t, w, `{"message":"There was an issue creating the request. Please try again."}`)
 	})
 
 	if err := c.OpenAlert(context.Background(), testRepo, 4); err == nil {
-		t.Error("OpenAlert() on fixed alert = nil, want error")
+		t.Error("OpenAlert() on a rejected reopen = nil, want error")
 	}
 }

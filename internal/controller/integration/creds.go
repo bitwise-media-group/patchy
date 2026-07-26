@@ -39,8 +39,17 @@ func NewCreds(r client.Reader) *Creds {
 	return &Creds{c: r, apps: ghsecret.NewApps()}
 }
 
+// ErrNoCredential reports that the Integration names no credential Secret.
+// Legal — a google-cloud integration authenticates its inbound deliveries by
+// OIDC and calls no API — so callers that only optionally need one check for
+// it rather than treating it as a failure.
+var ErrNoCredential = errors.New("integration has no credential secret")
+
 // secret fetches the Integration's credential Secret.
 func (c *Creds) secret(ctx context.Context, integ *v1alpha1.Integration) (*corev1.Secret, error) {
+	if integ.Spec.SecretRef == nil {
+		return nil, fmt.Errorf("integration %s: %w", integ.Name, ErrNoCredential)
+	}
 	var secret corev1.Secret
 	key := types.NamespacedName{Namespace: integ.Namespace, Name: integ.Spec.SecretRef.Name}
 	if err := c.c.Get(ctx, key, &secret); err != nil {
@@ -99,9 +108,13 @@ func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghcl
 	return app, true, nil
 }
 
-// Validate checks the Integration's secret carries a usable API credential
-// and a webhook secret.
+// Validate checks the Integration is usable, by provider: github needs a
+// secret carrying an API credential and a webhook secret; google-cloud holds
+// no credential at all, so only its inbound-delivery settings are checked.
 func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error {
+	if integ.Spec.Provider == v1alpha1.IntegrationProviderGoogleCloud {
+		return validateGoogleCloud(integ)
+	}
 	secret, err := c.secret(ctx, integ)
 	if err != nil {
 		return err
@@ -112,6 +125,26 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 	if len(secret.Data[ghsecret.KeyWebhookSecret]) == 0 {
 		return fmt.Errorf("secret %s/%s missing key %s",
 			secret.Namespace, secret.Name, ghsecret.KeyWebhookSecret)
+	}
+	return nil
+}
+
+// validateGoogleCloud checks the settings the receiver needs to authenticate
+// a Pub/Sub push. The CEL schema already requires both fields when the SCC
+// capability is present; this catches a block that is enabled with the
+// capability itself omitted.
+func validateGoogleCloud(integ *v1alpha1.Integration) error {
+	gc := integ.Spec.GoogleCloud
+	if gc == nil || gc.SecurityCommandCenter == nil {
+		return errors.New("google-cloud integration enables no capability")
+	}
+	scc := gc.SecurityCommandCenter
+	if !scc.Enabled {
+		return nil
+	}
+	if scc.Audience == "" || scc.ServiceAccount == "" {
+		return errors.New(
+			"securityCommandCenter needs both audience and serviceAccount to authenticate the push subscription")
 	}
 	return nil
 }
@@ -152,6 +185,14 @@ func redeliveryEnabled(i *v1alpha1.Integration) bool {
 func codeScanningEnabled(i *v1alpha1.Integration) bool {
 	return !i.Spec.Suspend && i.Spec.GitHub != nil &&
 		i.Spec.GitHub.CodeScanningAlerts != nil && i.Spec.GitHub.CodeScanningAlerts.Enabled
+}
+
+// sccEnabled reports whether the Integration ingests Security Command Center
+// findings from a Pub/Sub push subscription.
+func sccEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.GoogleCloud != nil &&
+		i.Spec.GoogleCloud.SecurityCommandCenter != nil &&
+		i.Spec.GoogleCloud.SecurityCommandCenter.Enabled
 }
 
 // selectIntegration returns the single Integration in namespace providing

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,10 +21,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/ghas"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 	"github.com/bitwise-media-group/patchy/internal/labels"
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
 // Projection-state annotations on the Finding: what has already been pushed
@@ -46,6 +47,11 @@ const (
 	// AnnotationProjectedNotice records the phase whose human notice
 	// (hold/hand-off/failure) was posted.
 	AnnotationProjectedNotice = "patchy.bitwisemedia.uk/projected-notice"
+	// AnnotationResolvedSource records the phase whose verdict was written
+	// back to the originating source. Separate from the notice annotation on
+	// purpose: telling the scanner and telling the humans are independent, so
+	// a failure of either must not suppress the other.
+	AnnotationResolvedSource = "patchy.bitwisemedia.uk/resolved-source"
 )
 
 // trackerClient is the tracking-system surface the projection needs — a
@@ -95,10 +101,34 @@ func (r *FindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
+	// The verdict write-back is independent of the tracking projection: a
+	// finding with no tracking issue — repo-less, or with tracking disabled
+	// entirely — must still have its alerts resolved in the tool they came
+	// from, or they sit open there after patchy has closed them here.
+	if err := r.resolveSource(ctx, &fnd); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if err := r.project(ctx, &fnd); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+// resolveSource writes the pipeline's verdict back to the originating
+// sources, once per phase entry.
+func (r *FindingReconciler) resolveSource(ctx context.Context, fnd *v1alpha1.Finding) error {
+	phase := fnd.Status.Phase
+	if phase != v1alpha1.PhaseDismissed {
+		return nil // only an ignore verdict has anything to say
+	}
+	if fnd.GetAnnotations()[AnnotationResolvedSource] == string(phase) {
+		return nil
+	}
+	if err := r.resolveAlerts(ctx, fnd); err != nil {
+		return err
+	}
+	return r.markProjected(ctx, fnd, map[string]string{AnnotationResolvedSource: string(phase)})
 }
 
 // closeAccumulation flips AccumulationComplete once the window elapses,
@@ -130,9 +160,23 @@ func (r *FindingReconciler) closeAccumulation(ctx context.Context, fnd *v1alpha1
 }
 
 // project pushes the Finding's current state to its tracking issue.
+//
+// The guard lives here, not in Reconcile: closeAccumulation runs first and is
+// the only writer of the AccumulationComplete condition the investigation
+// gate blocks on. Skipping this function is safe; skipping the reconcile is
+// not — it would strand every deferred finding at Enhanced, silently.
 func (r *FindingReconciler) project(ctx context.Context, fnd *v1alpha1.Finding) error {
-	if fnd.Spec.TrackingRef == nil || fnd.Spec.Repository == nil {
-		return nil // nothing to project onto (no tracker, or repo-less finding)
+	if fnd.Spec.TrackingRef == nil {
+		return nil // no tracker configured
+	}
+	// A cloud finding's repository is resolved by the enhancer chain, which
+	// runs at Opened. Projecting before then would open the issue on the
+	// fallback repository and strand it there — an issue cannot move once
+	// created, so waiting one phase is the difference between the right
+	// repository and a permanent misfile.
+	if fnd.Spec.CloudResource != nil && fnd.Spec.Repository == nil &&
+		fnd.Status.Phase == v1alpha1.PhaseOpened {
+		return nil
 	}
 	var integ v1alpha1.Integration
 	key := types.NamespacedName{Namespace: fnd.Namespace, Name: fnd.Spec.TrackingRef.Name}
@@ -142,9 +186,9 @@ func (r *FindingReconciler) project(ctx context.Context, fnd *v1alpha1.Finding) 
 	if !issuesEnabled(&integ) {
 		return nil
 	}
-	repo, err := parseOwnerRepo(fnd.Spec.Repository.Name)
+	repo, err := trackingRepo(fnd, &integ)
 	if err != nil {
-		return nil // malformed spec; nothing sane to project
+		return nil // nowhere sane to project
 	}
 	tracker, err := r.clientFor(ctx, &integ, repo)
 	if err != nil {
@@ -165,6 +209,28 @@ func (r *FindingReconciler) project(ctx context.Context, fnd *v1alpha1.Finding) 
 	}
 	return nil
 }
+
+// trackingRepo picks where the finding's issue lives: its own repository, or
+// the tracking Integration's fallback when it has none.
+//
+// The fallback is what makes a repo-less cloud finding visible to the humans
+// who triage it. Without one such a finding exists only in kubectl and the
+// status page — it can still be handed off, but to nobody who will see it.
+func trackingRepo(fnd *v1alpha1.Finding, integ *v1alpha1.Integration) (ghclient.Repo, error) {
+	if fnd.Spec.Repository != nil {
+		return parseOwnerRepo(fnd.Spec.Repository.Name)
+	}
+	if integ.Spec.GitHub != nil && integ.Spec.GitHub.Issues != nil {
+		if fallback := integ.Spec.GitHub.Issues.FallbackRepository; fallback != "" {
+			return parseOwnerRepo(fallback)
+		}
+	}
+	return ghclient.Repo{}, errNoTrackingRepo
+}
+
+// errNoTrackingRepo: the finding has no repository and the tracking
+// Integration configures no fallback, so there is nowhere to open an issue.
+var errNoTrackingRepo = errors.New("no repository and no fallback repository")
 
 // unlinkIfGone handles a projection error: a 404 means the tracking issue
 // no longer exists on the forge (deleted there, or an ephemeral tracker was
@@ -412,9 +478,8 @@ func (r *FindingReconciler) projectPhase(
 			return err
 		}
 	case v1alpha1.PhaseDismissed:
-		if err := r.dismissAlerts(ctx, fnd); err != nil {
-			return err
-		}
+		// The alert write-back happens in resolveSource, before projection:
+		// it is owed whether or not this finding has a tracking issue.
 		if err := tracker.Comment(ctx, repo, number,
 			"patchy assessed this finding as a false positive / not exploitable and dismissed the alert(s)."); err != nil {
 			return err
@@ -449,37 +514,78 @@ func (r *FindingReconciler) notify(
 	return nil
 }
 
-// dismissAlerts dismisses every source alert via the code-scanning
-// Integration (which may be a different object than the tracking one).
-func (r *FindingReconciler) dismissAlerts(ctx context.Context, fnd *v1alpha1.Finding) error {
-	integ, err := selectIntegration(ctx, r.Client, fnd.Namespace, codeScanningEnabled)
-	if err != nil {
-		if errors.Is(err, ErrNoIntegration) {
-			return nil
-		}
-		return err
+// resolveAlerts tells each source what the pipeline decided about its own
+// alerts — GHAS dismisses them, a cloud source would mute them.
+//
+// Alerts are grouped by the source that produced them and handed to that
+// source's resolver, so provenance is a recorded fact rather than something
+// inferred from the shape of an id. A source that implements no write-back is
+// simply skipped: reading is a complete source.
+func (r *FindingReconciler) resolveAlerts(ctx context.Context, fnd *v1alpha1.Finding) error {
+	verdict := source.Verdict{
+		Kind:    source.VerdictIgnore,
+		Reason:  "false positive",
+		Comment: "Dismissed by patchy: investigation recommended ignore.",
 	}
-	repo, err := parseOwnerRepo(fnd.Spec.Repository.Name)
-	if err != nil {
-		return nil
-	}
-	scanner, err := r.clientFor(ctx, integ, repo)
-	if err != nil {
-		return err
-	}
-	reason := "false positive"
-	comment := "Dismissed by patchy: investigation recommended ignore."
 	var errs []error
-	for _, a := range fnd.Spec.Alerts {
-		num, err := strconv.Atoi(a.ID)
+	for sourceID, alerts := range fnd.AlertsBySource() {
+		resolver, err := r.resolverFor(ctx, fnd, sourceID)
 		if err != nil {
-			continue // foreign-source alert id; nothing to dismiss on GitHub
+			if errors.Is(err, ErrNoIntegration) {
+				continue // the source's integration is gone; nothing to tell
+			}
+			errs = append(errs, err)
+			continue
 		}
-		if err := scanner.DismissAlert(ctx, repo, num, reason, comment); err != nil {
+		if resolver == nil {
+			continue // this source has no write-back
+		}
+		if err := resolver.Resolve(ctx, toAlertRefs(alerts), verdict); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// resolverFor builds the write-back for one source, or nil when that source
+// has none. It dispatches on the source id recorded at ingest rather than on
+// a capability predicate, so a second source is a new case here and nothing
+// more.
+func (r *FindingReconciler) resolverFor(
+	ctx context.Context, fnd *v1alpha1.Finding, sourceID string,
+) (source.Resolver, error) {
+	switch sourceID {
+	case ghas.ID:
+		integ, err := selectIntegration(ctx, r.Client, fnd.Namespace, codeScanningEnabled)
+		if err != nil {
+			return nil, err
+		}
+		// A repo-less finding has nothing on GitHub to dismiss; the resolver
+		// handles the zero repo, so this need not special-case it.
+		var repo ghclient.Repo
+		if fnd.Spec.Repository != nil {
+			repo, _ = parseOwnerRepo(fnd.Spec.Repository.Name)
+		}
+		gh, err := r.clientFor(ctx, integ, repo)
+		if err != nil {
+			return nil, err
+		}
+		return ghas.NewResolver(gh, repo), nil
+	default:
+		// Security Command Center findings would be muted here once
+		// integration-controller holds a Google Cloud write credential; the
+		// seam is in place and internal/scc implements source.Handler only.
+		return nil, nil
+	}
+}
+
+// toAlertRefs adapts the CR's alerts to the seam's shape.
+func toAlertRefs(alerts []v1alpha1.Alert) []source.AlertRef {
+	out := make([]source.AlertRef, 0, len(alerts))
+	for _, a := range alerts {
+		out = append(out, source.AlertRef{ID: a.ID, Source: a.Source, URL: a.URL})
+	}
+	return out
 }
 
 // setTrackingState updates status.tracking.state under conflict retry,

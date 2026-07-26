@@ -14,13 +14,18 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/ghas"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
+	"github.com/bitwise-media-group/patchy/internal/scc"
 	"github.com/bitwise-media-group/patchy/internal/webhook"
+	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
-// Receiver is the integration-controller's webhook.Handler: it turns
-// validated GitHub deliveries into Finding writes. Scanner events go through
-// the pkg/source handler seam into the Ingestor; tracking events (issues,
-// comments, pull requests) go to the Signals handler.
+// GitHubPath is the receiver route GitHub webhooks target.
+const GitHubPath = "/" + string(v1alpha1.IntegrationProviderGitHub) + "/webhooks"
+
+// Receiver turns validated provider deliveries into Finding writes. Scanner
+// and cloud findings go through the pkg/source handler seam into the
+// Ingestor; tracking events (issues, comments, pull requests) go to the
+// Signals handler. It serves one webhook.Endpoint per provider.
 type Receiver struct {
 	// Reader lists Integrations (informer cache).
 	Reader client.Reader
@@ -32,12 +37,43 @@ type Receiver struct {
 	Signals *Signals
 	// Namespace the Integrations and Findings live in.
 	Namespace string
+	// OIDCIssuer overrides the issuer the Pub/Sub push route verifies tokens
+	// against; empty means Google, the only correct value in production.
+	OIDCIssuer string
+	// NewVerifier builds the OIDC token verifier for the Pub/Sub push route;
+	// nil means discovery against OIDCIssuer.
+	NewVerifier func(audience string) webhook.TokenVerifier
 	// Log receives receiver diagnostics; nil discards.
 	Log *slog.Logger
 }
 
+// Endpoints are the provider routes this receiver serves. Each names how its
+// deliveries authenticate and how they are labelled; everything downstream —
+// queueing, dedup, dispatch — is the server's, and identical for both.
+func (r *Receiver) Endpoints() []webhook.Endpoint {
+	return []webhook.Endpoint{
+		{
+			Path:    GitHubPath,
+			Auth:    &webhook.HMACAuthenticator{SecretsFor: r.Secrets},
+			Decode:  webhook.GitHubDecoder,
+			Handler: webhook.HandlerFunc(r.handleGitHub),
+		},
+		{
+			Path: SCCPath,
+			Auth: &sccAuthenticator{
+				Reader:      r.Reader,
+				Namespace:   r.Namespace,
+				Issuer:      r.OIDCIssuer,
+				NewVerifier: r.NewVerifier,
+			},
+			Decode:  sccDecoder,
+			Handler: webhook.HandlerFunc(r.handleSCC),
+		},
+	}
+}
+
 // Secrets returns every configured github Integration's webhook secret — the
-// candidate set for delivery validation (webhook.Config.SecretsFor).
+// candidate set for delivery validation on the GitHub route.
 func (r *Receiver) Secrets(ctx context.Context) [][]byte {
 	var list v1alpha1.IntegrationList
 	if err := r.Reader.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
@@ -61,10 +97,10 @@ func (r *Receiver) Secrets(ctx context.Context) [][]byte {
 	return out
 }
 
-// Handle implements webhook.Handler for the /github/webhooks path.
-func (r *Receiver) Handle(ctx context.Context, e webhook.Event) error {
+// handleGitHub dispatches one validated GitHub delivery by event type.
+func (r *Receiver) handleGitHub(ctx context.Context, e webhook.Event) error {
 	switch e.Type {
-	case "code_scanning_alert":
+	case ghas.EventType:
 		return r.handleScanner(ctx, e)
 	case "issues", "issue_comment", "pull_request":
 		integ, err := selectIntegration(ctx, r.Reader, r.Namespace, issuesEnabled)
@@ -90,18 +126,53 @@ func (r *Receiver) handleScanner(ctx context.Context, e webhook.Event) error {
 		}
 		return err
 	}
-	handler := ghas.New(&alertGetter{creds: r.Creds, integ: integ})
-	findings, err := handler.Findings(ctx, e.Type, e.Payload)
+	return r.ingestAll(ctx, integ, ghas.New(&alertGetter{creds: r.Creds, integ: integ}), e)
+}
+
+// handleSCC routes a Security Command Center notification through the SCC
+// source handler. Unlike the scanner path there is no API call: the
+// notification carries everything the finding needs.
+func (r *Receiver) handleSCC(ctx context.Context, e webhook.Event) error {
+	integ, err := selectIntegration(ctx, r.Reader, r.Namespace, sccEnabled)
 	if err != nil {
-		return fmt.Errorf("decode scanner delivery: %w", err)
+		if errors.Is(err, ErrNoIntegration) {
+			return nil
+		}
+		return err
+	}
+	cfg := integ.Spec.GoogleCloud.SecurityCommandCenter
+	handler := scc.New(scc.Options{
+		MinSeverity:  string(cfg.MinSeverity),
+		Organization: cfg.Organization,
+	})
+	return r.ingestAll(ctx, integ, handler, e)
+}
+
+// ingestAll normalizes one delivery through a source handler and folds every
+// finding it yields into the cluster.
+func (r *Receiver) ingestAll(
+	ctx context.Context, integ *v1alpha1.Integration, h source.Handler, e webhook.Event,
+) error {
+	findings, err := h.Findings(ctx, e.Type, e.Payload)
+	if err != nil {
+		return fmt.Errorf("decode %s delivery: %w", h.ID(), err)
 	}
 	var errs []error
 	for _, f := range findings {
 		if err := r.Ingest.Ingest(ctx, integ, f); err != nil {
-			errs = append(errs, fmt.Errorf("ingest %s alert %d: %w", f.Repo, f.AlertNumber, err))
+			errs = append(errs, fmt.Errorf("ingest %s %s: %w", h.ID(), alertLabel(f), err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// alertLabel names a finding for an error message, by whichever identifier
+// its source uses.
+func alertLabel(f source.Finding) string {
+	if f.AlertID != "" {
+		return f.AlertID
+	}
+	return fmt.Sprintf("%s alert %d", f.Repo, f.AlertNumber)
 }
 
 // alertGetter adapts Integration credentials to the ghas.AlertGetter seam.

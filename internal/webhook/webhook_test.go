@@ -29,15 +29,34 @@ func sign(secret, body []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// testPath is the route the GitHub-shaped cases below deliver to.
+const testPath = "/webhook"
+
+// githubEndpoint is the GitHub route as the integration-controller configures
+// it: HMAC over the raw body, event type and delivery id from headers.
+func githubEndpoint(secret []byte, h Handler) Endpoint {
+	return Endpoint{
+		Path: testPath,
+		Auth: &HMACAuthenticator{
+			SecretsFor: func(context.Context) [][]byte { return [][]byte{secret} },
+		},
+		Decode:  GitHubDecoder,
+		Handler: h,
+	}
+}
+
 // startServer runs a Server on an ephemeral port and returns its base URL
 // and a stop function that asserts a clean drain.
-func startServer(t *testing.T, cfg Config, h Handler) (string, func()) {
+func startServer(t *testing.T, cfg Config) (string, func()) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	s := NewServer(cfg, testLog, h)
+	s, err := NewServer(cfg, testLog)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- s.serve(ctx, ln) }()
@@ -89,7 +108,7 @@ func TestDelivery(t *testing.T) {
 		return nil
 	})
 
-	url, stop := startServer(t, Config{Secret: secret}, h)
+	url, stop := startServer(t, Config{Endpoints: []Endpoint{githubEndpoint(secret, h)}})
 	defer stop()
 
 	tests := []struct {
@@ -187,9 +206,10 @@ func TestDelivery(t *testing.T) {
 func TestHealthEndpoints(t *testing.T) {
 	ready := false
 	url, stop := startServer(t, Config{
-		Secret: []byte("s"),
-		Ready:  func() bool { return ready },
-	}, HandlerFunc(func(context.Context, Event) error { return nil }))
+		Endpoints: []Endpoint{githubEndpoint([]byte("s"),
+			HandlerFunc(func(context.Context, Event) error { return nil }))},
+		Ready: func() bool { return ready },
+	})
 	defer stop()
 
 	get := func(path string) int {
@@ -220,7 +240,11 @@ func TestQueueFull(t *testing.T) {
 		<-block
 		return nil
 	})
-	url, stop := startServer(t, Config{Secret: secret, Workers: 1, QueueSize: 1}, h)
+	url, stop := startServer(t, Config{
+		Endpoints: []Endpoint{githubEndpoint(secret, h)},
+		Workers:   1,
+		QueueSize: 1,
+	})
 	defer func() {
 		close(block)
 		stop()

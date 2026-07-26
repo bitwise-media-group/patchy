@@ -33,6 +33,10 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
+	f.String("google-oidc-issuer", "",
+		"OIDC issuer the Pub/Sub push route verifies tokens against "+
+			"(default: Google, the only correct value in production; overridable for e2e)")
+	_ = f.MarkHidden("google-oidc-issuer")
 	return cmd
 }
 
@@ -78,19 +82,22 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 	signals := &integration.Signals{Client: mgr.GetClient(), Namespace: namespace, Log: log}
 	receiver := &integration.Receiver{
-		Reader:    mgr.GetClient(),
-		Creds:     creds,
-		Ingest:    ingestor,
-		Signals:   signals,
-		Namespace: namespace,
-		Log:       log,
+		Reader:     mgr.GetClient(),
+		Creds:      creds,
+		Ingest:     ingestor,
+		Signals:    signals,
+		Namespace:  namespace,
+		OIDCIssuer: opts.String("google-oidc-issuer"),
+		Log:        log,
 	}
 
-	srv := webhook.NewServer(webhook.Config{
-		Addr:       opts.ListenAddr,
-		Path:       "/github/webhooks",
-		SecretsFor: receiver.Secrets,
-	}, log, receiver)
+	srv, err := webhook.NewServer(webhook.Config{
+		Addr:      opts.ListenAddr,
+		Endpoints: receiver.Endpoints(),
+	}, log)
+	if err != nil {
+		return err
+	}
 
 	ic := &integration.IntegrationReconciler{
 		Client: mgr.GetClient(), Creds: creds, Log: log,

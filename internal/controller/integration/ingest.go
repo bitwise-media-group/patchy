@@ -47,8 +47,17 @@ type Ingestor struct {
 
 // keyHash is the hex form of the accumulation key's hash — the label value
 // selecting a finding family across generations.
-func keyHash(integration, sourceID, repoURL, advisory string) string {
-	sum := sha256.Sum256([]byte(integration + "|" + sourceID + "|" + repoURL + "|" + advisory))
+//
+// scope is what the finding is raised against: the repository URL for a code
+// finding, the cloud resource name for an infrastructure one. It occupies the
+// position the repository URL always has, and MUST keep doing so: the hash is
+// persisted in a label on every live Finding, so changing the string for a
+// repo-bearing finding orphans every existing family. Accumulation would then
+// find nothing, open generation 1 alongside the live one, and project a
+// second tracking issue for every open finding in the estate. There is no
+// migration — the label is frozen by the admission policy.
+func keyHash(integration, sourceID, scope, advisory string) string {
+	sum := sha256.Sum256([]byte(integration + "|" + sourceID + "|" + scope + "|" + advisory))
 	return hex.EncodeToString(sum[:5])
 }
 
@@ -56,12 +65,16 @@ func keyHash(integration, sourceID, repoURL, advisory string) string {
 // live pre-investigation Finding of its family, or create the next
 // generation.
 func (in *Ingestor) Ingest(ctx context.Context, integ *v1alpha1.Integration, f source.Finding) error {
-	repoURL := "https://" + githubHost(integ) + "/" + f.Repo.Owner + "/" + f.Repo.Name
+	repoURL := repositoryURL(integ, f)
+	scope := accumulationScope(repoURL, f)
+	if scope == "" {
+		return fmt.Errorf("ingest %s finding: names neither a repository nor a cloud resource", f.Source)
+	}
 	primary := ""
 	if len(f.Advisories) > 0 {
 		primary = f.Advisories[0]
 	}
-	hash := keyHash(integ.Name, f.Source, repoURL, primary)
+	hash := keyHash(integ.Name, f.Source, scope, primary)
 
 	var family v1alpha1.FindingList
 	if err := in.List(ctx, &family, client.InNamespace(in.Namespace),
@@ -88,6 +101,49 @@ func (in *Ingestor) Ingest(ctx context.Context, integ *v1alpha1.Integration, f s
 	}
 
 	return in.create(ctx, integ, f, repoURL, hash, maxGen+1, prevName(family.Items, maxGen))
+}
+
+// repositoryURL is the finding's repository, or empty when it names none. A
+// cloud finding starts repo-less; whether it ever gets one is the enhancer
+// chain's question, answered from the resource's ownership labels.
+func repositoryURL(integ *v1alpha1.Integration, f source.Finding) string {
+	if f.Repo.Owner == "" || f.Repo.Name == "" {
+		return ""
+	}
+	return "https://" + githubHost(integ) + "/" + f.Repo.Owner + "/" + f.Repo.Name
+}
+
+// accumulationScope is what the finding is raised against — the thing two
+// alerts must share, alongside their advisory, to be the same finding.
+//
+// For a cloud finding that is the resource, not its project: repository
+// resolution is per-resource, so a family spanning resources could resolve to
+// two different repositories and there would be no right answer. Scoping per
+// resource means accumulation folds only SCC's re-notifications of the same
+// (resource, category), which is exactly what it re-sends on every update.
+func accumulationScope(repoURL string, f source.Finding) string {
+	if repoURL != "" {
+		return repoURL
+	}
+	if f.CloudResource != nil {
+		return f.CloudResource.Name
+	}
+	return ""
+}
+
+// toCloudResource maps the seam's cloud resource onto the CR shape.
+func toCloudResource(cr *source.CloudResource) *v1alpha1.FindingCloudResource {
+	if cr == nil {
+		return nil
+	}
+	return &v1alpha1.FindingCloudResource{
+		Provider:    v1alpha1.CloudProvider(cr.Provider),
+		Name:        cr.Name,
+		Type:        cr.Type,
+		Project:     cr.Project,
+		Location:    cr.Location,
+		DisplayName: cr.DisplayName,
+	}
 }
 
 // errRaced reports a fold target that left the foldable phases mid-fold.
@@ -167,34 +223,43 @@ func (in *Ingestor) create(
 	repoURL, hash string, gen int, prev string,
 ) error {
 	name := fmt.Sprintf("finding-%s-%d", hash, gen)
+	labels := map[string]string{
+		v1alpha1.LabelKeyHash:     hash,
+		v1alpha1.LabelSource:      f.Source,
+		v1alpha1.LabelIntegration: integ.Name,
+		v1alpha1.LabelSeverity:    string(levelOf(f.Severity)),
+	}
+	// Omitted rather than hashed empty: a repo-less finding with a
+	// real-looking repo-hash would read as belonging to some repository, and
+	// the value would never be corrected once an enhancer resolved one.
+	if repoURL != "" {
+		labels[v1alpha1.LabelRepoHash] = hashOf(repoURL)
+	}
 	fnd := &v1alpha1.Finding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: in.Namespace,
-			Labels: map[string]string{
-				v1alpha1.LabelKeyHash:     hash,
-				v1alpha1.LabelSource:      f.Source,
-				v1alpha1.LabelIntegration: integ.Name,
-				v1alpha1.LabelRepoHash:    hashOf(repoURL),
-				v1alpha1.LabelSeverity:    string(levelOf(f.Severity)),
-			},
+			Labels:    labels,
 		},
 		Spec: v1alpha1.FindingSpec{
 			IntegrationRef: v1alpha1.LocalObjectReference{Name: integ.Name},
 			TrackingRef:    trackingRef(integ),
 			Source:         f.Source,
-			Repository: &v1alpha1.FindingRepository{
-				Type: v1alpha1.RepositoryTypeGitHub,
-				URL:  repoURL,
-				Name: f.Repo.String(),
-			},
-			Advisories:  f.Advisories,
-			RuleID:      f.RuleID,
-			Title:       f.Title,
-			Description: truncate(f.Description, 65536),
-			Severity:    levelOf(f.Severity),
-			Alerts:      []v1alpha1.Alert{toAlert(f)},
+			CloudResource:  toCloudResource(f.CloudResource),
+			Advisories:     f.Advisories,
+			RuleID:         f.RuleID,
+			Title:          f.Title,
+			Description:    truncate(f.Description, 65536),
+			Severity:       levelOf(f.Severity),
+			Alerts:         []v1alpha1.Alert{toAlert(f)},
 		},
+	}
+	if repoURL != "" {
+		fnd.Spec.Repository = &v1alpha1.FindingRepository{
+			Type: v1alpha1.RepositoryTypeGitHub,
+			URL:  repoURL,
+			Name: f.Repo.String(),
+		}
 	}
 	if prev != "" {
 		fnd.Spec.Related = []v1alpha1.RelatedFinding{{
@@ -230,7 +295,7 @@ func (in *Ingestor) create(
 		in.mirrorEdge(ctx, prev, fnd.Spec.Related[0])
 	}
 	in.log().LogAttrs(ctx, slog.LevelInfo, "finding created",
-		slog.String("finding", name), slog.String("repo", f.Repo.String()))
+		slog.String("finding", name), slog.String("scope", accumulationScope(repoURL, f)))
 	return nil
 }
 
@@ -257,9 +322,15 @@ func (in *Ingestor) mirrorEdge(ctx context.Context, elder string, edge v1alpha1.
 	}
 }
 
-// toAlert maps a scanner finding's alert fields.
+// toAlert maps a scanner finding's alert fields. The id is the source's own
+// string identifier where it has one; only sources that number their alerts
+// fall back to the decimal form.
 func toAlert(f source.Finding) v1alpha1.Alert {
-	a := v1alpha1.Alert{ID: strconv.Itoa(f.AlertNumber), URL: f.HTMLURL}
+	id := f.AlertID
+	if id == "" {
+		id = strconv.Itoa(f.AlertNumber)
+	}
+	a := v1alpha1.Alert{ID: id, Source: f.Source, URL: f.HTMLURL}
 	for i, loc := range f.Locations {
 		if i == 8 {
 			break

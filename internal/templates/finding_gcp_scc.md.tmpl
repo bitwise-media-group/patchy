@@ -1,0 +1,88 @@
+{{ if .Description }}{{ .Description }}
+{{ else }}Security Command Center reported `{{ .Category }}` against this resource.
+{{ end }}
+### Affected resource
+
+| | |
+| --- | --- |
+| **Resource** | `{{ .Resource.Name }}` |
+{{- if .Resource.DisplayName }}
+| **Name** | {{ .Resource.DisplayName }} |
+{{- end }}
+{{- if .Resource.Type }}
+| **Type** | `{{ .Resource.Type }}` |
+{{- end }}
+{{- if .Resource.Project }}
+| **Project** | `{{ .Resource.Project }}` |
+{{- end }}
+{{- if .Resource.Location }}
+| **Location** | {{ .Resource.Location }} |
+{{- end }}
+{{- if .Resource.Service }}
+| **Service** | {{ .Resource.Service }} |
+{{- end }}
+
+### Finding
+
+| | |
+| --- | --- |
+| **Category** | `{{ .Category }}` |
+{{- if .Class }}
+| **Class** | {{ .Class }} |
+{{- end }}
+{{- if .Severity }}
+| **SCC severity** | {{ .Severity }} |
+{{- end }}
+{{- if .CVE }}
+| **CVE** | `{{ .CVE }}`{{ if .CVSS }} (CVSS {{ .CVSS }}){{ end }} |
+{{- end }}
+{{- if .DetectedAt }}
+| **Detected** | {{ .DetectedAt }} |
+{{- end }}
+{{- if .ExternalURI }}
+| **Console** | [view in Security Command Center]({{ .ExternalURI }}) |
+{{- end }}
+{{- if .NextSteps }}
+
+### Recommended next steps
+
+{{ .NextSteps }}
+{{- end }}
+{{- if .MitreTactic }}
+
+### MITRE ATT&CK
+
+Tactic: `{{ .MitreTactic }}`
+{{- if .MitreTechniques }} — techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- end }}
+{{- end }}
+{{- with .Compliances }}
+
+### Compliance
+{{ range . }}
+- **{{ .Standard }}{{ if .Version }} {{ .Version }}{{ end }}** — {{ join .IDs ", " }}
+{{- end }}
+{{- end }}
+{{- with .Properties }}
+
+### Detector properties
+
+| Property | Value |
+| --- | --- |
+{{- range . }}
+| `{{ .Key }}` | {{ .Value }} |
+{{- end }}
+{{- end }}
+{{- with .Marks }}
+
+### Security marks
+
+| Mark | Value |
+| --- | --- |
+{{- range . }}
+| `{{ .Key }}` | {{ .Value }} |
+{{- end }}
+{{- end }}
+
+---
+*Finding `{{ .Name }}`, reported by Google Cloud Security Command Center.*

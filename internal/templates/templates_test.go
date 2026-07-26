@@ -62,6 +62,44 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 
+// testSCCFinding is a Security Command Center finding with every optional
+// block populated.
+func testSCCFinding() SCCFinding {
+	return SCCFinding{
+		Name:        "organizations/1234567890/sources/555/findings/abc123",
+		Category:    "PUBLIC_BUCKET_ACL",
+		Class:       "MISCONFIGURATION",
+		Severity:    "high",
+		Description: "The bucket is publicly readable.",
+		NextSteps:   "Remove allUsers from the bucket IAM policy.",
+		Resource: SCCResource{
+			Name:        "//storage.googleapis.com/projects/acme-prod/buckets/acme-artifacts",
+			DisplayName: "acme-artifacts",
+			Type:        "google.cloud.storage.Bucket",
+			Project:     "projects/acme-prod",
+			Location:    "europe-west2",
+			Service:     "storage.googleapis.com",
+		},
+		CVE:             "CVE-2026-1234",
+		CVSS:            "7.5",
+		MitreTactic:     "IMPACT",
+		MitreTechniques: []string{"T1485", "T1486"},
+		Compliances: []SCCCompliance{
+			{Standard: "cis", Version: "1.3", IDs: []string{"5.1", "5.2"}},
+		},
+		Properties: []SCCKV{
+			{Key: "ExceptionInstructions", Value: "Add the mark"},
+			{Key: "Recommendation", Value: "Restrict access"},
+		},
+		Marks: []SCCKV{
+			{Key: "scm-repository-name", Value: "infra-prod"},
+			{Key: "scm-repository-org", Value: "acme"},
+		},
+		DetectedAt:  "2026-07-26T09:00:00Z",
+		ExternalURI: "https://console.cloud.google.com/security/command-center/findings?f=abc123",
+	}
+}
+
 func TestGoldens(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -105,6 +143,25 @@ func TestGoldens(t *testing.T) {
 				InvestigationPath: "/workspace/input/investigation.md",
 				ReportPath:        "/workspace/reports/remediation.md",
 				CommitScriptPath:  "/workspace/commit.sh",
+			})
+		}},
+		// A cloud finding's description, carrying every optional block, so the
+		// goldens pin the whole shape rather than the happy subset.
+		{"finding_gcp_scc.md", func() (string, error) { return RenderSCCDescription(testSCCFinding()) }},
+		// The same finding as a bare misconfiguration: no CVE, no ATT&CK, no
+		// compliance, no marks. Every one of those sections must vanish
+		// cleanly rather than leave an empty heading behind.
+		{"finding_gcp_scc_minimal.md", func() (string, error) {
+			return RenderSCCDescription(SCCFinding{
+				Name:        "organizations/1234567890/sources/555/findings/abc123",
+				Category:    "PUBLIC_BUCKET_ACL",
+				Class:       "MISCONFIGURATION",
+				Severity:    "high",
+				Description: "The bucket is publicly readable.",
+				Resource: SCCResource{
+					Name: "//storage.googleapis.com/projects/acme-prod/buckets/acme-artifacts",
+					Type: "google.cloud.storage.Bucket",
+				},
 			})
 		}},
 	}

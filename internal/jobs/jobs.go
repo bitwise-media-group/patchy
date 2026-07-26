@@ -388,6 +388,8 @@ var reservedEnv = map[string]bool{
 	"CLAUDE_CODE_OAUTH_TOKEN":    true,
 	"ANTHROPIC_AUTH_TOKEN":       true,
 	"OPENAI_API_KEY":             true,
+	"CODEX_API_KEY":              true,
+	"CODEX_ACCESS_TOKEN":         true,
 	"GITHUB_TOKEN":               true,
 }
 

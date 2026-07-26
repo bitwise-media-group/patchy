@@ -15,6 +15,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/bitwise-media-group/patchy/internal/harness"
 )
 
 var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -41,6 +43,8 @@ func testConfig() Config {
 			"PATCHY_INVESTIGATE_TIMEOUT": "15m",
 			"GITHUB_TOKEN":               "must-never-pass-through",
 			"CLAUDE_CODE_OAUTH_TOKEN":    "must-never-pass-through",
+			"CODEX_API_KEY":              "must-never-pass-through",
+			"CODEX_ACCESS_TOKEN":         "must-never-pass-through",
 		},
 		CPURequest:    "500m",
 		MemoryRequest: "1Gi",
@@ -323,10 +327,13 @@ func TestCreateAgentEnv(t *testing.T) {
 	if ref.Name != "anthropic" || ref.Key != "api-key" {
 		t.Errorf("ANTHROPIC_API_KEY ref = %s/%s, want anthropic/api-key (defaulted)", ref.Name, ref.Key)
 	}
-	// The credential channels not selected stay reserved: the passthrough
-	// CLAUDE_CODE_OAUTH_TOKEN in Config.Env must not reach the pod.
-	if got, ok := envs["CLAUDE_CODE_OAUTH_TOKEN"]; ok {
-		t.Errorf("CLAUDE_CODE_OAUTH_TOKEN = %+v, want absent (reserved)", got)
+	// The credential channels not selected stay reserved, both this harness's
+	// and the other's: a passthrough value in Config.Env must never reach the
+	// pod, or a credential would travel as a literal in the Job spec.
+	for _, name := range []string{"CLAUDE_CODE_OAUTH_TOKEN", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
+		if got, ok := envs[name]; ok {
+			t.Errorf("%s = %+v, want absent (reserved)", name, got)
+		}
 	}
 }
 
@@ -367,18 +374,32 @@ func TestCreateAgentEnvOAuthToken(t *testing.T) {
 // harness label of the runner its Spec.Harness selects.
 func TestCreateRunnerSelection(t *testing.T) {
 	tests := []struct {
+		name      string
 		harness   string
+		secretEnv string // override the runner's credential channel; "" keeps the default
 		wantImage string
 		wantEnv   string
 		wantRef   string // credential Secret name
 	}{
-		{"claude", "ghcr.io/bitwise-media-group/patchy/claude-agent-runner:1", "ANTHROPIC_API_KEY", "anthropic"},
-		{"codex", "ghcr.io/bitwise-media-group/patchy/codex-agent-runner:1", "OPENAI_API_KEY", "openai"},
+		{"claude", "claude", "",
+			"ghcr.io/bitwise-media-group/patchy/claude-agent-runner:1", "ANTHROPIC_API_KEY", "anthropic"},
+		{"codex", "codex", "",
+			"ghcr.io/bitwise-media-group/patchy/codex-agent-runner:1", "OPENAI_API_KEY", "openai"},
+		// The ChatGPT-plan channel: same Secret, injected under the token env
+		// var instead of the API-key one.
+		{"codex access token", "codex", "CODEX_ACCESS_TOKEN",
+			"ghcr.io/bitwise-media-group/patchy/codex-agent-runner:1", "CODEX_ACCESS_TOKEN", "openai"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.harness, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			cs := fake.NewClientset()
-			c := New(cs, testConfig(), nil)
+			cfg := testConfig()
+			if tt.secretEnv != "" {
+				r := cfg.Runners[tt.harness]
+				r.SecretEnv = tt.secretEnv
+				cfg.Runners[tt.harness] = r
+			}
+			c := New(cs, cfg, nil)
 			spec := testSpec()
 			spec.Harness = tt.harness
 			name, err := c.Create(context.Background(), spec)
@@ -628,5 +649,22 @@ func TestSanitizeLabelValue(t *testing.T) {
 				t.Errorf("sanitizeLabelValue(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestReservedEnvCoversEveryCredentialChannel: every credential env var a
+// harness accepts must also be reserved here. The two lists live in different
+// packages — harness owns what a CLI authenticates with, jobs owns what the
+// Job spec refuses to carry as a literal — and only this test keeps them from
+// drifting. An accepted-but-unreserved name is a real leak: an operator could
+// select it with --<harness>-secret-env while a controller-global Config.Env
+// entry of the same name puts the credential into the Job spec in plaintext.
+func TestReservedEnvCoversEveryCredentialChannel(t *testing.T) {
+	for _, h := range harness.All() {
+		for _, env := range h.EnvKeys() {
+			if !reservedEnv[env] {
+				t.Errorf("harness %q accepts credential env %q, but it is not reserved", h.ID(), env)
+			}
+		}
 	}
 }

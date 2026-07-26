@@ -34,12 +34,11 @@ func RegisterFlags(f *pflag.FlagSet) {
 
 	f.String("claude-secret", "patchy-anthropic", "Secret (agent namespace) holding the Anthropic credential")
 	f.String("claude-secret-key", "api-key", "key within the Anthropic credential Secret")
-	f.String("claude-secret-env", "ANTHROPIC_API_KEY",
-		"env var the Anthropic credential is injected as (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)")
+	f.String("claude-secret-env", "ANTHROPIC_API_KEY", secretEnvUsage("Anthropic", model.HarnessClaude))
 
 	f.String("codex-secret", "patchy-openai", "Secret (agent namespace) holding the OpenAI credential")
 	f.String("codex-secret-key", "api-key", "key within the OpenAI credential Secret")
-	f.String("codex-secret-env", "OPENAI_API_KEY", "env var the OpenAI credential is injected as")
+	f.String("codex-secret-env", "OPENAI_API_KEY", secretEnvUsage("OpenAI", model.HarnessCodex))
 
 	f.String("harnesses", "",
 		"restrict enabled harnesses to this comma list (default: any harness whose credential Secret exists)")
@@ -141,6 +140,15 @@ func ResolveHarness(canonical string, enabled []string) (harnessID, cliModelID s
 			canonical, m.SupportedHarnessIDs(), enabled)
 	}
 	return h, cliID, nil
+}
+
+// secretEnvUsage renders a --<harness>-secret-env help string from the
+// harness's own accepted channels, so the flag can never advertise a set that
+// the startup validation below disagrees with — the two drifted apart once
+// already, leaving the claude flag naming two of its three channels.
+func secretEnvUsage(vendor, harnessID string) string {
+	return fmt.Sprintf("env var the %s credential is injected as (one of %s)",
+		vendor, strings.Join(envKeys(harnessID), ", "))
 }
 
 func accepts(harnessID, env string) bool { return slices.Contains(envKeys(harnessID), env) }

@@ -66,7 +66,10 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `ANTHROPIC_API_KEY`       | The claude runner's Secret via `secretKeyRef` (`--claude-secret`, the default `--claude-secret-env`)         |
 | `CLAUDE_CODE_OAUTH_TOKEN` | The claude runner's Secret when `--claude-secret-env=CLAUDE_CODE_OAUTH_TOKEN` — a `claude setup-token` token |
+| `ANTHROPIC_AUTH_TOKEN`    | The claude runner's Secret when `--claude-secret-env=ANTHROPIC_AUTH_TOKEN`                                   |
 | `OPENAI_API_KEY`          | The codex runner's Secret via `secretKeyRef` (`--codex-secret`) — injected only into codex-harness Jobs      |
+| `CODEX_API_KEY`           | The codex runner's Secret when `--codex-secret-env=CODEX_API_KEY`                                            |
+| `CODEX_ACCESS_TOKEN`      | The codex runner's Secret when `--codex-secret-env=CODEX_ACCESS_TOKEN` — a ChatGPT-plan workspace token      |
 
 </div>
 

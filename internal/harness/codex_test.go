@@ -187,3 +187,16 @@ func TestCodexScanUsage(t *testing.T) {
 		}
 	}
 }
+
+// TestCodexEnvKeys guards the accepted credential channels. runnercfg
+// validates --codex-secret-env against this list at controller startup, so a
+// name missing here is not a cosmetic omission: it makes that credential
+// unconfigurable, and jobs.reservedEnv must reserve each one so it can only
+// reach the pod by secretKeyRef.
+func TestCodexEnvKeys(t *testing.T) {
+	got := NewCodex().EnvKeys()
+	want := []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}
+	if !slices.Equal(got, want) {
+		t.Errorf("EnvKeys() = %v, want %v", got, want)
+	}
+}

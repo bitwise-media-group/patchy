@@ -23,8 +23,13 @@ func NewCodex() *Codex {
 		id:   "codex",
 		name: "OpenAI Codex",
 		clis: []string{"codex"},
-		// The credential the codex CLI authenticates with in headless mode.
-		envKeys: []string{"OPENAI_API_KEY"},
+		// The credentials the codex CLI authenticates with in headless mode,
+		// in the CLI's own resolution order (it reads stored auth.json first,
+		// which an agent pod never has). OPENAI_API_KEY is a platform API key
+		// billed at usage rates; the CODEX_* pair carries a workspace token
+		// billed to a ChatGPT plan, which the vendor documents as the channel
+		// for schedulers and private CI runners.
+		envKeys: []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"},
 	}}
 }
 

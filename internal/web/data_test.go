@@ -36,6 +36,16 @@ func fullFinding() *v1alpha1.Finding {
 				URL:  "https://github.com/acme/orders",
 				Name: "acme/orders", DefaultBranch: "main",
 			},
+			// A finding normally carries one or the other; this fixture sets
+			// both so the projection's whole field set is exercised.
+			CloudResource: &v1alpha1.FindingCloudResource{
+				Provider:    v1alpha1.CloudProviderGoogle,
+				Name:        "//storage.googleapis.com/projects/acme-prod/buckets/artifacts",
+				Type:        "google.cloud.storage.Bucket",
+				Project:     "projects/acme-prod",
+				Location:    "europe-west2",
+				DisplayName: "artifacts",
+			},
 			Advisories:  []string{"CVE-2026-0001", "CWE-89"},
 			RuleID:      "go/sql-injection",
 			Title:       "SQL injection",
@@ -161,7 +171,8 @@ func TestBuildDatasetProjection(t *testing.T) {
 	f := asMap(t, ds.Findings[0])
 	// Contract field names (ui/src/types.ts) on a fully populated finding.
 	for _, key := range []string{
-		"name", "createdAt", "integration", "source", "repository", "advisories", "ruleID",
+		"name", "createdAt", "integration", "source", "repository", "cloudResource",
+		"advisories", "ruleID",
 		"title", "description", "severity", "alerts", "overflowAlerts", "related", "suspend",
 		"approval", "phase", "phaseTimes", "firstObservedAt", "accumulateUntil", "tracking",
 		"owners", "enrichments", "priority", "investigation", "remediation", "pullRequest",

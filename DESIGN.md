@@ -5,15 +5,19 @@ resources as the state machine and GitHub issues as a human-facing projection.
 
 ## Key requirements
 
-1. The initial solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings), but the
-   solution is tool-agnostic through a plugin architecture:
-   - provider webhooks deliver code-scanning alerts to a single internet-facing receiver;
+1. The solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings) and Google Cloud
+   Security Command Center, and is tool-agnostic through a plugin architecture:
+   - providers deliver findings to a single internet-facing receiver, each route authenticating on the provider's own
+     terms — an HMAC over the raw body for GitHub, the OIDC token a Pub/Sub push subscription signs for Google Cloud,
+     which cannot compute an HMAC at all;
    - each alert is retrieved in full and folded into a `Finding` custom resource carrying all relevant context
-     (advisories, rule, severity, locations);
+     (advisories, rule, severity, locations, or the cloud resource it was raised against);
    - every Finding is projected to a GitHub tracking issue labelled with its source, its CVE/CWE/GHSA advisory
-     identifiers, and its current phase — for humans and issue searches, never parsed back into state.
-2. Multiple alerts of the same finding type (CVE/CWE/GHSA) against the same repository accumulate into a single
-   Finding for up to 1 hour.
+     identifiers, and its current phase — for humans and issue searches, never parsed back into state;
+   - a source may also write the pipeline's verdict back to the tool it came from, so a finding dismissed here does
+     not stay open there.
+2. Multiple alerts of the same finding type accumulate into a single Finding for up to 1 hour — per repository for a
+   code finding, per cloud resource for an infrastructure one, since that is what a repository is later resolved from.
 3. Once the accumulation window closes and at least an hour has passed, the pipeline picks the finding up for
    automated analysis.
 4. A context-enhancement stage runs over freshly opened findings:
@@ -87,7 +91,9 @@ consistent across the estate.
   that SHA (pure HTTP; controllers carry no git binary), and serves it from an artifact endpoint agents fetch
   credential-lessly (unguessable URL, digest-verified).
 - **context-controller** — the enhancer chain over freshly opened Findings (`pkg/enhance` plugins; CMDB
-  placeholder). Writes only Finding status; holds no GitHub credential.
+  placeholder, plus a Google Cloud lookup that resolves a cloud finding's repository from its resource's ownership
+  labels). Writes Finding status and, set-once, `spec.repository` for a finding that arrived without one. Holds no
+  GitHub credential; the cloud lookup uses read-only workload identity.
 - **investigation-controller** — the gate (admits accumulated, aged findings; materializes the Repository and one
   immutable `Investigation` per attempt) and the analysis scheduler (bounded concurrency, severity order,
   verdict routing).

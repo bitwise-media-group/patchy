@@ -1,22 +1,42 @@
 # Extending
 
-Patchy ships GHAS/CodeQL support and a placeholder context enhancer, but both ends of the pipeline are plugin seams. The
-public interfaces live under `pkg/` — the only packages whose signatures are stable for external reuse — and the
-built-in implementations under `internal/ghas` and `internal/enhancers` are reference implementations of the same
-interfaces.
+Patchy ships GHAS/CodeQL and Google Cloud Security Command Center support plus a placeholder context enhancer, but both
+ends of the pipeline are plugin seams. The public interfaces live under `pkg/` — the only packages whose signatures are
+stable for external reuse — and the built-in implementations under `internal/ghas`, `internal/scc` and
+`internal/enhancers` are reference implementations of the same interfaces.
 
 ## Finding sources (`pkg/source`)
 
-A source turns an external tool's alerts into patchy findings: it parses the webhook payload, fetches whatever detail
-the tool's API offers, and hands the **integration-controller** a normalised finding — identifiers (CWE/CVE/GHSA, most
+A source turns an external tool's alerts into patchy findings: it parses the delivery, fetches whatever detail the
+tool's API offers, and hands the **integration-controller** a normalised finding — identifiers (CWE/CVE/GHSA, most
 authoritative first; the primary one keys accumulation), severity, locations, and the evidence that becomes the
 Finding's description and the tracking issue's body. The built-in `ghas` handler does exactly this for
-`code_scanning_alert` deliveries.
+`code_scanning_alert` deliveries; `gcp-scc` does it for Security Command Center notifications, which need no API call at
+all because the notification carries everything.
 
-The design intent (see `DESIGN.md`) is that SAST tools, dependency scanners, or even agentic reviewers plug in here
-without touching the accumulation, projection, or remediation machinery — the `Finding` schema is source-agnostic, and
-`spec.source` (projected as the `security-source` label) records where a finding came from. A finding without an
-identifiable repository is legal too: it flows through triage but can never reach the remediation phases.
+The design intent (see `DESIGN.md`) is that SAST tools, dependency scanners, cloud posture tools, or even agentic
+reviewers plug in here without touching the accumulation, projection, or remediation machinery — the `Finding` schema is
+source-agnostic, and `spec.source` (projected as the `security-source` label) records where a finding came from.
+
+**Not every finding is about code.** A finding may name a repository, a `CloudResource`, or both, and that choice
+decides how it accumulates: code findings group per repository, cloud findings per resource. A finding without a
+repository is legal — it flows through triage and is handed to a human rather than remediated — and it may acquire one
+later, from an enhancer. What is not legal is a finding naming neither: there would be nothing to accumulate it against,
+so ingest rejects it.
+
+A source may also implement `source.Resolver`, the optional write-back: telling the originating tool what patchy
+decided, so a finding dismissed here does not stay open there. `ghas` implements it by dismissing the code-scanning
+alert. The pipeline groups a finding's alerts by the source recorded on each one and hands each source only its own, so
+provenance is a fact carried from ingest rather than something inferred from the shape of an identifier. A source that
+implements no write-back is simply skipped — reading is a complete source.
+
+### Adding a provider webhook
+
+Each provider gets one `webhook.Endpoint` on the single internet-facing listener, supplying the two things that vary: an
+`Authenticator` (how a delivery proves it is genuine) and a `Decoder` (where its event type and delivery id live).
+GitHub signs an HMAC over the raw body and labels deliveries with headers; a Pub/Sub push cannot compute an HMAC at all
+— Pub/Sub composes the message, so the sender never sees the bytes — and instead presents a Google-signed OIDC token
+with the message id inside the body. Everything after authentication is the server's and identical for both.
 
 ## Context enhancers (`pkg/enhance`)
 
@@ -26,11 +46,26 @@ contributes an enrichment recorded on Finding status — semi-structured attribu
 tracking labels) and free-form markdown (projected as a sticky tracking comment, one per enhancer) — and a failing
 enhancer logs and continues rather than blocking the pipeline.
 
-Two implementations ship:
+An enhancer may also **resolve a repository** for a finding that arrived without one. That is the one enrichment written
+to spec rather than status, and it is written **once**: three separate mechanisms snapshot a finding's repository
+independently — the rollup ledger re-derives its scope key at reversal time, the investigation gate's clone artifact has
+an immutable URL with no update path, and each agent Job records it in an annotation — so revising it later
+desynchronises all three silently. The first enhancer in the chain to name one wins.
+
+Repository resolution is the exception to "a failing enhancer logs and continues". The chain runs exactly once and there
+is no transition back to `Opened`, so advancing a cloud finding after a failed lookup would lose its repository
+permanently and hand it off unremediable. A failed lookup instead holds the finding at `Opened` and retries, bounded by
+the accumulation window — past that it advances anyway, because a finding a human could be looking at is better than one
+held out of sight.
+
+Three implementations ship:
 
 - **Noop** — the default when nothing is configured.
 - **Static file** — a YAML map from repository to owners and attributes
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
+- **Google Cloud labels** — reads `scm-repository-*` labels off the cloud resource a finding was raised against, via
+  Cloud Asset Inventory, and resolves the repository from them
+  ([format](configuration/google-cloud-scc.md#the-ownership-labels)).
 
 A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the

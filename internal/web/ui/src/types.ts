@@ -71,6 +71,17 @@ export interface FindingRepository {
   defaultBranch?: string;
 }
 
+// FindingCloudResource identifies the cloud resource an infrastructure
+// finding was raised against.
+export interface FindingCloudResource {
+  provider: "google";
+  name: string; // the platform's canonical resource identifier
+  type?: string; // e.g. "google.cloud.storage.Bucket"
+  project?: string;
+  location?: string;
+  displayName?: string;
+}
+
 export interface RelatedFinding {
   name: string;
   relationship: "duplicate-of" | "successor-of" | "related-to";
@@ -204,6 +215,10 @@ export interface Finding {
   integration?: string;
   source?: string;
   repository?: FindingRepository; // absent for repo-less (e.g. cloud) findings
+  // Set when the finding is about infrastructure rather than repository code.
+  // A finding with a cloudResource and no repository is one whose resource
+  // carried no ownership labels to resolve a repository from.
+  cloudResource?: FindingCloudResource;
   advisories: string[]; // [0] is authoritative (GHSA > CVE > CWE)
   ruleID?: string;
   title?: string;

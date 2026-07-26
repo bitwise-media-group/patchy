@@ -233,7 +233,9 @@ See [Kustomize](deployment/kustomize.md) for the manifest and the role ladder.
 The policy has to enumerate the spec fields it freezes, because CEL cannot express "everything except these four". A new
 field would otherwise become writable by anyone holding `update`. `TestAdmissionPolicyCovers‑ EveryFindingSpecField` in
 `internal/action` reflects over the Go type and fails if a field is unaccounted for — when it fires, add the field to
-the frozen-fields validation in `deploy/kustomize/base/admission-policy.yaml`.
+the frozen-fields validation in **both** `deploy/kustomize/base/admission-policy.yaml` and
+`charts/patchy/templates/admission-policy.yaml`. The test checks both renderings; a Helm install left out of step would
+silently ship a policy that leaves the field writable.
 
 ## Exit codes
 

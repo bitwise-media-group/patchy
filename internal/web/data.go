@@ -47,12 +47,16 @@ type Finding struct {
 	Integration string      `json:"integration,omitempty"`
 	Source      string      `json:"source,omitempty"`
 	Repository  *Repository `json:"repository,omitempty"`
-	Advisories  []string    `json:"advisories"`
-	RuleID      string      `json:"ruleID,omitempty"`
-	Title       string      `json:"title,omitempty"`
-	Description string      `json:"description,omitempty"`
-	Severity    string      `json:"severity,omitempty"`
-	Alerts      []Alert     `json:"alerts,omitempty"`
+	// CloudResource is set on a finding raised against infrastructure rather
+	// than repository code. It is what explains a finding with no repository:
+	// the resource carried no ownership labels to resolve one from.
+	CloudResource *CloudResource `json:"cloudResource,omitempty"`
+	Advisories    []string       `json:"advisories"`
+	RuleID        string         `json:"ruleID,omitempty"`
+	Title         string         `json:"title,omitempty"`
+	Description   string         `json:"description,omitempty"`
+	Severity      string         `json:"severity,omitempty"`
+	Alerts        []Alert        `json:"alerts,omitempty"`
 	// OverflowAlerts counts alerts dropped past the accumulation cap.
 	OverflowAlerts  int32          `json:"overflowAlerts,omitempty"`
 	Related         []Related      `json:"related,omitempty"`
@@ -89,6 +93,16 @@ type Repository struct {
 	URL           string `json:"url"`
 	Name          string `json:"name,omitempty"`
 	DefaultBranch string `json:"defaultBranch,omitempty"`
+}
+
+// CloudResource identifies the cloud resource a finding was raised against.
+type CloudResource struct {
+	Provider    string `json:"provider"`
+	Name        string `json:"name"`
+	Type        string `json:"type,omitempty"`
+	Project     string `json:"project,omitempty"`
+	Location    string `json:"location,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
 }
 
 // Location is one source location an alert points at.
@@ -516,6 +530,16 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 			URL:           spec.Repository.URL,
 			Name:          spec.Repository.Name,
 			DefaultBranch: spec.Repository.DefaultBranch,
+		}
+	}
+	if cr := spec.CloudResource; cr != nil {
+		out.CloudResource = &CloudResource{
+			Provider:    string(cr.Provider),
+			Name:        cr.Name,
+			Type:        cr.Type,
+			Project:     cr.Project,
+			Location:    cr.Location,
+			DisplayName: cr.DisplayName,
 		}
 	}
 	for _, a := range spec.Alerts {

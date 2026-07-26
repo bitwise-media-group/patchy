@@ -127,8 +127,11 @@ subjects:
       namespace: patchy
 ---
 # ---- context-controller ----------------------------------------------------
-# The enhancer chain: reads Opened findings, writes enrichments/owners and
-# the Opened→Enhanced edge to status. No secrets, no external credential.
+# The enhancer chain: reads Opened findings, writes enrichments/owners and the
+# Opened→Enhanced edge to status, and sets spec.repository once for a cloud
+# finding that arrived without one (resolved from the resource's ownership
+# labels) — which is why it holds update on findings, not status alone.
+# No secrets: an enhancer needing a cloud credential uses workload identity.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -140,7 +143,7 @@ metadata:
 rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [get, list, watch]
+      verbs: [get, list, watch, update, patch]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings/status]
       verbs: [get, update, patch]

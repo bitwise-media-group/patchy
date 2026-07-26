@@ -29,3 +29,10 @@ spec:
                             name: patchy-integration-controller
                             port:
                                 number: 8080
+                  - path: /google-cloud/webhooks
+                    pathType: Prefix
+                    backend:
+                        service:
+                            name: patchy-integration-controller
+                            port:
+                                number: 8080

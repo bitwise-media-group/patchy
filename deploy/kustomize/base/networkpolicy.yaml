@@ -48,9 +48,13 @@
 #   9790  the artifact server — agent pods only (plus kubelet).
 #
 # Egress: DNS, the Kubernetes API server (every controller is a CR
-# controller now), and TCP 443 out (GitHub for integration/source/
-# remediation; an OTLP collector for any of them). Port 6443 is here because
-# kind/kubeadm clusters serve the API there; managed clusters usually use 443.
+# controller now), and TCP 443 out. That covers GitHub for integration/
+# source/remediation; accounts.google.com and www.googleapis.com for the
+# integration-controller, which verifies the OIDC token a Pub/Sub push
+# presents against Google's JWKS; cloudasset.googleapis.com for the
+# context-controller, when the Google Cloud labels enhancer is enabled; and
+# an OTLP collector for any of them. Port 6443 is here because kind/kubeadm
+# clusters serve the API there; managed clusters usually use 443.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

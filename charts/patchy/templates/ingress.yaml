@@ -3,11 +3,14 @@
 #
 # The webhook entry point, plain-Ingress flavour (webhook.ingress): one
 # Ingress on one hostname, in front of the integration-controller — the only
-# component that faces the internet; it validates each delivery against the
-# matching Integration's webhookSecret. GitHub only POSTs /github/webhooks
-# and the HMAC signature check is the authentication, so the rule is scoped
-# to /github/webhooks rather than exposing the probes too. See
-# docs/deployment/webhook.md.
+# component that faces the internet.
+#
+# One path per provider, because each authenticates differently and nothing
+# else is exposed: /github/webhooks validates an HMAC over the raw body
+# against the matching Integration's webhookSecret, and /google-cloud/webhooks
+# validates the OIDC token a Pub/Sub push subscription signs (a push cannot
+# compute an HMAC — Pub/Sub composes the message, not the sender). The probes
+# stay off the internet. See docs/deployment/webhook.md.
 {{- if .Values.webhook.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -32,11 +35,13 @@ spec:
         - host: {{ required "webhook.host is required when webhook.ingress is enabled" .Values.webhook.host | quote }}
           http:
               paths:
-                  - path: /github/webhooks
+                  {{- range $path := list "/github/webhooks" "/google-cloud/webhooks" }}
+                  - path: {{ $path }}
                     pathType: Prefix
                     backend:
                         service:
-                            name: {{ include "patchy.fullname" . }}-integration-controller
+                            name: {{ include "patchy.fullname" $ }}-integration-controller
                             port:
                                 name: http
+                  {{- end }}
 {{- end }}

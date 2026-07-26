@@ -3,11 +3,14 @@
 #
 # The webhook entry point, Gateway API flavour (webhook.httpRoute): one
 # HTTPRoute on one hostname, in front of the integration-controller — the
-# only component that faces the internet; it validates each delivery against
-# the matching Integration's webhookSecret. The path is fixed to
-# /github/webhooks on purpose: that is the only endpoint GitHub needs, and
-# the probes stay cluster-internal. Requires the Gateway API CRDs and a
-# Gateway to attach to via parentRefs — see docs/deployment/webhook.md.
+# only component that faces the internet.
+#
+# The paths are fixed to one per provider on purpose: those are the only
+# endpoints a provider needs, and each authenticates its own way —
+# /github/webhooks by HMAC over the raw body, /google-cloud/webhooks by the
+# OIDC token a Pub/Sub push subscription signs. The probes stay
+# cluster-internal. Requires the Gateway API CRDs and a Gateway to attach to
+# via parentRefs — see docs/deployment/webhook.md.
 {{- if .Values.webhook.httpRoute.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -32,6 +35,9 @@ spec:
               - path:
                     type: PathPrefix
                     value: /github/webhooks
+              - path:
+                    type: PathPrefix
+                    value: /google-cloud/webhooks
           backendRefs:
               - name: {{ include "patchy.fullname" . }}-integration-controller
                 port: {{ .Values.integrationController.service.port }}

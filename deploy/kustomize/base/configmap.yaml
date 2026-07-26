@@ -111,13 +111,25 @@ data:
     # Anthropic model to the claude runner.
     #
     # The INVESTIGATE_* limits are absolute — that stage runs on exactly
-    # these. The REMEDIATE_MAX_TURNS / REMEDIATE_TOKEN_BUDGET limits are
-    # CEILINGS: the investigation report requests its own model, max_turns and
-    # token_budget for the remediation stage, and both the controller and the
-    # runner clamp those requests to these bounds (and to the allowlist), so a
-    # compromised or over-eager investigation cannot spend more than an
-    # operator permits. Every allowlisted model must have an enabled harness
-    # that supports it, or the controllers refuse to start.
+    # these.
+    #
+    # The remediation budget has three levels, and the investigation's
+    # max_turns / token_budget are an ESTIMATE at every one of them — never a
+    # limit. A low estimate cannot starve a fix.
+    #
+    #   REMEDIATE_MAX_TURNS / REMEDIATE_TOKEN_BUDGET are the CEILING: what
+    #   every remediation gets whatever the investigation predicted (including
+    #   when it predicted nothing), and the threshold above which an estimate
+    #   holds the finding in AwaitingApproval instead of queueing it.
+    #
+    #   REMEDIATE_MAX_TURNS_HARD / REMEDIATE_TOKEN_BUDGET_HARD are the
+    #   absolute limit. Approving an over-ceiling estimate GRANTS that
+    #   estimate, so these bound what one human click can authorize. They must
+    #   be at or above the ceiling; the runner refuses to start otherwise.
+    #
+    # The model suggestion is still clamped to the allowlist, and every
+    # allowlisted model must have an enabled harness that supports it, or the
+    # controllers refuse to start.
     #
     # The token budgets are enforced by the runner watching the harness's
     # streamed usage events and killing the process group when the cumulative
@@ -133,3 +145,5 @@ data:
     PATCHY_REMEDIATE_TIMEOUT: 45m
     PATCHY_REMEDIATE_MAX_TURNS: "80"
     PATCHY_REMEDIATE_TOKEN_BUDGET: "400000"
+    PATCHY_REMEDIATE_MAX_TURNS_HARD: "240"
+    PATCHY_REMEDIATE_TOKEN_BUDGET_HARD: "1200000"

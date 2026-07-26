@@ -77,10 +77,12 @@ under bounded concurrency in severity order.
 Inside the pod, **agent-runner** drives `claude -p` over the pinned tree and a templated finding handoff. The agent
 writes a report with parseable YAML frontmatter: `exploitability`, `likelihood`, and `impact` ratings, a
 `recommendation` (`ignore` | `remediate` | `manual`), `severity`, `priority`, a `confidence` value in [0, 1], and — for
-`remediate` — the model, turn count, and token budget it wants for the fix (clamped later to operator ceilings and a
-model allowlist). Backwards-compatible fixes are always favoured; if a better-but-breaking fix exists, the report says
-so and the pipeline holds for a human `/approve`. The runtime never talks to GitHub or the Kubernetes API — results
-leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout.
+`remediate` — the model it wants for the fix (clamped later to an operator allowlist) and its **estimate** of the turns
+and tokens the fix will take. The estimate never shrinks the run: every remediation gets at least the operator's
+ceiling. Estimating _above_ that ceiling instead holds the finding for a human `/approve`, and approving grants the
+larger budget. Backwards-compatible fixes are always favoured; if a better-but-breaking fix exists, the report says so
+and the pipeline holds the same way. The runtime never talks to GitHub or the Kubernetes API — results leave the pod as
+a `PATCHY-EVENT:` JSONL stream on stdout.
 
 ## 6. Verdicts route
 
@@ -99,8 +101,9 @@ the ratings feed a 0–100 scheduling priority) and routes:
 
 The **remediation-controller** admits queued findings (including approvals and revivals), schedules them in priority
 order under bounded concurrency (with aging so low-priority findings cannot starve), and runs the second agent stage:
-the finding markdown, the same pinned tree, and the investigation report, under the clamped budget. The agent emits a
-summary report plus a `commit.sh` that must run cleanly and leave real commits — the claim is verified, not believed.
+the finding markdown, the same pinned tree, and the investigation report, under the budget the spawner granted. The
+agent emits a summary report plus a `commit.sh` that must run cleanly and leave real commits — the claim is verified,
+not believed.
 
 The controller — the only holder of a forge **write** credential — then replays the changeset through the GitHub Git
 Data API (blob → tree → commit → ref) onto a `patchy/<finding>` branch, opens the pull request, and moves the finding to

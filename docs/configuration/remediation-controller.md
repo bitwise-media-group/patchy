@@ -47,21 +47,36 @@ allows.
 
 ## Stage flags
 
-The remediation stage's `max-turns` and `token-budget` are **ceilings**: the investigation report requests its own
-model, turn count, and token budget for the fix. This controller's spawner clamps the requested model to the allowlist
-and resolves the harness that runs it (the model's provider decides the runner image and credential); the runner clamps
-the turns and budget. The `--remediate-model` here is the canonical fallback model when the report's suggestion is
-missing or off the allowlist; its harness is derived from it.
+The investigation report requests its own model, turn count, and token budget for the fix — but the turn and token
+figures are an **estimate**, not a request that can be granted downward. They never shrink a run.
+
+The budget has three levels:
+
+- **Ceiling** (`--remediate-max-turns`, `--remediate-token-budget`) — what every remediation gets, whatever the
+  investigation predicted and including when it predicted nothing. It is also the **approval threshold**: an estimate
+  above it holds the finding in `AwaitingApproval` rather than queueing it.
+- **Hard cap** (`--remediate-max-turns-hard`, `--remediate-token-budget-hard`) — the absolute limit. Approving an
+  over-ceiling estimate _grants that estimate_, so the hard cap bounds what a single approval can authorize. It must be
+  at or above the ceiling; the runner refuses to start otherwise.
+- **Estimate** — advisory. Its only operational effect is the approval gate; everything else it does is reporting
+  (estimate against granted against actual on the run, and the skew averages in the rollups, which feed back into the
+  next investigation's prompt).
+
+The model suggestion is still clamped: the spawner holds it to the allowlist and resolves the harness that runs it (the
+model's provider decides the runner image and credential). `--remediate-model` is the canonical fallback when the
+report's suggestion is missing or off the allowlist; its harness is derived from it.
 
 <div class="nowrap-first" markdown>
 
-| Flag                       | Env                             | Default                     | Purpose                                         |
-| -------------------------- | ------------------------------- | --------------------------- | ----------------------------------------------- |
-| `--model-allowlist`        | `PATCHY_MODEL_ALLOWLIST`        | canonical ids               | Canonical model ids remediation may run         |
-| `--remediate-model`        | `PATCHY_REMEDIATE_MODEL`        | `anthropic/claude-sonnet-5` | Canonical default when the report requests none |
-| `--remediate-timeout`      | `PATCHY_REMEDIATE_TIMEOUT`      | `45m`                       | Wall-clock limit for the remediation stage      |
-| `--remediate-max-turns`    | `PATCHY_REMEDIATE_MAX_TURNS`    | `80`                        | Ceiling on requested turns                      |
-| `--remediate-token-budget` | `PATCHY_REMEDIATE_TOKEN_BUDGET` | `400000`                    | Ceiling on the requested output-token budget    |
+| Flag                            | Env                                  | Default                     | Purpose                                          |
+| ------------------------------- | ------------------------------------ | --------------------------- | ------------------------------------------------ |
+| `--model-allowlist`             | `PATCHY_MODEL_ALLOWLIST`             | canonical ids               | Canonical model ids remediation may run          |
+| `--remediate-model`             | `PATCHY_REMEDIATE_MODEL`             | `anthropic/claude-sonnet-5` | Canonical default when the report requests none  |
+| `--remediate-timeout`           | `PATCHY_REMEDIATE_TIMEOUT`           | `45m`                       | Wall-clock limit for the remediation stage       |
+| `--remediate-max-turns`         | `PATCHY_REMEDIATE_MAX_TURNS`         | `80`                        | Turns every run gets; approval threshold above   |
+| `--remediate-token-budget`      | `PATCHY_REMEDIATE_TOKEN_BUDGET`      | `400000`                    | Output tokens every run gets; approval threshold |
+| `--remediate-max-turns-hard`    | `PATCHY_REMEDIATE_MAX_TURNS_HARD`    | `240`                       | Most turns an approval can grant                 |
+| `--remediate-token-budget-hard` | `PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` | `1200000`                   | Most output tokens an approval can grant         |
 
 </div>
 

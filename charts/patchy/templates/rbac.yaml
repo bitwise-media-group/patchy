@@ -98,6 +98,10 @@ verdict edges on Finding status).
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [forges]
   verbs: [get, list, watch]
+# Read-only: the estimate calibration rendered into the analysis prompt.
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [findingrollups]
+  verbs: [get]
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]

@@ -392,11 +392,17 @@ agent:
     jobDeadline: 1h
     jobTTL: 1h
     # The agent stages. The investigate limits are absolute — that stage runs
-    # on exactly these. The remediate maxTurns/tokenBudget are CEILINGS: the
-    # investigation report requests its own model/turns/budget for the
-    # remediation stage, and both the controller and the runner clamp those
-    # requests to these bounds (and to the allowlist). Models are canonical,
-    # provider-qualified ids; the harness that runs a model is derived from it.
+    # on exactly these.
+    #
+    # For remediation the investigation's max_turns/token_budget are an
+    # ESTIMATE, never a limit — a low estimate cannot starve a fix.
+    # maxTurns/tokenBudget are the CEILING: what every remediation gets
+    # regardless of the estimate, and the threshold above which an estimate
+    # holds the finding for human approval. maxTurnsHard/tokenBudgetHard are
+    # the absolute limit, bounding what approving an over-ceiling estimate can
+    # grant; they must be at or above the ceiling. The model suggestion is
+    # still clamped to the allowlist. Models are canonical, provider-qualified
+    # ids; the harness that runs a model is derived from it.
     modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-5
     investigate:
         model: anthropic/claude-sonnet-5
@@ -410,6 +416,8 @@ agent:
         timeout: 45m
         maxTurns: 80
         tokenBudget: 400000
+        maxTurnsHard: 240
+        tokenBudgetHard: 1200000
     # The per-harness runner fleet. A harness is enabled only when its runner
     # is `enabled: true` AND its credential Secret exists (checked at
     # controller startup). A Job runs the image, credential, and egress policy

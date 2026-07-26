@@ -46,6 +46,42 @@
                 }
             }
         },
+        "remediationStage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "model",
+                "timeout",
+                "maxTurns",
+                "tokenBudget",
+                "maxTurnsHard",
+                "tokenBudgetHard"
+            ],
+            "properties": {
+                "model": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "$ref": "#/definitions/duration"
+                },
+                "maxTurns": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "tokenBudget": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "maxTurnsHard": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "tokenBudgetHard": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
         "agentStage": {
             "type": "object",
             "additionalProperties": false,
@@ -854,7 +890,7 @@
                     "$ref": "#/definitions/agentStage"
                 },
                 "remediate": {
-                    "$ref": "#/definitions/agentStage"
+                    "$ref": "#/definitions/remediationStage"
                 },
                 "runners": {
                     "type": "object",

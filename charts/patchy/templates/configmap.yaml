@@ -79,6 +79,8 @@ agent.runners.<harness>.image.
 {{- $_ := set $data "PATCHY_MODEL_ALLOWLIST" $.Values.agent.modelAllowlist }}
 {{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS" $.Values.agent.remediate.maxTurns }}
 {{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET" $.Values.agent.remediate.tokenBudget }}
+{{- $_ := set $data "PATCHY_REMEDIATE_MAX_TURNS_HARD" $.Values.agent.remediate.maxTurnsHard }}
+{{- $_ := set $data "PATCHY_REMEDIATE_TOKEN_BUDGET_HARD" $.Values.agent.remediate.tokenBudgetHard }}
 {{- if eq $c.name "investigation-controller" }}
 {{- $_ := set $data "PATCHY_FINDING_MIN_AGE" $own.findingMinAge }}
 {{- $_ := set $data "PATCHY_MAX_CONCURRENT_INVESTIGATIONS" $own.maxConcurrentInvestigations }}
@@ -114,6 +116,15 @@ metadata:
     {{- end }}
 data:
     {{- range $k, $v := $data }}
-    {{ $k }}: {{ $v | toString | quote }}
+    {{- /* Helm parses every values.yaml number as a float64, and toString
+           renders a large one in scientific notation ("1.2e+06"), which the
+           binaries' strconv.Atoi rejects at startup. Integral floats are
+           therefore rendered as integers; genuine fractions (confidence
+           thresholds) fall through unchanged. */ -}}
+    {{- $s := $v | toString }}
+    {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
+    {{- $s = int64 $v | toString }}
+    {{- end }}
+    {{ $k }}: {{ $s | quote }}
     {{- end }}
 {{- end }}

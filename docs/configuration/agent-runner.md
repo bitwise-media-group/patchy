@@ -30,12 +30,19 @@ matters when debugging a Job spec or running the runtime standalone.
 
 Mirrors of the controllers' stage flags: `PATCHY_INVESTIGATE_TIMEOUT` (`15m`), `PATCHY_INVESTIGATE_MAX_TURNS` (`25`),
 `PATCHY_INVESTIGATE_TOKEN_BUDGET` (`150000`), `PATCHY_REMEDIATE_TIMEOUT` (`45m`), `PATCHY_REMEDIATE_MAX_TURNS` (`80`),
-`PATCHY_REMEDIATE_TOKEN_BUDGET` (`400000`), and `PATCHY_MODEL_ALLOWLIST` (canonical model ids, rendered into the
+`PATCHY_REMEDIATE_TOKEN_BUDGET` (`400000`), `PATCHY_REMEDIATE_MAX_TURNS_HARD` (`240`),
+`PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` (`1200000`), and `PATCHY_MODEL_ALLOWLIST` (canonical model ids, rendered into the
 analysis prompt). The **per-Job** `PATCHY_<STAGE>_HARNESS` and `PATCHY_<STAGE>_MODEL` (a canonical, provider-qualified
 id) are set by the controller from the harness and model it resolved for this Job — so the pod runs the harness its
 runner image was built for on the model the controller chose, and translates that canonical id to the CLI's own model
-id. The investigate limits are absolute; the remediate max-turns/token-budget values are ceilings that clamp whatever
-the investigation report requested.
+id. The investigate limits are absolute. The remediate values are a floor and a backstop, not a clamp: every remediation
+runs on at least the ceiling whatever the investigation estimated, the per-Job `PATCHY_GRANTED_MAX_TURNS` /
+`PATCHY_GRANTED_TOKEN_BUDGET` raise that when a human approved a larger estimate, and the `_HARD` values bound the
+result. A hard cap below its ceiling is a configuration error and the runner refuses to start.
+
+`PATCHY_CALIBRATION` is the last per-Job variable: a JSON summary of how earlier estimates in this repository compared
+to reality, rendered into the analysis prompt so the next estimate can correct for the observed skew. It is advisory —
+absent on a cold start, and the prompt then omits the section entirely.
 
 Two knobs exist only here:
 

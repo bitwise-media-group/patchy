@@ -78,7 +78,16 @@ metadata:
     {{- end }}
 data:
     {{- range $k, $v := $data }}
-    {{ $k }}: {{ $v | toString | quote }}
+    {{- /* Helm parses every values.yaml number as a float64, and toString
+           renders a large one in scientific notation ("1.2e+06"), which the
+           binaries' strconv.Atoi rejects at startup. Integral floats are
+           therefore rendered as integers; genuine fractions (confidence
+           thresholds) fall through unchanged. */ -}}
+    {{- $s := $v | toString }}
+    {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
+    {{- $s = int64 $v | toString }}
+    {{- end }}
+    {{ $k }}: {{ $s | quote }}
     {{- end }}
 ---
 # Reads Findings/FindingRollups for the projection; writes SPEC only

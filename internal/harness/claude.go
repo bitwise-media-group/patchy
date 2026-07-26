@@ -183,11 +183,16 @@ func parseStreamResult(stdout []byte) (AgentResult, bool) {
 }
 
 // streamRuntimeError detects a run that produced no usable answer (auth
-// blocked, init crash, error envelope without output) so it can be reported
-// distinctly from a run that completed and merely needs its answer judged. A
-// run with any non-empty result is usable — this deliberately includes
-// max-turns/partial runs, which the CLI reports with is_error=true but a
-// populated result.
+// blocked, init crash, budget exhausted) so it can be reported distinctly
+// from a run that completed and merely needs its answer judged.
+//
+// An error envelope is reported whether or not the run also produced text.
+// It is tempting to treat any non-empty result as usable, but the CLI reports
+// a genuinely failed run — exhausted turns, an API error mid-stream — with
+// is_error set and, sometimes, a partial answer alongside it. Trusting that
+// text hides the failure: the stage is then judged only by whether its report
+// file exists, and a run that died with its budget spent surfaces as a
+// missing-file error pointing at the workspace instead of at the cause.
 func streamRuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return "empty CLI output"
@@ -202,13 +207,23 @@ func streamRuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 		}
 		return "" // a clean exit with plain-text output is degenerate but usable
 	}
-	if result.Result != "" {
-		return "" // there is an answer to use (success, or a partial/max-turns run)
-	}
 	if result.IsError {
 		return claudeErrorReason(result.Subtype, result.Errors)
 	}
-	return "" // empty-result success: usable (callers may inspect the workspace)
+	return "" // success, with or without text: usable (callers inspect the workspace)
+}
+
+// exhaustedSubtypes are the claude result subtypes meaning the run hit a
+// limit rather than broke. They map onto the budget-exceeded outcome so an
+// exhausted run is never mistaken for a malfunctioning one.
+var exhaustedSubtypes = map[string]bool{
+	"error_max_turns": true,
+}
+
+// Exhausted reports whether stdout describes a run that ran out of budget.
+func (c *Claude) Exhausted(stdout []byte) bool {
+	result, found := scanEvents(stdout)
+	return found && result.IsError && exhaustedSubtypes[result.Subtype]
 }
 
 // scanStreamUsage reads the output-token count off one live stream line. Only

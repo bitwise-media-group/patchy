@@ -80,12 +80,23 @@ type Harness interface {
 	// text, crash mid-stream); the AgentResult then carries the raw stdout as
 	// FinalText and nothing else.
 	ParseResult(stdout []byte) (res AgentResult, ok bool)
-	// RuntimeError returns a short reason when the agent run produced no
-	// usable output (auth blocked, crash, empty/error envelope), or "" when
-	// the output is usable. A benign non-zero exit (e.g. max-turns) that
-	// still produced a result returns "" — it is a partial answer, not an
-	// error.
+	// RuntimeError returns a short reason when the agent run did not complete
+	// usably (auth blocked, crash, budget exhausted, error envelope), or ""
+	// when it did. A run that reports an error is reported as one even if it
+	// also produced text: a partial answer from a run that died is not a
+	// result, and treating it as one hides the cause behind whatever the
+	// stage checks next.
 	RuntimeError(stdout []byte, exitCode int, timedOut bool) string
+}
+
+// BudgetReporter is the optional capability of distinguishing a run that
+// exhausted its budget from one that malfunctioned. Both are runtime errors;
+// only the first is the agent doing as it was told until the limit stopped
+// it, and callers report them differently.
+type BudgetReporter interface {
+	// Exhausted reports whether stdout describes a run that hit its turn or
+	// token limit rather than failing.
+	Exhausted(stdout []byte) bool
 }
 
 // UsageScanner is the optional capability of reading token usage off the live

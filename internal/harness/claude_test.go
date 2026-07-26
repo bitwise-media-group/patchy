@@ -171,7 +171,11 @@ func TestClaudeRuntimeError(t *testing.T) {
 		want     string
 	}{
 		{"usable result", claudeStreamSuccess, 0, false, ""},
-		{"max turns with partial result is usable", claudeStreamMaxTurnsPartial, 1, false, ""},
+		// A partial answer from an exhausted run is not a result. Reporting
+		// it as usable is what let a starved remediation surface as a missing
+		// report file instead of as the budget failure it was.
+		{"max turns with partial result is an error", claudeStreamMaxTurnsPartial, 1, false,
+			"claude run error (error_max_turns): hit max turns"},
 		{"empty", "", 1, false, "empty CLI output"},
 		{"plain text clean exit", "hello\n", 0, false, ""},
 		{"plain text crash", "boom\n", 1, false, "unparseable CLI output"},
@@ -184,6 +188,26 @@ func TestClaudeRuntimeError(t *testing.T) {
 	for _, tt := range tests {
 		if got := c.RuntimeError([]byte(tt.stdout), tt.exitCode, tt.timedOut); got != tt.want {
 			t.Errorf("%s: RuntimeError = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestClaudeExhausted(t *testing.T) {
+	c := NewClaude()
+	tests := []struct {
+		name   string
+		stdout string
+		want   bool
+	}{
+		{"max turns with partial answer", claudeStreamMaxTurnsPartial, true},
+		{"max turns with empty result", claudeStreamMaxTurnsEmpty, true},
+		{"success", claudeStreamSuccess, false},
+		{"crashed mid-run", claudeStreamExecError, false},
+		{"no result event", "hello\n", false},
+	}
+	for _, tt := range tests {
+		if got := c.Exhausted([]byte(tt.stdout)); got != tt.want {
+			t.Errorf("%s: Exhausted = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

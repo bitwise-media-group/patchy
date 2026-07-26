@@ -1,5 +1,6 @@
-import type { Finding } from "../types";
-import { DASH, formatConfidence, formatDate } from "../format";
+import type { Finding, HoldReason } from "../types";
+import { DASH, formatConfidence, formatCount, formatDate, formatTokens } from "../format";
+import { Icon } from "./icons";
 import { Markdown } from "./Markdown";
 import { Pill, VerdictPill } from "./Pills";
 import { RunAccountingRows } from "./RunUsage";
@@ -45,10 +46,32 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
               <dd>{formatDate(inv.completedAt)}</dd>
             </div>
             <RunAccountingRows harness={inv.harness} model={inv.model} usage={inv.usage} />
+            {inv.estimate ? (
+              <div>
+                <dt>Estimated fix</dt>
+                <dd>
+                  <span class="font-mono">{formatCount(inv.estimate.maxTurns)}</span>
+                  <span class="text-muted"> turns, </span>
+                  <span class="font-mono">{formatTokens(inv.estimate.tokenBudget)}</span>
+                  <span class="text-muted"> output tokens</span>
+                  <small class="mt-0.5 block text-[10px] text-muted">
+                    A prediction, not a limit — the remediation tab shows what the run was granted and spent.
+                  </small>
+                </dd>
+              </div>
+            ) : null}
           </dl>
         ) : (
           <p class="text-faint">No investigation run yet.</p>
         )}
+        {inv?.holdReasons?.length ? (
+          <div class="ps-note">
+            <Icon name="alertTriangle" size={15} />
+            <span>
+              Held for approval — {inv.holdReasons.map(holdText).join("; ")}.
+            </span>
+          </div>
+        ) : null}
         {finding.activeRun?.kind === "investigation" ? (
           <p class="mt-3 inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink">
             <span class="ps-live-dot" /> investigation <span class="ps-mono-tag">{finding.activeRun.name}</span> is
@@ -69,4 +92,21 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
       </section>
     </div>
   );
+}
+
+// holdText explains one approval hold in the reviewer's terms: what they are
+// being asked to decide, not the enum name.
+function holdText(reason: HoldReason): string {
+  switch (reason) {
+    case "breakingChangeAvailable":
+      return "a better fix exists but would break external callers";
+    case "lowConfidence":
+      return "the investigation's confidence is below the automation threshold";
+    case "estimateExceedsTurnCeiling":
+      return "the fix is predicted to need more turns than the ceiling allows";
+    case "estimateExceedsTokenCeiling":
+      return "the fix is predicted to need more output tokens than the ceiling allows";
+    default:
+      return reason;
+  }
 }

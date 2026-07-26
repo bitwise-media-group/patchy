@@ -190,6 +190,8 @@ const findings: Finding[] = [
       likelihood: "medium",
       impact: "high",
       awaitApproval: true,
+      holdReasons: ["breakingChangeAvailable", "estimateExceedsTurnCeiling"],
+      estimate: { maxTurns: 140, tokenBudget: 260_000 },
       completedAt: "2026-07-18T10:41:36Z",
     },
     attempts: { investigation: 1 },
@@ -387,6 +389,8 @@ const findings: Finding[] = [
         "## Recommendation\n\nDisable DTD processing on the shared `xml.NewDecoder` wrapper; no feature depends on entities.",
       harness: "claude-code",
       model: "claude-sonnet-5",
+      numTurns: 14,
+      estimate: { maxTurns: 12, tokenBudget: 50_000 },
       usage: {
         inputTokens: 48_200,
         outputTokens: 9_400,
@@ -408,6 +412,14 @@ const findings: Finding[] = [
         "malicious feed fixture; the parser now rejects it. Full test suite passes.",
       harness: "claude-code",
       model: "claude-sonnet-5",
+      numTurns: 37,
+      // The estimate ran well under reality; the run still finished because
+      // it was granted the ceiling regardless of the prediction.
+      budget: {
+        estimated: { maxTurns: 12, tokenBudget: 50_000 },
+        grantedMaxTurns: 80,
+        grantedTokenBudget: 400_000,
+      },
       usage: {
         inputTokens: 61_800,
         outputTokens: 14_100,
@@ -659,6 +671,7 @@ const rollups: Rollup[] = [
           cacheCreationTokens: 12_800_000,
           costMicroUSD: 341_270_000,
           elapsedMilliseconds: 197_500_000,
+          turns: 6_084,
         },
         remediation: {
           runs: 293,
@@ -670,6 +683,14 @@ const rollups: Rollup[] = [
           cacheCreationTokens: 10_100_000,
           costMicroUSD: 412_940_000,
           elapsedMilliseconds: 331_200_000,
+          turns: 9_842,
+          estimate: {
+            runs: 271,
+            predictedTurns: 3_794,
+            actualTurns: 9_105,
+            predictedOutputTokens: 14_300_000,
+            actualOutputTokens: 12_155_000,
+          },
         },
       },
     },

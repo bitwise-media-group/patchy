@@ -124,3 +124,32 @@ export function formatCount(n?: number): string {
   if (n === undefined) return DASH;
   return n.toLocaleString();
 }
+
+// skew is how far an actual figure ran over (positive) or under (negative)
+// its prediction, as a 0-centred ratio. Undefined when there is nothing to
+// compare against — a zero prediction has no meaningful percentage.
+export function skew(predicted?: number, actual?: number): number | undefined {
+  if (!predicted || actual === undefined) return undefined;
+  return actual / predicted - 1;
+}
+
+// formatSkew renders a skew ratio with an explicit sign ("+183%", "-18%",
+// "on target"). The sign is the point: it says which way the estimate was
+// wrong, so it is never dropped for positive values.
+export function formatSkew(ratio?: number): string {
+  if (ratio === undefined || Number.isNaN(ratio)) return DASH;
+  const pct = Math.round(ratio * 100);
+  if (pct === 0) return "on target";
+  return `${pct > 0 ? "+" : ""}${pct}%`;
+}
+
+// skewTone maps a skew onto a rendering tone. Small misses are unremarkable;
+// the tone only escalates once an estimate is wrong enough to matter for
+// scheduling or approval.
+export function skewTone(ratio?: number): "neutral" | "amber" | "red" {
+  if (ratio === undefined || Number.isNaN(ratio)) return "neutral";
+  const m = Math.abs(ratio);
+  if (m >= 1) return "red";
+  if (m >= 0.25) return "amber";
+  return "neutral";
+}

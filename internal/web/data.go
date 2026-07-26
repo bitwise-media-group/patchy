@@ -151,35 +151,42 @@ type Enrichment struct {
 // Investigation mirrors the Finding's investigation summary, plus the
 // report markdown and run accounting lifted from the Investigation child.
 type Investigation struct {
-	Name           string `json:"name,omitempty"`
-	Attempt        int32  `json:"attempt,omitempty"`
-	Outcome        string `json:"outcome,omitempty"`
-	Recommendation string `json:"recommendation,omitempty"`
-	Confidence     string `json:"confidence,omitempty"`
-	Exploitability string `json:"exploitability,omitempty"`
-	Likelihood     string `json:"likelihood,omitempty"`
-	Impact         string `json:"impact,omitempty"`
-	AwaitApproval  bool   `json:"awaitApproval,omitempty"`
-	CompletedAt    string `json:"completedAt,omitempty"`
-	Report         string `json:"report,omitempty"`
-	Harness        string `json:"harness,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Usage          *Usage `json:"usage,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	Attempt        int32    `json:"attempt,omitempty"`
+	Outcome        string   `json:"outcome,omitempty"`
+	Recommendation string   `json:"recommendation,omitempty"`
+	Confidence     string   `json:"confidence,omitempty"`
+	Exploitability string   `json:"exploitability,omitempty"`
+	Likelihood     string   `json:"likelihood,omitempty"`
+	Impact         string   `json:"impact,omitempty"`
+	AwaitApproval  bool     `json:"awaitApproval,omitempty"`
+	HoldReasons    []string `json:"holdReasons,omitempty"`
+	// Estimate is what this investigation predicted the remediation would
+	// cost; the remediation's Budget reports what it was granted and spent.
+	Estimate    *Estimate `json:"estimate,omitempty"`
+	CompletedAt string    `json:"completedAt,omitempty"`
+	Report      string    `json:"report,omitempty"`
+	Harness     string    `json:"harness,omitempty"`
+	Model       string    `json:"model,omitempty"`
+	NumTurns    int32     `json:"numTurns,omitempty"`
+	Usage       *Usage    `json:"usage,omitempty"`
 }
 
 // Remediation mirrors the Finding's remediation summary, plus the report
 // markdown and run accounting lifted from the Remediation child.
 type Remediation struct {
-	Name        string `json:"name,omitempty"`
-	Attempt     int32  `json:"attempt,omitempty"`
-	Outcome     string `json:"outcome,omitempty"`
-	Success     bool   `json:"success,omitempty"`
-	Branch      string `json:"branch,omitempty"`
-	CompletedAt string `json:"completedAt,omitempty"`
-	Report      string `json:"report,omitempty"`
-	Harness     string `json:"harness,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Usage       *Usage `json:"usage,omitempty"`
+	Name        string  `json:"name,omitempty"`
+	Attempt     int32   `json:"attempt,omitempty"`
+	Outcome     string  `json:"outcome,omitempty"`
+	Success     bool    `json:"success,omitempty"`
+	Branch      string  `json:"branch,omitempty"`
+	CompletedAt string  `json:"completedAt,omitempty"`
+	Report      string  `json:"report,omitempty"`
+	Harness     string  `json:"harness,omitempty"`
+	Model       string  `json:"model,omitempty"`
+	NumTurns    int32   `json:"numTurns,omitempty"`
+	Budget      *Budget `json:"budget,omitempty"`
+	Usage       *Usage  `json:"usage,omitempty"`
 }
 
 // Usage is token and cost accounting — one run's, or the finding's total
@@ -191,6 +198,24 @@ type Usage struct {
 	CacheReadTokens     int64 `json:"cacheReadTokens,omitempty"`
 	CacheCreationTokens int64 `json:"cacheCreationTokens,omitempty"`
 	CostMicroUSD        int64 `json:"costMicroUSD,omitempty"`
+}
+
+// Estimate is an investigation's prediction of a remediation's cost.
+type Estimate struct {
+	MaxTurns    int32 `json:"maxTurns,omitempty"`
+	TokenBudget int64 `json:"tokenBudget,omitempty"`
+}
+
+// Budget is one remediation run's three-way budget picture: what the
+// investigation predicted, what the run was granted, and (via the run's
+// NumTurns and Usage.OutputTokens) what it actually spent. The client
+// computes the over/under from these; the server ships raw figures.
+type Budget struct {
+	// Estimated is the investigation's prediction; nil when it made none.
+	Estimated *Estimate `json:"estimated,omitempty"`
+	// GrantedMaxTurns/GrantedTokenBudget are what the run was allowed.
+	GrantedMaxTurns    int32 `json:"grantedMaxTurns,omitempty"`
+	GrantedTokenBudget int64 `json:"grantedTokenBudget,omitempty"`
 }
 
 // PullRequest is the remediation pull request's lifecycle.
@@ -242,15 +267,28 @@ type RollupBucket struct {
 // StageAggregate is one stage's raw sums; the client computes rates and
 // averages.
 type StageAggregate struct {
-	Runs                int64            `json:"runs,omitempty"`
-	Succeeded           int64            `json:"succeeded,omitempty"`
-	Outcomes            map[string]int64 `json:"outcomes,omitempty"`
-	InputTokens         int64            `json:"inputTokens,omitempty"`
-	OutputTokens        int64            `json:"outputTokens,omitempty"`
-	CacheReadTokens     int64            `json:"cacheReadTokens,omitempty"`
-	CacheCreationTokens int64            `json:"cacheCreationTokens,omitempty"`
-	CostMicroUSD        int64            `json:"costMicroUSD,omitempty"`
-	ElapsedMilliseconds int64            `json:"elapsedMilliseconds,omitempty"`
+	Runs                int64              `json:"runs,omitempty"`
+	Succeeded           int64              `json:"succeeded,omitempty"`
+	Outcomes            map[string]int64   `json:"outcomes,omitempty"`
+	InputTokens         int64              `json:"inputTokens,omitempty"`
+	OutputTokens        int64              `json:"outputTokens,omitempty"`
+	CacheReadTokens     int64              `json:"cacheReadTokens,omitempty"`
+	CacheCreationTokens int64              `json:"cacheCreationTokens,omitempty"`
+	CostMicroUSD        int64              `json:"costMicroUSD,omitempty"`
+	ElapsedMilliseconds int64              `json:"elapsedMilliseconds,omitempty"`
+	Turns               int64              `json:"turns,omitempty"`
+	Estimate            *EstimateAggregate `json:"estimate,omitempty"`
+}
+
+// EstimateAggregate is predicted-against-actual cost over the runs that
+// carried an estimate. Predicted and actual cover the same runs, so the
+// client's skew (actual ÷ predicted - 1) is like-for-like.
+type EstimateAggregate struct {
+	Runs                  int64 `json:"runs,omitempty"`
+	PredictedTurns        int64 `json:"predictedTurns,omitempty"`
+	ActualTurns           int64 `json:"actualTurns,omitempty"`
+	PredictedOutputTokens int64 `json:"predictedOutputTokens,omitempty"`
+	ActualOutputTokens    int64 `json:"actualOutputTokens,omitempty"`
 }
 
 // MonthlyBucket is one month of the total scope's trend line.
@@ -378,6 +416,7 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 			if st := child.Status.Stage; st != nil {
 				out.Investigation.Harness = st.Harness
 				out.Investigation.Model = st.Model
+				out.Investigation.NumTurns = st.NumTurns
 				out.Investigation.Usage = stageUsage(st)
 			}
 		}
@@ -388,7 +427,18 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 			if st := child.Status.Stage; st != nil {
 				out.Remediation.Harness = st.Harness
 				out.Remediation.Model = st.Model
+				out.Remediation.NumTurns = st.NumTurns
 				out.Remediation.Usage = stageUsage(st)
+			}
+			// What the run was predicted to cost against what it was allowed;
+			// NumTurns and Usage.OutputTokens above are what it actually spent.
+			p := child.Spec.Parameters
+			if p.MaxTurns > 0 || p.TokenBudget > 0 || p.Estimate != nil {
+				out.Remediation.Budget = &Budget{
+					Estimated:          wireEstimate(p.Estimate),
+					GrantedMaxTurns:    p.MaxTurns,
+					GrantedTokenBudget: p.TokenBudget,
+				}
 			}
 		}
 	}
@@ -414,6 +464,26 @@ func stageUsage(st *v1alpha1.StageResult) *Usage {
 		return nil
 	}
 	return &u
+}
+
+// wireEstimate converts a cost prediction onto the wire type.
+func wireEstimate(e *v1alpha1.AgentEstimate) *Estimate {
+	if e == nil {
+		return nil
+	}
+	return &Estimate{MaxTurns: e.MaxTurns, TokenBudget: e.TokenBudget}
+}
+
+// holdStrings renders the approval-hold reasons for the client.
+func holdStrings(hs []v1alpha1.HoldReason) []string {
+	if len(hs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, string(h))
+	}
+	return out
 }
 
 // projectFinding flattens one Finding CR onto the wire type.
@@ -500,6 +570,8 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 			Likelihood:     string(inv.Likelihood),
 			Impact:         string(inv.Impact),
 			AwaitApproval:  inv.AwaitApproval,
+			HoldReasons:    holdStrings(inv.HoldReasons),
+			Estimate:       wireEstimate(inv.Estimate),
 			CompletedAt:    stampPtr(inv.CompletedAt),
 		}
 	}
@@ -548,7 +620,7 @@ func projectRollup(fr *v1alpha1.FindingRollup) Rollup {
 	if len(st.Bucket.Stages) > 0 {
 		out.Bucket.Stages = make(map[string]StageAggregate, len(st.Bucket.Stages))
 		for name, agg := range st.Bucket.Stages {
-			out.Bucket.Stages[name] = StageAggregate{
+			wire := StageAggregate{
 				Runs:                agg.Runs,
 				Succeeded:           agg.Succeeded,
 				Outcomes:            agg.Outcomes,
@@ -558,7 +630,18 @@ func projectRollup(fr *v1alpha1.FindingRollup) Rollup {
 				CacheCreationTokens: agg.CacheCreationTokens,
 				CostMicroUSD:        agg.CostMicroUSD,
 				ElapsedMilliseconds: agg.ElapsedMilliseconds,
+				Turns:               agg.Turns,
 			}
+			if e := agg.Estimate; e != nil {
+				wire.Estimate = &EstimateAggregate{
+					Runs:                  e.Runs,
+					PredictedTurns:        e.PredictedTurns,
+					ActualTurns:           e.ActualTurns,
+					PredictedOutputTokens: e.PredictedOutputTokens,
+					ActualOutputTokens:    e.ActualOutputTokens,
+				}
+			}
+			out.Bucket.Stages[name] = wire
 		}
 	}
 	if len(st.Monthly) > 0 {

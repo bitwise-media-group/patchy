@@ -118,6 +118,29 @@ export interface Usage {
   costMicroUSD?: number;
 }
 
+// HoldReason is why a finding stopped in AwaitingApproval instead of queueing.
+export type HoldReason =
+  | 'breakingChangeAvailable'
+  | 'lowConfidence'
+  | 'estimateExceedsTurnCeiling'
+  | 'estimateExceedsTokenCeiling';
+
+// Estimate is an investigation's prediction of a remediation's cost. It never
+// limits the run — see Budget.
+export interface Estimate {
+  maxTurns?: number;
+  tokenBudget?: number;
+}
+
+// Budget is a remediation's predicted-vs-granted budget. What it actually
+// spent is the run's own numTurns and usage.outputTokens, so the three-way
+// comparison is estimated -> granted -> actual.
+export interface Budget {
+  estimated?: Estimate;
+  grantedMaxTurns?: number;
+  grantedTokenBudget?: number;
+}
+
 export interface InvestigationSummary {
   name?: string;
   attempt?: number;
@@ -128,11 +151,14 @@ export interface InvestigationSummary {
   likelihood?: Rating;
   impact?: Rating;
   awaitApproval?: boolean;
+  holdReasons?: HoldReason[];
+  estimate?: Estimate; // what it predicted the remediation would cost
   completedAt?: string;
   // Lifted from the Investigation child (absent once it expires).
   report?: string;
   harness?: string;
   model?: string;
+  numTurns?: number;
   usage?: Usage;
 }
 
@@ -147,6 +173,8 @@ export interface RemediationSummary {
   report?: string;
   harness?: string;
   model?: string;
+  numTurns?: number;
+  budget?: Budget;
   usage?: Usage;
 }
 
@@ -235,6 +263,19 @@ export interface StageAggregate {
   cacheCreationTokens?: number;
   costMicroUSD?: number;
   elapsedMilliseconds?: number;
+  turns?: number;
+  estimate?: EstimateAggregate;
+}
+
+// EstimateAggregate is predicted-against-actual cost over the runs that
+// carried an estimate. Both sides cover the same runs, so the skew
+// (actual / predicted - 1) is like-for-like.
+export interface EstimateAggregate {
+  runs?: number;
+  predictedTurns?: number;
+  actualTurns?: number;
+  predictedOutputTokens?: number;
+  actualOutputTokens?: number;
 }
 
 // RollupBucket: total and repository scopes carry everything; harness and

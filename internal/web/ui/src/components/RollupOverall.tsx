@@ -10,7 +10,10 @@ import {
   formatMicroUSD,
   formatMs,
   formatPercent,
+  formatSkew,
   formatTokens,
+  skew,
+  skewTone,
 } from "../format";
 import { TrendBars } from "./TrendBars";
 
@@ -66,6 +69,52 @@ function successRate(stage?: StageAggregate): number | undefined {
   return (stage.succeeded ?? 0) / stage.runs;
 }
 
+// EstimateAccuracyRows reports how well the investigation predicted this
+// stage's cost. The predicted and actual sums cover the same runs, so the
+// skew is like-for-like; a stage with no estimate history (the investigation
+// stage predicts nothing about itself) renders nothing at all.
+function EstimateAccuracyRows({ stage }: { stage: StageAggregate }) {
+  const e = stage.estimate;
+  if (!e?.runs) return null;
+  const rows = [
+    {
+      label: "Turns est. vs actual",
+      predicted: (e.predictedTurns ?? 0) / e.runs,
+      actual: (e.actualTurns ?? 0) / e.runs,
+      format: (n: number) => formatCount(Math.round(n)),
+    },
+    {
+      label: "Tokens est. vs actual",
+      predicted: (e.predictedOutputTokens ?? 0) / e.runs,
+      actual: (e.actualOutputTokens ?? 0) / e.runs,
+      format: (n: number) => formatTokens(Math.round(n)),
+    },
+  ];
+  return (
+    <>
+      {rows.map((r) => {
+        const s = skew(r.predicted, r.actual);
+        return (
+          <div key={r.label}>
+            <dt>{r.label}</dt>
+            <dd>
+              <span class="font-mono">
+                {r.format(r.predicted)} / {r.format(r.actual)}
+              </span>{" "}
+              <span
+                class={skewTone(s) === "red" ? "text-red" : skewTone(s) === "amber" ? "text-amber" : "text-muted"}
+                title={`Averaged over the ${e.runs} run(s) that carried an estimate`}
+              >
+                {formatSkew(s)}
+              </span>
+            </dd>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function StageCard({ name, stage }: { name: string; stage?: StageAggregate }) {
   if (!stage) {
     return (
@@ -107,6 +156,11 @@ export function StageCard({ name, stage }: { name: string; stage?: StageAggregat
           <dt>Avg run time</dt>
           <dd>{formatMs(avgElapsed)}</dd>
         </div>
+        <div>
+          <dt>Avg turns</dt>
+          <dd>{formatCount(stage.runs ? Math.round((stage.turns ?? 0) / stage.runs) : undefined)}</dd>
+        </div>
+        <EstimateAccuracyRows stage={stage} />
       </dl>
       {outcomes.length > 0 ? (
         <p class="mx-0 mt-3 mb-0 font-mono text-[10.5px] text-faint">

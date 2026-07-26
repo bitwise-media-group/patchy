@@ -232,3 +232,76 @@ func TestFindingURL(t *testing.T) {
 		t.Errorf("FindingURL = %q", got)
 	}
 }
+
+// TestRemediationBudget pins the three-way budget line. The grant must appear
+// beside the estimate: a run that finished well inside a generous grant reads
+// identically to one that scraped a tight estimate without it.
+func TestRemediationBudget(t *testing.T) {
+	rem := &v1alpha1.Remediation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "fnd-1-rem-1",
+			CreationTimestamp: metav1.NewTime(testClock.Add(-time.Hour)),
+		},
+		Spec: v1alpha1.RemediationSpec{
+			FindingRef: v1alpha1.ObjectReference{Name: "fnd-1"},
+			Attempt:    1,
+			Parameters: v1alpha1.AgentParameters{
+				MaxTurns: 80, TokenBudget: 400000,
+				Estimate: &v1alpha1.AgentEstimate{MaxTurns: 10, TokenBudget: 50000},
+			},
+		},
+		Status: v1alpha1.RemediationStatus{
+			Stage: &v1alpha1.StageResult{
+				Outcome: "ok", NumTurns: 34,
+				Usage: v1alpha1.UsageSummary{OutputTokens: 41000},
+			},
+		},
+	}
+	out := doc(func(d *printer.Doc) { render.RemediationDetail(d, rem, testClock) })
+	for _, want := range []string{"34 of 80 granted", "est. 10", "+240%", "41000 of 400000 granted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("budget output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestInvestigationHoldReasons guards against the hold note describing the
+// wrong decision: before hold reasons existed it was hardcoded to the
+// breaking-change wording, which would misdescribe a budget hold entirely.
+func TestInvestigationHoldReasons(t *testing.T) {
+	tests := []struct {
+		name    string
+		reasons []v1alpha1.HoldReason
+		want    string
+		absent  string
+	}{
+		{"budget hold quantifies the estimate",
+			[]v1alpha1.HoldReason{v1alpha1.HoldEstimateExceedsTurnCeiling},
+			"predicted to need 140 turns", "breaks compatibility"},
+		{"low confidence names the threshold",
+			[]v1alpha1.HoldReason{v1alpha1.HoldLowConfidence},
+			"confidence is below", "breaks compatibility"},
+		{"breaking change keeps its wording",
+			[]v1alpha1.HoldReason{v1alpha1.HoldBreakingChangeAvailable},
+			"breaks compatibility", "predicted to need"},
+		{"no recorded reason falls back to breaking change",
+			nil, "breaks compatibility", "predicted to need"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inv := testInvestigation()
+			inv.Status.AwaitApproval = true
+			inv.Status.HoldReasons = tt.reasons
+			inv.Status.RemediationParameters = &v1alpha1.AgentParameters{
+				Estimate: &v1alpha1.AgentEstimate{MaxTurns: 140, TokenBudget: 700000},
+			}
+			out := doc(func(d *printer.Doc) { render.InvestigationDetail(d, inv, testClock) })
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("hold note missing %q:\n%s", tt.want, out)
+			}
+			if strings.Contains(out, tt.absent) {
+				t.Errorf("hold note wrongly contains %q:\n%s", tt.absent, out)
+			}
+		})
+	}
+}

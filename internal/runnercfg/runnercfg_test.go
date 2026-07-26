@@ -4,6 +4,8 @@
 package runnercfg
 
 import (
+	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -221,6 +223,76 @@ func TestRunnersCredentialWiring(t *testing.T) {
 	for k, w := range want {
 		if got[k] != w {
 			t.Errorf("codex %s = %q, want %q", k, got[k], w)
+		}
+	}
+}
+
+// chartSecretEnvEnum is where the Helm chart constrains
+// agent.runners.<harness>.secretEnv.
+const chartSecretEnvEnum = "../../charts/patchy/values.schema.json"
+
+// TestChartSecretEnvEnumMatchesHarnesses guards the one copy of the credential
+// vocabulary that Go cannot reach: helm validates secretEnv against a hardcoded
+// enum in values.schema.json, while Runners validates the same field against
+// harness.EnvKeys. Nothing connected the two, and they drifted — the enum named
+// only OPENAI_API_KEY for codex, so a chart install using the CODEX_API_KEY or
+// CODEX_ACCESS_TOKEN channel that Runners accepts failed lint before it ever
+// reached a controller. Adding a channel to a harness must add it here.
+func TestChartSecretEnvEnumMatchesHarnesses(t *testing.T) {
+	raw, err := os.ReadFile(chartSecretEnvEnum)
+	if err != nil {
+		t.Fatalf("read chart schema: %v", err)
+	}
+	var doc struct {
+		Definitions struct {
+			AgentRunner struct {
+				Properties struct {
+					SecretEnv struct {
+						Enum []string `json:"enum"`
+					} `json:"secretEnv"`
+				} `json:"properties"`
+			} `json:"agentRunner"`
+		} `json:"definitions"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse chart schema: %v", err)
+	}
+	got := doc.Definitions.AgentRunner.Properties.SecretEnv.Enum
+	if len(got) == 0 {
+		t.Fatalf("%s: no secretEnv enum found — did the schema shape change?", chartSecretEnvEnum)
+	}
+
+	// Every channel every harness accepts, in registry order. The fake harness
+	// carries no credential and contributes none.
+	var want []string
+	for _, id := range model.KnownHarnessIDs {
+		if id == model.HarnessFake {
+			continue
+		}
+		want = append(want, envKeys(id)...)
+	}
+
+	inEnum := make(map[string]bool, len(got))
+	for _, e := range got {
+		inEnum[e] = true
+	}
+	for _, env := range want {
+		if !inEnum[env] {
+			t.Errorf("%s: secretEnv enum is missing %q, a channel a harness accepts — "+
+				"a chart install using it fails lint even though Runners allows it",
+				chartSecretEnvEnum, env)
+		}
+	}
+	// The reverse direction: an enum entry no harness accepts would pass helm
+	// lint and then fail at controller startup.
+	accepted := make(map[string]bool, len(want))
+	for _, env := range want {
+		accepted[env] = true
+	}
+	for _, e := range got {
+		if !accepted[e] {
+			t.Errorf("%s: secretEnv enum offers %q, which no harness accepts — "+
+				"helm would accept a value the controller rejects at startup", chartSecretEnvEnum, e)
 		}
 	}
 }

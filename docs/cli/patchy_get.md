@@ -9,14 +9,18 @@ List patchy resources.
 Columns come from the CRDs themselves, so they match `kubectl get` exactly;
 -o wide adds the columns marked lower priority (issue and pull-request links).
 
+The resource `all` lists every patchy kind, each in its own table, in the
+order the pipeline uses them. Kinds with nothing in them are left out.
+
 ```
-patchy get <resource> [name...] [flags]
+patchy get <resource|all> [name...] [flags]
 ```
 
 ### Examples
 
 ```
   patchy get findings
+  patchy get all
   patchy get findings --phase AwaitingApproval --severity critical
   patchy get findings --awaiting -o wide
   patchy get investigations --finding my-finding

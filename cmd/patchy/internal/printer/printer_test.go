@@ -79,6 +79,63 @@ func TestTableFormats(t *testing.T) {
 	}
 }
 
+// TestTables covers the multi-kind listing `get all` prints: every table is
+// titled, empty kinds vanish, and the sections stay separated.
+func TestTables(t *testing.T) {
+	empty := &metav1.Table{ColumnDefinitions: testTable().ColumnDefinitions}
+	groups := []Group{
+		{Title: "Findings", Table: testTable()},
+		{Title: "Forges", Table: empty},
+		{Title: "Repositories", Table: testTable()},
+	}
+
+	t.Run("terminal", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := New(&buf, FormatTable, false).Tables(groups); err != nil {
+			t.Fatalf("Tables: %v", err)
+		}
+		got := buf.String()
+		for _, want := range []string{"Findings", "Repositories", "NAME", "fnd-1"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("output missing %q:\n%s", want, got)
+			}
+		}
+		if strings.Contains(got, "Forges") {
+			t.Errorf("a kind with no rows was printed:\n%s", got)
+		}
+		if !strings.Contains(got, "\n\nRepositories") {
+			t.Errorf("tables are not separated by a blank line:\n%s", got)
+		}
+		// The first group must not be preceded by one.
+		if strings.HasPrefix(got, "\n") {
+			t.Errorf("listing opens with a blank line:\n%q", got)
+		}
+	})
+
+	t.Run("markdown", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := New(&buf, FormatMarkdown, false).Tables(groups); err != nil {
+			t.Fatalf("Tables: %v", err)
+		}
+		got := buf.String()
+		for _, want := range []string{"## Findings", "## Repositories", "| NAME | SEVERITY | PHASE |"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("output missing %q:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("nothing to print writes nothing", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := New(&buf, FormatTable, false).Tables([]Group{{Title: "Forges", Table: empty}}); err != nil {
+			t.Fatalf("Tables: %v", err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("output = %q, want nothing", buf.String())
+		}
+	})
+}
+
 // TestPlainTableHasNoEscapes is what makes the piped output safe to parse: a
 // stray escape sequence would land in the middle of an awk field.
 func TestPlainTableHasNoEscapes(t *testing.T) {

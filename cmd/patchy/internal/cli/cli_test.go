@@ -6,6 +6,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -343,6 +344,123 @@ func TestGetRejectsFindingFiltersOnOtherNouns(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--phase") {
 		t.Errorf("error = %q, want it to name the offending flag", err)
+	}
+}
+
+// TestGetAllCoversEveryKind is the point of the noun: whatever the registry
+// knows about has to appear, or `get all` quietly omits a kind someone added.
+func TestGetAllCoversEveryKind(t *testing.T) {
+	objs := make([]client.Object, 0, len(resource.Kinds))
+	for _, kind := range resource.Kinds {
+		obj := kind.New()
+		obj.SetName("obj-" + kind.Singular)
+		obj.SetNamespace(testNamespace)
+		objs = append(objs, obj)
+	}
+
+	h := newHarness(t, objs...)
+	h.opts.Output = "name"
+	if err := runGet(t.Context(), h.opts, &getFlags{}, "all", nil); err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	got := h.out.String()
+	for _, kind := range resource.Kinds {
+		want := fmt.Sprintf("%s.%s/obj-%s", kind.Plural, v1alpha1.GroupVersion.Group, kind.Singular)
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestGetAllRegistryOrder pins the reading order: the pipeline's own, findings
+// first, so the listing tells the story in the sequence the state machine does.
+func TestGetAllRegistryOrder(t *testing.T) {
+	h := newHarness(t,
+		testFinding("fnd-1", v1alpha1.PhaseQueued),
+		&v1alpha1.Forge{ObjectMeta: metav1.ObjectMeta{Name: "gh", Namespace: testNamespace}},
+	)
+	h.opts.Output = "name"
+	if err := runGet(t.Context(), h.opts, &getFlags{}, "all", nil); err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	got := h.out.String()
+	if fnd, forge := strings.Index(got, "fnd-1"), strings.Index(got, "gh"); fnd < 0 || forge < fnd {
+		t.Errorf("findings do not come first:\n%s", got)
+	}
+}
+
+func TestGetAllRejectsNamesAndFindingFilters(t *testing.T) {
+	cases := []struct {
+		name  string
+		flags *getFlags
+		names []string
+		want  string
+	}{
+		{
+			name:  "a name is ambiguous across kinds",
+			flags: &getFlags{},
+			names: []string{"fnd-1"},
+			want:  "takes no names",
+		},
+		{
+			// Narrowing one table and leaving the rest whole would read as a
+			// filtered view of everything.
+			name:  "a finding-only filter",
+			flags: &getFlags{phase: []string{"Queued"}},
+			want:  "--phase",
+		},
+		{
+			name:  "--finding belongs to the run kinds",
+			flags: &getFlags{finding: "fnd-1"},
+			want:  "--finding",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			err := runGet(t.Context(), h.opts, tc.flags, "all", tc.names)
+			if got := exitCode(err); got != ExitUsage {
+				t.Fatalf("exit code = %d, want %d", got, ExitUsage)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestGetAllEmptyIsNotAnError: an empty namespace is a fact about the cluster,
+// and the note goes to stderr so `-o json` output stays parseable.
+func TestGetAllEmptyIsNotAnError(t *testing.T) {
+	h := newHarness(t)
+	h.opts.Output = "name"
+	if err := runGet(t.Context(), h.opts, &getFlags{}, "all", nil); err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	if h.out.Len() != 0 {
+		t.Errorf("stdout = %q, want nothing", h.out.String())
+	}
+	if !strings.Contains(h.errOut.String(), "No patchy resources found") {
+		t.Errorf("stderr = %q, want it to say the namespace is empty", h.errOut.String())
+	}
+}
+
+// TestGetAllAppliesLabelSelectors: the server-side filters are the ones that
+// mean the same thing on every kind, so they survive the all path.
+func TestGetAllAppliesLabelSelectors(t *testing.T) {
+	h := newHarness(t,
+		testFinding("fnd-1", v1alpha1.PhaseQueued),
+		testFinding("fnd-2", v1alpha1.PhaseQueued, func(f *v1alpha1.Finding) {
+			f.Labels[v1alpha1.LabelSeverity] = "low"
+		}),
+	)
+	h.opts.Output = "name"
+	if err := runGet(t.Context(), h.opts, &getFlags{severity: []string{"high"}}, "all", nil); err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	got := h.out.String()
+	if !strings.Contains(got, "fnd-1") || strings.Contains(got, "fnd-2") {
+		t.Errorf("stdout = %q, want only the high-severity finding", got)
 	}
 }
 

@@ -200,3 +200,12 @@ func nounCompletion(_ *cobra.Command, args []string, _ string) ([]string, cobra.
 	}
 	return resource.Spellings(), cobra.ShellCompDirectiveNoFileComp
 }
+
+// getNounCompletion completes `get`'s noun, which unlike every other verb also
+// takes the every-kind pseudo-noun. It sorts first, as it reads.
+func getNounCompletion(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return append([]string{resource.All}, resource.Spellings()...), cobra.ShellCompDirectiveNoFileComp
+}

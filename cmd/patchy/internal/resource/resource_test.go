@@ -57,7 +57,7 @@ func TestLookupUnknown(t *testing.T) {
 func TestKindsAreWellFormed(t *testing.T) {
 	seen := map[string]string{}
 	for _, k := range Kinds {
-		if k.Singular == "" || k.Plural == "" || k.New == nil || k.NewList == nil {
+		if k.Singular == "" || k.Plural == "" || k.Title == "" || k.New == nil || k.NewList == nil {
 			t.Errorf("kind %+v is incomplete", k)
 			continue
 		}
@@ -71,6 +71,33 @@ func TestKindsAreWellFormed(t *testing.T) {
 				t.Errorf("spelling %q is claimed by both %s and %s", spelling, owner, k.Singular)
 			}
 			seen[spelling] = k.Singular
+		}
+	}
+}
+
+func TestIsAll(t *testing.T) {
+	for _, in := range []string{"all", "ALL", "  all  "} {
+		if !IsAll(in) {
+			t.Errorf("IsAll(%q) = false", in)
+		}
+	}
+	for _, in := range []string{"", "finding", "allergies"} {
+		if IsAll(in) {
+			t.Errorf("IsAll(%q) = true", in)
+		}
+	}
+}
+
+// TestAllIsNotAKind: `all` means "every kind" to get and nothing at all to the
+// other verbs, so Lookup must keep rejecting it — `patchy suspend all` would
+// otherwise resolve to something.
+func TestAllIsNotAKind(t *testing.T) {
+	if _, err := Lookup(All); err == nil {
+		t.Fatal("Lookup resolved the every-kind pseudo-noun to a kind")
+	}
+	for _, s := range Spellings() {
+		if s == All {
+			t.Error("Spellings offers `all`, which only get accepts")
 		}
 	}
 }

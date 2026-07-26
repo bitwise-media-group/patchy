@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -69,18 +70,21 @@ func (f *getFlags) needsObjects() bool { return len(f.findingOnly()) > 0 }
 func newGetCmd(opts *Options) *cobra.Command {
 	f := &getFlags{}
 	cmd := &cobra.Command{
-		Use:   "get <resource> [name...]",
+		Use:   "get <resource|all> [name...]",
 		Short: "List patchy resources",
 		Long: "List patchy resources.\n\n" +
 			"Columns come from the CRDs themselves, so they match `kubectl get` exactly;\n" +
-			"-o wide adds the columns marked lower priority (issue and pull-request links).",
+			"-o wide adds the columns marked lower priority (issue and pull-request links).\n\n" +
+			"The resource `all` lists every patchy kind, each in its own table, in the\n" +
+			"order the pipeline uses them. Kinds with nothing in them are left out.",
 		Example: "  patchy get findings\n" +
+			"  patchy get all\n" +
 			"  patchy get findings --phase AwaitingApproval --severity critical\n" +
 			"  patchy get findings --awaiting -o wide\n" +
 			"  patchy get investigations --finding my-finding\n" +
 			"  patchy get fnd my-finding -o yaml",
 		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: nounCompletion,
+		ValidArgsFunction: getNounCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd.Context(), opts, f, args[0], args[1:])
 		},
@@ -108,6 +112,9 @@ func newGetCmd(opts *Options) *cobra.Command {
 }
 
 func runGet(ctx context.Context, opts *Options, f *getFlags, noun string, names []string) error {
+	if resource.IsAll(noun) {
+		return runGetAll(ctx, opts, f, names)
+	}
 	kind, err := resource.Lookup(noun)
 	if err != nil {
 		return errUsage(err)
@@ -159,6 +166,138 @@ func runGet(ctx context.Context, opts *Options, f *getFlags, noun string, names 
 		return nil
 	}
 	return p.Table(table)
+}
+
+// runGetAll lists every kind at once: the whole pipeline in one screen, which
+// is what `kubectl get all` is for and what a triage session opens with.
+//
+// The finding-only filters are refused rather than applied to the findings
+// table alone — a listing where one table is narrowed and the rest are not
+// reads as a filtered view of everything, which it would not be.
+func runGetAll(ctx context.Context, opts *Options, f *getFlags, names []string) error {
+	if len(names) > 0 {
+		return errUsage(errors.New("all lists every kind, so it takes no names; " +
+			"name the resource you want instead"))
+	}
+	if used := f.findingOnly(); len(used) > 0 {
+		return errUsage(fmt.Errorf("%s only applies to findings; ask for findings rather than all",
+			strings.Join(used, "/")))
+	}
+	if f.finding != "" {
+		return errUsage(errors.New("--finding only applies to investigations and remediations; " +
+			"ask for those rather than all"))
+	}
+
+	env, err := opts.Connect()
+	if err != nil {
+		return err
+	}
+	p, err := opts.Printer()
+	if err != nil {
+		return err
+	}
+	selector, err := buildSelector(f)
+	if err != nil {
+		return err
+	}
+	opts.debugf("listing every kind in %s (selector %q)", env.Scope(), selector)
+
+	if p.Format().Structured() {
+		return getAllObjects(ctx, opts, env, p, selector)
+	}
+	return getAllTables(ctx, opts, env, p, f, selector)
+}
+
+// getAllTables renders one table per kind. A kind that cannot be listed is
+// reported and skipped: an RBAC grant that stops at findings, or a CRD not
+// installed on this cluster, must not hide the kinds that did come back.
+func getAllTables(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer.Printer,
+	f *getFlags, selector string,
+) error {
+	var groups []printer.Group
+	var failed error
+	failures := 0
+
+	for _, kind := range resource.Kinds {
+		table, err := kindTable(ctx, opts, env, kind, selector)
+		if err != nil {
+			notef(opts.ErrOut, "%s: %v\n", kind.Plural, err)
+			failures++
+			if failed == nil {
+				failed = err
+			}
+			continue
+		}
+		sortRows(table, f.sortBy)
+		if len(table.Rows) == 0 {
+			continue
+		}
+		groups = append(groups, printer.Group{Title: kind.Title, Table: table})
+	}
+
+	// Nothing listed at all is a failure, not an empty cluster. Wrapping the
+	// first error keeps its reason, so a forbidden run still exits 4.
+	if failures == len(resource.Kinds) {
+		return fmt.Errorf("no patchy resource could be listed in %s: %w", env.Scope(), failed)
+	}
+	if len(groups) == 0 {
+		notef(opts.ErrOut, "No patchy resources found in %s.\n", env.Scope())
+		return nil
+	}
+	return p.Tables(groups)
+}
+
+// getAllObjects emits every kind's objects as one stream for -o json/yaml/name.
+func getAllObjects(ctx context.Context, opts *Options, env *kubecfg.Env,
+	p *printer.Printer, selector string,
+) error {
+	var items []any
+	var refs []string
+	var failed error
+	failures := 0
+
+	for _, kind := range resource.Kinds {
+		objs, err := kindObjects(ctx, opts, env, kind, selector)
+		if err != nil {
+			notef(opts.ErrOut, "%s: %v\n", kind.Plural, err)
+			failures++
+			if failed == nil {
+				failed = err
+			}
+			continue
+		}
+		for _, o := range objs {
+			items = append(items, o)
+		}
+		refs = append(refs, objectRefs(kind, objs)...)
+	}
+
+	if failures == len(resource.Kinds) {
+		return fmt.Errorf("no patchy resource could be listed in %s: %w", env.Scope(), failed)
+	}
+	if len(items) == 0 {
+		notef(opts.ErrOut, "No patchy resources found in %s.\n", env.Scope())
+		return nil
+	}
+	return p.Objects(items, refs)
+}
+
+// kindTable fetches one kind's table under the per-call timeout.
+func kindTable(ctx context.Context, opts *Options, env *kubecfg.Env,
+	kind resource.Kind, selector string,
+) (*metav1.Table, error) {
+	callCtx, cancel := opts.Timeout(ctx)
+	defer cancel()
+	return env.Table(callCtx, kind.Plural, nil, selector)
+}
+
+// kindObjects lists one kind's objects under the per-call timeout.
+func kindObjects(ctx context.Context, opts *Options, env *kubecfg.Env,
+	kind resource.Kind, selector string,
+) ([]client.Object, error) {
+	callCtx, cancel := opts.Timeout(ctx)
+	defer cancel()
+	return fetchObjects(callCtx, env, kind, nil, selector)
 }
 
 // survivingNames applies the object-level filters and returns the names that
@@ -214,12 +353,20 @@ func getObjects(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer
 	}
 
 	items := make([]any, 0, len(objs))
-	refs := make([]string, 0, len(objs))
 	for _, o := range objs {
 		items = append(items, o)
-		refs = append(refs, fmt.Sprintf("%s.%s/%s", kind.Plural, v1alpha1.GroupVersion.Group, o.GetName()))
 	}
-	return p.Objects(items, refs)
+	return p.Objects(items, objectRefs(kind, objs))
+}
+
+// objectRefs renders each object as `<plural>.<group>/<name>` — what -o name
+// prints, and what kubectl accepts back as an argument.
+func objectRefs(kind resource.Kind, objs []client.Object) []string {
+	out := make([]string, 0, len(objs))
+	for _, o := range objs {
+		out = append(out, fmt.Sprintf("%s.%s/%s", kind.Plural, v1alpha1.GroupVersion.Group, o.GetName()))
+	}
+	return out
 }
 
 // fetchObjects reads either the named objects or the whole selected list.

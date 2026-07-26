@@ -14,12 +14,25 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
+// All is the pseudo-noun `get` accepts to mean every kind at once. It is
+// deliberately not a Kind: nothing can be described, reviewed or acted on
+// collectively, so Lookup goes on rejecting it and only `get` recognises it.
+const All = "all"
+
+// IsAll reports whether the noun is the every-kind pseudo-noun.
+func IsAll(noun string) bool {
+	return strings.EqualFold(strings.TrimSpace(noun), All)
+}
+
 // Kind describes one noun the CLI understands.
 type Kind struct {
 	// Singular is the canonical spelling, used in messages ("finding fnd-1").
 	Singular string
 	// Plural is the API resource name, and what the URL path uses.
 	Plural string
+	// Title heads this kind's table when several are listed together, so it
+	// is written for a reader rather than for a URL path.
+	Title string
 	// Aliases are the other accepted spellings: the plural, plus the CRD's
 	// declared shortName.
 	Aliases []string
@@ -30,11 +43,13 @@ type Kind struct {
 }
 
 // Kinds are the nouns, in the order `patchy api-resources`-style help lists
-// them: the pipeline state machine first, then its configuration.
+// them: the pipeline state machine first, then its configuration. `get all`
+// prints them in this order too, so the sequence is the pipeline's own.
 var Kinds = []Kind{
 	{
 		Singular: "finding",
 		Plural:   "findings",
+		Title:    "Findings",
 		Aliases:  []string{"fnd"},
 		New:      func() client.Object { return &v1alpha1.Finding{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.FindingList{} },
@@ -42,6 +57,7 @@ var Kinds = []Kind{
 	{
 		Singular: "investigation",
 		Plural:   "investigations",
+		Title:    "Investigations",
 		Aliases:  []string{"inv"},
 		New:      func() client.Object { return &v1alpha1.Investigation{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.InvestigationList{} },
@@ -49,6 +65,7 @@ var Kinds = []Kind{
 	{
 		Singular: "remediation",
 		Plural:   "remediations",
+		Title:    "Remediations",
 		Aliases:  []string{"rem"},
 		New:      func() client.Object { return &v1alpha1.Remediation{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.RemediationList{} },
@@ -56,6 +73,7 @@ var Kinds = []Kind{
 	{
 		Singular: "findingrollup",
 		Plural:   "findingrollups",
+		Title:    "Finding rollups",
 		// "rollup" is a CLI-only convenience; "fr" is the CRD's shortName.
 		Aliases: []string{"fr", "rollup", "rollups"},
 		New:     func() client.Object { return &v1alpha1.FindingRollup{} },
@@ -64,6 +82,7 @@ var Kinds = []Kind{
 	{
 		Singular: "repository",
 		Plural:   "repositories",
+		Title:    "Repositories",
 		Aliases:  []string{"repo", "repos"},
 		New:      func() client.Object { return &v1alpha1.Repository{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.RepositoryList{} },
@@ -71,12 +90,14 @@ var Kinds = []Kind{
 	{
 		Singular: "integration",
 		Plural:   "integrations",
+		Title:    "Integrations",
 		New:      func() client.Object { return &v1alpha1.Integration{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.IntegrationList{} },
 	},
 	{
 		Singular: "forge",
 		Plural:   "forges",
+		Title:    "Forges",
 		New:      func() client.Object { return &v1alpha1.Forge{} },
 		NewList:  func() client.ObjectList { return &v1alpha1.ForgeList{} },
 	},

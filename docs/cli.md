@@ -80,6 +80,10 @@ mean the same thing.
 | `integration`   | `integrations`                              |
 | `forge`         | `forges`                                    |
 
+`get` takes one more: `all`, meaning every kind in the table above. It is the CLI's spelling of `kubectl get patchy`
+(every CRD declares the `patchy` category), and no other verb accepts it — there is nothing sensible to describe, review
+or approve collectively.
+
 ## Global flags
 
 ```text
@@ -112,6 +116,29 @@ patchy get investigations --finding my-finding
 Columns come from the CRDs' own print columns, so they match `kubectl get` and always will; `-o wide` adds the ones the
 CRDs mark lower priority. Filters that map to labels (`--severity`, `--source`, `--finding`, `-l`) run on the API
 server; the rest (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`) need the object and run locally.
+
+`patchy get all` is the whole pipeline in one screen — every kind, each in its own table, in the order the pipeline uses
+them:
+
+```text
+Findings
+NAME    REPO      SEVERITY   PRIORITY   PHASE    VERDICT     AGE
+fnd-1   billing   high       high       Queued   remediate   4h
+
+Investigations
+NAME          FINDING   ATTEMPT   STATE      VERDICT     AGE
+fnd-1-inv-1   fnd-1     1         Complete   remediate   3h
+
+Forges
+NAME   PROVIDER   READY   AGE
+gh     github     True    9d
+```
+
+Kinds with nothing in them are left out rather than printed as an empty table. `all` lists, and only lists: it takes no
+names, and it refuses the finding-only filters (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`,
+`--finding`) rather than narrow one table and leave the rest whole. The label filters (`-l`, `--severity`, `--source`)
+mean the same thing on every kind, so those do apply. `-o json` and `-o yaml` give you one stream of every object;
+`-o name` gives you fully-qualified references you can pipe back into `kubectl`.
 
 ```sh
 patchy describe finding my-finding               # state, timeline, owners, alerts, runs, spend

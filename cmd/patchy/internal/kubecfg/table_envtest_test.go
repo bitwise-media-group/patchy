@@ -15,6 +15,7 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/kubecfg"
+	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/resource"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 )
 
@@ -152,14 +153,12 @@ func TestTable(t *testing.T) {
 	})
 
 	// Every noun the registry offers has to be tabulatable, or `patchy get
-	// <that noun>` fails at the first request.
+	// <that noun>` fails at the first request — and `patchy get all`, which
+	// walks the whole registry, reports the failure for every kind it added.
 	t.Run("every kind tabulates", func(t *testing.T) {
-		for _, plural := range []string{
-			"findings", "investigations", "remediations",
-			"findingrollups", "repositories", "integrations", "forges",
-		} {
-			if _, err := env.Table(t.Context(), plural, nil, ""); err != nil {
-				t.Errorf("Table(%s): %v", plural, err)
+		for _, kind := range resource.Kinds {
+			if _, err := env.Table(t.Context(), kind.Plural, nil, ""); err != nil {
+				t.Errorf("Table(%s): %v", kind.Plural, err)
 			}
 		}
 	})

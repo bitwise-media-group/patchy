@@ -59,6 +59,44 @@ func (p *Printer) Table(t *metav1.Table) error {
 	return p.plainTable(cols, rows)
 }
 
+// Group is one titled table in a multi-kind listing — what `get all` prints.
+type Group struct {
+	// Title heads the table.
+	Title string
+	// Table is the server-rendered table for that kind.
+	Table *metav1.Table
+}
+
+// Tables renders several titled tables as one listing, separated by a blank
+// line. Groups with nothing in them are dropped, so a caller can hand over
+// every kind and let the empty ones disappear — a namespace with two findings
+// and no forges should not print five empty headings.
+func (p *Printer) Tables(groups []Group) error {
+	first := true
+	for _, g := range groups {
+		if g.Table == nil || len(g.Table.Rows) == 0 {
+			continue
+		}
+		w := &errWriter{w: p.out}
+		if !first {
+			w.printf("\n")
+		}
+		first = false
+		if p.format == FormatMarkdown {
+			w.printf("## %s\n\n", g.Title)
+		} else {
+			w.printf("%s\n", paint(p.color, styleHeader, g.Title))
+		}
+		if w.err != nil {
+			return w.err
+		}
+		if err := p.Table(g.Table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // visible selects the columns for the format and pulls each row's cells out as
 // strings.
 func visible(t *metav1.Table, wide bool) ([]string, [][]string) {

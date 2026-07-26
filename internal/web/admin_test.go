@@ -24,7 +24,7 @@ func testIntegration(name string, mutate ...func(*v1alpha1.Integration)) *v1alph
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "patchy"},
 		Spec: v1alpha1.IntegrationSpec{
 			Provider:  v1alpha1.IntegrationProviderGitHub,
-			SecretRef: v1alpha1.LocalSecretReference{Name: "creds"},
+			SecretRef: &v1alpha1.LocalSecretReference{Name: "creds"},
 			GitHub:    &v1alpha1.GitHubIntegration{},
 		},
 	}

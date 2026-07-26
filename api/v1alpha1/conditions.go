@@ -51,4 +51,9 @@ const (
 	// ReasonAmbiguous: more than one Forge matched with equal specificity —
 	// an operator configuration error.
 	ReasonAmbiguous = "Ambiguous"
+	// ReasonRepositoryUnresolved: a cloud finding's repository lookup failed
+	// in a way worth retrying, so the enhancer chain is holding the finding
+	// at Opened rather than advancing it without a repository. Bounded by the
+	// accumulation window; past that the finding advances regardless.
+	ReasonRepositoryUnresolved = "RepositoryUnresolved"
 )

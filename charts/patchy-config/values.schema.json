@@ -65,6 +65,10 @@
                                 "enabled": {
                                     "description": "Enabled turns the issues capability on.",
                                     "type": "boolean"
+                                },
+                                "fallbackRepository": {
+                                    "description": "FallbackRepository (\"owner/repo\") receives the tracking issues of\nfindings that have no repository of their own — cloud findings whose\nresource carries no ownership labels. Without it those findings are\nvisible only through kubectl and the status page. They still cannot be\nremediated: the issue is a human surface, not a work tree.",
+                                    "type": "string"
                                 }
                             },
                             "required": ["enabled"],
@@ -92,6 +96,57 @@
                     "type": "object",
                     "additionalProperties": false
                 },
+                "googleCloud": {
+                    "description": "GoogleCloud is the google-cloud provider block.",
+                    "properties": {
+                        "securityCommandCenter": {
+                            "description": "SecurityCommandCenter enables SCC finding ingestion.",
+                            "properties": {
+                                "audience": {
+                                    "description": "Audience the push subscription's OIDC token must carry, as configured\non the subscription's oidcToken.audience.",
+                                    "minLength": 1,
+                                    "type": "string"
+                                },
+                                "enabled": {
+                                    "description": "Enabled turns the SCC ingestion capability on.",
+                                    "type": "boolean"
+                                },
+                                "minSeverity": {
+                                    "default": "low",
+                                    "description": "MinSeverity drops notifications below this severity before they become\nfindings. The notification filter should do most of this work; this is\nthe backstop.",
+                                    "enum": ["low", "medium", "high", "critical"],
+                                    "type": "string"
+                                },
+                                "mute": {
+                                    "description": "Mute configures the ignore-verdict write-back (reserved).",
+                                    "properties": {
+                                        "enabled": {
+                                            "description": "Enabled turns the mute-on-ignore write-back on.",
+                                            "type": "boolean"
+                                        }
+                                    },
+                                    "required": ["enabled"],
+                                    "type": "object",
+                                    "additionalProperties": false
+                                },
+                                "organization": {
+                                    "description": "Organization is the numeric Google Cloud organization id, used to\ncompose Console links for findings that carry no externalUri.",
+                                    "type": "string"
+                                },
+                                "serviceAccount": {
+                                    "description": "ServiceAccount is the email address the push token must be issued for;\na token from any other identity is rejected.",
+                                    "minLength": 1,
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["audience", "enabled", "serviceAccount"],
+                            "type": "object",
+                            "additionalProperties": false
+                        }
+                    },
+                    "type": "object",
+                    "additionalProperties": false
+                },
                 "interval": {
                     "default": "10m",
                     "description": "Interval between credential revalidations.",
@@ -99,7 +154,7 @@
                 },
                 "provider": {
                     "description": "Provider is the external system type.",
-                    "enum": ["github"],
+                    "enum": ["github", "google-cloud"],
                     "type": "string"
                 },
                 "replay": {
@@ -137,7 +192,7 @@
                     "additionalProperties": false
                 },
                 "secretRef": {
-                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation.",
+                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation. Required for github,\noptional otherwise — a google-cloud integration holds no credential,\nsince Pub/Sub authenticates itself with a signed OIDC token. It stays\npermitted for every provider so a future capability that does need one\n(SCC mute-on-ignore) needs no schema change.",
                     "properties": {
                         "name": {
                             "description": "Name of the Secret.",
@@ -154,7 +209,7 @@
                     "type": "boolean"
                 }
             },
-            "required": ["provider", "secretRef"],
+            "required": ["provider"],
             "type": "object",
             "additionalProperties": false
         },

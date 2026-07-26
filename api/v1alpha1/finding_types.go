@@ -16,9 +16,12 @@ const (
 	RepositoryTypeGitHub RepositoryType = "github"
 )
 
-// FindingRepository locates the repository a finding belongs to. It is nil on
-// findings (e.g. cloud findings) whose repository could not be identified —
-// those can never reach the Queued/Remediating phases.
+// FindingRepository locates the repository a finding belongs to. It is nil
+// until a repository is identified: scanner sources name one at ingest, while
+// a cloud finding arrives repo-less and may have one resolved later by a
+// context enhancer (from the cloud resource's ownership labels). A finding
+// still repo-less when the investigation gate runs can never reach the
+// Queued/Remediating phases — there is no tree to work in.
 type FindingRepository struct {
 	// Type of forge the repository lives on.
 	Type RepositoryType `json:"type"`
@@ -31,6 +34,44 @@ type FindingRepository struct {
 	// DefaultBranch of the repository at ingest time.
 	// +optional
 	DefaultBranch string `json:"defaultBranch,omitempty"`
+}
+
+// CloudProvider identifies the cloud platform a resource lives on.
+// +kubebuilder:validation:Enum=google
+type CloudProvider string
+
+// Cloud providers.
+const (
+	// CloudProviderGoogle is Google Cloud.
+	CloudProviderGoogle CloudProvider = "google"
+)
+
+// FindingCloudResource identifies the cloud resource a finding was raised
+// against, for findings about infrastructure rather than repository code. It
+// is what lets a context enhancer resolve a repository the scanner could not
+// name: the enhancer looks the resource up with the cloud provider's own API
+// and reads the ownership labels off it.
+type FindingCloudResource struct {
+	// Provider is the cloud platform the resource lives on.
+	Provider CloudProvider `json:"provider"`
+	// Name is the provider's canonical, unique resource identifier — an SCC
+	// resourceName, e.g. "//storage.googleapis.com/projects/p/buckets/b". It
+	// is the accumulation scope for cloud findings, in place of the
+	// repository URL.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Type is the provider's resource type, e.g. "google.cloud.storage.Bucket".
+	// +optional
+	Type string `json:"type,omitempty"`
+	// Project is the enclosing project, subscription, or account id.
+	// +optional
+	Project string `json:"project,omitempty"`
+	// Location is the region or zone, when the provider reports one.
+	// +optional
+	Location string `json:"location,omitempty"`
+	// DisplayName is the resource's human-facing name.
+	// +optional
+	DisplayName string `json:"displayName,omitempty"`
 }
 
 // Location is one source location an alert points at.
@@ -56,6 +97,16 @@ type Alert struct {
 	// ID of the alert in the source system.
 	// +kubebuilder:validation:MinLength=1
 	ID string `json:"id"`
+	// Source is the source handler that produced this alert, denormalized
+	// from the finding at ingest. Accumulation keys on source, so today every
+	// alert on a finding shares spec.source and this is redundant — but
+	// duplicate-of merges are defined to fold one finding into another, and
+	// the verdict write-back must hand each source only its own alerts.
+	// Recording provenance beats inferring it from the shape of an id.
+	// Empty on alerts written before this field existed; readers fall back to
+	// spec.source.
+	// +optional
+	Source string `json:"source,omitempty"`
 	// URL of the alert in the source system.
 	// +optional
 	URL string `json:"url,omitempty"`
@@ -116,7 +167,8 @@ type ActionRequest struct {
 
 // FindingSpec is the finding to triage. integration-controller writes it at
 // ingest and during accumulation; humans may set suspend and add related-to
-// edges — nothing else has a second writer.
+// edges. The one other writer is context-controller, which sets repository
+// exactly once when a cloud finding arrived without one — see that field.
 type FindingSpec struct {
 	// IntegrationRef names the Integration that ingested this finding.
 	IntegrationRef LocalObjectReference `json:"integrationRef"`
@@ -128,9 +180,22 @@ type FindingSpec struct {
 	// Source is the source handler ID (e.g. github-code-scanning).
 	// +kubebuilder:validation:MinLength=1
 	Source string `json:"source"`
-	// Repository the finding belongs to; nil when none could be identified.
+	// Repository the finding belongs to; nil when none has been identified.
+	// integration-controller sets it at ingest for sources that name a
+	// repository. For a cloud finding it starts nil and context-controller
+	// may set it — SET-ONCE, never overwritten. Three things depend on that:
+	// the rollup ledger re-derives its scope key at reversal time, the
+	// investigation gate's Repository artifact has an immutable spec.url with
+	// no update path, and the agent Jobs snapshot the repo in an annotation.
+	// A mutable value would desynchronize all three silently.
 	// +optional
 	Repository *FindingRepository `json:"repository,omitempty"`
+	// CloudResource identifies the cloud resource this finding was raised
+	// against, for findings about infrastructure rather than repository code.
+	// Written at ingest and never again; it is what an enhancer resolves
+	// repository from.
+	// +optional
+	CloudResource *FindingCloudResource `json:"cloudResource,omitempty"`
 	// Advisories identify the vulnerability, most authoritative first
 	// (GHSA > CVE > CWE); [0] is the accumulation key.
 	// +kubebuilder:validation:MinItems=1
@@ -413,6 +478,32 @@ type Finding struct {
 	Spec FindingSpec `json:"spec"`
 	// +optional
 	Status FindingStatus `json:"status,omitempty"`
+}
+
+// AlertsBySource groups the finding's alerts by the source that produced
+// them, so the verdict write-back can hand each source only its own. Alerts
+// predating Alert.Source fall back to spec.source, which was accurate while
+// accumulation was the sole way alerts arrived.
+//
+// The result is keyed by source id; an alert whose source cannot be
+// determined at all is dropped rather than guessed at, since dismissing an
+// alert against the wrong tool is worse than not dismissing it.
+func (f *Finding) AlertsBySource() map[string][]Alert {
+	if len(f.Spec.Alerts) == 0 {
+		return nil
+	}
+	out := make(map[string][]Alert)
+	for _, a := range f.Spec.Alerts {
+		src := a.Source
+		if src == "" {
+			src = f.Spec.Source
+		}
+		if src == "" {
+			continue
+		}
+		out[src] = append(out[src], a)
+	}
+	return out
 }
 
 // +kubebuilder:object:root=true

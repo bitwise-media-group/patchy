@@ -41,8 +41,8 @@ spec:
       openAPIV3Schema:
         description: |-
           Integration configures one external system patchy exchanges finding state
-          with: scanners in (code-scanning alerts, wiz), tracking out (GitHub
-          issues), and the human signals flowing back.
+          with: scanners in (code-scanning alerts, Security Command Center), tracking
+          out (GitHub issues), and the human signals flowing back.
         properties:
           apiVersion:
             description: |-
@@ -95,6 +95,14 @@ spec:
                       enabled:
                         description: Enabled turns the issues capability on.
                         type: boolean
+                      fallbackRepository:
+                        description: |-
+                          FallbackRepository ("owner/repo") receives the tracking issues of
+                          findings that have no repository of their own — cloud findings whose
+                          resource carries no ownership labels. Without it those findings are
+                          visible only through kubectl and the status page. They still cannot be
+                          remediated: the issue is a human surface, not a work tree.
+                        type: string
                     required:
                     - enabled
                     type: object
@@ -116,6 +124,61 @@ spec:
                     - enabled
                     type: object
                 type: object
+              googleCloud:
+                description: GoogleCloud is the google-cloud provider block.
+                properties:
+                  securityCommandCenter:
+                    description: SecurityCommandCenter enables SCC finding ingestion.
+                    properties:
+                      audience:
+                        description: |-
+                          Audience the push subscription's OIDC token must carry, as configured
+                          on the subscription's oidcToken.audience.
+                        minLength: 1
+                        type: string
+                      enabled:
+                        description: Enabled turns the SCC ingestion capability on.
+                        type: boolean
+                      minSeverity:
+                        default: low
+                        description: |-
+                          MinSeverity drops notifications below this severity before they become
+                          findings. The notification filter should do most of this work; this is
+                          the backstop.
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - critical
+                        type: string
+                      mute:
+                        description: Mute configures the ignore-verdict write-back
+                          (reserved).
+                        properties:
+                          enabled:
+                            description: Enabled turns the mute-on-ignore write-back
+                              on.
+                            type: boolean
+                        required:
+                        - enabled
+                        type: object
+                      organization:
+                        description: |-
+                          Organization is the numeric Google Cloud organization id, used to
+                          compose Console links for findings that carry no externalUri.
+                        type: string
+                      serviceAccount:
+                        description: |-
+                          ServiceAccount is the email address the push token must be issued for;
+                          a token from any other identity is rejected.
+                        minLength: 1
+                        type: string
+                    required:
+                    - audience
+                    - enabled
+                    - serviceAccount
+                    type: object
+                type: object
               interval:
                 default: 10m
                 description: Interval between credential revalidations.
@@ -124,6 +187,7 @@ spec:
                 description: Provider is the external system type.
                 enum:
                 - github
+                - google-cloud
                 type: string
               replay:
                 description: |-
@@ -170,7 +234,11 @@ spec:
                 description: |-
                   SecretRef names the credential Secret. For github: either key "token"
                   (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-                  "webhookSecret" for receiver HMAC validation.
+                  "webhookSecret" for receiver HMAC validation. Required for github,
+                  optional otherwise — a google-cloud integration holds no credential,
+                  since Pub/Sub authenticates itself with a signed OIDC token. It stays
+                  permitted for every provider so a future capability that does need one
+                  (SCC mute-on-ignore) needs no schema change.
                 properties:
                   name:
                     description: Name of the Secret.
@@ -184,11 +252,13 @@ spec:
                 type: boolean
             required:
             - provider
-            - secretRef
             type: object
             x-kubernetes-validations:
             - message: exactly the provider block matching spec.provider must be set
-              rule: (self.provider == 'github') == has(self.github)
+              rule: (self.provider == 'github') == has(self.github) && (self.provider
+                == 'google-cloud') == has(self.googleCloud)
+            - message: spec.secretRef is required for the github provider
+              rule: self.provider != 'github' || has(self.secretRef)
           status:
             description: IntegrationStatus is the integration's observed state.
             properties:

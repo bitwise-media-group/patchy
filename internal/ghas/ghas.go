@@ -6,6 +6,7 @@ package ghas
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,8 +18,8 @@ import (
 // ID is the source identifier stamped into the security-source label.
 const ID = "ghas"
 
-// eventType is the webhook event this source consumes.
-const eventType = "code_scanning_alert"
+// EventType is the webhook event this source consumes.
+const EventType = "code_scanning_alert"
 
 // actionable are the alert actions that produce a finding. Everything else
 // (fixed, closed_by_user, appeared_in_branch, ...) is state GitHub manages
@@ -34,20 +35,71 @@ type AlertGetter interface {
 	GetAlert(ctx context.Context, repo ghclient.Repo, number int) (*ghclient.Alert, error)
 }
 
-// Handler is the GHAS source plugin.
-type Handler struct {
-	alerts AlertGetter
+// AlertDismisser closes a code-scanning alert on the forge — the write-back
+// half of the source, exercised when the investigation returns "ignore".
+type AlertDismisser interface {
+	DismissAlert(ctx context.Context, repo ghclient.Repo, number int, reason, comment string) error
 }
 
-// New builds the handler around an alert fetcher (typically an adapter that
-// resolves the right installation client per repository).
+// Handler is the GHAS source plugin. It serves both directions: ingest, built
+// with New, and the verdict write-back, built with NewResolver. The two are
+// separate constructors because the repository is per-delivery on the way in
+// (it comes from the payload) but per-finding on the way out.
+type Handler struct {
+	alerts  AlertGetter
+	dismiss AlertDismisser
+	repo    ghclient.Repo
+}
+
+// The handler serves both halves of the seam.
+var (
+	_ source.Handler  = (*Handler)(nil)
+	_ source.Resolver = (*Handler)(nil)
+)
+
+// New builds the ingest handler around an alert fetcher (typically an adapter
+// that resolves the right installation client per repository).
 func New(alerts AlertGetter) *Handler { return &Handler{alerts: alerts} }
+
+// NewResolver builds a handler for the write-back path, dismissing alerts on
+// repo. A zero repo means the finding has no repository, so there is nothing
+// on GitHub to dismiss and Resolve does nothing.
+func NewResolver(d AlertDismisser, repo ghclient.Repo) *Handler {
+	return &Handler{dismiss: d, repo: repo}
+}
 
 // ID implements source.Handler.
 func (h *Handler) ID() string { return ID }
 
-// Events implements source.Handler.
-func (h *Handler) Events() []string { return []string{eventType} }
+// Resolve implements source.Resolver: it dismisses every code-scanning alert
+// it is handed. The caller groups alerts by source and passes only this
+// handler's own, so a GHAS alert id is always a decimal alert number — one
+// that is not is corrupt state worth surfacing, not another tool's identifier
+// to step over.
+func (h *Handler) Resolve(ctx context.Context, alerts []source.AlertRef, v source.Verdict) error {
+	if v.Kind != source.VerdictIgnore || h.dismiss == nil {
+		return nil
+	}
+	if h.repo.Owner == "" || h.repo.Name == "" {
+		return nil // repo-less finding: nothing on GitHub to dismiss
+	}
+	reason, comment := v.Reason, v.Comment
+	if reason == "" {
+		reason = "false positive"
+	}
+	var errs []error
+	for _, a := range alerts {
+		num, err := strconv.Atoi(a.ID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("ghas: alert id %q is not a code-scanning alert number", a.ID))
+			continue
+		}
+		if err := h.dismiss.DismissAlert(ctx, h.repo, num, reason, comment); err != nil {
+			errs = append(errs, fmt.Errorf("ghas: dismiss alert %s#%d: %w", h.repo, num, err))
+		}
+	}
+	return errors.Join(errs...)
+}
 
 // delivery is the slice of the code_scanning_alert payload we consume.
 type delivery struct {
@@ -66,19 +118,19 @@ type delivery struct {
 // Findings implements source.Handler: it normalizes one delivery, fetching
 // the full alert from the API.
 func (h *Handler) Findings(ctx context.Context, event string, payload []byte) ([]source.Finding, error) {
-	if event != eventType {
+	if event != EventType {
 		return nil, nil
 	}
 	var d delivery
 	if err := json.Unmarshal(payload, &d); err != nil {
-		return nil, fmt.Errorf("ghas: decode %s payload: %w", eventType, err)
+		return nil, fmt.Errorf("ghas: decode %s payload: %w", EventType, err)
 	}
 	if !actionable[d.Action] {
 		return nil, nil
 	}
 	repo := ghclient.Repo{Owner: d.Repository.Owner.Login, Name: d.Repository.Name}
 	if repo.Owner == "" || repo.Name == "" || d.Alert.Number == 0 {
-		return nil, fmt.Errorf("ghas: %s payload missing repository or alert number", eventType)
+		return nil, fmt.Errorf("ghas: %s payload missing repository or alert number", EventType)
 	}
 
 	alert, err := h.alerts.GetAlert(ctx, repo, d.Alert.Number)

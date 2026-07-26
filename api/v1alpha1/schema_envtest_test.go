@@ -61,7 +61,7 @@ func TestSchemaValidation(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "no-block", Namespace: "default"},
 			Spec: patchyv1.IntegrationSpec{
 				Provider:  patchyv1.IntegrationProviderGitHub,
-				SecretRef: patchyv1.LocalSecretReference{Name: "s"},
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
 			},
 		}
 		if err := c.Create(ctx, bad); err == nil {
@@ -74,7 +74,7 @@ func TestSchemaValidation(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "gh", Namespace: "default"},
 			Spec: patchyv1.IntegrationSpec{
 				Provider:  patchyv1.IntegrationProviderGitHub,
-				SecretRef: patchyv1.LocalSecretReference{Name: "s"},
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
 				GitHub: &patchyv1.GitHubIntegration{
 					Issues:             &patchyv1.GitHubIssues{Enabled: true},
 					CodeScanningAlerts: &patchyv1.GitHubCodeScanningAlerts{Enabled: true},
@@ -83,6 +83,51 @@ func TestSchemaValidation(t *testing.T) {
 		}
 		if err := c.Create(ctx, good); err != nil {
 			t.Errorf("Create(valid integration) = %v, want nil", err)
+		}
+	})
+
+	t.Run("integration one-of rejects a mismatched provider block", func(t *testing.T) {
+		bad := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-with-github-block", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderGoogleCloud,
+				GitHub:   &patchyv1.GitHubIntegration{},
+			},
+		}
+		if err := c.Create(ctx, bad); err == nil {
+			t.Error("Create(google-cloud integration with a github block) = nil, want CEL rejection")
+		}
+	})
+
+	t.Run("google-cloud integration needs no secretRef", func(t *testing.T) {
+		good := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderGoogleCloud,
+				GoogleCloud: &patchyv1.GoogleCloudIntegration{
+					SecurityCommandCenter: &patchyv1.GoogleCloudSCC{
+						Enabled:        true,
+						Audience:       "https://patchy.example/google-cloud/webhooks",
+						ServiceAccount: "scc-push@x.iam.gserviceaccount.com",
+					},
+				},
+			},
+		}
+		if err := c.Create(ctx, good); err != nil {
+			t.Errorf("Create(credential-less google-cloud integration) = %v, want nil", err)
+		}
+	})
+
+	t.Run("github integration still requires a secretRef", func(t *testing.T) {
+		bad := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "gh-no-secret", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderGitHub,
+				GitHub:   &patchyv1.GitHubIntegration{},
+			},
+		}
+		if err := c.Create(ctx, bad); err == nil {
+			t.Error("Create(github integration without secretRef) = nil, want CEL rejection")
 		}
 	})
 

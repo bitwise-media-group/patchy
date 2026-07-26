@@ -154,6 +154,94 @@ func TestAdvisories(t *testing.T) {
 	}
 }
 
+// dismissal is one recorded DismissAlert call.
+type dismissal struct {
+	repo    ghclient.Repo
+	number  int
+	reason  string
+	comment string
+}
+
+type fakeDismisser struct {
+	got []dismissal
+	err error
+}
+
+func (f *fakeDismisser) DismissAlert(
+	_ context.Context, repo ghclient.Repo, number int, reason, comment string,
+) error {
+	f.got = append(f.got, dismissal{repo, number, reason, comment})
+	return f.err
+}
+
+func TestResolve(t *testing.T) {
+	repo := ghclient.Repo{Owner: "acme", Name: "shop"}
+	ignore := source.Verdict{Kind: source.VerdictIgnore, Reason: "false positive", Comment: "not reachable"}
+
+	t.Run("dismisses every decimal alert id", func(t *testing.T) {
+		d := &fakeDismisser{}
+		err := NewResolver(d, repo).Resolve(context.Background(),
+			[]source.AlertRef{{ID: "7"}, {ID: "9"}}, ignore)
+		if err != nil {
+			t.Fatalf("Resolve() = %v, want nil", err)
+		}
+		want := []dismissal{
+			{repo, 7, "false positive", "not reachable"},
+			{repo, 9, "false positive", "not reachable"},
+		}
+		if !reflect.DeepEqual(d.got, want) {
+			t.Errorf("dismissals = %+v, want %+v", d.got, want)
+		}
+	})
+
+	// The caller hands each resolver only its own alerts, so a non-decimal id
+	// here is corrupt state. It is reported, but the rest of the batch still
+	// gets dismissed.
+	t.Run("reports a non-decimal alert id but dismisses the rest", func(t *testing.T) {
+		d := &fakeDismisser{}
+		err := NewResolver(d, repo).Resolve(context.Background(), []source.AlertRef{
+			{ID: "organizations/1/sources/2/findings/abc", Source: "ghas"},
+			{ID: "7", Source: "ghas"},
+		}, ignore)
+		if err == nil {
+			t.Error("Resolve() = nil, want an error naming the unparseable id")
+		}
+		if len(d.got) != 1 || d.got[0].number != 7 {
+			t.Errorf("dismissals = %+v, want alert 7 dismissed anyway", d.got)
+		}
+	})
+
+	t.Run("no-ops", func(t *testing.T) {
+		for _, tt := range []struct {
+			name    string
+			repo    ghclient.Repo
+			verdict source.Verdict
+		}{
+			{"repo-less finding has nothing on GitHub to dismiss", ghclient.Repo{}, ignore},
+			{"a verdict other than ignore never dismisses", repo, source.Verdict{Kind: "remediate"}},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				d := &fakeDismisser{}
+				if err := NewResolver(d, tt.repo).Resolve(
+					context.Background(), []source.AlertRef{{ID: "7"}}, tt.verdict); err != nil {
+					t.Fatalf("Resolve() = %v, want nil", err)
+				}
+				if len(d.got) != 0 {
+					t.Errorf("dismissals = %+v, want none", d.got)
+				}
+			})
+		}
+	})
+
+	t.Run("reports dismissal failures", func(t *testing.T) {
+		d := &fakeDismisser{err: errors.New("boom")}
+		if err := NewResolver(d, repo).Resolve(
+			context.Background(), []source.AlertRef{{ID: "7"}}, ignore); err == nil {
+			t.Error("Resolve() = nil, want the dismissal error")
+		}
+	})
+}
+
 func TestNormalizeSeverity(t *testing.T) {
 	for in, want := range map[string]string{
 		"critical": "critical",

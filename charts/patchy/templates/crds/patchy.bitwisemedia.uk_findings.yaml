@@ -80,7 +80,8 @@ spec:
             description: |-
               FindingSpec is the finding to triage. integration-controller writes it at
               ingest and during accumulation; humans may set suspend and add related-to
-              edges — nothing else has a second writer.
+              edges. The one other writer is context-controller, which sets repository
+              exactly once when a cloud finding arrived without one — see that field.
             properties:
               advisories:
                 description: |-
@@ -128,6 +129,17 @@ spec:
                         type: object
                       maxItems: 8
                       type: array
+                    source:
+                      description: |-
+                        Source is the source handler that produced this alert, denormalized
+                        from the finding at ingest. Accumulation keys on source, so today every
+                        alert on a finding shares spec.source and this is redundant — but
+                        duplicate-of merges are defined to fold one finding into another, and
+                        the verdict write-back must hand each source only its own alerts.
+                        Recording provenance beats inferring it from the shape of an id.
+                        Empty on alerts written before this field existed; readers fall back to
+                        spec.source.
+                      type: string
                     url:
                       description: URL of the alert in the source system.
                       type: string
@@ -156,6 +168,45 @@ spec:
                 required:
                 - at
                 - by
+                type: object
+              cloudResource:
+                description: |-
+                  CloudResource identifies the cloud resource this finding was raised
+                  against, for findings about infrastructure rather than repository code.
+                  Written at ingest and never again; it is what an enhancer resolves
+                  repository from.
+                properties:
+                  displayName:
+                    description: DisplayName is the resource's human-facing name.
+                    type: string
+                  location:
+                    description: Location is the region or zone, when the provider
+                      reports one.
+                    type: string
+                  name:
+                    description: |-
+                      Name is the provider's canonical, unique resource identifier — an SCC
+                      resourceName, e.g. "//storage.googleapis.com/projects/p/buckets/b". It
+                      is the accumulation scope for cloud findings, in place of the
+                      repository URL.
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the enclosing project, subscription, or
+                      account id.
+                    type: string
+                  provider:
+                    description: Provider is the cloud platform the resource lives
+                      on.
+                    enum:
+                    - google
+                    type: string
+                  type:
+                    description: Type is the provider's resource type, e.g. "google.cloud.storage.Bucket".
+                    type: string
+                required:
+                - name
+                - provider
                 type: object
               description:
                 description: Description is the scanner's full description, truncated
@@ -226,8 +277,15 @@ spec:
                 maxItems: 32
                 type: array
               repository:
-                description: Repository the finding belongs to; nil when none could
-                  be identified.
+                description: |-
+                  Repository the finding belongs to; nil when none has been identified.
+                  integration-controller sets it at ingest for sources that name a
+                  repository. For a cloud finding it starts nil and context-controller
+                  may set it — SET-ONCE, never overwritten. Three things depend on that:
+                  the rollup ledger re-derives its scope key at reversal time, the
+                  investigation gate's Repository artifact has an immutable spec.url with
+                  no update path, and the agent Jobs snapshot the repo in an annotation.
+                  A mutable value would desynchronize all three silently.
                 properties:
                   defaultBranch:
                     description: DefaultBranch of the repository at ingest time.

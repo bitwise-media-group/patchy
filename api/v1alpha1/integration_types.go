@@ -8,12 +8,13 @@ import (
 )
 
 // IntegrationProvider identifies the external system an Integration talks to.
-// +kubebuilder:validation:Enum=github
+// +kubebuilder:validation:Enum=github;google-cloud
 type IntegrationProvider string
 
 // Integration providers.
 const (
-	IntegrationProviderGitHub IntegrationProvider = "github"
+	IntegrationProviderGitHub      IntegrationProvider = "github"
+	IntegrationProviderGoogleCloud IntegrationProvider = "google-cloud"
 )
 
 // GitHubIssues configures the tracking projection: findings are projected as
@@ -26,6 +27,13 @@ type GitHubIssues struct {
 	// +optional
 	// +kubebuilder:default="/approve"
 	ApproveComment string `json:"approveComment,omitempty"`
+	// FallbackRepository ("owner/repo") receives the tracking issues of
+	// findings that have no repository of their own — cloud findings whose
+	// resource carries no ownership labels. Without it those findings are
+	// visible only through kubectl and the status page. They still cannot be
+	// remediated: the issue is a human surface, not a work tree.
+	// +optional
+	FallbackRepository string `json:"fallbackRepository,omitempty"`
 }
 
 // GitHubCodeScanningAlerts configures scanner ingestion from GitHub code
@@ -71,17 +79,76 @@ type GitHubIntegration struct {
 	Redelivery *GitHubRedelivery `json:"redelivery,omitempty"`
 }
 
+// GoogleCloudSCCMute configures muting the Security Command Center finding
+// when the investigation returns an "ignore" verdict — the cloud analogue of
+// dismissing a code-scanning alert.
+//
+// RESERVED: the field is accepted and validated but not yet honoured. Muting
+// needs securitycenter.findings.setMute, a Google Cloud write permission the
+// integration-controller does not currently hold; the write-back seam
+// (pkg/source.Resolver) is in place so enabling it is one implementation.
+type GoogleCloudSCCMute struct {
+	// Enabled turns the mute-on-ignore write-back on.
+	Enabled bool `json:"enabled"`
+}
+
+// GoogleCloudSCC configures ingestion of Security Command Center findings.
+// SCC has no webhook: a NotificationConfig publishes findings to a Pub/Sub
+// topic and a push subscription forwards them to the receiver, which
+// authenticates the OIDC token Pub/Sub signs rather than an HMAC — a push
+// subscription cannot compute one over the body.
+type GoogleCloudSCC struct {
+	// Enabled turns the SCC ingestion capability on.
+	Enabled bool `json:"enabled"`
+	// Audience the push subscription's OIDC token must carry, as configured
+	// on the subscription's oidcToken.audience.
+	// +kubebuilder:validation:MinLength=1
+	Audience string `json:"audience"`
+	// ServiceAccount is the email address the push token must be issued for;
+	// a token from any other identity is rejected.
+	// +kubebuilder:validation:MinLength=1
+	ServiceAccount string `json:"serviceAccount"`
+	// MinSeverity drops notifications below this severity before they become
+	// findings. The notification filter should do most of this work; this is
+	// the backstop.
+	// +optional
+	// +kubebuilder:default=low
+	MinSeverity Level `json:"minSeverity,omitempty"`
+	// Organization is the numeric Google Cloud organization id, used to
+	// compose Console links for findings that carry no externalUri.
+	// +optional
+	Organization string `json:"organization,omitempty"`
+	// Mute configures the ignore-verdict write-back (reserved).
+	// +optional
+	Mute *GoogleCloudSCCMute `json:"mute,omitempty"`
+}
+
+// GoogleCloudIntegration is the google-cloud provider block. It carries no
+// credential: inbound findings authenticate themselves with a Pub/Sub-signed
+// OIDC token, and nothing here calls a Google API.
+type GoogleCloudIntegration struct {
+	// SecurityCommandCenter enables SCC finding ingestion.
+	// +optional
+	SecurityCommandCenter *GoogleCloudSCC `json:"securityCommandCenter,omitempty"`
+}
+
 // IntegrationSpec configures one external system. Exactly the provider block
 // matching spec.provider must be set (CEL-enforced) — integrations are
 // strongly typed, not generic.
-// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="self.provider != 'github' || has(self.secretRef)",message="spec.secretRef is required for the github provider"
 type IntegrationSpec struct {
 	// Provider is the external system type.
 	Provider IntegrationProvider `json:"provider"`
 	// SecretRef names the credential Secret. For github: either key "token"
 	// (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-	// "webhookSecret" for receiver HMAC validation.
-	SecretRef LocalSecretReference `json:"secretRef"`
+	// "webhookSecret" for receiver HMAC validation. Required for github,
+	// optional otherwise — a google-cloud integration holds no credential,
+	// since Pub/Sub authenticates itself with a signed OIDC token. It stays
+	// permitted for every provider so a future capability that does need one
+	// (SCC mute-on-ignore) needs no schema change.
+	// +optional
+	SecretRef *LocalSecretReference `json:"secretRef,omitempty"`
 	// Interval between credential revalidations.
 	// +optional
 	// +kubebuilder:default="10m"
@@ -109,6 +176,9 @@ type IntegrationSpec struct {
 	// GitHub is the github provider block.
 	// +optional
 	GitHub *GitHubIntegration `json:"github,omitempty"`
+	// GoogleCloud is the google-cloud provider block.
+	// +optional
+	GoogleCloud *GoogleCloudIntegration `json:"googleCloud,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -196,8 +266,8 @@ type IntegrationStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Integration configures one external system patchy exchanges finding state
-// with: scanners in (code-scanning alerts, wiz), tracking out (GitHub
-// issues), and the human signals flowing back.
+// with: scanners in (code-scanning alerts, Security Command Center), tracking
+// out (GitHub issues), and the human signals flowing back.
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

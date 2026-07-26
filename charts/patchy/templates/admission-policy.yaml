@@ -149,6 +149,7 @@ spec:
                 && variables.old.spec.?trackingRef == object.spec.?trackingRef
                 && variables.old.spec.source == object.spec.source
                 && variables.old.spec.?repository == object.spec.?repository
+                && variables.old.spec.?cloudResource == object.spec.?cloudResource
                 && variables.old.spec.advisories == object.spec.advisories
                 && variables.old.spec.?ruleID == object.spec.?ruleID
                 && variables.old.spec.?title == object.spec.?title

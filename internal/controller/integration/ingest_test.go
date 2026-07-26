@@ -25,7 +25,7 @@ func testIntegration() *v1alpha1.Integration {
 		ObjectMeta: metav1.ObjectMeta{Name: "gh", Namespace: "patchy"},
 		Spec: v1alpha1.IntegrationSpec{
 			Provider:  v1alpha1.IntegrationProviderGitHub,
-			SecretRef: v1alpha1.LocalSecretReference{Name: "creds"},
+			SecretRef: &v1alpha1.LocalSecretReference{Name: "creds"},
 			GitHub: &v1alpha1.GitHubIntegration{
 				Issues:             &v1alpha1.GitHubIssues{Enabled: true},
 				CodeScanningAlerts: &v1alpha1.GitHubCodeScanningAlerts{Enabled: true},

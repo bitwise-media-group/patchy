@@ -136,7 +136,7 @@ Everything else a binary binds (see the [configuration reference](../configurati
 | `agent.createNamespace`                  | `true`                                                | Set `false` when the namespace is managed elsewhere                                    |
 | `agent.serviceAccount`                   | `patchy-agent`                                        | The Job identity: no Role, token not mounted                                           |
 | `agent.jobDeadline` / `agent.jobTTL`     | `1h` / `1h`                                           | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                    |
-| `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-5` | Canonical model ids the investigation may request for remediation                      |
+| `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-5`   | Canonical model ids the investigation may request for remediation                      |
 | `agent.investigate.*`                    | `anthropic/claude-sonnet-5` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)     |
 | `agent.remediate.*`                      | `anthropic/claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to |
 | `agent.runners.<harness>`                | claude enabled, codex disabled                        | Per-harness `enabled`/`image`/`secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`   |

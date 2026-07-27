@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.0](https://github.com/bitwise-media-group/patchy/compare/v0.7.1...v0.8.0) (2026-07-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **budget:** the remediate budget values, env vars and flags are renamed as above, and agent.remediate in the Helm chart gains a level of nesting. Deployments setting any of them must be updated; the HoldReason enum values change with them.
+* **agent:** the agent envelope is version 4. The investigation event renames max_turns/token_budget to estimated_max_turns/estimated_token_budget — unclamped, because clamping destroys the signal the approval gate and the calibration averages both read — and adds hold_reasons beside await_approval.
+* **api:** AgentParameters.MaxTurns/TokenBudget change meaning from the clamped suggestion to the resolved grant. Existing objects keep their values but they now read as grants.
+
+### Features
+
+* **api:** model an agent budget as estimate, grant, and hard cap ([7b19e5a](https://github.com/bitwise-media-group/patchy/commit/7b19e5afc106d01a46aea834ff6e9a34a97001bd))
+* **api:** model cloud findings and the google-cloud provider ([30e6bd3](https://github.com/bitwise-media-group/patchy/commit/30e6bd36283655fd94d42a19dae8a1e6b126dcbb))
+* **budget:** name the two remediation budgets auto and manual ([830c2ff](https://github.com/bitwise-media-group/patchy/commit/830c2ff7f4b99a74360acf0ae36492540b4a8a4c))
+* **deploy:** expose the google-cloud webhook route and its permissions ([53c80b4](https://github.com/bitwise-media-group/patchy/commit/53c80b4d7e60301a99285787e538aef5d845df3e))
+* **enhancers:** resolve a cloud finding's repository from its resource ([73558a1](https://github.com/bitwise-media-group/patchy/commit/73558a19bd4120b4c2d4725fbd5720201f6b448b))
+* **integration:** receive Security Command Center notifications ([cbb88b2](https://github.com/bitwise-media-group/patchy/commit/cbb88b2f9181a9772b0e3e530fbef6cdd3b146c6))
+* **scc:** add the Security Command Center source handler ([92480d4](https://github.com/bitwise-media-group/patchy/commit/92480d4131fda46d4a9bc340eb56299c8dc7ca7c))
+* **web,cli:** show estimate against granted against actual ([f9dbde7](https://github.com/bitwise-media-group/patchy/commit/f9dbde7a52997dcc84461be98f3c2d031dca7047))
+
+
+### Bug Fixes
+
+* **agent:** stop a low estimate from starving its remediation ([a800056](https://github.com/bitwise-media-group/patchy/commit/a8000561008b45507c50e0ce1eb7c6e9410588aa))
+* **deploy:** add the hard-cap knobs and fix large-integer config ([7391221](https://github.com/bitwise-media-group/patchy/commit/7391221a7f1fa53c6f7a9a2e75a90b33f2d347dd))
+* **harness:** report a run that died with output as failed ([4aa24a5](https://github.com/bitwise-media-group/patchy/commit/4aa24a513a9ef9283800c83648d9af7e460d2635))
+
 ## [0.7.1](https://github.com/bitwise-media-group/patchy/compare/v0.7.0...v0.7.1) (2026-07-26)
 
 

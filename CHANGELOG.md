@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/bitwise-media-group/patchy/compare/v0.8.0...v0.8.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **rbac:** grant investigation-controller list/watch on findingrollups ([96f9957](https://github.com/bitwise-media-group/patchy/commit/96f99573acaac083fcbb000db38e2c3cd60ef55d))
+
 ## [0.8.0](https://github.com/bitwise-media-group/patchy/compare/v0.7.1...v0.8.0) (2026-07-27)
 
 

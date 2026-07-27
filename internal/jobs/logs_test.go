@@ -115,10 +115,11 @@ func TestResult(t *testing.T) {
 	logs := &fakeLogs{body: body}
 	c.logs = logs
 
-	events, err := c.Result(context.Background(), jobName)
+	out, err := c.Result(context.Background(), jobName)
 	if err != nil {
 		t.Fatalf("Result: %v", err)
 	}
+	events := out.Events
 	if len(events) != 2 {
 		t.Fatalf("Result returned %d events, want 2: %+v", len(events), events)
 	}

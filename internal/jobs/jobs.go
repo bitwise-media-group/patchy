@@ -158,12 +158,14 @@ type Spec struct {
 	Calibration string
 }
 
-// Client creates and observes agent Jobs in one namespace.
+// Client creates and observes agent Jobs in one namespace. It embeds the
+// read-only Tailer, so the pod-discovery and log-reading logic has exactly one
+// implementation whether a controller collects a finished run or the status
+// server follows a live one.
 type Client struct {
-	cs   kubernetes.Interface
-	cfg  Config
-	log  *slog.Logger
-	logs logReader
+	*Tailer
+	cfg Config
+	log *slog.Logger
 }
 
 // New builds a Client, applying Config defaults.
@@ -179,7 +181,7 @@ func New(cs kubernetes.Interface, cfg Config, log *slog.Logger) *Client {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Client{cs: cs, cfg: cfg, log: log, logs: podLogs{cs: cs, namespace: cfg.Namespace}}
+	return &Client{Tailer: NewTailer(cs, cfg.Namespace), cfg: cfg, log: log}
 }
 
 // runnerFor returns the runner configured for a Job's harness, or an error

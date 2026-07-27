@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,8 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/e2e/fakegithub"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
+	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
 // statusDataset mirrors the slice of the status server's payload this test
@@ -82,6 +85,7 @@ func TestStatusServer(t *testing.T) {
 				Confidence:     "0.6", AwaitApproval: true, CompletedAt: &now,
 			}
 		})
+	fabricateTranscript(t, cl, awaiting.Name)
 	suspendable := fabricateFinding(t, cl, "finding-suspend-1", v1alpha1.LevelLow,
 		"https://127.0.0.1/acme/shop", func(st *v1alpha1.FindingStatus) {
 			st.Phase = v1alpha1.PhaseOpened
@@ -201,6 +205,19 @@ func TestStatusServer(t *testing.T) {
 		t.Error("no SSE event after changes")
 	}
 
+	// The agent transcript: a completed run replays its stored conversation.
+	transcriptPath := "/api/findings/" + awaiting.Name + "/runs/investigation/1/transcript"
+	turns := fetchTranscript(t, base+transcriptPath)
+	if len(turns) != 2 {
+		t.Fatalf("transcript returned %d turns, want 2: %+v", len(turns), turns)
+	}
+	if turns[0].Kind != "text" || turns[0].Text != "Tracing the sink." {
+		t.Errorf("turns[0] = %+v", turns[0])
+	}
+	if turns[1].Tool != "Read" || turns[1].Text != "app.js" {
+		t.Errorf("turns[1] = %+v", turns[1])
+	}
+
 	// Instance B: no auth config at all — the rollups-only posture.
 	publicListen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "status-server", "--listen-addr", publicListen)
@@ -214,4 +231,107 @@ func TestStatusServer(t *testing.T) {
 		t.Errorf("unconfigured GET /api/rollups = %d findings=%d rollups=%d, want public rollups",
 			resp.StatusCode, len(ds.Findings), len(ds.Rollups))
 	}
+	// A transcript is finding data, so the rollups-only posture must refuse it
+	// exactly as it refuses the findings projection.
+	resp, err = http.Get(publicBase + transcriptPath)
+	if err != nil {
+		t.Fatalf("GET transcript (unconfigured): %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unconfigured GET transcript = %d, want 401", resp.StatusCode)
+	}
+}
+
+// fabricateTranscript writes a completed Investigation with a stored
+// conversation, as the investigation controller would at Job completion.
+func fabricateTranscript(t *testing.T, cl *cluster, finding string) {
+	t.Helper()
+	ctx := context.Background()
+	inv := &v1alpha1.Investigation{
+		ObjectMeta: metav1.ObjectMeta{Name: finding + "-inv-1", Namespace: namespace},
+		Spec: v1alpha1.InvestigationSpec{
+			FindingRef: v1alpha1.ObjectReference{Name: finding}, Attempt: 1,
+		},
+	}
+	if err := cl.client.Create(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+	turns := []transcript.Turn{
+		{Seq: 1, Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: "Tracing the sink."},
+		{Seq: 2, Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Read", Text: "app.js"},
+	}
+	cm, err := transcriptstore.ConfigMap(namespace, nil, inv,
+		metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "Investigation"}, turns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cl.client.Create(ctx, cm); err != nil {
+		t.Fatal(err)
+	}
+
+	inv.Status = v1alpha1.InvestigationStatus{
+		Phase: v1alpha1.RunComplete,
+		Stage: &v1alpha1.StageResult{
+			Outcome:    "ok",
+			Transcript: &v1alpha1.TranscriptRef{Name: cm.Name, Turns: int32(len(turns))},
+		},
+	}
+	if err := cl.client.Status().Update(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fetchTranscript reads the turn events off the transcript SSE stream.
+func fetchTranscript(t *testing.T, url string) []statusTurn {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: %d", url, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", url, err)
+	}
+
+	var turns []statusTurn
+	ended := false
+	for _, block := range strings.Split(string(body), "\n\n") {
+		var event, data string
+		for _, line := range strings.Split(block, "\n") {
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				data = strings.TrimPrefix(line, "data: ")
+			}
+		}
+		switch event {
+		case "turn":
+			var turn statusTurn
+			if err := json.Unmarshal([]byte(data), &turn); err != nil {
+				t.Fatalf("decode turn %q: %v", data, err)
+			}
+			turns = append(turns, turn)
+		case "end":
+			ended = true
+		}
+	}
+	if !ended {
+		t.Error("transcript stream did not end")
+	}
+	return turns
+}
+
+// statusTurn mirrors the status server's transcript wire type.
+type statusTurn struct {
+	Seq  int    `json:"seq"`
+	Role string `json:"role"`
+	Kind string `json:"kind"`
+	Tool string `json:"tool"`
+	Text string `json:"text"`
 }

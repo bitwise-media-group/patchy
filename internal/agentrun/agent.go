@@ -20,6 +20,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/runner"
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Executor runs harness command specs; *runner.Exec satisfies it, tests
@@ -142,6 +143,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		return ev
 	}
 
+	onLine, _ := a.observe(h, params.budget)
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:    prompt,
 		Model:     cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
@@ -149,7 +151,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		Sandbox:   harness.SandboxWorkspaceWrite,
 		SessionID: a.newSessionID(),
 		AddDirs:   []string{a.cfg.Workspace},
-	}), a.cfg.RemediateTimeout, a.budgetWatcher(h, params.budget))
+	}), a.cfg.RemediateTimeout, onLine)
 	a.fillStage(&ev.Stage, h, res)
 
 	if res.Aborted {
@@ -195,9 +197,99 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 	return ev
 }
 
-// budgetWatcher builds the runner's per-line observer enforcing the
-// cumulative output-token budget, when the harness can report usage.
-func (a *Agent) budgetWatcher(h harness.Harness, budget int) func([]byte) (bool, string) {
+// observe builds the runner's per-line observer: the transcript recorder and
+// the output-token budget kill switch, over the one pass the runner makes.
+// Either half may be absent — a harness that cannot report usage, a budget of
+// zero, a harness that cannot transcribe — and when both are, the observer is
+// nil and the runner does no per-line work at all.
+//
+// Recording happens before the budget check so the turn that tripped the limit
+// is in the transcript that explains why the run stopped.
+func (a *Agent) observe(h harness.Harness, budget int) (func([]byte) (bool, string), *transcript.Recorder) {
+	rec := a.recorder(h)
+	watch := budgetWatcher(h, budget)
+	if rec == nil && watch == nil {
+		return nil, nil
+	}
+
+	turns, _ := h.(harness.TurnScanner)
+	return func(line []byte) (bool, string) {
+		if rec != nil && turns != nil {
+			rec.RecordAll(turns.ScanTurns(line))
+		}
+		if watch == nil {
+			return false, ""
+		}
+		abort, reason := watch(line)
+		if abort && rec != nil {
+			rec.Notice("%s", reason)
+		}
+		return abort, reason
+	}, rec
+}
+
+// recorder builds the transcript recorder for a run, or nil when the harness
+// cannot project its stream onto the turn vocabulary.
+func (a *Agent) recorder(h harness.Harness) *transcript.Recorder {
+	if _, ok := h.(harness.TurnScanner); !ok {
+		a.cfg.Log.Info("harness cannot transcribe; no transcript for this run", "harness", h.ID())
+		return nil
+	}
+	return transcript.NewRecorder(a.cfg.transcriptLimits(), credentialValues(h), a.emitTurn)
+}
+
+// credentialValues returns the literal secret values to scrub from a
+// transcript: the harness's own credential variables, plus anything else in
+// the environment named like a credential. The pod carries the model API key,
+// and a tool result that dumps the environment would otherwise put it in a
+// ConfigMap the status page serves.
+//
+// The harness keys are the authoritative half — runnercfg validates the
+// injected credential's variable against exactly that set at startup, so the
+// model key is always covered. The name heuristic is defence in depth for
+// whatever else an operator forwards.
+func credentialValues(h harness.Harness) []string {
+	wanted := make(map[string]bool, len(h.EnvKeys()))
+	for _, k := range h.EnvKeys() {
+		wanted[k] = true
+	}
+	var out []string
+	for _, kv := range os.Environ() {
+		name, value, ok := strings.Cut(kv, "=")
+		if !ok || value == "" {
+			continue
+		}
+		if wanted[name] || credentialNamed(name) {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// credentialWords mark an environment variable as holding a secret.
+var credentialWords = []string{"TOKEN", "KEY", "SECRET", "PASSWORD", "CREDENTIALS"}
+
+// credentialNamed reports whether an environment variable's name marks it as
+// a credential. It over-matches on purpose — a redacted non-secret costs a
+// reader nothing, a leaked secret costs a rotation — but skips patchy's own
+// PATCHY_* configuration, which holds no credentials and does hold numbers
+// (token budgets) common enough to redact real transcript text by accident.
+func credentialNamed(name string) bool {
+	upper := strings.ToUpper(name)
+	if strings.HasPrefix(upper, "PATCHY_") {
+		return false
+	}
+	for _, word := range credentialWords {
+		if strings.Contains(upper, word) {
+			return true
+		}
+	}
+	return false
+}
+
+// budgetWatcher builds the per-line observer enforcing the cumulative
+// output-token budget, when the harness can report usage.
+func budgetWatcher(h harness.Harness, budget int) func([]byte) (bool, string) {
 	scanner, ok := h.(harness.UsageScanner)
 	if !ok || budget <= 0 {
 		return nil
@@ -247,6 +339,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		return ev
 	}
 
+	onLine, _ := a.observe(h, a.cfg.InvestigateTokenBudget)
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:    prompt,
 		Model:     cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
@@ -254,7 +347,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		Sandbox:   harness.SandboxReadOnly,
 		SessionID: a.newSessionID(),
 		AddDirs:   []string{a.cfg.Workspace},
-	}), a.cfg.InvestigateTimeout, a.budgetWatcher(h, a.cfg.InvestigateTokenBudget))
+	}), a.cfg.InvestigateTimeout, onLine)
 	a.fillStage(&ev.Stage, h, res)
 
 	if res.Aborted {
@@ -485,6 +578,23 @@ func (a *Agent) emit(e envelope.Event) {
 	}
 	if _, err := fmt.Fprintln(a.cfg.Out, line); err != nil {
 		a.cfg.Log.Error("emit envelope event", "error", err)
+	}
+}
+
+// emitTurn writes one transcript turn to the runner's stdout. Turns share the
+// stream with envelope events under their own prefix; the owning controller
+// scans for both and the status server follows the log live for the turns.
+//
+// A turn that cannot be written is logged and dropped: the transcript is
+// observability, and losing a line of it must never fail the run producing it.
+func (a *Agent) emitTurn(t transcript.Turn) {
+	line, err := transcript.Encode(t)
+	if err != nil {
+		a.cfg.Log.Error("encode transcript turn", "error", err)
+		return
+	}
+	if _, err := fmt.Fprintln(a.cfg.Out, line); err != nil {
+		a.cfg.Log.Error("emit transcript turn", "error", err)
 	}
 }
 

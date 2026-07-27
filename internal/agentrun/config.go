@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Phase selects which stage runs.
@@ -93,9 +94,25 @@ type Config struct {
 	// remediation stage may emit.
 	ChangesetMaxBytes int
 
-	// Out receives the envelope events (stdout in the pod).
+	// Transcript bounds one run's captured conversation. The defaults keep it
+	// inside the ConfigMap the controller persists it into; zero takes the
+	// transcript package's default and negative disables that bound.
+	TranscriptMaxTurnBytes  int
+	TranscriptMaxTurns      int
+	TranscriptMaxTotalBytes int
+
+	// Out receives the envelope events and transcript turns (stdout in the pod).
 	Out io.Writer
 	Log *slog.Logger
+}
+
+// transcriptLimits is the recorder's bounds for this run.
+func (c Config) transcriptLimits() transcript.Limits {
+	return transcript.Limits{
+		MaxTurnBytes:  c.TranscriptMaxTurnBytes,
+		MaxTurns:      c.TranscriptMaxTurns,
+		MaxTotalBytes: c.TranscriptMaxTotalBytes,
+	}
 }
 
 // Workspace layout, derived from Config.Workspace.
@@ -175,6 +192,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	cfg.GrantedMaxTurns = number("GRANTED_MAX_TURNS", "0")
 	cfg.GrantedTokenBudget = number("GRANTED_TOKEN_BUDGET", "0")
 	cfg.ChangesetMaxBytes = number("CHANGESET_MAX_BYTES", strconv.Itoa(5<<20))
+	cfg.TranscriptMaxTurnBytes = number("TRANSCRIPT_MAX_TURN_BYTES", strconv.Itoa(transcript.DefaultMaxTurnBytes))
+	cfg.TranscriptMaxTurns = number("TRANSCRIPT_MAX_TURNS", strconv.Itoa(transcript.DefaultMaxTurns))
+	cfg.TranscriptMaxTotalBytes = number("TRANSCRIPT_MAX_TOTAL_BYTES", strconv.Itoa(transcript.DefaultMaxTotalBytes))
 	cfg.InvestigateTimeout = duration("INVESTIGATE_TIMEOUT", "15m")
 	cfg.RemediateTimeout = duration("REMEDIATE_TIMEOUT", "45m")
 

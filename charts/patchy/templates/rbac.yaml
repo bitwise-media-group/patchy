@@ -102,9 +102,11 @@ verdict edges on Finding status).
   resources: [forges]
   verbs: [get, list, watch]
 # Read-only: the estimate calibration rendered into the analysis prompt.
+# The read is a Get, but it goes through the cached client, whose informer
+# needs list/watch.
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findingrollups]
-  verbs: [get]
+  verbs: [get, list, watch]
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]

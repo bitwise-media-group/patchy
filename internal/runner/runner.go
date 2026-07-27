@@ -20,6 +20,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/bitwise-media-group/patchy/internal/ansi"
 )
 
 // scopeName is this package's OpenTelemetry instrumentation scope.
@@ -186,10 +188,10 @@ func (e *Exec) Run(ctx context.Context, spec CommandSpec, timeout time.Duration,
 	// runners emit (there a tool's ANSI sits backslash-u escaped inside a
 	// JSON string, not as a raw escape byte), so parsing is unaffected.
 	res := Result{
-		Stdout:      stripANSI(collected.Bytes()),
+		Stdout:      ansi.Strip(collected.Bytes()),
 		Aborted:     aborted,
 		AbortReason: reason,
-		StderrTail:  strings.TrimSpace(string(stripANSI(stderr.Bytes()))),
+		StderrTail:  strings.TrimSpace(string(ansi.Strip(stderr.Bytes()))),
 		Elapsed:     time.Since(start),
 	}
 	if cmd.ProcessState != nil {

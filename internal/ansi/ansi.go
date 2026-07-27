@@ -1,14 +1,18 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-package runner
+package ansi
 
-// stripANSI removes ANSI terminal escape sequences from b: CSI sequences
+// Strip removes ANSI terminal escape sequences from b: CSI sequences
 // (colors and cursor movement, "\x1b[31m"), OSC sequences (window titles and
 // hyperlinks, terminated by BEL or ST), and the remaining ESC-prefixed forms
 // (charset designations, "\x1b(B"). It covers what agent CLIs and the tools
 // they shell out to actually emit; it is not a full terminal emulator.
-func stripANSI(b []byte) []byte {
+//
+// Callers stripping JSON stream output must strip the DECODED text of an
+// event, not the raw line: there a tool's escapes sit backslash-u escaped
+// inside a JSON string, where this is a no-op.
+func Strip(b []byte) []byte {
 	const esc = 0x1b
 	out := make([]byte, 0, len(b))
 	for i := 0; i < len(b); i++ {

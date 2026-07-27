@@ -65,7 +65,7 @@ Three implementations ship:
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
 - **Google Cloud labels** — reads `scm-repository-*` labels off the cloud resource a finding was raised against, via
   Cloud Asset Inventory, and resolves the repository from them
-  ([format](configuration/google-cloud-scc.md#the-ownership-labels)).
+  ([format](integrations/google-cloud-scc.md#the-ownership-labels)).
 
 A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the

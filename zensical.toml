@@ -28,10 +28,13 @@ nav = [
   ] },
   { "How it works" = "how-it-works.md" },
   { "State machine & labels" = "labels.md" },
+  { "Integrations" = [
+    { "GitHub" = "integrations/github.md" },
+    { "Google Cloud SCC" = "integrations/google-cloud-scc.md" },
+  ] },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },
     { "integration-controller" = "configuration/integration-controller.md" },
-    { "Google Cloud SCC" = "configuration/google-cloud-scc.md" },
     { "source-controller" = "configuration/source-controller.md" },
     { "context-controller" = "configuration/context-controller.md" },
     { "investigation-controller" = "configuration/investigation-controller.md" },

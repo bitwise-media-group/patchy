@@ -48,10 +48,13 @@ Two knobs exist only here:
 
 <div class="nowrap-first" markdown>
 
-| Env                          | Default           | Purpose                                                             |
-| ---------------------------- | ----------------- | ------------------------------------------------------------------- |
-| `PATCHY_CHANGESET_MAX_BYTES` | `5242880` (5 MiB) | Size cap on the changeset's file contents carried out of the pod    |
-| `PATCHY_FAKE_FIXTURE`        | —                 | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
+| Env                                 | Default            | Purpose                                                             |
+| ----------------------------------- | ------------------ | ------------------------------------------------------------------- |
+| `PATCHY_CHANGESET_MAX_BYTES`        | `5242880` (5 MiB)  | Size cap on the changeset's file contents carried out of the pod    |
+| `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`  | `2048`             | Per-turn text cap in the captured conversation                      |
+| `PATCHY_TRANSCRIPT_MAX_TURNS`       | `500`              | Turn cap for one run's conversation                                 |
+| `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES` | `524288` (512 KiB) | Total cap on one run's conversation, before compression             |
+| `PATCHY_FAKE_FIXTURE`               | —                  | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
 
 </div>
 

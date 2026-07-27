@@ -16,6 +16,12 @@ grammar:
 - **The findings surface always requires authentication.** `GET /api/findings` and every action `POST` demand a
   signed-in identity whose RBAC passes the corresponding access review. With no auth config at all the server runs in
   the _unconfigured_ posture: rollups only, and the page explains that sign-in is not configured.
+- **Agent conversations ride the findings gate.**
+  `GET /api/findings/{name}/runs/{investigation|remediation}/{attempt}/transcript` is Server-Sent Events in both modes:
+  a finished run replays its stored ConfigMap, a running one streams from the agent's pod log. Following a live run
+  needs `pods` and `pods/log` read in `--agent-namespace` (through the API server — the server never dials an agent
+  pod); without that grant, completed runs' conversations still serve. See
+  [Agent conversations](../status-ui.md#agent-conversations).
 
 ## Flags
 
@@ -24,12 +30,13 @@ is no webhook), plus:
 
 <div class="nowrap-first" markdown>
 
-| Flag            | Env                  | Default         | Purpose                                                          |
-| --------------- | -------------------- | --------------- | ---------------------------------------------------------------- |
-| `--namespace`   | `PATCHY_NAMESPACE`   | `POD_NAMESPACE` | Namespace the Findings and FindingRollups live in                |
-| `--kubeconfig`  | `PATCHY_KUBECONFIG`  | in-cluster      | Kubeconfig path for running outside the cluster                  |
-| `--health-addr` | `PATCHY_HEALTH_ADDR` | `:8081`         | healthz/readyz probe listen address                              |
-| `--auth-config` | `PATCHY_AUTH_CONFIG` | _(unset)_       | Mounted authentication config; absent ⇒ rollups-only (see below) |
+| Flag                | Env                      | Default         | Purpose                                                                              |
+| ------------------- | ------------------------ | --------------- | ------------------------------------------------------------------------------------ |
+| `--namespace`       | `PATCHY_NAMESPACE`       | `POD_NAMESPACE` | Namespace the Findings and FindingRollups live in                                    |
+| `--agent-namespace` | `PATCHY_AGENT_NAMESPACE` | `patchy-agents` | Namespace the agent Jobs run in; live conversations are followed from their pod logs |
+| `--kubeconfig`      | `PATCHY_KUBECONFIG`      | in-cluster      | Kubeconfig path for running outside the cluster                                      |
+| `--health-addr`     | `PATCHY_HEALTH_ADDR`     | `:8081`         | healthz/readyz probe listen address                                                  |
+| `--auth-config`     | `PATCHY_AUTH_CONFIG`     | _(unset)_       | Mounted authentication config; absent ⇒ rollups-only (see below)                     |
 
 </div>
 

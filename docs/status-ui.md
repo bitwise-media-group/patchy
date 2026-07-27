@@ -20,9 +20,11 @@ The screenshots below show the [canned dev data](#canned-data-in-dev) — every 
 
   ![The findings board](assets/images/status-findings.jpg)
 
-- **Finding detail** — the advisory header with status and severity, tabs (Overview · Alerts · Timeline · Remediation),
-  the metadata sidebar (owners, repository, source, tracking issue, advisories, dates), and the action bar. A completed
-  remediation shows the merged PR; terminal states surface failure reasons, dismissal verdicts, and hand-off routes.
+- **Finding detail** — the advisory header with status and severity, tabs (Overview · Alerts · Timeline · Investigation
+  · Remediation), the metadata sidebar (owners, repository, source, tracking issue, advisories, dates), and the action
+  bar. A completed remediation shows the merged PR; terminal states surface failure reasons, dismissal verdicts, and
+  hand-off routes. The investigation and remediation tabs each end in a **Conversation** section — see
+  [Agent conversations](#agent-conversations).
 
   ![A finding awaiting approval, with the action bar](assets/images/status-finding-detail.jpg)
 
@@ -31,6 +33,35 @@ The screenshots below show the [canned dev data](#canned-data-in-dev) — every 
   in.
 
   ![The rollup statistics](assets/images/status-rollups.jpg)
+
+## Agent conversations
+
+Each run's investigation and remediation tab carries the agent's turn-by-turn conversation: its messages, its reasoning,
+every tool it called and what came back. While a run is in flight the section streams live; afterwards it replays the
+stored record.
+
+What makes that possible is that the agent pod normalises its own CLI's output — claude's content blocks, codex's items,
+copilot's messages all become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside
+the `PATCHY-EVENT:` stage result. The owning controller reads that log once when the Job finishes and writes the
+conversation to a ConfigMap owner-referenced to the run. Since a run is owned by its Finding, the
+[finding TTL](configuration/remediation-controller.md) cascade deletes the transcript with everything else: a
+conversation is retained exactly as long as the finding it explains, and no longer.
+
+Two limits are worth knowing:
+
+- **Turns are bounded and redacted.** Each turn's text is capped (default 2 KiB), a run is capped at 500 turns and 512
+  KiB total, and any value matching a credential in the pod's environment is replaced with `«redacted»` before it leaves
+  the pod. A conversation cut short by those bounds says so, in the section footer and on the last turn. Override with
+  `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`, `PATCHY_TRANSCRIPT_MAX_TURNS`, `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES`.
+- **The upstream session id is not a handle.** `stage.sessionID` records what the agent CLI called its session, which is
+  useful for correlating against model-provider logs — but it resolves only against a session file in the pod's `$HOME`,
+  which is an `emptyDir` that dies with the pod. Nothing can fetch a conversation from the provider after the fact,
+  which is why patchy stores it.
+
+Live streaming needs the status server to read pod logs in the agent namespace, through the API server — it never dials
+an agent pod, so the agents' default-deny ingress policy is untouched. Turn it off with
+`statusServer.liveTranscripts=false` (helm) or by dropping the `patchy-status-server-agent-logs` Role and its binding
+(kustomize); completed runs' conversations still serve, since those come from their own ConfigMaps.
 
 ## Actions and what they really do
 
@@ -81,7 +112,9 @@ Two tiers, on purpose:
 2. **Findings require sign-in + RBAC.** Without an [auth configuration](configuration/status-server.md), the findings
    views show "sign-in is not configured" and nothing else leaves the cluster. With one, a signed-in user sees findings
    only if RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` /
-   `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`):
+   `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). Agent conversations are finding
+   content and ride the same `get findings` gate; the change-notification stream (`/events`) stays public precisely
+   because it carries no content at all, only the fact that something changed:
 
 ```yaml
 rules:

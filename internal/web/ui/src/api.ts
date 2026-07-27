@@ -5,9 +5,9 @@
 // finding's permitted verbs already resolved for the requesting user, and a
 // mutation is re-checked on POST. The client only reflects 401/403.
 
-import type { ActionVerb, AdminVerb, Dataset, Finding } from "./types";
+import type { ActionVerb, AdminVerb, Dataset, Finding, TranscriptTurn } from "./types";
 import { availableActions, retryTarget } from "./actions";
-import { mockDataset } from "./mock/findings";
+import { mockDataset, mockTranscript } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
 
 // AuthRequiredError: the server wants a signed-in user (HTTP 401).
@@ -162,4 +162,67 @@ export function subscribe(onChange: () => void): () => void {
   const es = new EventSource("/events");
   es.addEventListener("findings-changed", onChange);
   return () => es.close();
+}
+
+// TranscriptHandlers receive one agent conversation as it arrives.
+export interface TranscriptHandlers {
+  onTurn: (turn: TranscriptTurn) => void;
+  // onEnd fires when the conversation is complete — a finished run's stored
+  // record, or a live run whose agent exited.
+  onEnd: () => void;
+  onError: (err: Error) => void;
+}
+
+// streamTranscript opens one run's conversation and returns a close function.
+//
+// The server answers with SSE whether the run is finished or still going, so
+// there is a single client path: turns arrive in order and an `end` event says
+// the conversation is over. EventSource would otherwise reconnect forever
+// after a completed stream, so `end` also closes the connection.
+export function streamTranscript(
+  finding: string,
+  kind: "investigation" | "remediation",
+  attempt: number,
+  handlers: TranscriptHandlers,
+): () => void {
+  if (dataMode() !== "live") {
+    const turns = mockTranscript(finding, kind);
+    // Deliver asynchronously so callers see the same ordering as live mode.
+    const timer = setTimeout(() => {
+      turns.forEach(handlers.onTurn);
+      handlers.onEnd();
+    }, 120);
+    return () => clearTimeout(timer);
+  }
+
+  const path = `/api/findings/${encodeURIComponent(finding)}/runs/${kind}/${attempt}/transcript`;
+  const es = new EventSource(path);
+  let closed = false;
+  const close = () => {
+    if (!closed) {
+      closed = true;
+      es.close();
+    }
+  };
+
+  es.addEventListener("turn", (event) => {
+    try {
+      handlers.onTurn(JSON.parse((event as MessageEvent).data) as TranscriptTurn);
+    } catch {
+      // A malformed turn costs one line, not the stream.
+    }
+  });
+  es.addEventListener("end", () => {
+    close();
+    handlers.onEnd();
+  });
+  es.addEventListener("error", () => {
+    // EventSource reports transport errors and retries; only a closed
+    // connection is terminal for us.
+    if (es.readyState === EventSource.CLOSED) {
+      close();
+      handlers.onError(new Error("transcript stream closed"));
+    }
+  });
+  return close;
 }

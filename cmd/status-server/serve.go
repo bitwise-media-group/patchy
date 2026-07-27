@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,9 +14,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
+	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
@@ -32,11 +35,32 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
+	f.String("agent-namespace", "patchy-agents",
+		"namespace the agent Jobs run in; live transcripts are followed from their pod logs")
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.String("auth-config", "",
 		"path to the mounted authentication config; absent means rollup statistics only, no findings access")
 	return cmd
+}
+
+// agentTailer builds the read-only pod-log reader for the agent namespace.
+// It is a plain clientset rather than the manager's client: pod logs are a
+// subresource stream, not a cacheable object, and the manager's cache is
+// scoped to the patchy namespace anyway.
+func agentTailer(kubeconfig, agentNamespace string) (web.Tailer, error) {
+	if agentNamespace == "" {
+		return nil, errors.New("no agent namespace configured")
+	}
+	cfg, err := kube.RestConfig(kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes config: %w", err)
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes clientset: %w", err)
+	}
+	return jobs.NewTailer(cs, agentNamespace), nil
 }
 
 func serve(ctx context.Context, opts *cli.Options) error {
@@ -91,6 +115,19 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 
 	srv := web.NewServer(mgr.GetClient(), namespace, authn, granter, log)
+	// Transcripts read through the uncached API reader (caching every
+	// ConfigMap in the namespace to serve objects read once per page view is
+	// not worth an informer) and follow live runs from the agent namespace's
+	// pod logs, via the API server — the status server never dials an agent pod.
+	agentNS := opts.String("agent-namespace")
+	tailer, err := agentTailer(opts.String("kubeconfig"), agentNS)
+	if err != nil {
+		// Live following is a nicety; persisted transcripts still serve.
+		log.LogAttrs(ctx, slog.LevelWarn, "live transcripts unavailable",
+			slog.String("agent_namespace", agentNS), slog.Any("error", err))
+	}
+	srv = srv.WithTranscripts(mgr.GetAPIReader(), tailer)
+
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		return srv.StartWatch(ctx, mgr.GetCache())
 	}))

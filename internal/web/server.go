@@ -40,6 +40,15 @@ type Server struct {
 	log       *slog.Logger
 	broker    *broker
 	now       func() time.Time
+	// reader is an uncached client for transcript ConfigMaps. Caching them
+	// would pull every ConfigMap in the namespace into an informer for objects
+	// read once when a human opens a finding, the same reasoning that keeps
+	// Secrets out of the manager's cache.
+	reader client.Reader
+	// tails multiplexes live transcript follows; nil when the server has no
+	// reach into the agents namespace, which degrades live streaming to the
+	// persisted transcript alone.
+	tails *tailHub
 	// debounce overrides the watch coalescing window (tests).
 	debounce time.Duration
 }
@@ -58,7 +67,21 @@ func NewServer(c client.Client, namespace string, a auth.Authenticator, g Grante
 		log:       log,
 		broker:    newBroker(),
 		now:       time.Now,
+		reader:    c,
 	}
+}
+
+// WithTranscripts wires the uncached reader for persisted transcripts and the
+// tailer for live ones. Without it the server still serves everything else;
+// transcripts simply come back empty.
+func (s *Server) WithTranscripts(reader client.Reader, tailer Tailer) *Server {
+	if reader != nil {
+		s.reader = reader
+	}
+	if tailer != nil {
+		s.tails = newTailHub(tailer, s.log)
+	}
+	return s
 }
 
 // Handler builds the HTTP surface: the split public/authenticated API, the
@@ -70,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
 	mux.HandleFunc("POST /api/findings/{name}/actions/{verb}", s.handleAction)
 	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
+	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/transcript", s.handleTranscript)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	s.auth.Register(mux)
 	mux.Handle("/", s.staticHandler())
@@ -100,30 +124,48 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 	})
 }
 
-// handleFindings serves the full dataset to an authenticated identity whose
-// RBAC grants viewing; rollups-only readers use /api/rollups.
-func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
+// authorize resolves the caller and enforces the view gate every finding-data
+// endpoint shares, writing the failure response itself. ok is false when the
+// request has already been answered.
+func (s *Server) authorize(w http.ResponseWriter, r *http.Request) (viewer, bool) {
 	id, err := s.auth.Identify(w, r)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))
 		http.Error(w, "authentication failed", http.StatusInternalServerError)
-		return
+		return viewer{}, false
 	}
 	if id == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		return
+		return viewer{}, false
 	}
 	grants, err := s.granter.Grants(r.Context(), *id)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "grants failed", slog.Any("error", err))
 		http.Error(w, "authorization failed", http.StatusInternalServerError)
-		return
+		return viewer{}, false
 	}
 	if !grants.View {
 		http.Error(w, fmt.Sprintf("Permission denied. User %q may not view findings in namespace %q.",
 			id.Display(), s.namespace), http.StatusForbidden)
+		return viewer{}, false
+	}
+	return viewer{id: *id, grants: grants}, true
+}
+
+// viewer is an authorised caller.
+type viewer struct {
+	id     auth.Identity
+	grants authz.Grants
+}
+
+// handleFindings serves the full dataset to an authenticated identity whose
+// RBAC grants viewing; rollups-only readers use /api/rollups.
+func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
+	v, ok := s.authorize(w, r)
+	if !ok {
 		return
 	}
+	id, grants := v.id, v.grants
 	user := &User{Name: id.Display(), LoggedIn: id.Session, AdminActions: grants.Admin}
 	ds, err := s.buildDataset(r.Context(), true, grants.Verbs, user)
 	if err != nil {

@@ -184,6 +184,13 @@ type Investigation struct {
 	Model       string    `json:"model,omitempty"`
 	NumTurns    int32     `json:"numTurns,omitempty"`
 	Usage       *Usage    `json:"usage,omitempty"`
+	// SessionID is the agent CLI's own session identifier — a correlation key
+	// for operators reading model-provider logs, not a handle anything can be
+	// fetched with (the CLI session dies with the pod).
+	SessionID string `json:"sessionID,omitempty"`
+	// Transcript summarises the captured conversation; the turns themselves
+	// come from the transcript endpoint.
+	Transcript *TranscriptSummary `json:"transcript,omitempty"`
 }
 
 // Remediation mirrors the Finding's remediation summary, plus the report
@@ -201,6 +208,19 @@ type Remediation struct {
 	NumTurns    int32   `json:"numTurns,omitempty"`
 	Budget      *Budget `json:"budget,omitempty"`
 	Usage       *Usage  `json:"usage,omitempty"`
+	// SessionID is the agent CLI's own session identifier; see Investigation.
+	SessionID string `json:"sessionID,omitempty"`
+	// Transcript summarises the captured conversation.
+	Transcript *TranscriptSummary `json:"transcript,omitempty"`
+}
+
+// TranscriptSummary tells the client whether a run has a conversation worth
+// opening, without shipping it inside the dataset — a finding list carrying
+// every run's full transcript would be orders of magnitude larger than the
+// page needs.
+type TranscriptSummary struct {
+	Turns     int32 `json:"turns"`
+	Truncated bool  `json:"truncated,omitempty"`
 }
 
 // Usage is token and cost accounting — one run's, or the finding's total
@@ -432,6 +452,8 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 				out.Investigation.Model = st.Model
 				out.Investigation.NumTurns = st.NumTurns
 				out.Investigation.Usage = stageUsage(st)
+				out.Investigation.SessionID = st.SessionID
+				out.Investigation.Transcript = wireTranscript(st.Transcript)
 			}
 		}
 	}
@@ -443,6 +465,8 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 				out.Remediation.Model = st.Model
 				out.Remediation.NumTurns = st.NumTurns
 				out.Remediation.Usage = stageUsage(st)
+				out.Remediation.SessionID = st.SessionID
+				out.Remediation.Transcript = wireTranscript(st.Transcript)
 			}
 			// What the run was predicted to cost against what it was allowed;
 			// NumTurns and Usage.OutputTokens above are what it actually spent.
@@ -459,6 +483,17 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 	if u, ok := d.totals[f.Name]; ok && u != (Usage{}) {
 		out.TotalUsage = &u
 	}
+}
+
+// wireTranscript projects a run's transcript reference onto the wire summary.
+// The ConfigMap name stays server-side: the client addresses a transcript by
+// finding, kind and attempt, so nothing in the browser depends on the storage
+// layout.
+func wireTranscript(ref *v1alpha1.TranscriptRef) *TranscriptSummary {
+	if ref == nil || ref.Turns == 0 {
+		return nil
+	}
+	return &TranscriptSummary{Turns: ref.Turns, Truncated: ref.Truncated}
 }
 
 // stageUsage converts a stage's usage block onto the wire type, or nil when

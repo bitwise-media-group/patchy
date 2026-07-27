@@ -171,6 +171,8 @@ export interface InvestigationSummary {
   model?: string;
   numTurns?: number;
   usage?: Usage;
+  sessionID?: string;
+  transcript?: TranscriptSummary;
 }
 
 export interface RemediationSummary {
@@ -187,6 +189,30 @@ export interface RemediationSummary {
   numTurns?: number;
   budget?: Budget;
   usage?: Usage;
+  sessionID?: string;
+  transcript?: TranscriptSummary;
+}
+
+// TranscriptSummary says whether a run has a captured conversation worth
+// opening; the turns themselves stream from the transcript endpoint.
+export interface TranscriptSummary {
+  turns: number;
+  truncated?: boolean;
+}
+
+export type TurnRole = "assistant" | "user" | "system";
+export type TurnKind = "text" | "thinking" | "tool_use" | "tool_result" | "notice";
+
+// TranscriptTurn is one entry of an agent's conversation, normalised across
+// harnesses. Mirrors internal/web.Turn; keep the two in lockstep.
+export interface TranscriptTurn {
+  seq: number;
+  at?: string;
+  role: TurnRole;
+  kind: TurnKind;
+  tool?: string;
+  text?: string;
+  truncated?: boolean;
 }
 
 export interface PullRequestStatus {

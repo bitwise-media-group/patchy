@@ -5,6 +5,7 @@ import { Markdown } from "./Markdown";
 import { Pill } from "./Pills";
 import { PullRequestCard } from "./PullRequest";
 import { BudgetRows, RunAccountingRows } from "./RunUsage";
+import { Conversation } from "./Transcript";
 
 export function RemediationTab({ finding }: { finding: Finding }) {
   const rem = finding.remediation;
@@ -106,6 +107,8 @@ export function RemediationTab({ finding }: { finding: Finding }) {
           {finding.lastFailureReason}
         </div>
       ) : null}
+      <Conversation finding={finding} kind="remediation" />
+
     </div>
   );
 }

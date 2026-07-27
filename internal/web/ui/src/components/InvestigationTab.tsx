@@ -4,6 +4,7 @@ import { Icon } from "./icons";
 import { Markdown } from "./Markdown";
 import { Pill, VerdictPill } from "./Pills";
 import { RunAccountingRows } from "./RunUsage";
+import { Conversation } from "./Transcript";
 
 export function InvestigationTab({ finding }: { finding: Finding }) {
   const inv = finding.investigation;
@@ -90,6 +91,8 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
           <p class="text-faint">No report recorded{inv ? " (the investigation may have expired)" : ""}.</p>
         )}
       </section>
+      <Conversation finding={finding} kind="investigation" />
+
     </div>
   );
 }

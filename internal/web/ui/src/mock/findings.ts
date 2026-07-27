@@ -3,7 +3,7 @@
 // patchy api/v1alpha1 types. Timestamps are fixed ISO strings so the demo is
 // deterministic; relative times are computed at render.
 
-import type { Dataset, Finding, Rollup } from "../types";
+import type { Dataset, Finding, Rollup, TranscriptTurn } from "../types";
 
 const findings: Finding[] = [
   {
@@ -969,4 +969,155 @@ export function mockDataset(): Dataset {
       rollups,
     }),
   ) as Dataset;
+}
+
+// investigationTranscript is a representative analysis conversation for the
+// demo kit and the offline snapshot, which never reach a server.
+const investigationTranscript: TranscriptTurn[] = [
+  {
+    seq: 1,
+    role: "system",
+    kind: "notice",
+    at: "2026-07-21T08:31:02Z",
+    text: "session 5e3f9a1c-8b2d-4f6e-9c7a-1d2e3f4a5b6c started",
+  },
+  {
+    seq: 2,
+    role: "assistant",
+    kind: "thinking",
+    at: "2026-07-21T08:31:04Z",
+    text: "The alert points at a template render. I need to know whether the value reaching it is attacker-controlled, and whether anything escapes it on the way.",
+  },
+  {
+    seq: 3,
+    role: "assistant",
+    kind: "text",
+    at: "2026-07-21T08:31:06Z",
+    text: "Starting with the reported location, then tracing the parameter back to its entry point.",
+  },
+  {
+    seq: 4,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Read",
+    at: "2026-07-21T08:31:07Z",
+    text: "src/routes/orders.js",
+  },
+  {
+    seq: 5,
+    role: "user",
+    kind: "tool_result",
+    at: "2026-07-21T08:31:08Z",
+    text: "router.get('/orders/:id', async (req, res) => {\n  const order = await lookup(req.params.id);\n  res.send(render(`<h1>Order ${order.reference}</h1>`));\n});",
+  },
+  {
+    seq: 6,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Grep",
+    at: "2026-07-21T08:31:11Z",
+    text: "reference\\s*=",
+  },
+  {
+    seq: 7,
+    role: "user",
+    kind: "tool_result",
+    at: "2026-07-21T08:31:12Z",
+    text: "src/models/order.js:41:  this.reference = body.reference;",
+  },
+  {
+    seq: 8,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Bash",
+    at: "2026-07-21T08:31:15Z",
+    text: "git log -S 'order.reference' --oneline -- src/models/order.js",
+  },
+  {
+    seq: 9,
+    role: "user",
+    kind: "tool_result",
+    at: "2026-07-21T08:31:17Z",
+    text: "9c1f20a feat(orders): accept a customer reference on create",
+  },
+  {
+    seq: 10,
+    role: "assistant",
+    kind: "text",
+    at: "2026-07-21T08:31:20Z",
+    text: "Confirmed reachable: `reference` is written straight from the request body and interpolated into HTML with no escaping. Writing the report.",
+  },
+  {
+    seq: 11,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Write",
+    at: "2026-07-21T08:31:22Z",
+    text: "/workspace/reports/investigation.md",
+  },
+];
+
+// remediationTranscript is the matching fix conversation.
+const remediationTranscript: TranscriptTurn[] = [
+  {
+    seq: 1,
+    role: "system",
+    kind: "notice",
+    at: "2026-07-21T09:02:00Z",
+    text: "session 7a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d started",
+  },
+  {
+    seq: 2,
+    role: "assistant",
+    kind: "text",
+    at: "2026-07-21T09:02:03Z",
+    text: "Escaping the interpolated value at the sink, then checking nothing else renders it raw.",
+  },
+  {
+    seq: 3,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Edit",
+    at: "2026-07-21T09:02:05Z",
+    text: "src/routes/orders.js",
+  },
+  {
+    seq: 4,
+    role: "user",
+    kind: "tool_result",
+    at: "2026-07-21T09:02:06Z",
+    text: "Applied 1 edit to src/routes/orders.js",
+  },
+  {
+    seq: 5,
+    role: "assistant",
+    kind: "tool_use",
+    tool: "Bash",
+    at: "2026-07-21T09:02:09Z",
+    text: "npm test -- --runInBand",
+  },
+  {
+    seq: 6,
+    role: "user",
+    kind: "tool_result",
+    at: "2026-07-21T09:02:44Z",
+    text: "Test Suites: 24 passed, 24 total\nTests:       181 passed, 181 total",
+  },
+  {
+    seq: 7,
+    role: "assistant",
+    kind: "text",
+    at: "2026-07-21T09:02:47Z",
+    text: "Suite is green. Committing the fix and writing the report.",
+  },
+];
+
+// mockTranscript returns a canned conversation for demo and snapshot modes,
+// which have no server to stream from.
+export function mockTranscript(
+  _finding: string,
+  kind: "investigation" | "remediation",
+): TranscriptTurn[] {
+  const turns = kind === "investigation" ? investigationTranscript : remediationTranscript;
+  return JSON.parse(JSON.stringify(turns)) as TranscriptTurn[];
 }

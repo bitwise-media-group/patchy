@@ -4,16 +4,32 @@
 #
 # The scripted stand-in for the real agent-runner, for credential-less local
 # dev (the dev-fake overlay). The job controllers only ever read the agent
-# container's stdout, so a shell script that prints one well-formed
-# PATCHY-EVENT line per stage exercises the entire CR pipeline — verdict
-# routing, priority scheduling, the changeset push, the pull request —
-# without a model key. Branches on PATCHY_PHASE exactly like the real
-# runtime; PATCHY_BASE_SHA seeds the changeset's push base.
+# container's stdout, so a shell script that prints well-formed PATCHY-TURN
+# and PATCHY-EVENT lines exercises the entire CR pipeline — the conversation
+# capture, verdict routing, priority scheduling, the changeset push, the pull
+# request — without a model key. Branches on PATCHY_PHASE exactly like the
+# real runtime; PATCHY_BASE_SHA seeds the changeset's push base.
+#
+# Two prefixed streams share stdout, exactly as the real runner emits them:
+#
+#   PATCHY-TURN:  one conversation turn (internal/transcript, schema v1). The
+#                 owning controller collects these into the run's transcript
+#                 ConfigMap; the status server follows the pod log live, so an
+#                 in-flight run streams into the page. Paced by turn_delay
+#                 below so that live stream is actually watchable.
+#   PATCHY-EVENT: the stage result (internal/envelope, schema v4). Exactly one
+#                 per run, last.
+#
+# BOTH schema versions are checked on decode, and a mismatch is silent at the
+# source: a stale envelope version fails every run with "agent job produced no
+# <stage> event", a stale turn version drops the conversation with the run
+# otherwise green. internal/jobs/fakeagent_test.go runs this script and decodes
+# its real output with the current Go types so neither can rot unnoticed.
 #
 # The investigation verdict is remediate at 0.92 confidence — above the
 # default 0.75 threshold, so findings flow straight to Queued. Edit the
-# fields below to demo other routes (ignore, manual, await_approval, low
-# confidence).
+# fields below to demo other routes (ignore, manual, await_approval with
+# hold_reasons, low confidence).
 set -eu
 
 repo="${PATCHY_REPO:-unknown/unknown}"
@@ -21,18 +37,86 @@ finding="${PATCHY_FINDING:-unknown}"
 phase="${PATCHY_PHASE:-investigate}"
 base_sha="${PATCHY_BASE_SHA:-}"
 
+# The model the controller resolved for this stage, echoed back on the result
+# so the per-model rollup buckets a real key rather than a placeholder.
+investigate_model="${PATCHY_INVESTIGATE_MODEL:-anthropic/claude-sonnet-5}"
+remediate_model="${PATCHY_REMEDIATE_MODEL:-anthropic/claude-sonnet-5}"
+
+# Seconds between turns. A real run thinks between turns, and the status page's
+# live conversation is worth watching precisely because of that; with no pause
+# the whole transcript lands in a single log flush. Set to 0 for a fast run.
+turn_delay="${PATCHY_FAKE_TURN_DELAY:-1}"
+
+seq=0
+
+# turn <role> <kind> <tool> <text> — print one conversation turn.
+#
+# The text is a printf ARGUMENT, not part of the format, so % is safe and a
+# backslash reaches the output verbatim: write \n in the text to embed a
+# newline in the JSON string. Double quotes must be avoided (or written \"),
+# since the value is interpolated straight into JSON.
+turn() {
+  seq=$((seq + 1))
+  printf 'PATCHY-TURN: {"v":1,"seq":%d,"at":"%s","role":"%s","kind":"%s","tool":"%s","text":"%s"}\n' \
+    "$seq" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" "$2" "$3" "$4"
+  [ "$turn_delay" = 0 ] || sleep "$turn_delay"
+}
+
 case "$phase" in
 investigate)
-  printf 'PATCHY-EVENT: {"v":3,"type":"investigation","repo":"%s","finding":"%s","investigation":{"outcome":"ok","harness":"fake","model":"fake-scripted","session_id":"00000000-0000-4000-8000-000000000000","num_turns":3,"usage":{"input_tokens":1200,"output_tokens":800,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.05},"elapsed_seconds":2.5,"report_markdown":"## Investigation (fake agent)\\n\\nScripted verdict from hack/fake-agent — no model was consulted.","exploitability":{"rating":"high","summary":"scripted"},"likelihood":{"rating":"medium","summary":"scripted"},"impact":{"rating":"high","summary":"scripted"},"recommendation":"remediate","priority":"high","severity":"high","confidence":0.92,"remediation_model":"claude-sonnet-5","max_turns":40,"token_budget":200000,"await_approval":false}}\n' \
-    "$repo" "$finding"
+  # A representative analysis conversation: read the handoff, search the tree,
+  # reason, write the report. Between them the turns cover the whole transcript
+  # vocabulary (notice/thinking/text/tool_use/tool_result), so every branch of
+  # the status page's renderer gets exercised.
+  turn system notice '' 'session 00000000-0000-4000-8000-000000000000 started'
+  turn assistant thinking '' 'The alert names a sink on a request path. Before rating anything I need to know whether untrusted input actually reaches it, and whether the deployment exposes that route publicly.'
+  turn assistant tool_use Read 'input/issue.md'
+  turn user tool_result Read 'Finding handoff: rule js/xss, severity high. Alert location app.js:42. Enrichment: internet-facing, tier 1.'
+  turn assistant tool_use Grep 'pattern: innerHTML|dangerouslySetInnerHTML\npath: repo'
+  turn user tool_result Grep 'repo/app.js:42\nrepo/lib/render.js:17'
+  turn assistant tool_use Read 'repo/app.js'
+  turn user tool_result Read 'function render(req, res) {\n  el.innerHTML = req.query.q;   // the sink\n}'
+  turn assistant thinking '' 'req.query.q is attacker-controlled and reaches innerHTML with no escaping. The second hit interpolates a build-time constant, so it is not part of this finding.'
+  turn assistant text '' 'Confirmed reachable: the query parameter q flows unescaped into innerHTML on the public search route. The lib/render.js hit is a false positive — its input is a build-time constant.'
+  turn assistant tool_use Write 'reports/investigation.md'
+  turn user tool_result Write 'wrote reports/investigation.md (1.4 KB)'
+  turn assistant text '' 'Verdict: remediate. The fix is a one-line escape at the sink with no API change, so it is a safe candidate for automation.'
+
+  # The report as the real agent writes it: machine-readable frontmatter (the
+  # remediation prompt reads it) ahead of the human body the status page
+  # renders once internal/report has stripped that frontmatter off.
+  report='---\nexploitability:\n  rating: high\n  summary: The sink is reachable from an unauthenticated request path.\nlikelihood:\n  rating: medium\n  summary: Exploitation needs a crafted link but no credentials.\nimpact:\n  rating: high\n  summary: Script execution in the victim session on a tier-1 service.\nrecommendation: remediate\npriority: high\nseverity: high\nconfidence: 0.92\nbreaking_change_available: false\nmodel: '"$remediate_model"'\nmax_turns: 40\ntoken_budget: 200000\n---\n\n## Summary\n\nScripted verdict from `hack/fake-agent` — no model was consulted. The shape\nof this report is what a real investigation produces.\n\nThe search route passes `req.query.q` into `innerHTML` without escaping\n(`app.js:42`). The parameter is attacker-controlled and the route needs no\nauthentication, so a crafted link executes script in the victim session.\n\n## Reachability\n\n- `app.js:42` — **reachable**: untrusted input, public route.\n- `lib/render.js:17` — **not reachable**: the interpolated value is a\n  build-time constant. Assessed as a false positive.\n\n## Recommendation\n\nRemediate automatically. The fix escapes the value at the sink; no signature\nchanges and no caller is affected, so nothing here needs a human first.'
+
+  printf 'PATCHY-EVENT: {"v":4,"type":"investigation","repo":"%s","finding":"%s","investigation":{"outcome":"ok","harness":"fake","model":"%s","session_id":"00000000-0000-4000-8000-000000000000","num_turns":%d,"usage":{"input_tokens":1200,"output_tokens":800,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.05},"elapsed_seconds":2.5,"report_markdown":"%s","exploitability":{"rating":"high","summary":"The sink is reachable from an unauthenticated request path."},"likelihood":{"rating":"medium","summary":"Exploitation needs a crafted link but no credentials."},"impact":{"rating":"high","summary":"Script execution in the victim session on a tier-1 service."},"recommendation":"remediate","priority":"high","severity":"high","confidence":0.92,"remediation_model":"%s","estimated_max_turns":40,"estimated_token_budget":200000,"await_approval":false}}\n' \
+    "$repo" "$finding" "$investigate_model" "$seq" "$report" "$remediate_model"
   ;;
 remediate)
+  # A representative fix conversation: read the investigation handoff, edit,
+  # verify, commit, report.
+  turn system notice '' 'session 00000000-0000-4000-8000-000000000001 started'
+  turn assistant tool_use Read 'input/investigation.md'
+  turn user tool_result Read 'Verdict remediate (confidence 0.92). Sink at app.js:42, escape the value.'
+  turn assistant thinking '' 'The investigation already located the sink and ruled the second hit a false positive, so the change is local to app.js. Escaping at the sink leaves the render path and every caller untouched.'
+  turn assistant tool_use Read 'repo/app.js'
+  turn user tool_result Read 'function render(req, res) {\n  el.innerHTML = req.query.q;\n}'
+  turn assistant tool_use Edit 'repo/app.js: replace the unescaped assignment with an escaped one'
+  turn user tool_result Edit 'applied 1 edit to repo/app.js'
+  turn assistant tool_use Bash 'npm test'
+  turn user tool_result Bash 'Test Suites: 12 passed, 12 total\nTests: 84 passed, 84 total'
+  turn assistant tool_use Bash 'git commit -am fix(security): escape the sink'
+  turn user tool_result Bash '[detached HEAD 4f1c2ab] fix(security): escape the sink\n 1 file changed, 1 insertion(+), 1 deletion(-)'
+  turn assistant tool_use Write 'reports/remediation.md'
+  turn user tool_result Write 'wrote reports/remediation.md (0.6 KB)'
+  turn assistant text '' 'Fixed and verified. One line changed at the sink, the suite is green, and no public signature moved — this is safe to review as a normal pull request.'
+
+  report='---\nsuccess: true\nconfidence: 0.9\n---\n\n## What changed\n\nScripted fix from `hack/fake-agent` — no model was consulted.\n\n`app.js:42` no longer assigns untrusted input to `innerHTML`. The query\nparameter is escaped at the sink, which leaves the render path and every\ncaller unchanged.\n\n## Verification\n\n- `npm test` — 84 tests, all passing.\n- No public signature changed, so no caller needs updating.\n\n## Review notes\n\nThe second code-scanning hit (`lib/render.js:17`) was assessed as a false\npositive during investigation and is deliberately untouched.'
+
   content=$(printf 'escaped();\n' | base64 | tr -d '\n')
-  printf 'PATCHY-EVENT: {"v":3,"type":"remediation","repo":"%s","finding":"%s","remediation":{"outcome":"ok","harness":"fake","model":"claude-sonnet-5","session_id":"00000000-0000-4000-8000-000000000001","num_turns":5,"usage":{"input_tokens":2500,"output_tokens":1500,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.12},"elapsed_seconds":4.0,"report_markdown":"## Remediation (fake agent)\\n\\nScripted fix from hack/fake-agent — review app.js.","success":true,"confidence":0.9,"branch":"patchy/%s","changeset":{"base_sha":"%s","commit_message":"fix(security): escape the sink (fake agent)","upserts":[{"path":"app.js","mode":"100644","content_b64":"%s"}]}}}\n' \
-    "$repo" "$finding" "$finding" "$base_sha" "$content"
+  printf 'PATCHY-EVENT: {"v":4,"type":"remediation","repo":"%s","finding":"%s","remediation":{"outcome":"ok","harness":"fake","model":"%s","session_id":"00000000-0000-4000-8000-000000000001","num_turns":%d,"usage":{"input_tokens":2500,"output_tokens":1500,"cache_read_tokens":0,"cache_creation_tokens":0,"cost_usd":0.12},"elapsed_seconds":4.0,"report_markdown":"%s","success":true,"confidence":0.9,"branch":"patchy/%s","changeset":{"base_sha":"%s","commit_message":"fix(security): escape the sink (fake agent)","upserts":[{"path":"app.js","mode":"100644","content_b64":"%s"}]}}}\n' \
+    "$repo" "$finding" "$remediate_model" "$seq" "$report" "$finding" "$base_sha" "$content"
   ;;
 *)
-  printf 'PATCHY-EVENT: {"v":3,"type":"fatal","repo":"%s","finding":"%s","error":"fake agent: unknown phase %s"}\n' \
+  printf 'PATCHY-EVENT: {"v":4,"type":"fatal","repo":"%s","finding":"%s","error":"fake agent: unknown phase %s"}\n' \
     "$repo" "$finding" "$phase"
   exit 1
   ;;

@@ -60,7 +60,11 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 	finding := r.PathValue("name")
 	kind := v1alpha1.RunKind(r.PathValue("kind"))
-	attempt, err := strconv.Atoi(r.PathValue("attempt"))
+	// Parsed at the width it is used at: Atoi returns a 64-bit int on the
+	// platforms this ships on, so an out-of-range attempt would wrap into a
+	// valid-looking one (4294967297 becomes attempt 1) instead of being
+	// rejected here.
+	attempt, err := strconv.ParseInt(r.PathValue("attempt"), 10, 32)
 	if err != nil || attempt < 1 {
 		http.Error(w, "invalid attempt", http.StatusBadRequest)
 		return

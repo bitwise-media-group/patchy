@@ -176,6 +176,42 @@ func TestTranscriptRequiresSessionAndViewGrant(t *testing.T) {
 	}
 }
 
+// An attempt outside int32 must be rejected, not folded into a real one:
+// parsed at 64 bits, 4294967297 clears the `< 1` guard and then truncates to
+// attempt 1, quietly serving a different run's conversation than the one asked
+// for (CodeQL go/incorrect-integer-conversion, finding 5).
+func TestTranscriptRejectsOutOfRangeAttempt(t *testing.T) {
+	cases := []struct {
+		name       string
+		attempt    string
+		wantStatus int
+	}{
+		{"in range", "1", http.StatusOK},
+		{"zero", "0", http.StatusBadRequest},
+		{"negative", "-1", http.StatusBadRequest},
+		{"not a number", "one", http.StatusBadRequest},
+		{"wraps to 1", "4294967297", http.StatusBadRequest},
+		{"wraps to 0", "4294967296", http.StatusBadRequest},
+		{"wraps negative", "2147483648", http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := transcriptServer(t, nil, completedInvestigation(t)...)
+			ts := httptest.NewServer(s.Handler())
+			defer ts.Close()
+
+			res, err := http.Get(ts.URL + "/api/findings/finding-aa-1/runs/investigation/" + tc.attempt + "/transcript")
+			if err != nil {
+				t.Fatalf("GET: %v", err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			if res.StatusCode != tc.wantStatus {
+				t.Errorf("status = %d, want %d", res.StatusCode, tc.wantStatus)
+			}
+		})
+	}
+}
+
 func TestTranscriptServesPersistedTurns(t *testing.T) {
 	s := transcriptServer(t, nil, completedInvestigation(t)...)
 	ts := httptest.NewServer(s.Handler())

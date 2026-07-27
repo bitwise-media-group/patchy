@@ -463,6 +463,29 @@ spec:
                     description: StartedAt is when the stage began.
                     format: date-time
                     type: string
+                  transcript:
+                    description: |-
+                      Transcript points at the conversation this stage produced. The turns
+                      themselves live in a ConfigMap owned by this run — far too large for a
+                      status subresource — so what is recorded here is where to find them and
+                      enough of a summary to render without fetching.
+                    properties:
+                      name:
+                        description: Name of the ConfigMap holding the turns, in the
+                          run's own namespace.
+                        type: string
+                      truncated:
+                        description: |-
+                          Truncated reports that recording bounds cut the conversation short, so
+                          readers know the record is partial rather than complete.
+                        type: boolean
+                      turns:
+                        description: Turns is how many the transcript holds.
+                        format: int32
+                        type: integer
+                    required:
+                    - name
+                    type: object
                   usage:
                     description: Usage accounting for the stage.
                     properties:

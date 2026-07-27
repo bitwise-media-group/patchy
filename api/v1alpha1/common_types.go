@@ -283,6 +283,28 @@ type StageResult struct {
 	// +optional
 	// +kubebuilder:validation:MaxLength=4096
 	Detail string `json:"detail,omitempty"`
+	// Transcript points at the conversation this stage produced. The turns
+	// themselves live in a ConfigMap owned by this run — far too large for a
+	// status subresource — so what is recorded here is where to find them and
+	// enough of a summary to render without fetching.
+	// +optional
+	Transcript *TranscriptRef `json:"transcript,omitempty"`
+}
+
+// TranscriptRef locates one agent run's captured conversation. The ConfigMap
+// is owned by the run that produced it, which is in turn owned by its Finding:
+// deleting the Finding on TTL cascades to both, so a transcript is retained
+// exactly as long as the finding it explains.
+type TranscriptRef struct {
+	// Name of the ConfigMap holding the turns, in the run's own namespace.
+	Name string `json:"name"`
+	// Turns is how many the transcript holds.
+	// +optional
+	Turns int32 `json:"turns,omitempty"`
+	// Truncated reports that recording bounds cut the conversation short, so
+	// readers know the record is partial rather than complete.
+	// +optional
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // ConfidencePattern validates a confidence decimal string in [0, 1] with up

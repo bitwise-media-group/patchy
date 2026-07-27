@@ -40,8 +40,41 @@ integrations: []
 #           issues:
 #               enabled: true       # tracking projection + human signals
 #               approveComment: /approve
+#               # fallbackRepository: acme/security      # where cloud findings
+#               # with no resolvable repository get their tracking issue
 #           codeScanningAlerts:
 #               enabled: true       # scanner ingestion + alert dismissal
+#
+# Security Command Center has no webhook: a Pub/Sub push subscription forwards
+# each notification to /google-cloud/webhooks, authenticated by the OIDC token
+# Pub/Sub signs rather than an HMAC. So a google-cloud Integration carries NO
+# secretRef — it holds no credential and calls no Google API — and validates
+# the push against the two required fields below instead. Findings ingested
+# this way still need a github Integration for their tracking issues. See
+# docs/configuration/google-cloud-scc.md for the Terraform submodule that
+# provisions the topic, notification config and subscription.
+# - name: google-cloud
+#   spec:
+#       provider: google-cloud
+#       googleCloud:
+#           securityCommandCenter:
+#               enabled: true       # SCC notification ingestion
+#               # audience and serviceAccount must match the push
+#               # subscription exactly or the receiver fails closed: any
+#               # Google account can mint a Google-signed token, so it is the
+#               # identity and the audience that make one meaningful.
+#               audience: https://patchy.example.com/google-cloud/webhooks
+#               serviceAccount: patchy-scc-push@my-project.iam.gserviceaccount.com
+#               # The rest are optional. organization is the numeric org id,
+#               # used to compose Console links for findings carrying no
+#               # externalUri; minSeverity (low|medium|high|critical, default
+#               # low) is the backstop under the notification config's own
+#               # filter; mute writes an ignore verdict back to SCC and is
+#               # accepted and validated but not yet honoured.
+#               # organization: "123456789012"
+#               # minSeverity: high
+#               # mute:
+#               #     enabled: true
 
 forges: []
 # - name: github

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.2](https://github.com/bitwise-media-group/patchy/compare/v0.8.1...v0.8.2) (2026-07-27)
+
+
+### Features
+
+* **agent-runner:** record and emit the agent conversation ([07edaa5](https://github.com/bitwise-media-group/patchy/commit/07edaa5226f5331334160f08ea6bf6045a1639b6))
+* **api:** reference each run's transcript from its stage result ([d6538f1](https://github.com/bitwise-media-group/patchy/commit/d6538f1e918fb1957d5346d9239759bd0e5240ec))
+* **controller:** persist the agent conversation when a run completes ([f8ce01d](https://github.com/bitwise-media-group/patchy/commit/f8ce01d058fb85fb73f4055ef3f44ed890ed1d0d))
+* **deploy:** grant transcript storage and live agent-log reads ([5678b0a](https://github.com/bitwise-media-group/patchy/commit/5678b0a9403e31bac8c4f2302bd73381cd140396))
+* **harness:** project each agent CLI stream onto the turn vocabulary ([09045f3](https://github.com/bitwise-media-group/patchy/commit/09045f39481ab16e98750c915b9167ec43d2951b))
+* **jobs:** separate the turn stream and add a live tailer ([4f30a11](https://github.com/bitwise-media-group/patchy/commit/4f30a1105e174b7f9f9bc93d198bb219076e731a))
+* **status-server:** serve and stream agent conversations ([22505f4](https://github.com/bitwise-media-group/patchy/commit/22505f485d259e9d49cc4ff1b9ee071e0c2e15a2))
+* **transcript:** add the agent conversation vocabulary and recorder ([1198642](https://github.com/bitwise-media-group/patchy/commit/1198642575d7dc30021952d7b9968ee9b23a5a05))
+
+
+### Bug Fixes
+
+* **investigation:** bound the advisory rollup read so it cannot wedge the controller ([c46c255](https://github.com/bitwise-media-group/patchy/commit/c46c25550b2502d116ca19f16378b813d136dabd))
+* **web:** reject a transcript attempt outside int32 ([b9d2b86](https://github.com/bitwise-media-group/patchy/commit/b9d2b86c8a51c901b96e4f82225d40f12c2de51b))
+
 ## [0.8.1](https://github.com/bitwise-media-group/patchy/compare/v0.8.0...v0.8.1) (2026-07-27)
 
 

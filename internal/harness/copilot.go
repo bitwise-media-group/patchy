@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bitwise-media-group/patchy/internal/runner"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Copilot drives GitHub's agentic Copilot CLI (`copilot -p`, the
@@ -137,6 +138,47 @@ type copilotEvent struct {
 		ErrorType string `json:"errorType"`
 		Message   string `json:"message"`
 	} `json:"data"`
+}
+
+// ScanTurns projects one copilot event line onto the transcript vocabulary.
+//
+// Messages only, deliberately: copilot ships disabled (see the Copilot type
+// comment), and its tool-invocation event names are not pinned anywhere this
+// repo can verify. Guessing at them would produce a transcript that silently
+// omits or mislabels what the agent ran, which is worse than one that plainly
+// carries only the prose. Widen this — with a captured stream to check against
+// — when the copilot runner is enabled.
+func (c *Copilot) ScanTurns(line []byte) []transcript.Turn {
+	var ev copilotEvent
+	if json.Unmarshal(line, &ev) != nil {
+		return nil
+	}
+	switch ev.Type {
+	case "session.start":
+		if ev.SessionID == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleSystem, Kind: transcript.KindNotice,
+			Text: "session " + ev.SessionID + " started",
+		}}
+	case "assistant.message":
+		if strings.TrimSpace(ev.Data.Content) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: ev.Data.Content,
+		}}
+	case "session.error":
+		if strings.TrimSpace(ev.Data.Message) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleSystem, Kind: transcript.KindNotice,
+			Text: "error: " + strings.TrimSpace(ev.Data.Message),
+		}}
+	}
+	return nil
 }
 
 // copilotScan is the digest of one event stream; ParseResult and RuntimeError

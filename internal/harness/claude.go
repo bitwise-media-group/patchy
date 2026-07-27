@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bitwise-media-group/patchy/internal/runner"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Claude drives the `claude` CLI (Claude Code).
@@ -115,7 +116,9 @@ type claudeUsage struct {
 type claudeEvent struct {
 	Type    string `json:"type"`
 	Message struct {
-		Usage *claudeUsage `json:"usage"`
+		Role    string        `json:"role"`
+		Content []claudeBlock `json:"content"`
+		Usage   *claudeUsage  `json:"usage"`
 	} `json:"message"`
 	Result       string       `json:"result"`
 	SessionID    string       `json:"session_id"`
@@ -125,6 +128,105 @@ type claudeEvent struct {
 	Errors       []string     `json:"errors"`
 	Usage        *claudeUsage `json:"usage"`
 	TotalCostUSD *float64     `json:"total_cost_usd"`
+}
+
+// claudeBlock is one content block of an assistant or user message. Only the
+// fields of its own Type are populated; Input and Content stay raw because a
+// tool's arguments are free-form and a tool result is either a bare string or
+// an array of blocks (see renderToolInput/renderToolResult).
+type claudeBlock struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text"`
+	Thinking string          `json:"thinking"`
+	Name     string          `json:"name"`
+	Input    json.RawMessage `json:"input"`
+	Content  json.RawMessage `json:"content"`
+	IsError  bool            `json:"is_error"`
+}
+
+// ScanTurns projects one stream-json line onto the transcript vocabulary; see
+// scanStreamTurns.
+func (c *Claude) ScanTurns(line []byte) []transcript.Turn { return scanStreamTurns(line) }
+
+// scanStreamTurns projects one stream-json line onto the transcript
+// vocabulary. Assistant events carry the model's own content blocks (text,
+// thinking, tool calls); user events carry the tool results fed back to it.
+// The init event becomes a banner so a transcript opens with the session it
+// belongs to.
+//
+// Every other event type — including the terminal result, whose text is
+// already the report — yields nothing: the transcript is the conversation, not
+// a second copy of the outcome.
+func scanStreamTurns(line []byte) []transcript.Turn {
+	var ev claudeEvent
+	if json.Unmarshal(line, &ev) != nil {
+		return nil
+	}
+	switch ev.Type {
+	case "system":
+		if ev.Subtype != "init" || ev.SessionID == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleSystem,
+			Kind: transcript.KindNotice,
+			Text: "session " + ev.SessionID + " started",
+		}}
+	case "assistant":
+		return claudeAssistantTurns(ev.Message.Content)
+	case "user":
+		return claudeUserTurns(ev.Message.Content)
+	}
+	return nil
+}
+
+// claudeAssistantTurns maps the model's own content blocks.
+func claudeAssistantTurns(blocks []claudeBlock) []transcript.Turn {
+	var turns []transcript.Turn
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) == "" {
+				continue
+			}
+			turns = append(turns, transcript.Turn{
+				Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: b.Text,
+			})
+		case "thinking":
+			if strings.TrimSpace(b.Thinking) == "" {
+				continue
+			}
+			turns = append(turns, transcript.Turn{
+				Role: transcript.RoleAssistant, Kind: transcript.KindThinking, Text: b.Thinking,
+			})
+		case "tool_use":
+			turns = append(turns, transcript.Turn{
+				Role: transcript.RoleAssistant, Kind: transcript.KindToolUse,
+				Tool: b.Name, Text: renderToolInput(b.Input),
+			})
+		}
+	}
+	return turns
+}
+
+// claudeUserTurns maps the tool results fed back to the model. A failed tool
+// is marked in the text rather than in the vocabulary: readers care that the
+// command failed, not that the transport distinguished it.
+func claudeUserTurns(blocks []claudeBlock) []transcript.Turn {
+	var turns []transcript.Turn
+	for _, b := range blocks {
+		if b.Type != "tool_result" {
+			continue
+		}
+		text := renderToolResult(b.Content)
+		if b.IsError {
+			text = "[error] " + text
+		}
+		turns = append(turns, transcript.Turn{
+			Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: text,
+		})
+	}
+	return turns
 }
 
 // scanEvents walks stream-json output once and returns the terminal result

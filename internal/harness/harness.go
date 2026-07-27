@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/bitwise-media-group/patchy/internal/runner"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Usage is the harness-reported consumption of one agent session. Fields are
@@ -106,6 +107,24 @@ type UsageScanner interface {
 	// (claude: assistant events' message.usage.output_tokens), ok=false
 	// otherwise.
 	ScanUsage(line []byte) (outputTokens int, ok bool)
+}
+
+// TurnScanner is the optional capability of projecting the live output stream
+// onto the harness-neutral conversation vocabulary; it powers the transcript
+// the status page replays. A harness without it simply produces no transcript.
+//
+// Each CLI's stream is shaped differently — claude nests content blocks under
+// an assistant message, codex flattens them into typed items, copilot emits one
+// event per message — so normalising here is the only place the difference can
+// be absorbed once.
+type TurnScanner interface {
+	// ScanTurns returns the turns one stream line carries, in order, or nil
+	// for a line that carries none. One line can yield several: a single
+	// claude assistant event may hold text, thinking, and tool-use blocks.
+	//
+	// It reports raw text; bounding, redaction, and sequencing belong to the
+	// caller's transcript.Recorder.
+	ScanTurns(line []byte) []transcript.Turn
 }
 
 // All returns the builtin harness set.

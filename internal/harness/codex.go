@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bitwise-media-group/patchy/internal/runner"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // Codex drives the `codex` CLI (OpenAI Codex), the alternative harness for
@@ -75,13 +76,10 @@ func (c *Codex) PromptSpec(ws string, req PromptRequest) runner.CommandSpec {
 // item.completed the agent messages, turn.completed the per-turn usage,
 // turn.failed an error object, and type:"error" a bare message.
 type codexEvent struct {
-	Type     string `json:"type"`
-	ThreadID string `json:"thread_id"`
-	Item     struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"item"`
-	Usage *struct {
+	Type     string    `json:"type"`
+	ThreadID string    `json:"thread_id"`
+	Item     codexItem `json:"item"`
+	Usage    *struct {
 		InputTokens       *int `json:"input_tokens"`
 		CachedInputTokens *int `json:"cached_input_tokens"`
 		OutputTokens      *int `json:"output_tokens"`
@@ -90,6 +88,123 @@ type codexEvent struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Message string `json:"message"`
+}
+
+// codexItem is one item of a codex turn. Codex flattens what claude nests
+// under an assistant message into typed items, so the fields below are the
+// union across item types and only those of Type are populated.
+//
+// Beyond type and text these names are best-effort: codex's item schema is not
+// versioned in a way this repo can pin, so ScanTurns degrades to naming the
+// item type rather than guessing wrong when a field is absent.
+type codexItem struct {
+	Type             string `json:"type"`
+	Text             string `json:"text"`
+	Command          string `json:"command"`
+	AggregatedOutput string `json:"aggregated_output"`
+	ExitCode         *int   `json:"exit_code"`
+	Server           string `json:"server"`
+	Tool             string `json:"tool"`
+	Query            string `json:"query"`
+}
+
+// codexToolItems maps a codex item type to the tool name a transcript shows.
+var codexToolItems = map[string]string{
+	"command_execution": "Bash",
+	"file_change":       "Edit",
+	"mcp_tool_call":     "MCP",
+	"web_search":        "WebSearch",
+}
+
+// ScanTurns projects one `codex exec --json` line onto the transcript
+// vocabulary. Codex reports items only on completion, so a tool call and its
+// output arrive together and are split back into the call and result turns the
+// rest of the pipeline expects.
+func (c *Codex) ScanTurns(line []byte) []transcript.Turn {
+	var ev codexEvent
+	if json.Unmarshal(line, &ev) != nil {
+		return nil
+	}
+	switch ev.Type {
+	case "thread.started":
+		if ev.ThreadID == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleSystem, Kind: transcript.KindNotice,
+			Text: "thread " + ev.ThreadID + " started",
+		}}
+	case "item.completed":
+		return codexItemTurns(ev.Item)
+	case "turn.failed":
+		if ev.Error == nil || strings.TrimSpace(ev.Error.Message) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleSystem, Kind: transcript.KindNotice,
+			Text: "turn failed: " + strings.TrimSpace(ev.Error.Message),
+		}}
+	}
+	return nil
+}
+
+// codexItemTurns maps one completed item.
+func codexItemTurns(item codexItem) []transcript.Turn {
+	switch item.Type {
+	case "agent_message":
+		if strings.TrimSpace(item.Text) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: item.Text,
+		}}
+	case "reasoning":
+		if strings.TrimSpace(item.Text) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleAssistant, Kind: transcript.KindThinking, Text: item.Text,
+		}}
+	case "todo_list":
+		if strings.TrimSpace(item.Text) == "" {
+			return nil
+		}
+		return []transcript.Turn{{
+			Role: transcript.RoleAssistant, Kind: transcript.KindNotice, Text: item.Text,
+		}}
+	}
+
+	tool, ok := codexToolItems[item.Type]
+	if !ok {
+		return nil
+	}
+	if item.Type == "mcp_tool_call" && item.Tool != "" {
+		tool = strings.TrimSpace(item.Server + " " + item.Tool)
+	}
+	turns := []transcript.Turn{{
+		Role: transcript.RoleAssistant, Kind: transcript.KindToolUse,
+		Tool: tool, Text: codexItemInput(item),
+	}}
+	if out := strings.TrimSpace(item.AggregatedOutput); out != "" {
+		if item.ExitCode != nil && *item.ExitCode != 0 {
+			out = "[error] " + out
+		}
+		turns = append(turns, transcript.Turn{
+			Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: out,
+		})
+	}
+	return turns
+}
+
+// codexItemInput picks the argument identifying what a tool item did, falling
+// back to the item type so an unmapped shape still reads as an action.
+func codexItemInput(item codexItem) string {
+	for _, s := range []string{item.Command, item.Query, item.Text} {
+		if strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return item.Type
 }
 
 // codexScan is the digest of one event stream; ParseResult and RuntimeError

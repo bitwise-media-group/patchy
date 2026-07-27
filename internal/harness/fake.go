@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/bitwise-media-group/patchy/internal/runner"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 // FakeFixtureEnv names the environment variable pointing at the stream-json
@@ -58,4 +59,10 @@ func (f *Fake) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 // ScanUsage scans fixture lines exactly as Claude scans live ones.
 func (f *Fake) ScanUsage(line []byte) (int, bool) {
 	return scanStreamUsage(line)
+}
+
+// ScanTurns projects fixture lines exactly as Claude projects live ones, so a
+// replayed fixture produces a real transcript end to end.
+func (f *Fake) ScanTurns(line []byte) []transcript.Turn {
+	return scanStreamTurns(line)
 }

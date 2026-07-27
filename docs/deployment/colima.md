@@ -136,9 +136,12 @@ both external dependencies:
   projection, repository tarballs, the Git Data push, and pull requests. The overlay points the `Integration`/`Forge`
   CRs at its Service DNS name and adds the one egress NetworkPolicy rule k3s needs; a NodePort (30990) exposes the same
   API to your host for inspection.
-- **The model** becomes a scripted agent image (`hack/fake-agent`): a shell script named `agent-runner` that prints a
-  canned `PATCHY-EVENT` line per stage. The Jobs are real — init container, artifact fetch, digest check — only the
-  verdict is scripted (remediate at 0.92 confidence, so findings flow straight through the queue).
+- **The model** becomes a scripted agent image (`hack/fake-agent`): a shell script named `agent-runner` that prints the
+  same two stdout streams the real runner does — a paced `PATCHY-TURN` conversation followed by the stage's
+  `PATCHY-EVENT` result. The Jobs are real — init container, artifact fetch, digest check — only the verdict is scripted
+  (remediate at 0.92 confidence, so findings flow straight through the queue). Because the turns are real turns, each
+  run's conversation is captured into its transcript `ConfigMap` and streams live onto the status page while the Job is
+  still running, and both stages carry a full report.
 
 ```sh
 PATCHY_OVERLAY=dev-fake make dev-colima    # builds the fake images too
@@ -169,6 +172,14 @@ name=$(kubectl -n patchy get findings -o jsonpath='{.items[0].metadata.name}')
 sed "s/patchy\/finding-cccccccccc-1/patchy\/$name/" \
   e2e/fixtures/webhooks/pull_request.merged.json > /tmp/merged.json
 mise run replay -- -dev-secret /tmp/merged.json
+```
+
+Each stage's conversation and report are on the status page under the finding — open the run while its Job is still
+alive and the turns stream in as the script emits them (it paces itself for exactly that reason). The same turns are
+persisted, so they stay readable after the Job's TTL takes the pod:
+
+```sh
+kubectl -n patchy get cm -l patchy.bitwisemedia.uk/finding="$name"    # one transcript per run
 ```
 
 The Finding goes `Remediated`, `kubectl get findingrollups -n patchy -o yaml` shows the counts and (scripted) token/cost

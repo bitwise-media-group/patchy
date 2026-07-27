@@ -38,6 +38,11 @@ const InvestigationPhaseIndex = "status.phase"
 // serialized decision point, MaxConcurrentReconciles=1 provides the mutex.
 const schedulerRequest = "\x00scheduler"
 
+// defaultCalibrationTimeout bounds the advisory rollup read in calibration.
+// Generous for a cache hit, short enough that a cache that will never sync
+// costs the launch a moment rather than the controller its only worker.
+const defaultCalibrationTimeout = 5 * time.Second
+
 // Runner is the slice of the jobs client this controller needs.
 type Runner interface {
 	Create(ctx context.Context, spec jobs.Spec) (string, error)
@@ -70,6 +75,9 @@ type InvestigationReconciler struct {
 	InvestigateModel   string
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
+	// calibrationTimeout is the deadline seam for the advisory rollup read;
+	// zero means defaultCalibrationTimeout.
+	calibrationTimeout time.Duration
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
 }
@@ -384,7 +392,20 @@ func holdReasons(result *envelope.Investigation) []v1alpha1.HoldReason {
 //
 // This is advisory garnish: every failure path here returns empty rather than
 // failing the run, because a missing rollup must never cost an investigation.
+// That includes the read never returning: the Get goes through the cached
+// client, so a rollup informer that cannot sync (RBAC denied, CRD absent)
+// blocks on cache sync until its context is done — and with
+// MaxConcurrentReconciles=1 a reconciler parked there deadlocks the whole
+// controller. The deadline below is what keeps the garnish from costing the
+// meal.
 func (r *InvestigationReconciler) calibration(ctx context.Context, repo string) string {
+	timeout := r.calibrationTimeout
+	if timeout <= 0 {
+		timeout = defaultCalibrationTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	scopes := []struct {
 		scope v1alpha1.RollupScope
 		label string
@@ -399,6 +420,15 @@ func (r *InvestigationReconciler) calibration(ctx context.Context, repo string) 
 		var ru v1alpha1.FindingRollup
 		key := types.NamespacedName{Namespace: r.Namespace, Name: stats.ScopeObjectName(s.scope)}
 		if err := r.Get(ctx, key, &ru); err != nil {
+			// A deadline here means the rollup cache never synced, which is
+			// an operator-visible misconfiguration rather than a thin
+			// history — say so once instead of silently omitting the section.
+			if ctx.Err() != nil {
+				if r.Log != nil {
+					r.Log.Warn("estimate calibration unavailable", "error", err)
+				}
+				return ""
+			}
 			continue
 		}
 		c := stats.CalibrationFrom(&ru.Status, s.label)

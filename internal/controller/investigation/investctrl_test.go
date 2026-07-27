@@ -532,3 +532,59 @@ func TestLaunchUsesArtifact(t *testing.T) {
 		t.Errorf("jobRef = %+v, want job-1", got.Status.JobRef)
 	}
 }
+
+// stalledRollupClient models a FindingRollup informer that never syncs: the
+// cached client's Get blocks until the caller's context is done, which is what
+// an RBAC denial on list/watch looks like from inside a reconciler.
+type stalledRollupClient struct {
+	client.Client
+}
+
+func (c stalledRollupClient) Get(
+	ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption,
+) error {
+	if _, ok := obj.(*v1alpha1.FindingRollup); ok {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+// A rollup cache that never syncs must cost the launch its calibration
+// garnish, not the controller its only worker: the Job still goes out.
+func TestLaunchSurvivesStalledRollupCache(t *testing.T) {
+	objs := investigationFixture()
+	inv := objs[1].(*v1alpha1.Investigation)
+	inv.Status.JobRef = nil // granted but not launched
+	repo := &v1alpha1.Repository{
+		ObjectMeta: metav1.ObjectMeta{Name: "finding-aa-1-src", Namespace: "patchy"},
+		Spec:       v1alpha1.RepositorySpec{URL: "https://github.com/acme/orders"},
+		Status: v1alpha1.RepositoryStatus{
+			ResolvedSHA: "abc123",
+			Artifact:    &v1alpha1.Artifact{URL: "http://arts/x.tar.gz", Digest: "deadbeef"},
+		},
+	}
+	runner := &fakeRunner{}
+	r, _ := newInvestigation(t, runner, append(objs, repo)...)
+	r.Client = stalledRollupClient{r.Client}
+	r.calibrationTimeout = 20 * time.Millisecond
+
+	done := make(chan error, 1)
+	go func() { done <- r.launch(t.Context(), inv) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("launch: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("launch blocked on the stalled rollup cache")
+	}
+
+	if len(runner.created) != 1 {
+		t.Fatalf("jobs created = %d, want 1", len(runner.created))
+	}
+	if got := runner.created[0].Calibration; got != "" {
+		t.Errorf("calibration = %q, want empty when the cache never syncs", got)
+	}
+}

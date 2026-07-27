@@ -742,6 +742,10 @@
                 "enabled": {
                     "type": "boolean"
                 },
+                "liveTranscripts": {
+                    "type": "boolean",
+                    "description": "Stream a running agent's conversation into the status page; grants pod and pod-log read in the agent namespace."
+                },
                 "image": {
                     "$ref": "#/definitions/imageOverride"
                 },

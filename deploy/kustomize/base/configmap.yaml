@@ -66,6 +66,8 @@ data:
     PATCHY_PRIORITY_AGING_CAP: "25"
 
     # ---- the agent Jobs (both job controllers) ------------------------------
+    # The status server reads AGENT_NAMESPACE too, to follow a running agent's
+    # pod log for the live transcript.
     PATCHY_AGENT_NAMESPACE: patchy-agents
     PATCHY_AGENT_SERVICE_ACCOUNT: patchy-agent
     # The per-harness runner fleet. A harness is enabled only when it is in

@@ -313,6 +313,12 @@ statusServer:
     # The whole feature: disabling renders none of its resources.
     enabled: true
     image: {}
+    # Stream a running agent's conversation into the investigation and
+    # remediation tabs. This grants the status server read access to pods and
+    # pod logs in the agent namespace — the read goes through the API server,
+    # never to an agent pod, so no network policy changes. Disabling it keeps
+    # transcripts of completed runs, which are read from their own ConfigMaps.
+    liveTranscripts: true
     config:
         # Extra PATCHY_* keys for the status server only.
         extra: {}

@@ -57,6 +57,7 @@ metadata:
     "PATCHY_HEALTH_ADDR" ":8081"
     "PATCHY_LISTEN_ADDR" ":8080"
     "PATCHY_AUTH_CONFIG" "/etc/patchy/auth/config.yaml"
+    "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
     "PATCHY_LOG_LEVEL" .Values.config.logLevel
 }}
 {{- range $k, $v := .Values.config.extra }}
@@ -122,7 +123,51 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
+    # The persisted agent transcripts, read one at a time when a human opens a
+    # finding. Get only: they are read through the uncached API reader, so no
+    # informer and no list/watch — caching every ConfigMap in the namespace to
+    # serve these would be a poor trade.
+    - apiGroups: [""]
+      resources: [configmaps]
+      verbs: [get]
 ---
+{{- if $vals.liveTranscripts }}
+# Live transcripts: the status server follows a running agent's pod log to
+# stream its conversation, through the API server — it never dials an agent
+# pod, so the agents' default-deny ingress policy is untouched. Read-only, and
+# scoped to the agents namespace: no Jobs, no Secrets, no writes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-agent-logs
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [""]
+      resources: [pods]
+      verbs: [get, list]
+    - apiGroups: [""]
+      resources: [pods/log]
+      verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-agent-logs
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-agent-logs
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

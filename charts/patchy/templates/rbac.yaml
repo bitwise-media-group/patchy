@@ -110,6 +110,12 @@ verdict edges on Finding status).
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]
+# The agent transcript each run persists: a ConfigMap owner-referenced to the
+# run, so the Finding's TTL cascade removes it. No list/watch — it is only ever
+# addressed by its own deterministic name.
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [create, get, update]
 {{- else if eq . "remediation-controller" }}
 {{- /*
 Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
@@ -150,6 +156,12 @@ rollup finalizer removal.
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]
+# The agent transcript each run persists: a ConfigMap owner-referenced to the
+# run, so the Finding's TTL cascade removes it. No list/watch — it is only ever
+# addressed by its own deterministic name.
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [create, get, update]
 {{- end }}
 - apiGroups: [coordination.k8s.io]
   resources: [leases]

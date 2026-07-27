@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -19,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/agentresult"
@@ -27,6 +29,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
 // remSchedulerRequest is the singleton request every watch event maps to.
@@ -37,7 +40,7 @@ const remSchedulerRequest = "\x00scheduler"
 // controller.go until the cutover).
 type CRRunner interface {
 	Create(ctx context.Context, spec jobs.Spec) (string, error)
-	Result(ctx context.Context, jobName string) ([]envelope.Event, error)
+	Result(ctx context.Context, jobName string) (jobs.RunOutput, error)
 	Status(ctx context.Context, jobName string) (jobs.Status, error)
 	Delete(ctx context.Context, jobName string) error
 }
@@ -229,7 +232,7 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 	harnessID := rem.Spec.Parameters.Harness
 	if harnessID == "" || !slices.Contains(r.Enabled, harnessID) {
 		return r.fail(ctx, rem, "aborted",
-			fmt.Sprintf("harness %q for model %q is not enabled", harnessID, rem.Spec.Parameters.Model), nil)
+			fmt.Sprintf("harness %q for model %q is not enabled", harnessID, rem.Spec.Parameters.Model), nil, nil)
 	}
 
 	repoName := ""
@@ -274,36 +277,62 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 	st, err := r.Runner.Status(ctx, rem.Status.JobRef.Name)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job vanished before reporting", nil)
+			return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job vanished before reporting", nil, nil)
 		}
 		return ctrl.Result{}, err
 	}
 	if !st.Done {
 		return ctrl.Result{}, nil
 	}
-	events, err := r.Runner.Result(ctx, rem.Status.JobRef.Name)
+	out, err := r.Runner.Result(ctx, rem.Status.JobRef.Name)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	// Persist before applying: this is the only moment the conversation is
+	// still readable, since the Job's TTL takes the pod and its log with it.
+	// A transcript that cannot be stored is logged and dropped — losing the
+	// explanation must never cost the result it explains.
+	transcript, err := transcriptstore.Persist(ctx, r.Client, rem.Namespace,
+		transcriptLabels(rem), rem, remGVK, out.Turns)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "persist transcript", "remediation", rem.Name)
+	}
 
 	var result *envelope.Remediation
-	for _, e := range events {
+	for _, e := range out.Events {
 		switch e.Type {
 		case envelope.TypeRemediation:
 			result = e.Remediation
 		case envelope.TypeFatal:
-			return ctrl.Result{}, r.fail(ctx, rem, "aborted", e.Error, stageOf(result))
+			return ctrl.Result{}, r.fail(ctx, rem, "aborted", e.Error, stageOf(result), transcript)
 		}
 	}
 	switch {
 	case result == nil:
-		return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job produced no remediation event", nil)
+		return ctrl.Result{}, r.fail(ctx, rem, "aborted", "agent job produced no remediation event", nil, transcript)
 	case result.Outcome != envelope.OutcomeOK:
-		return ctrl.Result{}, r.fail(ctx, rem, string(result.Outcome), result.Detail, &result.Stage)
+		return ctrl.Result{}, r.fail(ctx, rem, string(result.Outcome), result.Detail, &result.Stage, transcript)
 	case !result.Success:
-		return ctrl.Result{}, r.handOff(ctx, rem, result)
+		return ctrl.Result{}, r.handOff(ctx, rem, result, transcript)
 	default:
-		return ctrl.Result{}, r.succeed(ctx, rem, result)
+		return ctrl.Result{}, r.succeed(ctx, rem, result, transcript)
+	}
+}
+
+// remGVK identifies the owner reference a transcript carries.
+var remGVK = metav1.TypeMeta{
+	APIVersion: v1alpha1.GroupVersion.String(),
+	Kind:       "Remediation",
+}
+
+// transcriptLabels key a transcript to its run, so an operator can find one
+// from the finding without walking owner references.
+func transcriptLabels(rem *v1alpha1.Remediation) map[string]string {
+	return map[string]string{
+		v1alpha1.LabelFinding: rem.Spec.FindingRef.Name,
+		v1alpha1.LabelOwner:   rem.Name,
+		v1alpha1.LabelRunKind: string(v1alpha1.RunKindRemediation),
+		v1alpha1.LabelAttempt: strconv.Itoa(int(rem.Spec.Attempt)),
 	}
 }
 
@@ -311,6 +340,7 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 // InReview (edge 13). The changeset never touches any CR.
 func (r *RemediationReconciler) succeed(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
+	transcript *v1alpha1.TranscriptRef,
 ) error {
 	var fnd v1alpha1.Finding
 	fndKey := types.NamespacedName{Namespace: rem.Namespace, Name: rem.Spec.FindingRef.Name}
@@ -318,7 +348,7 @@ func (r *RemediationReconciler) succeed(
 		return client.IgnoreNotFound(err)
 	}
 	if fnd.Spec.Repository == nil || result.Changeset == nil {
-		return r.fail(ctx, rem, "aborted", "success without changeset or repository", &result.Stage)
+		return r.fail(ctx, rem, "aborted", "success without changeset or repository", &result.Stage, transcript)
 	}
 	branch := "patchy/" + fnd.Name
 	if err := r.Forge.Push(ctx, rem.Namespace, fnd.Spec.Repository.URL, branch, result.Changeset); err != nil {
@@ -342,7 +372,7 @@ func (r *RemediationReconciler) succeed(
 		return fmt.Errorf("open remediation PR: %w", err)
 	}
 
-	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, func(cur *v1alpha1.Remediation) {
+	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, transcript, func(cur *v1alpha1.Remediation) {
 		cur.Status.Success = true
 		cur.Status.Branch = branch
 		cur.Status.Confidence = agentresult.FormatConfidence(result.Confidence)
@@ -375,8 +405,9 @@ func (r *RemediationReconciler) succeed(
 // handOff records an agent's "not safely fixable" verdict (edge 14).
 func (r *RemediationReconciler) handOff(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
+	transcript *v1alpha1.TranscriptRef,
 ) error {
-	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, func(cur *v1alpha1.Remediation) {
+	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, transcript, func(cur *v1alpha1.Remediation) {
 		cur.Status.Success = false
 		cur.Status.Confidence = agentresult.FormatConfidence(result.Confidence)
 	}); err != nil {
@@ -400,9 +431,10 @@ func stageOf(result *envelope.Remediation) *envelope.Stage {
 // being counted. Nil when no event arrived at all.
 func (r *RemediationReconciler) fail(
 	ctx context.Context, rem *v1alpha1.Remediation, outcome, detail string, reported *envelope.Stage,
+	transcript *v1alpha1.TranscriptRef,
 ) error {
 	result := &envelope.Remediation{Stage: agentresult.FailedStage(reported, outcome, detail)}
-	if err := r.stampChild(ctx, rem, result, v1alpha1.RunFailed, nil); err != nil {
+	if err := r.stampChild(ctx, rem, result, v1alpha1.RunFailed, transcript, nil); err != nil {
 		return err
 	}
 	maxAttempts := r.MaxAttempts
@@ -447,7 +479,7 @@ func (r *RemediationReconciler) finishFinding(
 // stampChild writes the run result onto the Remediation.
 func (r *RemediationReconciler) stampChild(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
-	phase v1alpha1.RunPhase, extra func(*v1alpha1.Remediation),
+	phase v1alpha1.RunPhase, transcript *v1alpha1.TranscriptRef, extra func(*v1alpha1.Remediation),
 ) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Remediation
@@ -456,6 +488,7 @@ func (r *RemediationReconciler) stampChild(
 		}
 		cur.Status.Phase = phase
 		cur.Status.Stage = agentresult.FromStage(&result.Stage)
+		cur.Status.Stage.Transcript = transcript
 		cur.Status.Report = agentresult.TruncateReport(result.ReportMarkdown)
 		if extra != nil {
 			extra(&cur)

@@ -18,6 +18,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 var crdClock = time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
@@ -377,6 +378,7 @@ type fakeCRRunner struct {
 	created []jobs.Spec
 	done    bool
 	events  []envelope.Event
+	turns   []transcript.Turn
 }
 
 func (f *fakeCRRunner) Create(_ context.Context, spec jobs.Spec) (string, error) {
@@ -384,8 +386,8 @@ func (f *fakeCRRunner) Create(_ context.Context, spec jobs.Spec) (string, error)
 	return "job-rem-1", nil
 }
 
-func (f *fakeCRRunner) Result(context.Context, string) ([]envelope.Event, error) {
-	return f.events, nil
+func (f *fakeCRRunner) Result(context.Context, string) (jobs.RunOutput, error) {
+	return jobs.RunOutput{Events: f.events, Turns: f.turns}, nil
 }
 
 func (f *fakeCRRunner) Status(context.Context, string) (jobs.Status, error) {

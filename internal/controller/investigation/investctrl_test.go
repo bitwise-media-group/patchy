@@ -20,6 +20,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
 
 var clock = time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
@@ -272,6 +273,7 @@ type fakeRunner struct {
 	created []jobs.Spec
 	done    bool
 	events  []envelope.Event
+	turns   []transcript.Turn
 }
 
 func (f *fakeRunner) Create(_ context.Context, spec jobs.Spec) (string, error) {
@@ -279,8 +281,8 @@ func (f *fakeRunner) Create(_ context.Context, spec jobs.Spec) (string, error) {
 	return "job-1", nil
 }
 
-func (f *fakeRunner) Result(context.Context, string) ([]envelope.Event, error) {
-	return f.events, nil
+func (f *fakeRunner) Result(context.Context, string) (jobs.RunOutput, error) {
+	return jobs.RunOutput{Events: f.events, Turns: f.turns}, nil
 }
 
 func (f *fakeRunner) Status(context.Context, string) (jobs.Status, error) {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -19,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/agentresult"
@@ -28,6 +30,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/stats"
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
 // InvestigationPhaseIndex indexes Investigations by status.phase for the
@@ -46,7 +49,7 @@ const defaultCalibrationTimeout = 5 * time.Second
 // Runner is the slice of the jobs client this controller needs.
 type Runner interface {
 	Create(ctx context.Context, spec jobs.Spec) (string, error)
-	Result(ctx context.Context, jobName string) ([]envelope.Event, error)
+	Result(ctx context.Context, jobName string) (jobs.RunOutput, error)
 	Status(ctx context.Context, jobName string) (jobs.Status, error)
 	Delete(ctx context.Context, jobName string) error
 }
@@ -190,7 +193,7 @@ func (r *InvestigationReconciler) launch(ctx context.Context, inv *v1alpha1.Inve
 	}
 	var repo v1alpha1.Repository
 	if inv.Spec.RepositoryRef == nil {
-		return r.fail(ctx, inv, &fnd, "aborted", "investigation has no repository artifact", nil)
+		return r.fail(ctx, inv, &fnd, "aborted", "investigation has no repository artifact", nil, nil)
 	}
 	repoKey := types.NamespacedName{Namespace: inv.Namespace, Name: inv.Spec.RepositoryRef.Name}
 	if err := r.Get(ctx, repoKey, &repo); err != nil {
@@ -252,7 +255,7 @@ func (r *InvestigationReconciler) collect(ctx context.Context, inv *v1alpha1.Inv
 			if err := r.Get(ctx, key, &fnd); err != nil {
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
-			return ctrl.Result{}, r.fail(ctx, inv, &fnd, "aborted", "agent job vanished before reporting", nil)
+			return ctrl.Result{}, r.fail(ctx, inv, &fnd, "aborted", "agent job vanished before reporting", nil, nil)
 		}
 		return ctrl.Result{}, err
 	}
@@ -260,16 +263,43 @@ func (r *InvestigationReconciler) collect(ctx context.Context, inv *v1alpha1.Inv
 		return ctrl.Result{}, nil // the Job watch re-queues us on completion
 	}
 
-	events, err := r.Runner.Result(ctx, inv.Status.JobRef.Name)
+	out, err := r.Runner.Result(ctx, inv.Status.JobRef.Name)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, r.apply(ctx, inv, events)
+	// Persist before applying: this is the only moment the conversation is
+	// still readable, since the Job's TTL takes the pod and its log with it.
+	// A transcript that cannot be stored is logged and dropped — losing the
+	// explanation must never cost the result it explains.
+	ref, err := transcriptstore.Persist(ctx, r.Client, inv.Namespace,
+		transcriptLabels(inv), inv, invGVK, out.Turns)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "persist transcript", "investigation", inv.Name)
+	}
+	return ctrl.Result{}, r.apply(ctx, inv, out.Events, ref)
+}
+
+// invGVK identifies the owner reference a transcript carries.
+var invGVK = metav1.TypeMeta{
+	APIVersion: v1alpha1.GroupVersion.String(),
+	Kind:       "Investigation",
+}
+
+// transcriptLabels key a transcript to its run, so an operator can find one
+// from the finding without walking owner references.
+func transcriptLabels(inv *v1alpha1.Investigation) map[string]string {
+	return map[string]string{
+		v1alpha1.LabelFinding: inv.Spec.FindingRef.Name,
+		v1alpha1.LabelOwner:   inv.Name,
+		v1alpha1.LabelRunKind: string(v1alpha1.RunKindInvestigation),
+		v1alpha1.LabelAttempt: strconv.Itoa(int(inv.Spec.Attempt)),
+	}
 }
 
 // apply routes the Job's investigation event onto the child and the Finding.
 func (r *InvestigationReconciler) apply(
 	ctx context.Context, inv *v1alpha1.Investigation, events []envelope.Event,
+	transcript *v1alpha1.TranscriptRef,
 ) error {
 	var fnd v1alpha1.Finding
 	key := types.NamespacedName{Namespace: inv.Namespace, Name: inv.Spec.FindingRef.Name}
@@ -283,18 +313,18 @@ func (r *InvestigationReconciler) apply(
 		case envelope.TypeInvestigation:
 			result = e.Investigation
 		case envelope.TypeFatal:
-			return r.fail(ctx, inv, &fnd, "aborted", e.Error, stageOf(result))
+			return r.fail(ctx, inv, &fnd, "aborted", e.Error, stageOf(result), transcript)
 		}
 	}
 	if result == nil {
-		return r.fail(ctx, inv, &fnd, "aborted", "agent job produced no investigation event", nil)
+		return r.fail(ctx, inv, &fnd, "aborted", "agent job produced no investigation event", nil, transcript)
 	}
 	if result.Outcome != envelope.OutcomeOK {
-		return r.fail(ctx, inv, &fnd, string(result.Outcome), result.Detail, &result.Stage)
+		return r.fail(ctx, inv, &fnd, string(result.Outcome), result.Detail, &result.Stage, transcript)
 	}
 
 	// Stamp the child (single writer: this controller).
-	if err := r.stampChild(ctx, inv, result, v1alpha1.RunComplete); err != nil {
+	if err := r.stampChild(ctx, inv, result, v1alpha1.RunComplete, transcript); err != nil {
 		return err
 	}
 
@@ -473,10 +503,10 @@ func estimateOf(result *envelope.Investigation) *v1alpha1.AgentEstimate {
 // the child and in the rollups. Nil for a run that produced no event at all.
 func (r *InvestigationReconciler) fail(
 	ctx context.Context, inv *v1alpha1.Investigation, fnd *v1alpha1.Finding,
-	outcome, detail string, reported *envelope.Stage,
+	outcome, detail string, reported *envelope.Stage, transcript *v1alpha1.TranscriptRef,
 ) error {
 	result := &envelope.Investigation{Stage: agentresult.FailedStage(reported, outcome, detail)}
-	if err := r.stampChild(ctx, inv, result, v1alpha1.RunFailed); err != nil {
+	if err := r.stampChild(ctx, inv, result, v1alpha1.RunFailed, transcript); err != nil {
 		return err
 	}
 	maxAttempts := r.MaxAttempts
@@ -506,7 +536,8 @@ func (r *InvestigationReconciler) fail(
 
 // stampChild writes the run result onto the Investigation.
 func (r *InvestigationReconciler) stampChild(
-	ctx context.Context, inv *v1alpha1.Investigation, result *envelope.Investigation, phase v1alpha1.RunPhase,
+	ctx context.Context, inv *v1alpha1.Investigation, result *envelope.Investigation,
+	phase v1alpha1.RunPhase, transcript *v1alpha1.TranscriptRef,
 ) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Investigation
@@ -515,6 +546,7 @@ func (r *InvestigationReconciler) stampChild(
 		}
 		cur.Status.Phase = phase
 		cur.Status.Stage = agentresult.FromStage(&result.Stage)
+		cur.Status.Stage.Transcript = transcript
 		cur.Status.Report = agentresult.TruncateReport(result.ReportMarkdown)
 		if phase == v1alpha1.RunComplete {
 			cur.Status.Exploitability = agentresult.Analysis(result.Exploitability)

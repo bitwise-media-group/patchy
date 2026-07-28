@@ -1,0 +1,76 @@
+{{ if .Description }}{{ .Description }}
+{{ else }}Wiz Defend detected `{{ .Name }}` on this resource.
+{{ end }}
+### Affected resource
+
+| | |
+| --- | --- |
+| **Resource** | `{{ .Entity.Name }}` |
+{{- if .Entity.DisplayName }}
+| **Name** | {{ .Entity.DisplayName }} |
+{{- end }}
+{{- if .Entity.Type }}
+| **Type** | `{{ .Entity.Type }}` |
+{{- end }}
+{{- if .Entity.Platform }}
+| **Platform** | {{ .Entity.Platform }} |
+{{- end }}
+{{- if .Entity.Subscription }}
+| **Account** | `{{ .Entity.Subscription }}` |
+{{- end }}
+{{- if .Entity.Region }}
+| **Region** | {{ .Entity.Region }} |
+{{- end }}
+
+### Detection
+
+| | |
+| --- | --- |
+| **Rule** | {{ if .RuleName }}{{ .RuleName }}{{ else }}{{ .Name }}{{ end }}{{ if .RuleID }} (`{{ .RuleID }}`){{ end }} |
+{{- if .Severity }}
+| **Wiz severity** | {{ .Severity }} |
+{{- end }}
+{{- if .Status }}
+| **Status** | {{ .Status }} |
+{{- end }}
+{{- if .Detections }}
+| **Detections** | {{ .Detections }} |
+{{- end }}
+{{- if .CreatedAt }}
+| **Created** | {{ .CreatedAt }} |
+{{- end }}
+{{- if .URL }}
+| **Wiz** | [view threat]({{ .URL }}) |
+{{- end }}
+{{- with .Actors }}
+
+### Actors
+
+{{ range . }}- {{ . }}
+{{ end }}
+{{- end }}
+{{- if .MitreTactics }}
+
+### MITRE ATT&CK
+
+Tactics: {{ range $i, $t := .MitreTactics }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- if .MitreTechniques }} — techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- end }}
+{{- else if .MitreTechniques }}
+
+### MITRE ATT&CK
+
+Techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- end }}
+{{- with .CloudAccounts }}
+
+### Cloud accounts
+
+{{ range . }}- `{{ . }}`
+{{ end }}
+{{- end }}
+
+---
+*Threat `{{ .ID }}`, reported by Wiz Defend. Runtime detections route to a
+human for response; patchy tracks them but does not auto-remediate live
+threats.*

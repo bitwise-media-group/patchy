@@ -100,6 +100,64 @@ func testSCCFinding() SCCFinding {
 	}
 }
 
+// testWizIssue is a Wiz issue with every optional block populated.
+func testWizIssue() WizIssue {
+	return WizIssue{
+		ID:             "f2f5d3b8-a663-4c1b-b7f3-8f7f0c8a0001",
+		ControlName:    "Bucket accessible to the public",
+		ControlID:      "wc-id-1234",
+		Severity:       "high",
+		Status:         "OPEN",
+		Description:    "The bucket allows public read access.",
+		Recommendation: "Remove allUsers from the bucket IAM policy.",
+		Entity: WizEntity{
+			Name:             "//storage.googleapis.com/acme-artifacts",
+			DisplayName:      "acme-artifacts",
+			Type:             "storage#bucket",
+			Platform:         "GCP",
+			Subscription:     "acme-prod",
+			SubscriptionName: "Acme Production",
+			Region:           "europe-west2",
+			ConsoleURL:       "https://console.cloud.google.com/storage/browser/acme-artifacts",
+			Tags: []WizKV{
+				{Key: "env", Value: "prod"},
+				{Key: "team", Value: "storage"},
+			},
+		},
+		Projects:  "acme-prod",
+		CreatedAt: "2026-07-26T09:00:00Z",
+		URL:       "https://app.wiz.io/issues#~(issue~'f2f5d3b8')",
+	}
+}
+
+// testWizThreat is a Wiz Defend threat with every optional block populated.
+func testWizThreat() WizThreat {
+	return WizThreat{
+		ID:          "t-0001",
+		Name:        "Suspicious service account key usage",
+		RuleName:    "Unusual key usage",
+		RuleID:      "dr-5678",
+		Severity:    "critical",
+		Status:      "OPEN",
+		Description: "A service account key was used from an unusual location.",
+		Entity: WizEntity{
+			Name:         "//compute.googleapis.com/projects/acme-prod/zones/europe-west2-a/instances/build-vm",
+			DisplayName:  "build-vm",
+			Type:         "compute#instance",
+			Platform:     "GCP",
+			Subscription: "acme-prod",
+			Region:       "europe-west2-a",
+		},
+		Actors:          []string{"ci-deployer@acme-prod.iam (service_account)"},
+		MitreTactics:    []string{"TA0001"},
+		MitreTechniques: []string{"T1078"},
+		Detections:      2,
+		CloudAccounts:   []string{"acme-prod"},
+		CreatedAt:       "2026-07-26T10:00:00Z",
+		URL:             "https://app.wiz.io/threats#~(threat~'t-0001')",
+	}
+}
+
 func TestGoldens(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -164,6 +222,23 @@ func TestGoldens(t *testing.T) {
 				},
 			})
 		}},
+		// A Wiz issue with every optional block, pinning the whole shape.
+		{"finding_wiz_issue.md", func() (string, error) { return RenderWizIssueDescription(testWizIssue()) }},
+		// The minimal variant: no recommendation, no tags, no console link —
+		// each section must vanish cleanly.
+		{"finding_wiz_issue_minimal.md", func() (string, error) {
+			return RenderWizIssueDescription(WizIssue{
+				ID:          "f2f5d3b8-a663-4c1b-b7f3-8f7f0c8a0001",
+				ControlName: "Bucket accessible to the public",
+				Severity:    "high",
+				Description: "The bucket allows public read access.",
+				Entity: WizEntity{
+					Name: "//storage.googleapis.com/acme-artifacts",
+					Type: "storage#bucket",
+				},
+			})
+		}},
+		{"finding_wiz_threat.md", func() (string, error) { return RenderWizThreatDescription(testWizThreat()) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

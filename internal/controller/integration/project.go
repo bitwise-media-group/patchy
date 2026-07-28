@@ -26,6 +26,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/labels"
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/templates"
+	"github.com/bitwise-media-group/patchy/internal/wiz"
+	"github.com/bitwise-media-group/patchy/internal/wizapi"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
@@ -82,6 +84,8 @@ type FindingReconciler struct {
 	Now func() time.Time
 	// ClientFor overrides the tracker-client construction in tests.
 	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (trackerClient, error)
+	// WizAPI overrides the Wiz write-back client construction in tests.
+	WizAPI func(ctx context.Context, integ *v1alpha1.Integration) (wiz.IssueRejecter, error)
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
 }
@@ -571,12 +575,46 @@ func (r *FindingReconciler) resolverFor(
 			return nil, err
 		}
 		return ghas.NewResolver(gh, repo), nil
+	case wiz.IssuesID:
+		integ, err := selectIntegration(ctx, r.Client, fnd.Namespace, wizIssuesEnabled)
+		if err != nil {
+			return nil, err
+		}
+		if integ.Spec.Wiz.API == nil {
+			return nil, nil // write-back not configured; ingestion stays one-way
+		}
+		api, err := r.wizClientFor(ctx, integ)
+		if err != nil {
+			return nil, err
+		}
+		return wiz.NewResolver(api), nil
 	default:
 		// Security Command Center findings would be muted here once
 		// integration-controller holds a Google Cloud write credential; the
 		// seam is in place and internal/scc implements source.Handler only.
+		// Wiz Defend threats have no write-back by design: a runtime
+		// detection is a record, not a state to dismiss.
 		return nil, nil
 	}
+}
+
+// wizClientFor resolves the Wiz write-back seam, honouring the test override.
+func (r *FindingReconciler) wizClientFor(
+	ctx context.Context, integ *v1alpha1.Integration,
+) (wiz.IssueRejecter, error) {
+	if r.WizAPI != nil {
+		return r.WizAPI(ctx, integ)
+	}
+	id, secret, err := r.Creds.WizAPICreds(ctx, integ)
+	if err != nil {
+		return nil, err
+	}
+	return wizapi.New(wizapi.Options{
+		Endpoint:     integ.Spec.Wiz.API.Endpoint,
+		TokenURL:     integ.Spec.Wiz.API.TokenURL,
+		ClientID:     id,
+		ClientSecret: secret,
+	})
 }
 
 // toAlertRefs adapts the CR's alerts to the seam's shape.

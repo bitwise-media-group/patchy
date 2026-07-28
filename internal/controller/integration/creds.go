@@ -16,15 +16,18 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 	"github.com/bitwise-media-group/patchy/internal/ghsecret"
+	"github.com/bitwise-media-group/patchy/internal/integrationcap"
+	"github.com/bitwise-media-group/patchy/internal/wiz"
 )
 
-// Sentinel errors for integration selection.
+// Sentinel errors for integration selection, shared with every other
+// capability consumer through integrationcap.
 var (
 	// ErrNoIntegration: no enabled Integration provides the capability.
-	ErrNoIntegration = errors.New("no integration provides the capability")
+	ErrNoIntegration = integrationcap.ErrNoIntegration
 	// ErrAmbiguousIntegration: several Integrations provide the capability —
 	// v1alpha1 requires exactly one per namespace.
-	ErrAmbiguousIntegration = errors.New("multiple integrations provide the capability")
+	ErrAmbiguousIntegration = integrationcap.ErrAmbiguousIntegration
 )
 
 // Creds reads Integration credential Secrets and builds GitHub clients.
@@ -108,12 +111,48 @@ func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghcl
 	return app, true, nil
 }
 
+// WizWebhookToken returns the shared bearer token the Integration's inbound
+// Wiz deliveries must carry.
+func (c *Creds) WizWebhookToken(ctx context.Context, integ *v1alpha1.Integration) ([]byte, error) {
+	secret, err := c.secret(ctx, integ)
+	if err != nil {
+		return nil, err
+	}
+	token := secret.Data[wiz.KeyWebhookToken]
+	if len(token) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing key %s",
+			secret.Namespace, secret.Name, wiz.KeyWebhookToken)
+	}
+	return token, nil
+}
+
+// WizAPICreds returns the Wiz API service-account credentials for write-back.
+func (c *Creds) WizAPICreds(
+	ctx context.Context, integ *v1alpha1.Integration,
+) (clientID, clientSecret string, err error) {
+	secret, err := c.secret(ctx, integ)
+	if err != nil {
+		return "", "", err
+	}
+	id, sec := secret.Data[wiz.KeyClientID], secret.Data[wiz.KeyClientSecret]
+	if len(id) == 0 || len(sec) == 0 {
+		return "", "", fmt.Errorf("secret %s/%s missing key %s or %s",
+			secret.Namespace, secret.Name, wiz.KeyClientID, wiz.KeyClientSecret)
+	}
+	return string(id), string(sec), nil
+}
+
 // Validate checks the Integration is usable, by provider: github needs a
 // secret carrying an API credential and a webhook secret; google-cloud holds
-// no credential at all, so only its inbound-delivery settings are checked.
+// no credential at all, so only its inbound-delivery settings are checked;
+// wiz needs its webhook token, plus API credentials when write-back is
+// configured.
 func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error {
-	if integ.Spec.Provider == v1alpha1.IntegrationProviderGoogleCloud {
+	switch integ.Spec.Provider {
+	case v1alpha1.IntegrationProviderGoogleCloud:
 		return validateGoogleCloud(integ)
+	case v1alpha1.IntegrationProviderWiz:
+		return c.validateWiz(ctx, integ)
 	}
 	secret, err := c.secret(ctx, integ)
 	if err != nil {
@@ -130,21 +169,39 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 }
 
 // validateGoogleCloud checks the settings the receiver needs to authenticate
-// a Pub/Sub push. The CEL schema already requires both fields when the SCC
-// capability is present; this catches a block that is enabled with the
-// capability itself omitted.
+// a Pub/Sub push. The CEL schema already requires the fields each capability
+// needs when its block is present; this catches a block that is enabled with
+// every capability omitted.
 func validateGoogleCloud(integ *v1alpha1.Integration) error {
 	gc := integ.Spec.GoogleCloud
-	if gc == nil || gc.SecurityCommandCenter == nil {
+	if gc == nil || (gc.SecurityCommandCenter == nil && gc.CloudAssetInventory == nil) {
 		return errors.New("google-cloud integration enables no capability")
 	}
 	scc := gc.SecurityCommandCenter
-	if !scc.Enabled {
+	if scc == nil || !scc.Enabled {
 		return nil
 	}
 	if scc.Audience == "" || scc.ServiceAccount == "" {
 		return errors.New(
 			"securityCommandCenter needs both audience and serviceAccount to authenticate the push subscription")
+	}
+	return nil
+}
+
+// validateWiz checks the wiz Integration's credential Secret: the webhook
+// token always, the API service account only when write-back is configured.
+func (c *Creds) validateWiz(ctx context.Context, integ *v1alpha1.Integration) error {
+	w := integ.Spec.Wiz
+	if w == nil || (w.Issues == nil && w.Defend == nil) {
+		return errors.New("wiz integration enables no capability")
+	}
+	if _, err := c.WizWebhookToken(ctx, integ); err != nil {
+		return err
+	}
+	if w.API != nil {
+		if _, _, err := c.WizAPICreds(ctx, integ); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -165,7 +222,7 @@ func githubHost(integ *v1alpha1.Integration) string {
 }
 
 // capability selects Integrations by what they provide.
-type capability func(*v1alpha1.Integration) bool
+type capability = integrationcap.Capability
 
 // issuesEnabled reports whether the Integration projects tracking issues.
 func issuesEnabled(i *v1alpha1.Integration) bool {
@@ -195,27 +252,23 @@ func sccEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.GoogleCloud.SecurityCommandCenter.Enabled
 }
 
+// wizIssuesEnabled reports whether the Integration ingests Wiz Issues.
+func wizIssuesEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.Wiz != nil &&
+		i.Spec.Wiz.Issues != nil && i.Spec.Wiz.Issues.Enabled
+}
+
+// wizDefendEnabled reports whether the Integration ingests Wiz Defend threat
+// detections.
+func wizDefendEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.Wiz != nil &&
+		i.Spec.Wiz.Defend != nil && i.Spec.Wiz.Defend.Enabled
+}
+
 // selectIntegration returns the single Integration in namespace providing
 // the capability (the v1alpha1 singleton rule).
 func selectIntegration(
 	ctx context.Context, r client.Reader, namespace string, has capability,
 ) (*v1alpha1.Integration, error) {
-	var list v1alpha1.IntegrationList
-	if err := r.List(ctx, &list, client.InNamespace(namespace)); err != nil {
-		return nil, fmt.Errorf("list integrations: %w", err)
-	}
-	var won []*v1alpha1.Integration
-	for i := range list.Items {
-		if has(&list.Items[i]) {
-			won = append(won, &list.Items[i])
-		}
-	}
-	switch len(won) {
-	case 0:
-		return nil, ErrNoIntegration
-	case 1:
-		return won[0], nil
-	default:
-		return nil, ErrAmbiguousIntegration
-	}
+	return integrationcap.Select(ctx, r, namespace, has)
 }

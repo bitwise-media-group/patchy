@@ -16,6 +16,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 	"github.com/bitwise-media-group/patchy/internal/scc"
 	"github.com/bitwise-media-group/patchy/internal/webhook"
+	"github.com/bitwise-media-group/patchy/internal/wiz"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
@@ -69,26 +70,51 @@ func (r *Receiver) Endpoints() []webhook.Endpoint {
 			Decode:  sccDecoder,
 			Handler: webhook.HandlerFunc(r.handleSCC),
 		},
+		{
+			Path:    WizPath,
+			Auth:    &webhook.TokenAuthenticator{SecretsFor: r.WizTokens},
+			Decode:  wizDecoder,
+			Handler: webhook.HandlerFunc(r.handleWiz),
+		},
 	}
 }
 
 // Secrets returns every configured github Integration's webhook secret — the
 // candidate set for delivery validation on the GitHub route.
 func (r *Receiver) Secrets(ctx context.Context) [][]byte {
+	return r.credentialSet(ctx, v1alpha1.IntegrationProviderGitHub, r.Creds.WebhookSecret)
+}
+
+// WizTokens returns every configured wiz Integration's webhook bearer token —
+// the candidate set for delivery validation on the Wiz route.
+func (r *Receiver) WizTokens(ctx context.Context) [][]byte {
+	return r.credentialSet(ctx, v1alpha1.IntegrationProviderWiz, r.Creds.WizWebhookToken)
+}
+
+// credentialSet collects one inbound-delivery credential from every enabled
+// Integration of a provider. An Integration whose credential cannot be read
+// is logged and skipped — one broken Secret must not take the route down for
+// the rest.
+func (r *Receiver) credentialSet(
+	ctx context.Context,
+	provider v1alpha1.IntegrationProvider,
+	get func(context.Context, *v1alpha1.Integration) ([]byte, error),
+) [][]byte {
 	var list v1alpha1.IntegrationList
 	if err := r.Reader.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
-		r.log().LogAttrs(ctx, slog.LevelError, "list integrations for webhook secrets", slog.Any("error", err))
+		r.log().LogAttrs(ctx, slog.LevelError, "list integrations for webhook credentials",
+			slog.String("provider", string(provider)), slog.Any("error", err))
 		return nil
 	}
 	var out [][]byte
 	for i := range list.Items {
 		integ := &list.Items[i]
-		if integ.Spec.Provider != v1alpha1.IntegrationProviderGitHub || integ.Spec.Suspend {
+		if integ.Spec.Provider != provider || integ.Spec.Suspend {
 			continue
 		}
-		secret, err := r.Creds.WebhookSecret(ctx, integ)
+		secret, err := get(ctx, integ)
 		if err != nil {
-			r.log().LogAttrs(ctx, slog.LevelWarn, "integration webhook secret unavailable",
+			r.log().LogAttrs(ctx, slog.LevelWarn, "integration webhook credential unavailable",
 				slog.String("integration", integ.Name), slog.Any("error", err))
 			continue
 		}
@@ -146,6 +172,38 @@ func (r *Receiver) handleSCC(ctx context.Context, e webhook.Event) error {
 		Organization: cfg.Organization,
 	})
 	return r.ingestAll(ctx, integ, handler, e)
+}
+
+// handleWiz routes a Wiz delivery through the source handler for whichever
+// feed the payload shape identified. Like SCC there is no API call: the
+// documented body template carries everything the finding needs.
+func (r *Receiver) handleWiz(ctx context.Context, e webhook.Event) error {
+	var (
+		cap     capability
+		handler func(*v1alpha1.Integration) source.Handler
+	)
+	switch e.Type {
+	case wiz.EventIssue:
+		cap = wizIssuesEnabled
+		handler = func(integ *v1alpha1.Integration) source.Handler {
+			return wiz.NewIssues(wiz.Options{MinSeverity: string(integ.Spec.Wiz.Issues.MinSeverity)})
+		}
+	case wiz.EventThreat:
+		cap = wizDefendEnabled
+		handler = func(integ *v1alpha1.Integration) source.Handler {
+			return wiz.NewDefend(wiz.Options{MinSeverity: string(integ.Spec.Wiz.Defend.MinSeverity)})
+		}
+	default:
+		return nil
+	}
+	integ, err := selectIntegration(ctx, r.Reader, r.Namespace, cap)
+	if err != nil {
+		if errors.Is(err, ErrNoIntegration) {
+			return nil // this feed is not configured; nothing to ingest
+		}
+		return err
+	}
+	return r.ingestAll(ctx, integ, handler(integ), e)
 }
 
 // ingestAll normalizes one delivery through a source handler and folds every

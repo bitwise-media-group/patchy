@@ -41,8 +41,9 @@ spec:
       openAPIV3Schema:
         description: |-
           Integration configures one external system patchy exchanges finding state
-          with: scanners in (code-scanning alerts, Security Command Center), tracking
-          out (GitHub issues), and the human signals flowing back.
+          with: scanners in (code-scanning alerts, Security Command Center, Wiz),
+          context enhancers (Cloud Asset Inventory), tracking out (GitHub issues),
+          and the human signals flowing back.
         properties:
           apiVersion:
             description: |-
@@ -127,6 +128,45 @@ spec:
               googleCloud:
                 description: GoogleCloud is the google-cloud provider block.
                 properties:
+                  cloudAssetInventory:
+                    description: CloudAssetInventory enables the ownership-label enhancer.
+                    properties:
+                      enabled:
+                        description: Enabled turns the enhancer capability on.
+                        type: boolean
+                      labels:
+                        description: Labels overrides the resource label names the
+                          enhancer reads.
+                        properties:
+                          name:
+                            description: Name label carries the repository name.
+                            type: string
+                          org:
+                            description: Org label carries the repository owner/organization.
+                            type: string
+                          provider:
+                            description: Provider label carries the forge kind (e.g.
+                              github).
+                            type: string
+                          url:
+                            description: URL label carries a full repository URL,
+                              overriding the parts.
+                            type: string
+                        type: object
+                      repositoryHost:
+                        description: |-
+                          RepositoryHost is the forge host repositories named by labels live on;
+                          empty means github.com.
+                        type: string
+                      scope:
+                        description: 'Scope bounds the asset search: an organization,
+                          folder, or project.'
+                        pattern: ^(organizations|folders|projects)/.+$
+                        type: string
+                    required:
+                    - enabled
+                    - scope
+                    type: object
                   securityCommandCenter:
                     description: SecurityCommandCenter enables SCC finding ingestion.
                     properties:
@@ -188,6 +228,7 @@ spec:
                 enum:
                 - github
                 - google-cloud
+                - wiz
                 type: string
               replay:
                 description: |-
@@ -234,11 +275,14 @@ spec:
                 description: |-
                   SecretRef names the credential Secret. For github: either key "token"
                   (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-                  "webhookSecret" for receiver HMAC validation. Required for github,
-                  optional otherwise — a google-cloud integration holds no credential,
-                  since Pub/Sub authenticates itself with a signed OIDC token. It stays
-                  permitted for every provider so a future capability that does need one
-                  (SCC mute-on-ignore) needs no schema change.
+                  "webhookSecret" for receiver HMAC validation. For wiz: key
+                  "webhookToken" (the shared bearer token deliveries carry), plus keys
+                  "clientId" + "clientSecret" when spec.wiz.api enables write-back.
+                  Required for github and wiz, optional otherwise — a google-cloud
+                  integration holds no credential, since Pub/Sub authenticates itself
+                  with a signed OIDC token. It stays permitted for every provider so a
+                  future capability that does need one (SCC mute-on-ignore) needs no
+                  schema change.
                 properties:
                   name:
                     description: Name of the Secret.
@@ -250,15 +294,80 @@ spec:
               suspend:
                 description: Suspend pauses reconciliation of this integration.
                 type: boolean
+              wiz:
+                description: Wiz is the wiz provider block.
+                properties:
+                  api:
+                    description: API enables write-back through the Wiz GraphQL API.
+                    properties:
+                      endpoint:
+                        description: |-
+                          Endpoint is the tenant GraphQL endpoint, e.g.
+                          https://api.eu1.app.wiz.io/graphql.
+                        minLength: 1
+                        type: string
+                      tokenURL:
+                        description: |-
+                          TokenURL is the OAuth2 client-credentials token endpoint; empty means
+                          https://auth.app.wiz.io/oauth/token.
+                        type: string
+                    required:
+                    - endpoint
+                    type: object
+                  defend:
+                    description: Defend enables Wiz Defend threat-detection ingestion.
+                    properties:
+                      enabled:
+                        description: Enabled turns the Wiz Defend ingestion capability
+                          on.
+                        type: boolean
+                      minSeverity:
+                        default: low
+                        description: |-
+                          MinSeverity drops detections below this severity before they become
+                          findings.
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - critical
+                        type: string
+                    required:
+                    - enabled
+                    type: object
+                  issues:
+                    description: Issues enables Wiz Issues ingestion.
+                    properties:
+                      enabled:
+                        description: Enabled turns the Wiz Issues ingestion capability
+                          on.
+                        type: boolean
+                      minSeverity:
+                        default: low
+                        description: |-
+                          MinSeverity drops issues below this severity before they become
+                          findings. Wiz INFORMATIONAL ranks below low, so the default floor
+                          drops it.
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - critical
+                        type: string
+                    required:
+                    - enabled
+                    type: object
+                type: object
             required:
             - provider
             type: object
             x-kubernetes-validations:
             - message: exactly the provider block matching spec.provider must be set
               rule: (self.provider == 'github') == has(self.github) && (self.provider
-                == 'google-cloud') == has(self.googleCloud)
-            - message: spec.secretRef is required for the github provider
-              rule: self.provider != 'github' || has(self.secretRef)
+                == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz')
+                == has(self.wiz)
+            - message: spec.secretRef is required for the github and wiz providers
+              rule: '!(self.provider in [''github'', ''wiz'']) || has(self.secretRef)'
           status:
             description: IntegrationStatus is the integration's observed state.
             properties:

@@ -37,13 +37,17 @@ type FindingRepository struct {
 }
 
 // CloudProvider identifies the cloud platform a resource lives on.
-// +kubebuilder:validation:Enum=google
+// +kubebuilder:validation:Enum=google;aws;azure
 type CloudProvider string
 
 // Cloud providers.
 const (
 	// CloudProviderGoogle is Google Cloud.
 	CloudProviderGoogle CloudProvider = "google"
+	// CloudProviderAWS is Amazon Web Services.
+	CloudProviderAWS CloudProvider = "aws"
+	// CloudProviderAzure is Microsoft Azure.
+	CloudProviderAzure CloudProvider = "azure"
 )
 
 // FindingCloudResource identifies the cloud resource a finding was raised

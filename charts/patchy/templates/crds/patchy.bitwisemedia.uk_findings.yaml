@@ -200,6 +200,8 @@ spec:
                       on.
                     enum:
                     - google
+                    - aws
+                    - azure
                     type: string
                   type:
                     description: Type is the provider's resource type, e.g. "google.cloud.storage.Bucket".

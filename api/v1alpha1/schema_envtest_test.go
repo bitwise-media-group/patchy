@@ -131,6 +131,76 @@ func TestSchemaValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("wiz integration requires its provider block and secretRef", func(t *testing.T) {
+		noBlock := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "wiz-no-block", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider:  patchyv1.IntegrationProviderWiz,
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+			},
+		}
+		if err := c.Create(ctx, noBlock); err == nil {
+			t.Error("Create(wiz integration without wiz block) = nil, want CEL rejection")
+		}
+		noSecret := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "wiz-no-secret", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderWiz,
+				Wiz:      &patchyv1.WizIntegration{Issues: &patchyv1.WizIssues{Enabled: true}},
+			},
+		}
+		if err := c.Create(ctx, noSecret); err == nil {
+			t.Error("Create(wiz integration without secretRef) = nil, want CEL rejection")
+		}
+		good := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "wiz", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider:  patchyv1.IntegrationProviderWiz,
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+				Wiz: &patchyv1.WizIntegration{
+					Issues: &patchyv1.WizIssues{Enabled: true},
+					Defend: &patchyv1.WizDefend{Enabled: true},
+				},
+			},
+		}
+		if err := c.Create(ctx, good); err != nil {
+			t.Errorf("Create(valid wiz integration) = %v, want nil", err)
+		}
+	})
+
+	t.Run("asset-inventory-only google-cloud integration is accepted", func(t *testing.T) {
+		good := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-cai-only", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderGoogleCloud,
+				GoogleCloud: &patchyv1.GoogleCloudIntegration{
+					CloudAssetInventory: &patchyv1.GoogleCloudAssetInventory{
+						Enabled: true,
+						Scope:   "organizations/123456789012",
+					},
+				},
+			},
+		}
+		if err := c.Create(ctx, good); err != nil {
+			t.Errorf("Create(asset-inventory-only integration) = %v, want nil", err)
+		}
+		badScope := &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-bad-scope", Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderGoogleCloud,
+				GoogleCloud: &patchyv1.GoogleCloudIntegration{
+					CloudAssetInventory: &patchyv1.GoogleCloudAssetInventory{
+						Enabled: true,
+						Scope:   "org-123",
+					},
+				},
+			},
+		}
+		if err := c.Create(ctx, badScope); err == nil {
+			t.Error("Create(asset inventory with malformed scope) = nil, want pattern rejection")
+		}
+	})
+
 	t.Run("finding rejects an unknown phase and accepts a legal one", func(t *testing.T) {
 		f := &patchyv1.Finding{
 			ObjectMeta: metav1.ObjectMeta{Name: "finding-abc123-1", Namespace: "default"},

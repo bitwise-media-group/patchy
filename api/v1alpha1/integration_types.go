@@ -8,13 +8,14 @@ import (
 )
 
 // IntegrationProvider identifies the external system an Integration talks to.
-// +kubebuilder:validation:Enum=github;google-cloud
+// +kubebuilder:validation:Enum=github;google-cloud;wiz
 type IntegrationProvider string
 
 // Integration providers.
 const (
 	IntegrationProviderGitHub      IntegrationProvider = "github"
 	IntegrationProviderGoogleCloud IntegrationProvider = "google-cloud"
+	IntegrationProviderWiz         IntegrationProvider = "wiz"
 )
 
 // GitHubIssues configures the tracking projection: findings are projected as
@@ -123,30 +124,139 @@ type GoogleCloudSCC struct {
 	Mute *GoogleCloudSCCMute `json:"mute,omitempty"`
 }
 
+// AssetLabelKeys overrides the resource label names the Cloud Asset Inventory
+// enhancer reads a repository identity from. Empty fields keep the defaults
+// (scm-repository-org, scm-repository-name, scm-repository-provider,
+// scm-repository-url).
+type AssetLabelKeys struct {
+	// Org label carries the repository owner/organization.
+	// +optional
+	Org string `json:"org,omitempty"`
+	// Name label carries the repository name.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Provider label carries the forge kind (e.g. github).
+	// +optional
+	Provider string `json:"provider,omitempty"`
+	// URL label carries a full repository URL, overriding the parts.
+	// +optional
+	URL string `json:"url,omitempty"`
+}
+
+// GoogleCloudAssetInventory enables the context enhancer that resolves the
+// repository (and attributes) of any finding whose cloud resource lives on
+// Google Cloud — whichever source ingested it — by reading the resource's
+// ownership labels from Cloud Asset Inventory. Read-only: the
+// context-controller authenticates by workload identity
+// (roles/cloudasset.viewer) and holds no Secret.
+type GoogleCloudAssetInventory struct {
+	// Enabled turns the enhancer capability on.
+	Enabled bool `json:"enabled"`
+	// Scope bounds the asset search: an organization, folder, or project.
+	// +kubebuilder:validation:Pattern=`^(organizations|folders|projects)/.+$`
+	Scope string `json:"scope"`
+	// RepositoryHost is the forge host repositories named by labels live on;
+	// empty means github.com.
+	// +optional
+	RepositoryHost string `json:"repositoryHost,omitempty"`
+	// Labels overrides the resource label names the enhancer reads.
+	// +optional
+	Labels *AssetLabelKeys `json:"labels,omitempty"`
+}
+
 // GoogleCloudIntegration is the google-cloud provider block. It carries no
-// credential: inbound findings authenticate themselves with a Pub/Sub-signed
-// OIDC token, and nothing here calls a Google API.
+// credential Secret: inbound findings authenticate themselves with a
+// Pub/Sub-signed OIDC token, and the asset-inventory enhancer authenticates
+// by workload identity. The two capabilities are independent — an integration
+// may enhance findings from another source (e.g. Wiz) without ingesting from
+// Security Command Center, or vice versa.
 type GoogleCloudIntegration struct {
 	// SecurityCommandCenter enables SCC finding ingestion.
 	// +optional
 	SecurityCommandCenter *GoogleCloudSCC `json:"securityCommandCenter,omitempty"`
+	// CloudAssetInventory enables the ownership-label enhancer.
+	// +optional
+	CloudAssetInventory *GoogleCloudAssetInventory `json:"cloudAssetInventory,omitempty"`
+}
+
+// WizIssues configures ingestion of Wiz Issues — cloud misconfigurations and
+// toxic combinations — delivered by a Wiz automation-rule webhook. The rule's
+// action body must follow the template documented in docs/integrations/wiz.md;
+// that template is the payload contract.
+type WizIssues struct {
+	// Enabled turns the Wiz Issues ingestion capability on.
+	Enabled bool `json:"enabled"`
+	// MinSeverity drops issues below this severity before they become
+	// findings. Wiz INFORMATIONAL ranks below low, so the default floor
+	// drops it.
+	// +optional
+	// +kubebuilder:default=low
+	MinSeverity Level `json:"minSeverity,omitempty"`
+}
+
+// WizDefend configures ingestion of Wiz Defend threat detections, delivered
+// by a Wiz automation-rule webhook using the documented body template.
+type WizDefend struct {
+	// Enabled turns the Wiz Defend ingestion capability on.
+	Enabled bool `json:"enabled"`
+	// MinSeverity drops detections below this severity before they become
+	// findings.
+	// +optional
+	// +kubebuilder:default=low
+	MinSeverity Level `json:"minSeverity,omitempty"`
+}
+
+// WizAPI configures the Wiz GraphQL API client used for write-back: on a
+// dismissed finding the originating Wiz issue is rejected with a note. The
+// block is optional — without it Wiz ingestion is one-way, exactly like SCC.
+// Credentials are the Wiz service-account keys "clientId" + "clientSecret" in
+// the integration's credential Secret.
+type WizAPI struct {
+	// Endpoint is the tenant GraphQL endpoint, e.g.
+	// https://api.eu1.app.wiz.io/graphql.
+	// +kubebuilder:validation:MinLength=1
+	Endpoint string `json:"endpoint"`
+	// TokenURL is the OAuth2 client-credentials token endpoint; empty means
+	// https://auth.app.wiz.io/oauth/token.
+	// +optional
+	TokenURL string `json:"tokenURL,omitempty"`
+}
+
+// WizIntegration is the wiz provider block. Inbound deliveries carry the
+// shared bearer token stored under key "webhookToken" in the credential
+// Secret — a Wiz automation action sends a static header and cannot compute
+// an HMAC over the body. Issues and Defend are independent capabilities that
+// share the /wiz/webhooks path; the receiver discriminates by payload shape.
+type WizIntegration struct {
+	// Issues enables Wiz Issues ingestion.
+	// +optional
+	Issues *WizIssues `json:"issues,omitempty"`
+	// Defend enables Wiz Defend threat-detection ingestion.
+	// +optional
+	Defend *WizDefend `json:"defend,omitempty"`
+	// API enables write-back through the Wiz GraphQL API.
+	// +optional
+	API *WizAPI `json:"api,omitempty"`
 }
 
 // IntegrationSpec configures one external system. Exactly the provider block
 // matching spec.provider must be set (CEL-enforced) — integrations are
 // strongly typed, not generic.
-// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud)",message="exactly the provider block matching spec.provider must be set"
-// +kubebuilder:validation:XValidation:rule="self.provider != 'github' || has(self.secretRef)",message="spec.secretRef is required for the github provider"
+// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz']) || has(self.secretRef)",message="spec.secretRef is required for the github and wiz providers"
 type IntegrationSpec struct {
 	// Provider is the external system type.
 	Provider IntegrationProvider `json:"provider"`
 	// SecretRef names the credential Secret. For github: either key "token"
 	// (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-	// "webhookSecret" for receiver HMAC validation. Required for github,
-	// optional otherwise — a google-cloud integration holds no credential,
-	// since Pub/Sub authenticates itself with a signed OIDC token. It stays
-	// permitted for every provider so a future capability that does need one
-	// (SCC mute-on-ignore) needs no schema change.
+	// "webhookSecret" for receiver HMAC validation. For wiz: key
+	// "webhookToken" (the shared bearer token deliveries carry), plus keys
+	// "clientId" + "clientSecret" when spec.wiz.api enables write-back.
+	// Required for github and wiz, optional otherwise — a google-cloud
+	// integration holds no credential, since Pub/Sub authenticates itself
+	// with a signed OIDC token. It stays permitted for every provider so a
+	// future capability that does need one (SCC mute-on-ignore) needs no
+	// schema change.
 	// +optional
 	SecretRef *LocalSecretReference `json:"secretRef,omitempty"`
 	// Interval between credential revalidations.
@@ -179,6 +289,9 @@ type IntegrationSpec struct {
 	// GoogleCloud is the google-cloud provider block.
 	// +optional
 	GoogleCloud *GoogleCloudIntegration `json:"googleCloud,omitempty"`
+	// Wiz is the wiz provider block.
+	// +optional
+	Wiz *WizIntegration `json:"wiz,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -266,8 +379,9 @@ type IntegrationStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Integration configures one external system patchy exchanges finding state
-// with: scanners in (code-scanning alerts, Security Command Center), tracking
-// out (GitHub issues), and the human signals flowing back.
+// with: scanners in (code-scanning alerts, Security Command Center, Wiz),
+// context enhancers (Cloud Asset Inventory), tracking out (GitHub issues),
+// and the human signals flowing back.
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

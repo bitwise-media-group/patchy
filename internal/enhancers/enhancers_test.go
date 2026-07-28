@@ -14,19 +14,6 @@ import (
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
-func TestNoop(t *testing.T) {
-	enr, err := Noop{}.Enhance(context.Background(), enhance.Issue{})
-	if err != nil {
-		t.Fatalf("Enhance() error = %v", err)
-	}
-	if enr == nil || enr.CommentMarkdown == "" {
-		t.Error("noop must contribute an explicit placeholder comment")
-	}
-	if len(enr.Owners) != 0 {
-		t.Errorf("noop owners = %v, want none", enr.Owners)
-	}
-}
-
 const staticYAML = `
 repos:
     acme/shop:

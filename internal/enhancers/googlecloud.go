@@ -33,9 +33,11 @@ const (
 const GoogleCloudLabelsID = "google-cloud-labels"
 
 // AssetLabels reads a cloud resource's labels. Declared here, next to its
-// only consumer, so the enhancer's tests need no Google Cloud client.
+// only consumer, so the enhancer's tests need no Google Cloud client. The
+// display name rides along for the lookup's fallback: an identifier a source
+// could not spell the Asset Inventory way still has a second chance.
 type AssetLabels interface {
-	LabelsFor(ctx context.Context, resourceName string) (*gcpasset.Labels, error)
+	LabelsFor(ctx context.Context, resourceName, displayName string) (*gcpasset.Labels, error)
 }
 
 // LabelKeys names the labels the enhancer reads. Zero values fall back to the
@@ -112,7 +114,7 @@ func (g *GoogleCloudLabels) Enhance(ctx context.Context, issue enhance.Issue) (*
 		return nil, nil // not ours
 	}
 
-	labels, err := g.assets.LabelsFor(ctx, cr.Name)
+	labels, err := g.assets.LabelsFor(ctx, cr.Name, cr.DisplayName)
 	if err != nil {
 		if errors.Is(err, gcpasset.ErrNotFound) {
 			// The resource is gone or out of scope. Nothing to wait for, but

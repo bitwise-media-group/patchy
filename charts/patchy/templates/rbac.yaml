@@ -69,6 +69,8 @@ The enhancer chain: reads Opened findings, writes enrichments/owners and the
 Opened -> Enhanced edge to status, and sets spec.repository once for a cloud
 finding that arrived without one (resolved from the resource's ownership
 labels) -- which is why it holds update on findings, not status alone.
+Integrations are read-only: the Cloud Asset Inventory enhancer takes its
+configuration (scope, label keys) from the google-cloud Integration.
 No secrets: an enhancer needing a cloud credential uses workload identity.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
@@ -77,6 +79,9 @@ No secrets: an enhancer needing a cloud credential uses workload identity.
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings/status]
   verbs: [get, update, patch]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [integrations]
+  verbs: [get, list, watch]
 {{- else if eq . "investigation-controller" }}
 {{- /*
 The gate (creates Repository + Investigation, parks repo-less findings) and

@@ -21,7 +21,7 @@ type fakeAssets struct {
 	calls  int
 }
 
-func (f *fakeAssets) LabelsFor(_ context.Context, name string) (*gcpasset.Labels, error) {
+func (f *fakeAssets) LabelsFor(_ context.Context, name, _ string) (*gcpasset.Labels, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err

@@ -78,20 +78,34 @@ func (c *Client) Close() error {
 }
 
 // LabelsFor returns the labels of one resource, named as Security Command
-// Center names it.
+// Center names it. When the exact name misses and the caller supplied a
+// display name, one fallback search by display name runs — the safety net
+// for sources (Wiz) whose identifiers cannot always be rewritten into Asset
+// Inventory's spelling. The fallback demands a unique hit: two resources
+// with the same display name is ambiguity, and guessing an owner would be
+// worse than handing the finding to a human.
 //
 // Errors are classified for the caller: ErrNotFound is final, everything else
 // is worth retrying. That distinction is what lets the enhancer chain decide
 // between advancing a finding and holding it for another try.
-func (c *Client) LabelsFor(ctx context.Context, resourceName string) (*Labels, error) {
+func (c *Client) LabelsFor(ctx context.Context, resourceName, displayName string) (*Labels, error) {
 	if resourceName == "" {
 		return nil, ErrNotFound
 	}
+	// An exact-name match first: SCC's resourceName and Asset Inventory's
+	// name are the same string, so no normalization is needed.
+	labels, err := c.search(ctx, `name="`+resourceName+`"`, resourceName, false)
+	if err == nil || !errors.Is(err, ErrNotFound) || displayName == "" {
+		return labels, err
+	}
+	return c.search(ctx, `displayName="`+displayName+`"`, resourceName, true)
+}
+
+// search runs one Asset Inventory query and returns its single hit.
+func (c *Client) search(ctx context.Context, query, resourceName string, unique bool) (*Labels, error) {
 	it := c.api.SearchAllResources(ctx, &assetpb.SearchAllResourcesRequest{
 		Scope: c.scope,
-		// An exact-name match: SCC's resourceName and Asset Inventory's name
-		// are the same string, so no normalization is needed.
-		Query: `name="` + resourceName + `"`,
+		Query: query,
 		// Only the labels matter. Asking for less keeps the response small
 		// and the permission this needs as narrow as it can be.
 		ReadMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "labels"}},
@@ -102,6 +116,12 @@ func (c *Client) LabelsFor(ctx context.Context, resourceName string) (*Labels, e
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, resourceName)
 	case err != nil:
 		return nil, classify(resourceName, err)
+	}
+	if unique {
+		if _, err := it.Next(); !errors.Is(err, iterator.Done) {
+			// A second hit (or an error hiding one) makes the answer unsafe.
+			return nil, fmt.Errorf("%w: %s (display name is ambiguous)", ErrNotFound, resourceName)
+		}
 	}
 	return &Labels{Name: res.GetName(), Labels: res.GetLabels()}, nil
 }

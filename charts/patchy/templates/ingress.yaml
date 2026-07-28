@@ -7,10 +7,11 @@
 #
 # One path per provider, because each authenticates differently and nothing
 # else is exposed: /github/webhooks validates an HMAC over the raw body
-# against the matching Integration's webhookSecret, and /google-cloud/webhooks
+# against the matching Integration's webhookSecret, /google-cloud/webhooks
 # validates the OIDC token a Pub/Sub push subscription signs (a push cannot
-# compute an HMAC — Pub/Sub composes the message, not the sender). The probes
-# stay off the internet. See docs/deployment/webhook.md.
+# compute an HMAC — Pub/Sub composes the message, not the sender), and
+# /wiz/webhooks validates the shared bearer token a Wiz automation action
+# carries. The probes stay off the internet. See docs/deployment/webhook.md.
 {{- if .Values.webhook.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -35,7 +36,7 @@ spec:
         - host: {{ required "webhook.host is required when webhook.ingress is enabled" .Values.webhook.host | quote }}
           http:
               paths:
-                  {{- range $path := list "/github/webhooks" "/google-cloud/webhooks" }}
+                  {{- range $path := list "/github/webhooks" "/google-cloud/webhooks" "/wiz/webhooks" }}
                   - path: {{ $path }}
                     pathType: Prefix
                     backend:

@@ -25,14 +25,26 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
 - **Watch-driven** — a Finding reconciler filtered to phase `Opened`; no webhook, no polling interval to tune.
 - **Enhancer failures log and continue** — a broken enhancer never blocks the transition; the finding still moves to
-  `Enhanced` with whatever the chain produced.
+  `Enhanced` with whatever the chain produced. The exception is a cloud finding whose repository lookup _failed_ (rather
+  than cleanly finding no labels): it is held at `Opened` and retried, bounded by the accumulation window.
 - **Owners matter downstream** — the owners recorded on `status.owners` are who a `manual` or held finding is handed to
   when it routes to humans.
+
+## The Google Cloud labels enhancer
+
+The `google-cloud-labels` enhancer resolves a cloud finding's repository (and project/type/location attributes) from the
+ownership labels on the resource itself, read through Cloud Asset Inventory. It takes **no flags**: its configuration is
+the `cloudAssetInventory` block on the `google-cloud` Integration, read from the cluster per enhancement — see
+[Google Cloud SCC](../integrations/google-cloud-scc.md#enabling-it). It acts on any finding whose cloud resource lives
+on Google Cloud, whichever source ingested it, and stands aside entirely when no Integration enables the capability. The
+only deployment concern this controller keeps is the credential: workload identity with `roles/cloudasset.viewer` on the
+controller's ServiceAccount.
 
 ## The static context enhancer
 
 The built-in enhancer is a deliberate placeholder for a real CMDB: a YAML map from repository to ownership and
-attributes. Without `--static-context-file` the chain is the explicit no-op enhancer.
+attributes. Without `--static-context-file` the chain is the Google Cloud labels enhancer alone (which stands aside
+unless an Integration enables it).
 
 ```yaml
 # /etc/patchy/context/cmdb.yaml

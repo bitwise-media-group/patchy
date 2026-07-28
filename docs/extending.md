@@ -1,9 +1,9 @@
 # Extending
 
-Patchy ships GHAS/CodeQL and Google Cloud Security Command Center support plus a placeholder context enhancer, but both
-ends of the pipeline are plugin seams. The public interfaces live under `pkg/` — the only packages whose signatures are
-stable for external reuse — and the built-in implementations under `internal/ghas`, `internal/scc` and
-`internal/enhancers` are reference implementations of the same interfaces.
+Patchy ships GHAS/CodeQL, Google Cloud Security Command Center and Wiz support plus a placeholder context enhancer, but
+both ends of the pipeline are plugin seams. The public interfaces live under `pkg/` — the only packages whose signatures
+are stable for external reuse — and the built-in implementations under `internal/ghas`, `internal/scc`, `internal/wiz`
+and `internal/enhancers` are reference implementations of the same interfaces.
 
 ## Finding sources (`pkg/source`)
 
@@ -36,7 +36,9 @@ Each provider gets one `webhook.Endpoint` on the single internet-facing listener
 `Authenticator` (how a delivery proves it is genuine) and a `Decoder` (where its event type and delivery id live).
 GitHub signs an HMAC over the raw body and labels deliveries with headers; a Pub/Sub push cannot compute an HMAC at all
 — Pub/Sub composes the message, so the sender never sees the bytes — and instead presents a Google-signed OIDC token
-with the message id inside the body. Everything after authentication is the server's and identical for both.
+with the message id inside the body; a Wiz automation action sends only static headers, so it presents a shared bearer
+token, its event type is inferred from the body's shape, and its delivery id is a digest of the body (Wiz sends no
+GUID). Everything after authentication is the server's and identical for all of them.
 
 ## Context enhancers (`pkg/enhance`)
 
@@ -58,14 +60,15 @@ permanently and hand it off unremediable. A failed lookup instead holds the find
 the accumulation window — past that it advances anyway, because a finding a human could be looking at is better than one
 held out of sight.
 
-Three implementations ship:
+Two implementations ship:
 
-- **Noop** — the default when nothing is configured.
 - **Static file** — a YAML map from repository to owners and attributes
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
 - **Google Cloud labels** — reads `scm-repository-*` labels off the cloud resource a finding was raised against, via
   Cloud Asset Inventory, and resolves the repository from them
-  ([format](integrations/google-cloud-scc.md#the-ownership-labels)).
+  ([format](integrations/google-cloud-scc.md#the-ownership-labels)). Configured on the `google-cloud` Integration's
+  `cloudAssetInventory` block and read per enhancement, it acts on any Google Cloud finding whichever source ingested
+  it, and stands aside when no Integration enables it.
 
 A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the

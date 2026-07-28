@@ -31,6 +31,7 @@ nav = [
   { "Integrations" = [
     { "GitHub" = "integrations/github.md" },
     { "Google Cloud SCC" = "integrations/google-cloud-scc.md" },
+    { "Wiz" = "integrations/wiz.md" },
   ] },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },

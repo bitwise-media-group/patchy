@@ -17,14 +17,16 @@ TTL; `FindingRollup` resources keep the all-time statistics.
 Eight binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
-  provider webhooks (`/github/webhooks`, per-Integration HMAC secrets), ingests scanner alerts into Findings
-  (accumulation, duplicate merge), projects Findings out as tracking issues, and applies human signals (issue
-  close, `/approve`, PR merge) back onto Findings.
+  provider webhooks (`/github/webhooks` HMAC, `/google-cloud/webhooks` Pub/Sub OIDC, `/wiz/webhooks` bearer
+  token; per-Integration secrets), ingests scanner alerts into Findings (accumulation, duplicate merge), projects
+  Findings out as tracking issues, and applies human signals (issue close, `/approve`, PR merge) back onto
+  Findings.
 - `cmd/source-controller` — `Forge` + `Repository` reconcilers: validates forge credentials, pins
   each Repository's head SHA once, downloads the tarball archive at that SHA (pure HTTP, no git binary), and
   serves it from the artifact endpoint (`:9790`) agent pods fetch credential-lessly.
-- `cmd/context-controller` — runs the enhancer chain (CMDB placeholder) over `Opened` Findings, writes
-  enrichments/owners to status, transitions to `Enhanced`. No GitHub access at all.
+- `cmd/context-controller` — runs the enhancer chain (CMDB placeholder + the Cloud Asset Inventory lookup, whose
+  config is the `cloudAssetInventory` block on the `google-cloud` Integration) over `Opened` Findings, writes
+  enrichments/owners to status, transitions to `Enhanced`. No GitHub access at all; reads Integrations read-only.
 - `cmd/investigation-controller` — the gate (admits accumulated, aged findings; creates the Repository and one
   immutable `Investigation` per attempt) plus the analysis scheduler (bounded concurrency, launches agent Jobs,
   routes verdicts onto the Finding).

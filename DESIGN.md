@@ -5,11 +5,13 @@ resources as the state machine and GitHub issues as a human-facing projection.
 
 ## Key requirements
 
-1. The solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings) and Google Cloud
-   Security Command Center, and is tool-agnostic through a plugin architecture:
+1. The solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings), Google Cloud
+   Security Command Center, and Wiz (Issues and Defend detections), and is tool-agnostic through a plugin
+   architecture:
    - providers deliver findings to a single internet-facing receiver, each route authenticating on the provider's own
      terms — an HMAC over the raw body for GitHub, the OIDC token a Pub/Sub push subscription signs for Google Cloud,
-     which cannot compute an HMAC at all;
+     which cannot compute an HMAC at all, and the shared bearer token a Wiz automation action carries, since it can
+     only send static headers;
    - each alert is retrieved in full and folded into a `Finding` custom resource carrying all relevant context
      (advisories, rule, severity, locations, or the cloud resource it was raised against);
    - every Finding is projected to a GitHub tracking issue labelled with its source, its CVE/CWE/GHSA advisory
@@ -82,8 +84,8 @@ consistent across the estate.
 ### Components
 
 - **integration-controller** — the single internet-facing entry point, driven by `Integration` resources. Inbound:
-  validates provider webhooks (per-Integration HMAC secrets) and ingests scanner alerts into Findings through the
-  `pkg/source` handler seam (accumulation, duplicate merge). Outbound: projects Findings to tracking issues
+  validates provider webhooks (per-Integration secrets: GitHub HMAC, Pub/Sub OIDC, Wiz bearer token) and ingests
+  scanner alerts into Findings through the `pkg/source` handler seam (accumulation, duplicate merge). Outbound: projects Findings to tracking issues
   (body, labels, enrichment and report comments) and applies human signals (close, `/approve`, PR merge/close)
   back onto Findings.
 - **source-controller** — `Forge` + `Repository` reconcilers. Validates forge credentials, resolves
@@ -92,8 +94,9 @@ consistent across the estate.
   credential-lessly (unguessable URL, digest-verified).
 - **context-controller** — the enhancer chain over freshly opened Findings (`pkg/enhance` plugins; CMDB
   placeholder, plus a Google Cloud lookup that resolves a cloud finding's repository from its resource's ownership
-  labels). Writes Finding status and, set-once, `spec.repository` for a finding that arrived without one. Holds no
-  GitHub credential; the cloud lookup uses read-only workload identity.
+  labels, whichever source ingested it — its configuration is the `cloudAssetInventory` block on the `google-cloud`
+  Integration, read per enhancement). Writes Finding status and, set-once, `spec.repository` for a finding that
+  arrived without one. Holds no GitHub credential; the cloud lookup uses read-only workload identity.
 - **investigation-controller** — the gate (admits accumulated, aged findings; materializes the Repository and one
   immutable `Investigation` per attempt) and the analysis scheduler (bounded concurrency, severity order,
   verdict routing).

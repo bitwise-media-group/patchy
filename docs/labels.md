@@ -135,7 +135,7 @@ ignores foreign or malformed `security-*` labels, and does not manage label colo
 
 | Key                       | Cardinality        | Values                                                                                                                                                                      |
 | ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-source`         | single             | The source handler that ingested the finding, e.g. `ghas` or `gcp-scc`                                                                                                      |
+| `security-source`         | single             | The source handler that ingested the finding, e.g. `ghas`, `gcp-scc`, `wiz-issues` or `wiz-defend`                                                                          |
 | `security-advisory`       | multi (one per id) | The CWE/CVE/GHSA identifiers                                                                                                                                                |
 | `security-finding`        | single             | The phase, kebab-cased: `opened`, `enhanced`, `investigating`, `queued`, `awaiting-approval`, `remediating`, `in-review`, `remediated`, `dismissed`, `handed-off`, `failed` |
 | `security-severity`       | single             | `low` \| `medium` \| `high` \| `critical` (scanner-assigned)                                                                                                                |

@@ -1,7 +1,8 @@
 # integration-controller
 
 The single internet-facing entry point, driven by `Integration` custom resources. Inbound: it validates provider
-webhooks (`POST /github/webhooks`, per-Integration HMAC secrets) and ingests scanner alerts into `Finding` resources —
+webhooks — `POST /github/webhooks` (per-Integration HMAC secrets), `POST /google-cloud/webhooks` (Pub/Sub-signed OIDC
+tokens), `POST /wiz/webhooks` (per-Integration bearer tokens) — and ingests scanner alerts into `Finding` resources —
 accumulation, duplicate merge. Outbound: it projects Findings to their tracking issues (body, labels, enrichment and
 report comments) and applies human signals (issue close and reopen, `/approve` comments, PR merge/close) back onto
 Findings. It holds no GitHub credential itself — the credentials live in the Secrets your Integrations reference, read
@@ -25,9 +26,11 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
 ## The webhook receiver
 
-`POST /github/webhooks` on `--listen-addr` is the one URL the GitHub App delivers to. Each delivery's
-`X-Hub-Signature-256` is HMAC-validated (constant-time) against the `webhookSecret` of every configured Integration —
-GitHub gets its answer before any handling happens:
+One route per provider on `--listen-addr`, each authenticating on the provider's own terms before any handling happens:
+`POST /github/webhooks` validates `X-Hub-Signature-256` (constant-time HMAC) against the `webhookSecret` of every
+configured github Integration; `POST /google-cloud/webhooks` validates the OIDC token a Pub/Sub push signs against the
+SCC Integration's audience and service account; `POST /wiz/webhooks` validates the bearer token against every wiz
+Integration's `webhookToken` (also constant-time). All three answer the same way:
 
 | Response | Meaning                                                        |
 | -------- | -------------------------------------------------------------- |

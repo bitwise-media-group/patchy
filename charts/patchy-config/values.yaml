@@ -75,6 +75,49 @@ integrations: []
 #               # minSeverity: high
 #               # mute:
 #               #     enabled: true
+#           # cloudAssetInventory is the context enhancer, independent of SCC:
+#           # it resolves ownership labels (and possibly a repository) for ANY
+#           # finding on a Google Cloud resource, whichever source ingested it
+#           # — including Wiz. Read-only; the context-controller authenticates
+#           # by workload identity (roles/cloudasset.viewer), no Secret.
+#           cloudAssetInventory:
+#               enabled: true
+#               scope: organizations/123456789012        # or folders/<id>, projects/<id>
+#               # repositoryHost: github.example.com     # default github.com
+#               # labels:                                # override the label names read
+#               #     org: scm-repository-org
+#               #     name: scm-repository-name
+#               #     provider: scm-repository-provider
+#               #     url: scm-repository-url
+#
+# Wiz delivers both feeds through automation-rule webhooks aimed at
+# /wiz/webhooks, authenticated by the shared bearer token under the
+# credential Secret's webhookToken key (a Wiz automation action cannot
+# compute an HMAC). The action's body template MUST follow
+# docs/integrations/wiz.md — that template is the payload contract. Wiz
+# findings are cloud findings: pair this with a google-cloud Integration
+# carrying cloudAssetInventory to resolve their repositories, and a github
+# Integration for their tracking issues.
+# - name: wiz
+#   spec:
+#       provider: wiz
+#       secretRef:
+#           name: patchy-wiz        # webhookToken (+ clientId/clientSecret for api)
+#       wiz:
+#           issues:
+#               enabled: true       # Wiz Issues (misconfigurations, toxic combinations)
+#               # minSeverity: high # low|medium|high|critical, default low;
+#               #                   # INFORMATIONAL is always below the floor
+#           defend:
+#               enabled: true       # Wiz Defend threat detections
+#               # minSeverity: high
+#           # api enables write-back: a dismissed finding rejects the Wiz
+#           # issue (status REJECTED + note) through the GraphQL API, using
+#           # the service-account keys clientId + clientSecret in the Secret.
+#           # Omit it and ingestion is one-way, exactly like SCC.
+#           # api:
+#           #     endpoint: https://api.eu1.app.wiz.io/graphql
+#           #     # tokenURL: https://auth.app.wiz.io/oauth/token
 
 forges: []
 # - name: github

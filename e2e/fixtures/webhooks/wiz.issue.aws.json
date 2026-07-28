@@ -1,0 +1,37 @@
+{
+    "trigger": {
+        "source": "ISSUE",
+        "type": "Created",
+        "ruleId": "b2f4a891-11a2-44e2-a91b-3c2f8e0f2c0a",
+        "ruleName": "patchy-issues"
+    },
+    "issue": {
+        "id": "e2e00000-0000-0000-0000-00000000w1z2",
+        "status": "OPEN",
+        "severity": "CRITICAL",
+        "created": "2026-07-26T09:05:00Z",
+        "projects": "acme-prod",
+        "description": "The S3 bucket policy allows public read access.",
+        "resolutionRecommendation": "Enable the account-level S3 public access block.",
+        "url": "https://app.wiz.io/issues#~(issue~'e2e00000-0000-0000-0000-00000000w1z2')",
+        "control": {
+            "id": "wc-e2e-public-s3",
+            "name": "S3 bucket accessible to the public",
+            "description": "S3 buckets should not be publicly readable.",
+            "severity": "CRITICAL"
+        }
+    },
+    "entitySnapshot": {
+        "id": "9d1f2b3c-e2e-entity",
+        "type": "BUCKET",
+        "nativeType": "AWS::S3::Bucket",
+        "name": "acme-legacy-assets",
+        "cloudPlatform": "AWS",
+        "cloudProviderURL": "https://s3.console.aws.amazon.com/s3/buckets/acme-legacy-assets",
+        "providerId": "arn:aws:s3:::acme-legacy-assets",
+        "region": "eu-west-1",
+        "subscriptionExternalId": "123456789012",
+        "subscriptionName": "acme-legacy",
+        "tags": {"owner": "platform"}
+    }
+}

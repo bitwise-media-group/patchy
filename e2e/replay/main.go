@@ -21,6 +21,12 @@
 //	    --audiences=https://patchy.example/google-cloud/webhooks)" \
 //	    ../fixtures/webhooks/scc.notification.json
 //
+// A Wiz fixture authenticates with the Integration's shared webhook token,
+// sent as a bearer credential; -secret-file supplies it (or -bearer, which
+// passes it verbatim):
+//
+//	replay -secret-file wiz.token ../fixtures/webhooks/wiz.issue.created.json
+//
 // The route is inferred from the fixture name, so -url is only needed when
 // the controller is not on the default port.
 package main
@@ -82,10 +88,10 @@ func run() error {
 	}
 	// The provider decides both the route and how the delivery is
 	// authenticated, and the fixture name is what names the provider.
-	pubsub := isPubSub(fixture)
+	prov := providerOf(fixture)
 	endpoint := *url
 	if endpoint == "" {
-		endpoint = defaultHost + defaultPath(pubsub)
+		endpoint = defaultHost + defaultPath(prov)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
@@ -94,16 +100,34 @@ func run() error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	if pubsub {
+	switch prov {
+	case providerPubSub:
 		if *bearer == "" {
 			return fmt.Errorf(
 				"a Pub/Sub push fixture needs -bearer: the message is composed by Pub/Sub, so there is " +
 					"nothing for the sender to sign and the OIDC token is the only credential")
 		}
 		req.Header.Set("Authorization", "Bearer "+*bearer)
-	} else {
+	case providerWiz:
+		if *devSecret {
+			return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a Wiz fixture needs " +
+				"its webhook token via -bearer or -secret-file")
+		}
+		token := *bearer
+		if token == "" && *secretFile != "" {
+			raw, err := os.ReadFile(*secretFile)
+			if err != nil {
+				return err
+			}
+			token = strings.TrimRight(string(raw), "\r\n")
+		}
+		if token == "" {
+			return fmt.Errorf("a Wiz fixture needs its webhook token via -bearer or -secret-file")
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	default:
 		if *bearer != "" {
-			return fmt.Errorf("-bearer applies to Pub/Sub push fixtures; GitHub deliveries are signed")
+			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; GitHub deliveries are signed")
 		}
 		secret, err := githubSecret(*devSecret, *secretFile)
 		if err != nil {
@@ -148,18 +172,38 @@ func githubSecret(dev bool, file string) ([]byte, error) {
 	}
 }
 
-// isPubSub reports whether the fixture is a Pub/Sub push envelope rather than
-// a GitHub delivery, by the provider prefix in its name.
-func isPubSub(path string) bool {
-	return strings.HasPrefix(filepath.Base(path), "scc.")
+// provider is which receiver route (and authentication scheme) a fixture
+// replays against.
+type provider int
+
+const (
+	providerGitHub provider = iota
+	providerPubSub
+	providerWiz
+)
+
+// providerOf infers the provider from the fixture name's prefix.
+func providerOf(path string) provider {
+	switch name := filepath.Base(path); {
+	case strings.HasPrefix(name, "scc."):
+		return providerPubSub
+	case strings.HasPrefix(name, "wiz."):
+		return providerWiz
+	default:
+		return providerGitHub
+	}
 }
 
 // defaultPath is the receiver route for the fixture's provider.
-func defaultPath(pubsub bool) string {
-	if pubsub {
+func defaultPath(p provider) string {
+	switch p {
+	case providerPubSub:
 		return "/google-cloud/webhooks"
+	case providerWiz:
+		return "/wiz/webhooks"
+	default:
+		return "/github/webhooks"
 	}
-	return "/github/webhooks"
 }
 
 // eventFromName infers the event type from the fixture's name

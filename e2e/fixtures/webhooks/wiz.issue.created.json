@@ -1,0 +1,37 @@
+{
+    "trigger": {
+        "source": "ISSUE",
+        "type": "Created",
+        "ruleId": "b2f4a891-11a2-44e2-a91b-3c2f8e0f2c0a",
+        "ruleName": "patchy-issues"
+    },
+    "issue": {
+        "id": "e2e00000-0000-0000-0000-00000000w1z1",
+        "status": "OPEN",
+        "severity": "HIGH",
+        "created": "2026-07-26T09:00:00Z",
+        "projects": "acme-prod",
+        "description": "The bucket allows public read access to all objects.",
+        "resolutionRecommendation": "Remove the allUsers member from the bucket IAM policy.",
+        "url": "https://app.wiz.io/issues#~(issue~'e2e00000-0000-0000-0000-00000000w1z1')",
+        "control": {
+            "id": "wc-e2e-public-bucket",
+            "name": "Bucket accessible to the public",
+            "description": "Buckets should not be publicly readable.",
+            "severity": "HIGH"
+        }
+    },
+    "entitySnapshot": {
+        "id": "3c9c3a6d-e2e-entity",
+        "type": "BUCKET",
+        "nativeType": "storage#bucket",
+        "name": "acme-artifacts",
+        "cloudPlatform": "GCP",
+        "cloudProviderURL": "https://console.cloud.google.com/storage/browser/acme-artifacts",
+        "providerId": "https://www.googleapis.com/storage/v1/b/acme-artifacts",
+        "region": "europe-west2",
+        "subscriptionExternalId": "acme-prod",
+        "subscriptionName": "Acme Production",
+        "tags": {"team": "storage", "env": "prod"}
+    }
+}

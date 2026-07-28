@@ -1,0 +1,49 @@
+{
+    "trigger": {
+        "source": "THREAT_DETECTION",
+        "type": "Created",
+        "ruleId": "a1a1a1a1-0000-0000-0000-0000000auto1",
+        "ruleName": "patchy-defend"
+    },
+    "threat": {
+        "id": "e2e00000-0000-0000-0000-0000000thrt1",
+        "name": "Suspicious service account key usage",
+        "description": "A service account key was used from an unusual location shortly after creation.",
+        "severity": "CRITICAL",
+        "status": "OPEN",
+        "createdAt": "2026-07-26T10:00:00Z",
+        "ruleId": "dr-e2e-unusual-key",
+        "ruleName": "Unusual service account key usage",
+        "cloudPlatform": "GCP",
+        "cloudAccounts": ["acme-prod"],
+        "mitreTactics": ["TA0001"],
+        "mitreTechniques": ["T1078"],
+        "detectionIds": ["d-e2e-1", "d-e2e-2"],
+        "url": "https://app.wiz.io/threats#~(threat~'e2e00000-0000-0000-0000-0000000thrt1')",
+        "actors": [
+            {"id": "sa-e2e-1", "name": "ci-deployer@acme-prod.iam.gserviceaccount.com", "type": "SERVICE_ACCOUNT"}
+        ],
+        "resources": [
+            {
+                "id": "r-e2e-1",
+                "name": "build-vm",
+                "type": "VIRTUAL_MACHINE",
+                "nativeType": "compute#instance",
+                "providerId": "https://www.googleapis.com/compute/v1/projects/acme-prod/zones/europe-west2-a/instances/build-vm",
+                "region": "europe-west2-a",
+                "cloudPlatform": "GCP",
+                "subscriptionExternalId": "acme-prod"
+            },
+            {
+                "id": "r-e2e-2",
+                "name": "edge-fn",
+                "type": "SERVERLESS",
+                "nativeType": "AWS::Lambda::Function",
+                "providerId": "arn:aws:lambda:eu-west-1:123456789012:function:edge-fn",
+                "region": "eu-west-1",
+                "cloudPlatform": "AWS",
+                "subscriptionExternalId": "123456789012"
+            }
+        ]
+    }
+}

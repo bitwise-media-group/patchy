@@ -55,13 +55,15 @@
 # context-controller, when the Google Cloud labels enhancer is enabled;
 # config.<region>.amazonaws.com / resource-explorer-2.<region>.amazonaws.com
 # (plus sts.<region>.amazonaws.com for web-identity credentials) for the
-# context-controller, when the AWS resource-tags enhancer is enabled; and
-# an OTLP collector for any of them. Port 6443 is here because kind/kubeadm
-# clusters serve the API there; managed clusters usually use 443. The
-# link-local rule is EKS Pod Identity: the SDK's other in-cluster credential
-# path fetches from the node-local agent at 169.254.170.23:80 over HTTP
-# (fd00:ec2::23 on IPv6 clusters) — harmless elsewhere, since nothing else
-# answers on that address.
+# context-controller, when the AWS resource-tags enhancer is enabled;
+# management.azure.com (plus login.microsoftonline.com for federated
+# credentials) for the context-controller, when the Azure resource-tags
+# enhancer is enabled; and an OTLP collector for any of them. Port 6443 is
+# here because kind/kubeadm clusters serve the API there; managed clusters
+# usually use 443. The link-local rule is EKS Pod Identity: the SDK's other
+# in-cluster credential path fetches from the node-local agent at
+# 169.254.170.23:80 over HTTP (fd00:ec2::23 on IPv6 clusters) — harmless
+# elsewhere, since nothing else answers on that address.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

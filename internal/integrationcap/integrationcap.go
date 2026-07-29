@@ -68,3 +68,12 @@ func AWSResourceTagsEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.AWS.ResourceTags != nil &&
 		i.Spec.AWS.ResourceTags.Enabled
 }
+
+// AzureResourceTagsEnabled reports whether the Integration enables the Azure
+// resource-tags enhancer. It lives here for the same reason as
+// CloudAssetInventoryEnabled: its consumer is the context-controller.
+func AzureResourceTagsEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.Azure != nil &&
+		i.Spec.Azure.ResourceTags != nil &&
+		i.Spec.Azure.ResourceTags.Enabled
+}

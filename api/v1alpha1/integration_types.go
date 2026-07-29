@@ -8,7 +8,7 @@ import (
 )
 
 // IntegrationProvider identifies the external system an Integration talks to.
-// +kubebuilder:validation:Enum=github;google-cloud;wiz;aws
+// +kubebuilder:validation:Enum=github;google-cloud;wiz;aws;azure
 type IntegrationProvider string
 
 // Integration providers.
@@ -17,6 +17,7 @@ const (
 	IntegrationProviderGoogleCloud IntegrationProvider = "google-cloud"
 	IntegrationProviderWiz         IntegrationProvider = "wiz"
 	IntegrationProviderAWS         IntegrationProvider = "aws"
+	IntegrationProviderAzure       IntegrationProvider = "azure"
 )
 
 // GitHubIssues configures the tracking projection: findings are projected as
@@ -302,10 +303,45 @@ type AWSIntegration struct {
 	ResourceTags *AWSResourceTags `json:"resourceTags,omitempty"`
 }
 
+// AzureResourceTags enables the context enhancer that resolves the repository
+// (and attributes) of any finding whose cloud resource lives on Azure —
+// whichever source ingested it — by reading the resource's tags from Azure
+// Resource Graph. Resource Graph is tenant-wide and always on, so there is no
+// backend choice to make: one KQL lookup by ARM resource ID answers for every
+// subscription the ambient identity can read. Read-only: the
+// context-controller authenticates by the Azure default credential chain
+// (Microsoft Entra Workload ID on AKS, workload identity federation
+// elsewhere) and holds no Secret.
+type AzureResourceTags struct {
+	// Enabled turns the enhancer capability on.
+	Enabled bool `json:"enabled"`
+	// ManagementGroup narrows the query scope to one management group; empty
+	// means every subscription the ambient identity can read (the tenant, in
+	// practice).
+	// +optional
+	ManagementGroup string `json:"managementGroup,omitempty"`
+	// RepositoryHost is the forge host repositories named by tags live on;
+	// empty means github.com.
+	// +optional
+	RepositoryHost string `json:"repositoryHost,omitempty"`
+	// Tags overrides the resource tag names the enhancer reads.
+	// +optional
+	Tags *AssetLabelKeys `json:"tags,omitempty"`
+}
+
+// AzureIntegration is the azure provider block. It carries no credential
+// Secret: the resource-tags enhancer authenticates by the Azure default
+// credential chain, so no key material lives in the cluster.
+type AzureIntegration struct {
+	// ResourceTags enables the tag-inventory enhancer.
+	// +optional
+	ResourceTags *AzureResourceTags `json:"resourceTags,omitempty"`
+}
+
 // IntegrationSpec configures one external system. Exactly the provider block
 // matching spec.provider must be set (CEL-enforced) — integrations are
 // strongly typed, not generic.
-// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider == 'azure') == has(self.azure)",message="exactly the provider block matching spec.provider must be set"
 // +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz']) || has(self.secretRef)",message="spec.secretRef is required for the github and wiz providers"
 type IntegrationSpec struct {
 	// Provider is the external system type.
@@ -358,6 +394,9 @@ type IntegrationSpec struct {
 	// AWS is the aws provider block.
 	// +optional
 	AWS *AWSIntegration `json:"aws,omitempty"`
+	// Azure is the azure provider block.
+	// +optional
+	Azure *AzureIntegration `json:"azure,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -446,8 +485,8 @@ type IntegrationStatus struct {
 
 // Integration configures one external system patchy exchanges finding state
 // with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-// context enhancers (Cloud Asset Inventory, AWS resource tags), tracking out
-// (GitHub issues), and the human signals flowing back.
+// context enhancers (Cloud Asset Inventory, AWS resource tags, Azure resource
+// tags), tracking out (GitHub issues), and the human signals flowing back.
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

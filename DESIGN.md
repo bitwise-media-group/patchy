@@ -96,7 +96,8 @@ consistent across the estate.
   placeholder, plus cloud lookups that resolve a cloud finding's repository from its resource's ownership
   labels/tags, whichever source ingested it — Cloud Asset Inventory configured by the `cloudAssetInventory` block
   on the `google-cloud` Integration, an AWS Config aggregator or Resource Explorer view configured by the
-  `resourceTags` block on the `aws` Integration, each read per enhancement). Writes Finding status and, set-once,
+  `resourceTags` block on the `aws` Integration, Azure Resource Graph configured by the `resourceTags` block on
+  the `azure` Integration, each read per enhancement). Writes Finding status and, set-once,
   `spec.repository` for a finding that arrived without one. Holds no GitHub credential; the cloud lookups use
   read-only ambient identity (workload identity / EKS Pod Identity / IRSA), never a Secret.
 - **investigation-controller** — the gate (admits accumulated, aged findings; materializes the Repository and one

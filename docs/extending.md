@@ -60,7 +60,7 @@ permanently and hand it off unremediable. A failed lookup instead holds the find
 the accumulation window — past that it advances anyway, because a finding a human could be looking at is better than one
 held out of sight.
 
-Three implementations ship:
+Four implementations ship:
 
 - **Static file** — a YAML map from repository to owners and attributes
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
@@ -73,6 +73,9 @@ Three implementations ship:
   aggregator or a Resource Explorer view), plus the resource's tags as attributes ([format](integrations/aws.md)).
   Configured on the `aws` Integration's `resourceTags` block, same rules: any AWS finding, whichever source, standing
   aside unless enabled.
+- **Azure resource tags** — the same again for Azure, read from Azure Resource Graph (tenant-wide, no backend to
+  choose), plus the resource's tags as attributes ([format](integrations/azure.md)). Configured on the `azure`
+  Integration's `resourceTags` block, same rules: any Azure finding, whichever source, standing aside unless enabled.
 
 A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the

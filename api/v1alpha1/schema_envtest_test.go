@@ -205,6 +205,10 @@ func TestSchemaValidation(t *testing.T) {
 		testAWSIntegrationSchema(ctx, t, c)
 	})
 
+	t.Run("azure integration requires its provider block and no credential", func(t *testing.T) {
+		testAzureIntegrationSchema(ctx, t, c)
+	})
+
 	t.Run("finding rejects an unknown phase and accepts a legal one", func(t *testing.T) {
 		f := &patchyv1.Finding{
 			ObjectMeta: metav1.ObjectMeta{Name: "finding-abc123-1", Namespace: "default"},
@@ -316,5 +320,55 @@ func testAWSIntegrationSchema(ctx context.Context, t *testing.T, c client.Client
 		ResourceExplorer: &patchyv1.AWSResourceExplorer{ViewARN: "arn:aws:s3:::not-a-view"},
 	})); err == nil {
 		t.Error("Create(aws integration with malformed view ARN) = nil, want pattern rejection")
+	}
+}
+
+// testAzureIntegrationSchema exercises the azure provider's CEL rules: the
+// provider/block biconditional, and the credential-less posture (no secretRef
+// anywhere below — Resource Graph is one service, so there is no backend
+// one-of either).
+func testAzureIntegrationSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	good := &patchyv1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: "azure", Namespace: "default"},
+		Spec: patchyv1.IntegrationSpec{
+			Provider: patchyv1.IntegrationProviderAzure,
+			Azure: &patchyv1.AzureIntegration{
+				ResourceTags: &patchyv1.AzureResourceTags{
+					Enabled:         true,
+					ManagementGroup: "platform-mg",
+				},
+			},
+		},
+	}
+	if err := c.Create(ctx, good); err != nil {
+		t.Errorf("Create(valid azure integration) = %v, want nil", err)
+	}
+	noBlock := &patchyv1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: "azure-no-block", Namespace: "default"},
+		Spec: patchyv1.IntegrationSpec{
+			Provider: patchyv1.IntegrationProviderAzure,
+		},
+	}
+	if err := c.Create(ctx, noBlock); err == nil {
+		t.Error("Create(azure integration without azure block) = nil, want CEL rejection")
+	}
+	strayBlock := &patchyv1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: "azure-stray-block", Namespace: "default"},
+		Spec: patchyv1.IntegrationSpec{
+			Provider: patchyv1.IntegrationProviderGoogleCloud,
+			GoogleCloud: &patchyv1.GoogleCloudIntegration{
+				CloudAssetInventory: &patchyv1.GoogleCloudAssetInventory{
+					Enabled: true,
+					Scope:   "organizations/123456789012",
+				},
+			},
+			Azure: &patchyv1.AzureIntegration{
+				ResourceTags: &patchyv1.AzureResourceTags{Enabled: true},
+			},
+		},
+	}
+	if err := c.Create(ctx, strayBlock); err == nil {
+		t.Error("Create(google-cloud integration carrying an azure block) = nil, want CEL rejection")
 	}
 }

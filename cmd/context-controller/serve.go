@@ -75,6 +75,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		StaticFile: opts.String("static-context-file"),
 		Assets:     ctxctrl.AssetConfigSource(mgr.GetClient(), namespace),
 		AWSTags:    ctxctrl.AWSTagsConfigSource(mgr.GetClient(), namespace),
+		AzureTags:  ctxctrl.AzureTagsConfigSource(mgr.GetClient(), namespace),
 	})
 	if err != nil {
 		return err
@@ -104,21 +105,25 @@ type chainOptions struct {
 	Assets enhancers.ConfigSource
 	// AWSTags reads the AWS resource-tags capability off the Integration.
 	AWSTags enhancers.AWSConfigSource
+	// AzureTags reads the Azure resource-tags capability off the Integration.
+	AzureTags enhancers.AzureConfigSource
 }
 
 // buildChain assembles the enhancer chain. Order matters: the first enhancer
 // to resolve a repository wins, so the cloud lookups run ahead of the CMDB,
-// which knows about repositories rather than resources (the two cloud
-// enhancers are disjoint by provider, so their order is immaterial). The
-// cloud enhancers are always in the chain — whether they act is their
-// Integration's decision, read per enhancement.
+// which knows about repositories rather than resources (the cloud enhancers
+// are disjoint by provider, so their order is immaterial). The cloud
+// enhancers are always in the chain — whether they act is their Integration's
+// decision, read per enhancement.
 func buildChain(o chainOptions) ([]enhance.Enhancer, func(), error) {
 	gcp := &enhancers.DynamicGoogleCloud{Config: o.Assets}
 	aws := &enhancers.DynamicAWS{Config: o.AWSTags}
-	chain := []enhance.Enhancer{gcp, aws}
+	azure := &enhancers.DynamicAzure{Config: o.AzureTags}
+	chain := []enhance.Enhancer{gcp, aws, azure}
 	cleanup := func() {
 		_ = gcp.Close()
 		_ = aws.Close()
+		_ = azure.Close()
 	}
 
 	if o.StaticFile != "" {

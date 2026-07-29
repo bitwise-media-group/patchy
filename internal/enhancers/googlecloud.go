@@ -84,15 +84,9 @@ func NewGoogleCloudLabels(o GoogleCloudOptions) (*GoogleCloudLabels, error) {
 	if o.Assets == nil {
 		return nil, errors.New("google-cloud-labels: an asset client is required")
 	}
-	keys := LabelKeys{
-		Org:      or(o.Keys.Org, DefaultOrgLabel),
-		Name:     or(o.Keys.Name, DefaultNameLabel),
-		Provider: or(o.Keys.Provider, DefaultProviderLabel),
-		URL:      or(o.Keys.URL, DefaultURLLabel),
-	}
 	return &GoogleCloudLabels{
 		assets:   o.Assets,
-		keys:     keys,
+		keys:     defaultKeys(o.Keys),
 		host:     or(o.DefaultHost, "github.com"),
 		provider: or(o.DefaultProvider, "github"),
 	}, nil

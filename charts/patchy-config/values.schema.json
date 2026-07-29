@@ -112,6 +112,56 @@
                     "type": "object",
                     "additionalProperties": false
                 },
+                "azure": {
+                    "description": "Azure is the azure provider block.",
+                    "properties": {
+                        "resourceTags": {
+                            "description": "ResourceTags enables the tag-inventory enhancer.",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Enabled turns the enhancer capability on.",
+                                    "type": "boolean"
+                                },
+                                "managementGroup": {
+                                    "description": "ManagementGroup narrows the query scope to one management group; empty\nmeans every subscription the ambient identity can read (the tenant, in\npractice).",
+                                    "type": "string"
+                                },
+                                "repositoryHost": {
+                                    "description": "RepositoryHost is the forge host repositories named by tags live on;\nempty means github.com.",
+                                    "type": "string"
+                                },
+                                "tags": {
+                                    "description": "Tags overrides the resource tag names the enhancer reads.",
+                                    "properties": {
+                                        "name": {
+                                            "description": "Name label carries the repository name.",
+                                            "type": "string"
+                                        },
+                                        "org": {
+                                            "description": "Org label carries the repository owner/organization.",
+                                            "type": "string"
+                                        },
+                                        "provider": {
+                                            "description": "Provider label carries the forge kind (e.g. github).",
+                                            "type": "string"
+                                        },
+                                        "url": {
+                                            "description": "URL label carries a full repository URL, overriding the parts.",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object",
+                                    "additionalProperties": false
+                                }
+                            },
+                            "required": ["enabled"],
+                            "type": "object",
+                            "additionalProperties": false
+                        }
+                    },
+                    "type": "object",
+                    "additionalProperties": false
+                },
                 "github": {
                     "description": "GitHub is the github provider block.",
                     "properties": {
@@ -275,7 +325,7 @@
                 },
                 "provider": {
                     "description": "Provider is the external system type.",
-                    "enum": ["github", "google-cloud", "wiz", "aws"],
+                    "enum": ["github", "google-cloud", "wiz", "aws", "azure"],
                     "type": "string"
                 },
                 "replay": {

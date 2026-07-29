@@ -38,8 +38,8 @@ spec:
         description: |-
           Integration configures one external system patchy exchanges finding state
           with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-          context enhancers (Cloud Asset Inventory, AWS resource tags), tracking out
-          (GitHub issues), and the human signals flowing back.
+          context enhancers (Cloud Asset Inventory, AWS resource tags, Azure resource
+          tags), tracking out (GitHub issues), and the human signals flowing back.
         properties:
           apiVersion:
             description: |-
@@ -135,6 +135,49 @@ spec:
                     - message: exactly one of configAggregator or resourceExplorer
                         must be set
                       rule: has(self.configAggregator) != has(self.resourceExplorer)
+                type: object
+              azure:
+                description: Azure is the azure provider block.
+                properties:
+                  resourceTags:
+                    description: ResourceTags enables the tag-inventory enhancer.
+                    properties:
+                      enabled:
+                        description: Enabled turns the enhancer capability on.
+                        type: boolean
+                      managementGroup:
+                        description: |-
+                          ManagementGroup narrows the query scope to one management group; empty
+                          means every subscription the ambient identity can read (the tenant, in
+                          practice).
+                        type: string
+                      repositoryHost:
+                        description: |-
+                          RepositoryHost is the forge host repositories named by tags live on;
+                          empty means github.com.
+                        type: string
+                      tags:
+                        description: Tags overrides the resource tag names the enhancer
+                          reads.
+                        properties:
+                          name:
+                            description: Name label carries the repository name.
+                            type: string
+                          org:
+                            description: Org label carries the repository owner/organization.
+                            type: string
+                          provider:
+                            description: Provider label carries the forge kind (e.g.
+                              github).
+                            type: string
+                          url:
+                            description: URL label carries a full repository URL,
+                              overriding the parts.
+                            type: string
+                        type: object
+                    required:
+                    - enabled
+                    type: object
                 type: object
               github:
                 description: GitHub is the github provider block.
@@ -298,6 +341,7 @@ spec:
                 - google-cloud
                 - wiz
                 - aws
+                - azure
                 type: string
               replay:
                 description: |-
@@ -434,7 +478,8 @@ spec:
             - message: exactly the provider block matching spec.provider must be set
               rule: (self.provider == 'github') == has(self.github) && (self.provider
                 == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz')
-                == has(self.wiz) && (self.provider == 'aws') == has(self.aws)
+                == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider
+                == 'azure') == has(self.azure)
             - message: spec.secretRef is required for the github and wiz providers
               rule: '!(self.provider in [''github'', ''wiz'']) || has(self.secretRef)'
           status:

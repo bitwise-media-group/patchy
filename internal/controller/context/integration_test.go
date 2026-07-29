@@ -128,3 +128,47 @@ func TestAWSTagsConfigSourceNoIntegration(t *testing.T) {
 		t.Errorf("AWSTagsConfigSource() = %+v, %v; want nil, nil (capability off)", cfg, err)
 	}
 }
+
+func azureIntegration(name string, rt *v1alpha1.AzureResourceTags) *v1alpha1.Integration {
+	return &v1alpha1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "patchy"},
+		Spec: v1alpha1.IntegrationSpec{
+			Provider: v1alpha1.IntegrationProviderAzure,
+			Azure:    &v1alpha1.AzureIntegration{ResourceTags: rt},
+		},
+	}
+}
+
+func TestAzureTagsConfigSource(t *testing.T) {
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(azureIntegration("azure", &v1alpha1.AzureResourceTags{
+			Enabled:         true,
+			ManagementGroup: "platform-mg",
+			RepositoryHost:  "github.example.com",
+			Tags:            &v1alpha1.AssetLabelKeys{Org: "owner-org"},
+		})).Build()
+	cfg, err := AzureTagsConfigSource(c, "patchy")(t.Context())
+	if err != nil {
+		t.Fatalf("AzureTagsConfigSource() = %v, want nil", err)
+	}
+	want := &enhancers.AzureTagsConfig{
+		ManagementGroup: "platform-mg",
+		RepositoryHost:  "github.example.com",
+		Keys:            enhancers.LabelKeys{Org: "owner-org"},
+	}
+	if *cfg != *want {
+		t.Errorf("config = %+v, want %+v", cfg, want)
+	}
+}
+
+func TestAzureTagsConfigSourceNoIntegration(t *testing.T) {
+	// A disabled capability and no azure Integration at all read the same: off.
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(azureIntegration("azure", &v1alpha1.AzureResourceTags{
+			ManagementGroup: "platform-mg",
+		})).Build()
+	cfg, err := AzureTagsConfigSource(c, "patchy")(t.Context())
+	if cfg != nil || err != nil {
+		t.Errorf("AzureTagsConfigSource() = %+v, %v; want nil, nil (capability off)", cfg, err)
+	}
+}

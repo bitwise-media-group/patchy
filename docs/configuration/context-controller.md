@@ -50,10 +50,20 @@ enhancement — see [AWS resource tags](../integrations/aws.md). The credential 
 chain on the controller's ServiceAccount (EKS Pod Identity or IRSA on EKS, web-identity federation elsewhere),
 read-only, no Secret.
 
+## The Azure resource tags enhancer
+
+The `azure-resource-tags` enhancer completes the trio: it resolves the repository (and subscription/type/location
+attributes, plus the resource's own tags as `tag:<key>` attributes) from the ownership tags on the resource, read from
+Azure Resource Graph — tenant-wide, no backend to choose. Like its siblings it takes **no flags**: its configuration is
+the `resourceTags` block on the `azure` Integration, read per enhancement — see
+[Azure resource tags](../integrations/azure.md). The credential concern is the same shape: the Azure default chain on
+the controller's ServiceAccount (Microsoft Entra Workload ID on AKS, workload identity federation elsewhere), read-only,
+no Secret.
+
 ## The static context enhancer
 
 The built-in enhancer is a deliberate placeholder for a real CMDB: a YAML map from repository to ownership and
-attributes. Without `--static-context-file` the chain is the two cloud enhancers alone (each standing aside unless an
+attributes. Without `--static-context-file` the chain is the cloud enhancers alone (each standing aside unless an
 Integration enables it).
 
 ```yaml

@@ -9,6 +9,12 @@ import (
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
+// maxTagAttributes bounds how many of a resource's tags become finding
+// attributes, matching the cap the Wiz issue rendering applies. Finding
+// status is a bounded surface; a resource carrying hundreds of tags does not
+// get to fill it. Shared by every tag-inventory enhancer.
+const maxTagAttributes = 24
+
 // repositoryFrom reads the ownership labels (or tags — the vocabulary is
 // shared across clouds), or nil when the resource carries none. The URL form
 // wins: it is the only one that can name a self-hosted forge, so a resource

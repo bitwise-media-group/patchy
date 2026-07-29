@@ -143,9 +143,9 @@ func (c *Creds) WizAPICreds(
 }
 
 // Validate checks the Integration is usable, by provider: github needs a
-// secret carrying an API credential and a webhook secret; google-cloud and
-// aws hold no credential at all, so only their settings are checked; wiz
-// needs its webhook token, plus API credentials when write-back is
+// secret carrying an API credential and a webhook secret; google-cloud, aws
+// and azure hold no credential at all, so only their settings are checked;
+// wiz needs its webhook token, plus API credentials when write-back is
 // configured.
 func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error {
 	switch integ.Spec.Provider {
@@ -155,6 +155,8 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 		return c.validateWiz(ctx, integ)
 	case v1alpha1.IntegrationProviderAWS:
 		return validateAWS(integ)
+	case v1alpha1.IntegrationProviderAzure:
+		return validateAzure(integ)
 	}
 	secret, err := c.secret(ctx, integ)
 	if err != nil {
@@ -197,6 +199,16 @@ func validateGoogleCloud(integ *v1alpha1.Integration) error {
 func validateAWS(integ *v1alpha1.Integration) error {
 	if integ.Spec.AWS == nil || integ.Spec.AWS.ResourceTags == nil {
 		return errors.New("aws integration enables no capability")
+	}
+	return nil
+}
+
+// validateAzure checks the azure Integration enables a capability. Whether
+// Resource Graph is reachable is the enhancer's own startup check, because
+// the integration-controller holds no Azure credential to ask with.
+func validateAzure(integ *v1alpha1.Integration) error {
+	if integ.Spec.Azure == nil || integ.Spec.Azure.ResourceTags == nil {
+		return errors.New("azure integration enables no capability")
 	}
 	return nil
 }

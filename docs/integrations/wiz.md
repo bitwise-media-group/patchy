@@ -4,10 +4,10 @@ Patchy ingests two Wiz feeds and triages them alongside code-scanning alerts and
 misconfigurations and toxic combinations, source `wiz-issues`) and **Wiz Defend** (runtime threat detections, source
 `wiz-defend`). Both are cloud findings — about a **resource**, not a file — so they arrive repo-less and lean on the
 cloud enhancers — [Cloud Asset Inventory](google-cloud-scc.md#finding-a-repository) for Google Cloud resources,
-[AWS resource tags](aws.md) for AWS ones — to resolve a repository from the resource's ownership labels or tags. A Wiz
-estate typically runs several Integrations side by side: `wiz` to source findings, `google-cloud` with
-`cloudAssetInventory` and/or `aws` with `resourceTags` to enhance the cloud findings, and `github` to carry the tracking
-issues.
+[AWS resource tags](aws.md) for AWS ones, [Azure resource tags](azure.md) for Azure ones — to resolve a repository from
+the resource's ownership labels or tags. A Wiz estate typically runs several Integrations side by side: `wiz` to source
+findings, `google-cloud` with `cloudAssetInventory` and/or `aws`/`azure` with `resourceTags` to enhance the cloud
+findings, and `github` to carry the tracking issues.
 
 ## How findings arrive
 
@@ -163,8 +163,8 @@ tests.
   (`https://www.googleapis.com/compute/v1/projects/...`); patchy rewrites that to the Cloud Asset Inventory name form
   (`//compute.googleapis.com/projects/...`) so the asset-inventory enhancer can resolve ownership labels. An identifier
   that cannot be rewritten still ingests — the enhancer falls back to a display-name lookup, accepting only an
-  unambiguous single hit. AWS identifiers need no such rewriting: `providerId` is the ARN, kept verbatim, and it is
-  exactly what the [AWS resource-tags enhancer](aws.md) looks up.
+  unambiguous single hit. AWS and Azure identifiers need no such rewriting: `providerId` is the ARN or the ARM resource
+  ID, kept verbatim, and it is exactly what the [AWS](aws.md) and [Azure](azure.md) resource-tags enhancers look up.
 - **Accumulation is per resource and per control/rule.** Re-notifications of the same control on the same resource fold
   into one `Finding`; a Defend threat naming several resources becomes one Finding per resource, each accumulating where
   it belongs. A threat naming no resources falls back to one Finding per cloud account.

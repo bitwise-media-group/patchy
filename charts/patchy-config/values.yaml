@@ -96,7 +96,7 @@ integrations: []
 # compute an HMAC). The action's body template MUST follow
 # docs/integrations/wiz.md — that template is the payload contract. Wiz
 # findings are cloud findings: pair this with a google-cloud Integration
-# carrying cloudAssetInventory (and/or an aws Integration carrying
+# carrying cloudAssetInventory (and/or an aws/azure Integration carrying
 # resourceTags) to resolve their repositories, and a github Integration for
 # their tracking issues.
 # - name: wiz
@@ -141,6 +141,28 @@ integrations: []
 #               # ... OR ...
 #               # resourceExplorer:
 #               #     viewARN: arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org-view/11111111-2222-3333-4444-555555555555
+#               # repositoryHost: github.example.com     # default github.com
+#               # tags:                                  # override the tag names read
+#               #     org: scm-repository-org
+#               #     name: scm-repository-name
+#               #     provider: scm-repository-provider
+#               #     url: scm-repository-url
+#
+# The azure Integration is the Azure sibling of the same idea: resourceTags
+# resolves ownership tags (and possibly a repository) for ANY finding on an
+# Azure resource, whichever source ingested it, by looking the ARM resource
+# ID up in Azure Resource Graph. Read-only and credential-less — the
+# context-controller authenticates by the Azure default chain (Microsoft
+# Entra Workload ID or workload identity federation), so there is NO
+# secretRef. Resource Graph is always on and tenant-wide, so there is no
+# backend to choose; managementGroup optionally narrows the scope.
+# - name: azure
+#   spec:
+#       provider: azure
+#       azure:
+#           resourceTags:
+#               enabled: true
+#               # managementGroup: platform-mg           # default: the whole tenant
 #               # repositoryHost: github.example.com     # default github.com
 #               # tags:                                  # override the tag names read
 #               #     org: scm-repository-org

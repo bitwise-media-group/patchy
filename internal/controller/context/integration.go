@@ -71,3 +71,28 @@ func AWSTagsConfigSource(r client.Reader, namespace string) enhancers.AWSConfigS
 		return cfg, nil
 	}
 }
+
+// AzureTagsConfigSource reads the resourceTags capability off the namespace's
+// azure Integration, under the same rules as AssetConfigSource: per
+// enhancement through the informer cache, nil when unconfigured, an error on
+// ambiguity.
+func AzureTagsConfigSource(r client.Reader, namespace string) enhancers.AzureConfigSource {
+	return func(ctx context.Context) (*enhancers.AzureTagsConfig, error) {
+		integ, err := integrationcap.Select(ctx, r, namespace, integrationcap.AzureResourceTagsEnabled)
+		if err != nil {
+			if errors.Is(err, integrationcap.ErrNoIntegration) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		rt := integ.Spec.Azure.ResourceTags
+		cfg := &enhancers.AzureTagsConfig{
+			ManagementGroup: rt.ManagementGroup,
+			RepositoryHost:  rt.RepositoryHost,
+		}
+		if l := rt.Tags; l != nil {
+			cfg.Keys = enhancers.LabelKeys{Org: l.Org, Name: l.Name, Provider: l.Provider, URL: l.URL}
+		}
+		return cfg, nil
+	}
+}

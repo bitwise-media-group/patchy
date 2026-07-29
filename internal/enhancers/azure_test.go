@@ -10,88 +10,88 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bitwise-media-group/patchy/internal/awsinv"
+	"github.com/bitwise-media-group/patchy/internal/azureinv"
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
-// fakeInventory stands in for the AWS inventory.
-type fakeInventory struct {
+// fakeAzureInventory stands in for the Azure inventory.
+type fakeAzureInventory struct {
 	tags  map[string]string
 	err   error
 	calls int
 }
 
-func (f *fakeInventory) TagsFor(_ context.Context, arn string) (*awsinv.Tags, error) {
+func (f *fakeAzureInventory) TagsFor(_ context.Context, id string) (*azureinv.Tags, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &awsinv.Tags{Name: arn, Tags: f.tags}, nil
+	return &azureinv.Tags{Name: id, Tags: f.tags}, nil
 }
 
-// s3bucket is a Wiz finding's AWS cloud resource.
-func s3bucket() *source.CloudResource {
+// azureVM is a Wiz finding's Azure cloud resource. Name is the ARM resource
+// ID, exactly as the Wiz providerId spells it.
+func azureVM() *source.CloudResource {
 	return &source.CloudResource{
-		Provider: "aws",
-		Name:     "arn:aws:s3:::acme-legacy-assets",
-		Type:     "AWS::S3::Bucket",
-		Project:  "123456789012",
-		Location: "eu-west-1",
+		Provider: "azure",
+		Name: "/subscriptions/00000000-0000-0000-0000-000000000000" +
+			"/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/web-01",
+		Type:     "Microsoft.Compute/virtualMachines",
+		Project:  "00000000-0000-0000-0000-000000000000",
+		Location: "uksouth",
 	}
 }
 
-func newAWSEnhancer(t *testing.T, inventory AWSInventory, keys LabelKeys) *AWSTags {
+func newAzureEnhancer(t *testing.T, inventory AzureInventory, keys LabelKeys) *AzureTags {
 	t.Helper()
-	e, err := NewAWSTags(inventory, TagsOptions{Keys: keys})
+	e, err := NewAzureTags(inventory, TagsOptions{Keys: keys})
 	if err != nil {
-		t.Fatalf("NewAWSTags: %v", err)
+		t.Fatalf("NewAzureTags: %v", err)
 	}
 	return e
 }
 
-func TestAWSTagsResolvesRepository(t *testing.T) {
-	inventory := &fakeInventory{tags: map[string]string{
+func TestAzureTagsResolvesRepository(t *testing.T) {
+	inventory := &fakeAzureInventory{tags: map[string]string{
 		"scm-repository-org":  "acme",
 		"scm-repository-name": "infra-prod",
 		"owner":               "platform",
 	}}
-	got, err := newAWSEnhancer(t, inventory, LabelKeys{}).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+	got, err := newAzureEnhancer(t, inventory, LabelKeys{}).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 	if err != nil {
 		t.Fatalf("Enhance() = %v, want nil", err)
 	}
-	want := &source.RepositoryRef{
-		Provider: "github", Owner: "acme", Name: "infra-prod",
-		URL: "https://github.com/acme/infra-prod",
-	}
-	if !reflect.DeepEqual(got.Repository, want) {
-		t.Errorf("Repository = %+v, want %+v", got.Repository, want)
+	r := got.Repository
+	if r == nil || r.Provider != "github" || r.Owner != "acme" || r.Name != "infra-prod" ||
+		r.URL != "https://github.com/acme/infra-prod" {
+		t.Errorf("Repository = %+v, want acme/infra-prod on github.com", r)
 	}
 	// The context is carried whether or not a repository resolved — and the
 	// tags themselves are the enrichment.
-	wantAttrs := map[string]string{
-		"aws-account": "123456789012", "resource-type": "AWS::S3::Bucket",
-		"location":  "eu-west-1",
-		"tag:owner": "platform", "tag:scm-repository-org": "acme",
+	if !reflect.DeepEqual(got.Attributes, map[string]string{
+		"azure-subscription": "00000000-0000-0000-0000-000000000000",
+		"resource-type":      "Microsoft.Compute/virtualMachines",
+		"location":           "uksouth",
+		"tag:owner":          "platform", "tag:scm-repository-org": "acme",
 		"tag:scm-repository-name": "infra-prod",
-	}
-	if !reflect.DeepEqual(got.Attributes, wantAttrs) {
-		t.Errorf("Attributes = %+v, want %+v", got.Attributes, wantAttrs)
+	}) {
+		t.Errorf("Attributes = %+v, want the subscription, type, location and tags", got.Attributes)
 	}
 }
 
 // A URL is the only form that can name a self-hosted forge, so a resource
-// carrying one means it deliberately — and an AWS tag value can carry the
+// carrying one means it deliberately — and an Azure tag value can carry the
 // scheme verbatim.
-func TestAWSTagsURLSupersedesTriple(t *testing.T) {
-	inventory := &fakeInventory{tags: map[string]string{
+func TestAzureTagsURLSupersedesTriple(t *testing.T) {
+	inventory := &fakeAzureInventory{tags: map[string]string{
 		"scm-repository-org":  "acme",
 		"scm-repository-name": "infra-prod",
 		"scm-repository-url":  "https://ghe.acme.internal/platform/infra",
 	}}
-	got, err := newAWSEnhancer(t, inventory, LabelKeys{}).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+	got, err := newAzureEnhancer(t, inventory, LabelKeys{}).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 	if err != nil {
 		t.Fatalf("Enhance() = %v, want nil", err)
 	}
@@ -100,14 +100,14 @@ func TestAWSTagsURLSupersedesTriple(t *testing.T) {
 	}
 }
 
-func TestAWSTagsHonoursCustomKeys(t *testing.T) {
-	inventory := &fakeInventory{tags: map[string]string{
+func TestAzureTagsHonoursCustomKeys(t *testing.T) {
+	inventory := &fakeAzureInventory{tags: map[string]string{
 		"owner-org":  "acme",
 		"owner-repo": "infra-prod",
 	}}
 	keys := LabelKeys{Org: "owner-org", Name: "owner-repo"}
-	got, err := newAWSEnhancer(t, inventory, keys).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+	got, err := newAzureEnhancer(t, inventory, keys).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 	if err != nil {
 		t.Fatalf("Enhance() = %v, want nil", err)
 	}
@@ -119,7 +119,7 @@ func TestAWSTagsHonoursCustomKeys(t *testing.T) {
 // A resource that exists but carries no ownership tags is a final answer,
 // not a failure: reporting it as an error would hold the finding out of
 // sight instead of handing it to a human.
-func TestAWSTagsUntaggedResourceIsNotAnError(t *testing.T) {
+func TestAzureTagsUntaggedResourceIsNotAnError(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		tags map[string]string
@@ -130,8 +130,8 @@ func TestAWSTagsUntaggedResourceIsNotAnError(t *testing.T) {
 		{"a name with no org", map[string]string{"scm-repository-name": "infra"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newAWSEnhancer(t, &fakeInventory{tags: tt.tags}, LabelKeys{}).
-				Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+			got, err := newAzureEnhancer(t, &fakeAzureInventory{tags: tt.tags}, LabelKeys{}).
+				Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 			if err != nil {
 				t.Fatalf("Enhance() = %v, want nil", err)
 			}
@@ -144,10 +144,10 @@ func TestAWSTagsUntaggedResourceIsNotAnError(t *testing.T) {
 
 // A deleted or unrecorded resource will not appear next time either, so it
 // is reported as a clean no-answer rather than something to retry.
-func TestAWSTagsMissingResourceIsFinal(t *testing.T) {
-	inventory := &fakeInventory{err: awsinv.ErrNotFound}
-	got, err := newAWSEnhancer(t, inventory, LabelKeys{}).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+func TestAzureTagsMissingResourceIsFinal(t *testing.T) {
+	inventory := &fakeAzureInventory{err: azureinv.ErrNotFound}
+	got, err := newAzureEnhancer(t, inventory, LabelKeys{}).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 	if err != nil {
 		t.Fatalf("Enhance() = %v, want nil: a missing resource is not retryable", err)
 	}
@@ -155,22 +155,22 @@ func TestAWSTagsMissingResourceIsFinal(t *testing.T) {
 		t.Errorf("Repository = %+v, want nil", got.Repository)
 	}
 	// The resource's own context still travels, even unresolved.
-	if got.Attributes["aws-account"] != "123456789012" {
+	if got.Attributes["azure-subscription"] != "00000000-0000-0000-0000-000000000000" {
 		t.Errorf("Attributes = %+v, want the finding's context regardless", got.Attributes)
 	}
 }
 
 // Anything else might succeed next time, so it errors — which is what makes
 // the context-controller hold the finding rather than advance it.
-func TestAWSTagsTransientFailureErrors(t *testing.T) {
-	inventory := &fakeInventory{err: errors.New("deadline exceeded")}
-	if _, err := newAWSEnhancer(t, inventory, LabelKeys{}).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()}); err == nil {
+func TestAzureTagsTransientFailureErrors(t *testing.T) {
+	inventory := &fakeAzureInventory{err: errors.New("deadline exceeded")}
+	if _, err := newAzureEnhancer(t, inventory, LabelKeys{}).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()}); err == nil {
 		t.Error("Enhance() = nil, want an error so the finding is retried")
 	}
 }
 
-func TestAWSTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
+func TestAzureTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		issue enhance.Issue
@@ -178,20 +178,20 @@ func TestAWSTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
 		{"a code finding", enhance.Issue{Repo: source.Repo{Owner: "acme", Name: "shop"}}},
 		{
 			"another cloud platform",
-			enhance.Issue{CloudResource: bucket()},
+			enhance.Issue{CloudResource: s3bucket()},
 		},
 		{
 			// Wiz Defend falls back to a synthetic account pseudo-resource
 			// when a threat names no concrete one; no inventory records it.
 			"a synthetic account resource",
 			enhance.Issue{CloudResource: &source.CloudResource{
-				Provider: "aws", Name: "wiz-account:123456789012",
+				Provider: "azure", Name: "wiz-account:00000000-0000-0000-0000-000000000000",
 			}},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			inventory := &fakeInventory{}
-			got, err := newAWSEnhancer(t, inventory, LabelKeys{}).Enhance(t.Context(), tt.issue)
+			inventory := &fakeAzureInventory{}
+			got, err := newAzureEnhancer(t, inventory, LabelKeys{}).Enhance(t.Context(), tt.issue)
 			if err != nil || got != nil {
 				t.Errorf("Enhance() = (%+v, %v), want (nil, nil)", got, err)
 			}
@@ -204,13 +204,13 @@ func TestAWSTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
 
 // Finding status is a bounded surface: the tag attributes are capped, and
 // deterministically — sorted by key — so retries do not flap the status.
-func TestAWSTagsCapsTagAttributes(t *testing.T) {
+func TestAzureTagsCapsTagAttributes(t *testing.T) {
 	tags := map[string]string{}
 	for i := range 40 {
 		tags[fmt.Sprintf("tag-%02d", i)] = "v"
 	}
-	got, err := newAWSEnhancer(t, &fakeInventory{tags: tags}, LabelKeys{}).
-		Enhance(t.Context(), enhance.Issue{CloudResource: s3bucket()})
+	got, err := newAzureEnhancer(t, &fakeAzureInventory{tags: tags}, LabelKeys{}).
+		Enhance(t.Context(), enhance.Issue{CloudResource: azureVM()})
 	if err != nil {
 		t.Fatalf("Enhance() = %v, want nil", err)
 	}
@@ -231,8 +231,8 @@ func TestAWSTagsCapsTagAttributes(t *testing.T) {
 	}
 }
 
-func TestNewAWSTagsRequiresAnInventoryClient(t *testing.T) {
-	if _, err := NewAWSTags(nil, TagsOptions{}); err == nil {
-		t.Error("NewAWSTags() = nil error, want a configuration failure")
+func TestNewAzureTagsRequiresAnInventoryClient(t *testing.T) {
+	if _, err := NewAzureTags(nil, TagsOptions{}); err == nil {
+		t.Error("NewAzureTags() = nil error, want a configuration failure")
 	}
 }

@@ -218,8 +218,14 @@ sourceController:
 # (annotate serviceAccount with iam.gke.io/gcp-service-account and grant
 # roles/cloudasset.viewer), the AWS enhancer the SDK default chain (on EKS,
 # Pod Identity — associate the service account — or IRSA — annotate with
-# eks.amazonaws.com/role-arn; elsewhere, web-identity federation). Set
-# PATCHY_STATIC_CONTEXT_FILE via config.extra to feed the static enhancer.
+# eks.amazonaws.com/role-arn; elsewhere, web-identity federation), the Azure
+# enhancer the Azure default chain (Workload ID on AKS: annotate serviceAccount
+# with azure.workload.identity/client-id and label the pod
+# azure.workload.identity/use: "true" via podLabels; elsewhere, workload
+# identity federation through the AZURE_CLIENT_ID/AZURE_TENANT_ID/
+# AZURE_FEDERATED_TOKEN_FILE env vars and a projected service-account token).
+# Set PATCHY_STATIC_CONTEXT_FILE via config.extra to feed the static
+# enhancer.
 contextController:
     image: {}
     config:

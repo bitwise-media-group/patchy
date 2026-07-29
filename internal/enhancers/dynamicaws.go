@@ -69,8 +69,7 @@ func (d *DynamicAWS) Enhance(ctx context.Context, issue enhance.Issue) (*enhance
 	if err != nil {
 		return nil, fmt.Errorf("aws-resource-tags: %w", err)
 	}
-	inner, err := NewAWSTags(AWSOptions{
-		Inventory:   inventory,
+	inner, err := NewAWSTags(inventory, TagsOptions{
 		Keys:        cfg.Keys,
 		DefaultHost: cfg.RepositoryHost,
 	})

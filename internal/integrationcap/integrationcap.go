@@ -59,3 +59,12 @@ func CloudAssetInventoryEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.GoogleCloud.CloudAssetInventory != nil &&
 		i.Spec.GoogleCloud.CloudAssetInventory.Enabled
 }
+
+// AWSResourceTagsEnabled reports whether the Integration enables the AWS
+// resource-tags enhancer. It lives here for the same reason as
+// CloudAssetInventoryEnabled: its consumer is the context-controller.
+func AWSResourceTagsEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.AWS != nil &&
+		i.Spec.AWS.ResourceTags != nil &&
+		i.Spec.AWS.ResourceTags.Enabled
+}

@@ -60,7 +60,7 @@ permanently and hand it off unremediable. A failed lookup instead holds the find
 the accumulation window — past that it advances anyway, because a finding a human could be looking at is better than one
 held out of sight.
 
-Two implementations ship:
+Three implementations ship:
 
 - **Static file** — a YAML map from repository to owners and attributes
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
@@ -69,6 +69,10 @@ Two implementations ship:
   ([format](integrations/google-cloud-scc.md#the-ownership-labels)). Configured on the `google-cloud` Integration's
   `cloudAssetInventory` block and read per enhancement, it acts on any Google Cloud finding whichever source ingested
   it, and stands aside when no Integration enables it.
+- **AWS resource tags** — the same vocabulary spelled as tags, read from an organization-level inventory (an AWS Config
+  aggregator or a Resource Explorer view), plus the resource's tags as attributes ([format](integrations/aws.md)).
+  Configured on the `aws` Integration's `resourceTags` block, same rules: any AWS finding, whichever source, standing
+  aside unless enabled.
 
 A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
 chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the

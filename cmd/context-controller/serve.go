@@ -68,12 +68,13 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 
-	// The chain needs the manager's cached client: the Google Cloud enhancer
-	// reads its configuration off the google-cloud Integration per
-	// enhancement, so a spec change takes effect without a restart.
+	// The chain needs the manager's cached client: the cloud enhancers read
+	// their configuration off their Integrations per enhancement, so a spec
+	// change takes effect without a restart.
 	chain, closeChain, err := buildChain(chainOptions{
 		StaticFile: opts.String("static-context-file"),
 		Assets:     ctxctrl.AssetConfigSource(mgr.GetClient(), namespace),
+		AWSTags:    ctxctrl.AWSTagsConfigSource(mgr.GetClient(), namespace),
 	})
 	if err != nil {
 		return err
@@ -101,17 +102,24 @@ type chainOptions struct {
 	StaticFile string
 	// Assets reads the Cloud Asset Inventory capability off the Integration.
 	Assets enhancers.ConfigSource
+	// AWSTags reads the AWS resource-tags capability off the Integration.
+	AWSTags enhancers.AWSConfigSource
 }
 
 // buildChain assembles the enhancer chain. Order matters: the first enhancer
-// to resolve a repository wins, so the cloud lookup runs ahead of the CMDB,
-// which knows about repositories rather than resources. The Google Cloud
-// enhancer is always in the chain — whether it acts is the Integration's
-// decision, read per enhancement.
+// to resolve a repository wins, so the cloud lookups run ahead of the CMDB,
+// which knows about repositories rather than resources (the two cloud
+// enhancers are disjoint by provider, so their order is immaterial). The
+// cloud enhancers are always in the chain — whether they act is their
+// Integration's decision, read per enhancement.
 func buildChain(o chainOptions) ([]enhance.Enhancer, func(), error) {
 	gcp := &enhancers.DynamicGoogleCloud{Config: o.Assets}
-	chain := []enhance.Enhancer{gcp}
-	cleanup := func() { _ = gcp.Close() }
+	aws := &enhancers.DynamicAWS{Config: o.AWSTags}
+	chain := []enhance.Enhancer{gcp, aws}
+	cleanup := func() {
+		_ = gcp.Close()
+		_ = aws.Close()
+	}
 
 	if o.StaticFile != "" {
 		static, err := enhancers.NewStaticFile(o.StaticFile)

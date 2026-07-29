@@ -68,3 +68,63 @@ func TestAssetConfigSourceAmbiguous(t *testing.T) {
 		t.Error("AssetConfigSource() = nil error, want the ambiguity surfaced")
 	}
 }
+
+func awsIntegration(name string, rt *v1alpha1.AWSResourceTags) *v1alpha1.Integration {
+	return &v1alpha1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "patchy"},
+		Spec: v1alpha1.IntegrationSpec{
+			Provider: v1alpha1.IntegrationProviderAWS,
+			AWS:      &v1alpha1.AWSIntegration{ResourceTags: rt},
+		},
+	}
+}
+
+func TestAWSTagsConfigSource(t *testing.T) {
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(awsIntegration("aws", &v1alpha1.AWSResourceTags{
+			Enabled:          true,
+			ConfigAggregator: &v1alpha1.AWSConfigAggregator{Name: "org", Region: "eu-west-2"},
+			RepositoryHost:   "github.example.com",
+			Tags:             &v1alpha1.AssetLabelKeys{Org: "owner-org"},
+		})).Build()
+	cfg, err := AWSTagsConfigSource(c, "patchy")(t.Context())
+	if err != nil {
+		t.Fatalf("AWSTagsConfigSource() = %v, want nil", err)
+	}
+	if cfg.RepositoryHost != "github.example.com" || cfg.Keys.Org != "owner-org" {
+		t.Errorf("config = %+v, want the host and keys carried over", cfg)
+	}
+	a := cfg.Backend.ConfigAggregator
+	if a == nil || a.Name != "org" || a.Region != "eu-west-2" || cfg.Backend.ResourceExplorer != nil {
+		t.Errorf("backend = %+v, want the aggregator alone", cfg.Backend)
+	}
+}
+
+func TestAWSTagsConfigSourceResourceExplorer(t *testing.T) {
+	view := "arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org/abc"
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(awsIntegration("aws", &v1alpha1.AWSResourceTags{
+			Enabled:          true,
+			ResourceExplorer: &v1alpha1.AWSResourceExplorer{ViewARN: view},
+		})).Build()
+	cfg, err := AWSTagsConfigSource(c, "patchy")(t.Context())
+	if err != nil {
+		t.Fatalf("AWSTagsConfigSource() = %v, want nil", err)
+	}
+	e := cfg.Backend.ResourceExplorer
+	if e == nil || e.ViewARN != view || cfg.Backend.ConfigAggregator != nil {
+		t.Errorf("backend = %+v, want the view alone", cfg.Backend)
+	}
+}
+
+func TestAWSTagsConfigSourceNoIntegration(t *testing.T) {
+	// A disabled capability and no aws Integration at all read the same: off.
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(awsIntegration("aws", &v1alpha1.AWSResourceTags{
+			ConfigAggregator: &v1alpha1.AWSConfigAggregator{Name: "org", Region: "eu-west-2"},
+		})).Build()
+	cfg, err := AWSTagsConfigSource(c, "patchy")(t.Context())
+	if cfg != nil || err != nil {
+		t.Errorf("AWSTagsConfigSource() = %+v, %v; want nil, nil (capability off)", cfg, err)
+	}
+}

@@ -201,6 +201,10 @@ func TestSchemaValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("aws integration enforces exactly one inventory backend", func(t *testing.T) {
+		testAWSIntegrationSchema(ctx, t, c)
+	})
+
 	t.Run("finding rejects an unknown phase and accepts a legal one", func(t *testing.T) {
 		f := &patchyv1.Finding{
 			ObjectMeta: metav1.ObjectMeta{Name: "finding-abc123-1", Namespace: "default"},
@@ -267,4 +271,50 @@ func TestSchemaValidation(t *testing.T) {
 			t.Error("Status().Update(confidence=1.5) = nil, want pattern rejection")
 		}
 	})
+}
+
+// testAWSIntegrationSchema exercises the aws provider's CEL rules: the
+// backend one-of, the view-ARN pattern, and the credential-less posture (no
+// secretRef anywhere below).
+func testAWSIntegrationSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	aws := func(name string, rt *patchyv1.AWSResourceTags) *patchyv1.Integration {
+		return &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider: patchyv1.IntegrationProviderAWS,
+				AWS:      &patchyv1.AWSIntegration{ResourceTags: rt},
+			},
+		}
+	}
+	aggregator := &patchyv1.AWSConfigAggregator{Name: "org", Region: "eu-west-2"}
+	explorer := &patchyv1.AWSResourceExplorer{
+		ViewARN: "arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org/abc",
+	}
+	if err := c.Create(ctx, aws("aws-aggregator", &patchyv1.AWSResourceTags{
+		Enabled: true, ConfigAggregator: aggregator,
+	})); err != nil {
+		t.Errorf("Create(aws integration, aggregator backend) = %v, want nil", err)
+	}
+	if err := c.Create(ctx, aws("aws-explorer", &patchyv1.AWSResourceTags{
+		Enabled: true, ResourceExplorer: explorer,
+	})); err != nil {
+		t.Errorf("Create(aws integration, explorer backend) = %v, want nil", err)
+	}
+	if err := c.Create(ctx, aws("aws-both", &patchyv1.AWSResourceTags{
+		Enabled: true, ConfigAggregator: aggregator, ResourceExplorer: explorer,
+	})); err == nil {
+		t.Error("Create(aws integration with both backends) = nil, want CEL rejection")
+	}
+	if err := c.Create(ctx, aws("aws-neither", &patchyv1.AWSResourceTags{
+		Enabled: true,
+	})); err == nil {
+		t.Error("Create(aws integration with no backend) = nil, want CEL rejection")
+	}
+	if err := c.Create(ctx, aws("aws-bad-view", &patchyv1.AWSResourceTags{
+		Enabled:          true,
+		ResourceExplorer: &patchyv1.AWSResourceExplorer{ViewARN: "arn:aws:s3:::not-a-view"},
+	})); err == nil {
+		t.Error("Create(aws integration with malformed view ARN) = nil, want pattern rejection")
+	}
 }

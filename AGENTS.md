@@ -25,7 +25,8 @@ Eight binaries, one module. "Not monolithic" means separate binaries/deployments
   each Repository's head SHA once, downloads the tarball archive at that SHA (pure HTTP, no git binary), and
   serves it from the artifact endpoint (`:9790`) agent pods fetch credential-lessly.
 - `cmd/context-controller` — runs the enhancer chain (CMDB placeholder + the Cloud Asset Inventory lookup, whose
-  config is the `cloudAssetInventory` block on the `google-cloud` Integration) over `Opened` Findings, writes
+  config is the `cloudAssetInventory` block on the `google-cloud` Integration, + the AWS resource-tags lookup,
+  whose config is the `resourceTags` block on the `aws` Integration) over `Opened` Findings, writes
   enrichments/owners to status, transitions to `Enhanced`. No GitHub access at all; reads Integrations read-only.
 - `cmd/investigation-controller` — the gate (admits accumulated, aged findings; creates the Repository and one
   immutable `Investigation` per attempt) plus the analysis scheduler (bounded concurrency, launches agent Jobs,

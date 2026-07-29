@@ -42,8 +42,8 @@ spec:
         description: |-
           Integration configures one external system patchy exchanges finding state
           with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-          context enhancers (Cloud Asset Inventory), tracking out (GitHub issues),
-          and the human signals flowing back.
+          context enhancers (Cloud Asset Inventory, AWS resource tags), tracking out
+          (GitHub issues), and the human signals flowing back.
         properties:
           apiVersion:
             description: |-
@@ -68,6 +68,78 @@ spec:
               matching spec.provider must be set (CEL-enforced) — integrations are
               strongly typed, not generic.
             properties:
+              aws:
+                description: AWS is the aws provider block.
+                properties:
+                  resourceTags:
+                    description: ResourceTags enables the tag-inventory enhancer.
+                    properties:
+                      configAggregator:
+                        description: |-
+                          ConfigAggregator queries an AWS Config aggregator (SQL over recorded
+                          configuration items).
+                        properties:
+                          name:
+                            description: Name of the configuration aggregator.
+                            minLength: 1
+                            type: string
+                          region:
+                            description: Region the aggregator lives in.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        - region
+                        type: object
+                      enabled:
+                        description: Enabled turns the enhancer capability on.
+                        type: boolean
+                      repositoryHost:
+                        description: |-
+                          RepositoryHost is the forge host repositories named by tags live on;
+                          empty means github.com.
+                        type: string
+                      resourceExplorer:
+                        description: ResourceExplorer searches an AWS Resource Explorer
+                          view.
+                        properties:
+                          viewARN:
+                            description: |-
+                              ViewARN is the Resource Explorer view, e.g.
+                              arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org-view/<uuid>.
+                              The region the view lives in is read from the ARN.
+                            pattern: ^arn:[a-z-]+:resource-explorer-2:[a-z0-9-]+:[0-9]{12}:view/.+$
+                            type: string
+                        required:
+                        - viewARN
+                        type: object
+                      tags:
+                        description: Tags overrides the resource tag names the enhancer
+                          reads.
+                        properties:
+                          name:
+                            description: Name label carries the repository name.
+                            type: string
+                          org:
+                            description: Org label carries the repository owner/organization.
+                            type: string
+                          provider:
+                            description: Provider label carries the forge kind (e.g.
+                              github).
+                            type: string
+                          url:
+                            description: URL label carries a full repository URL,
+                              overriding the parts.
+                            type: string
+                        type: object
+                    required:
+                    - enabled
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of configAggregator or resourceExplorer
+                        must be set
+                      rule: has(self.configAggregator) != has(self.resourceExplorer)
+                type: object
               github:
                 description: GitHub is the github provider block.
                 properties:
@@ -229,6 +301,7 @@ spec:
                 - github
                 - google-cloud
                 - wiz
+                - aws
                 type: string
               replay:
                 description: |-
@@ -365,7 +438,7 @@ spec:
             - message: exactly the provider block matching spec.provider must be set
               rule: (self.provider == 'github') == has(self.github) && (self.provider
                 == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz')
-                == has(self.wiz)
+                == has(self.wiz) && (self.provider == 'aws') == has(self.aws)
             - message: spec.secretRef is required for the github and wiz providers
               rule: '!(self.provider in [''github'', ''wiz'']) || has(self.secretRef)'
           status:

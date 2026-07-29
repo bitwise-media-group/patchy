@@ -126,44 +126,8 @@ func (g *GoogleCloudLabels) Enhance(ctx context.Context, issue enhance.Issue) (*
 
 	return &enhance.Enrichment{
 		Attributes: attributes(cr),
-		Repository: g.repository(labels.Labels),
+		Repository: repositoryFrom(labels.Labels, g.keys, g.provider, g.host),
 	}, nil
-}
-
-// repository reads the ownership labels, or nil when the resource carries
-// none. The URL form wins: it is the only one that can name a self-hosted
-// forge, so a resource carrying it means it deliberately.
-func (g *GoogleCloudLabels) repository(labels map[string]string) *source.RepositoryRef {
-	if len(labels) == 0 {
-		return nil
-	}
-	provider := labels[g.keys.Provider]
-	if provider == "" {
-		provider = g.provider
-	}
-	if u := labels[g.keys.URL]; u != "" {
-		return &source.RepositoryRef{Provider: provider, URL: normalizeURL(u)}
-	}
-	org, name := labels[g.keys.Org], labels[g.keys.Name]
-	if org == "" || name == "" {
-		return nil
-	}
-	return &source.RepositoryRef{
-		Provider: provider,
-		Owner:    org,
-		Name:     name,
-		URL:      "https://" + g.host + "/" + org + "/" + name,
-	}
-}
-
-// normalizeURL accepts a bare host/path as well as a full URL, because a
-// Google Cloud label cannot hold "://" and an operator working around that
-// will write the value without a scheme.
-func normalizeURL(raw string) string {
-	if strings.Contains(raw, "://") {
-		return raw
-	}
-	return "https://" + strings.TrimPrefix(raw, "//")
 }
 
 // attributes are the facts worth carrying onto the finding whether or not a
@@ -184,12 +148,4 @@ func attributes(cr *source.CloudResource) map[string]string {
 		return nil
 	}
 	return attrs
-}
-
-// or returns v, or fallback when v is empty.
-func or(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }

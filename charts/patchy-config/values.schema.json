@@ -35,6 +35,83 @@
         "integrationSpec": {
             "description": "IntegrationSpec configures one external system. Exactly the provider block\nmatching spec.provider must be set (CEL-enforced) — integrations are\nstrongly typed, not generic.",
             "properties": {
+                "aws": {
+                    "description": "AWS is the aws provider block.",
+                    "properties": {
+                        "resourceTags": {
+                            "description": "ResourceTags enables the tag-inventory enhancer.",
+                            "properties": {
+                                "configAggregator": {
+                                    "description": "ConfigAggregator queries an AWS Config aggregator (SQL over recorded\nconfiguration items).",
+                                    "properties": {
+                                        "name": {
+                                            "description": "Name of the configuration aggregator.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        },
+                                        "region": {
+                                            "description": "Region the aggregator lives in.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["name", "region"],
+                                    "type": "object",
+                                    "additionalProperties": false
+                                },
+                                "enabled": {
+                                    "description": "Enabled turns the enhancer capability on.",
+                                    "type": "boolean"
+                                },
+                                "repositoryHost": {
+                                    "description": "RepositoryHost is the forge host repositories named by tags live on;\nempty means github.com.",
+                                    "type": "string"
+                                },
+                                "resourceExplorer": {
+                                    "description": "ResourceExplorer searches an AWS Resource Explorer view.",
+                                    "properties": {
+                                        "viewARN": {
+                                            "description": "ViewARN is the Resource Explorer view, e.g.\narn:aws:resource-explorer-2:eu-west-2:123456789012:view/org-view/<uuid>.\nThe region the view lives in is read from the ARN.",
+                                            "pattern": "^arn:[a-z-]+:resource-explorer-2:[a-z0-9-]+:[0-9]{12}:view/.+$",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["viewARN"],
+                                    "type": "object",
+                                    "additionalProperties": false
+                                },
+                                "tags": {
+                                    "description": "Tags overrides the resource tag names the enhancer reads.",
+                                    "properties": {
+                                        "name": {
+                                            "description": "Name label carries the repository name.",
+                                            "type": "string"
+                                        },
+                                        "org": {
+                                            "description": "Org label carries the repository owner/organization.",
+                                            "type": "string"
+                                        },
+                                        "provider": {
+                                            "description": "Provider label carries the forge kind (e.g. github).",
+                                            "type": "string"
+                                        },
+                                        "url": {
+                                            "description": "URL label carries a full repository URL, overriding the parts.",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object",
+                                    "additionalProperties": false
+                                }
+                            },
+                            "required": ["enabled"],
+                            "type": "object",
+                            "additionalProperties": false
+                        }
+                    },
+                    "type": "object",
+                    "additionalProperties": false
+                },
                 "github": {
                     "description": "GitHub is the github provider block.",
                     "properties": {
@@ -198,7 +275,7 @@
                 },
                 "provider": {
                     "description": "Provider is the external system type.",
-                    "enum": ["github", "google-cloud", "wiz"],
+                    "enum": ["github", "google-cloud", "wiz", "aws"],
                     "type": "string"
                 },
                 "replay": {

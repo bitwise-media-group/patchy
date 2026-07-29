@@ -96,8 +96,9 @@ integrations: []
 # compute an HMAC). The action's body template MUST follow
 # docs/integrations/wiz.md — that template is the payload contract. Wiz
 # findings are cloud findings: pair this with a google-cloud Integration
-# carrying cloudAssetInventory to resolve their repositories, and a github
-# Integration for their tracking issues.
+# carrying cloudAssetInventory (and/or an aws Integration carrying
+# resourceTags) to resolve their repositories, and a github Integration for
+# their tracking issues.
 # - name: wiz
 #   spec:
 #       provider: wiz
@@ -118,6 +119,34 @@ integrations: []
 #           # api:
 #           #     endpoint: https://api.eu1.app.wiz.io/graphql
 #           #     # tokenURL: https://auth.app.wiz.io/oauth/token
+#
+# The aws Integration is the AWS sibling of cloudAssetInventory: resourceTags
+# resolves ownership tags (and possibly a repository) for ANY finding on an
+# AWS resource, whichever source ingested it. Read-only and credential-less —
+# the context-controller authenticates by the SDK default chain (EKS Pod
+# Identity, IRSA, or web-identity federation), so there is NO secretRef. Exactly one inventory
+# backend must be set: configAggregator (an AWS Config organization
+# aggregator — needs Config recording estate-wide) or resourceExplorer (an
+# organization-wide Resource Explorer view — free, but the view must include
+# the tags property or the enhancer refuses it).
+# - name: aws
+#   spec:
+#       provider: aws
+#       aws:
+#           resourceTags:
+#               enabled: true
+#               configAggregator:
+#                   name: org-aggregator
+#                   region: eu-west-2
+#               # ... OR ...
+#               # resourceExplorer:
+#               #     viewARN: arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org-view/11111111-2222-3333-4444-555555555555
+#               # repositoryHost: github.example.com     # default github.com
+#               # tags:                                  # override the tag names read
+#               #     org: scm-repository-org
+#               #     name: scm-repository-name
+#               #     provider: scm-repository-provider
+#               #     url: scm-repository-url
 
 forges: []
 # - name: github

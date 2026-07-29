@@ -8,7 +8,7 @@ import (
 )
 
 // IntegrationProvider identifies the external system an Integration talks to.
-// +kubebuilder:validation:Enum=github;google-cloud;wiz
+// +kubebuilder:validation:Enum=github;google-cloud;wiz;aws
 type IntegrationProvider string
 
 // Integration providers.
@@ -16,6 +16,7 @@ const (
 	IntegrationProviderGitHub      IntegrationProvider = "github"
 	IntegrationProviderGoogleCloud IntegrationProvider = "google-cloud"
 	IntegrationProviderWiz         IntegrationProvider = "wiz"
+	IntegrationProviderAWS         IntegrationProvider = "aws"
 )
 
 // GitHubIssues configures the tracking projection: findings are projected as
@@ -124,7 +125,7 @@ type GoogleCloudSCC struct {
 	Mute *GoogleCloudSCCMute `json:"mute,omitempty"`
 }
 
-// AssetLabelKeys overrides the resource label names the Cloud Asset Inventory
+// AssetLabelKeys overrides the resource label (or tag) names a cloud
 // enhancer reads a repository identity from. Empty fields keep the defaults
 // (scm-repository-org, scm-repository-name, scm-repository-provider,
 // scm-repository-url).
@@ -239,10 +240,72 @@ type WizIntegration struct {
 	API *WizAPI `json:"api,omitempty"`
 }
 
+// AWSConfigAggregator names the AWS Config configuration aggregator the
+// resource-tags enhancer queries. An organization aggregator answers for the
+// whole estate from one place; the trade is that AWS Config recording must be
+// enabled in every member account and region the findings cover.
+type AWSConfigAggregator struct {
+	// Name of the configuration aggregator.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Region the aggregator lives in.
+	// +kubebuilder:validation:MinLength=1
+	Region string `json:"region"`
+}
+
+// AWSResourceExplorer names the AWS Resource Explorer view the resource-tags
+// enhancer searches. An organization-wide view answers for the whole estate
+// without per-account credentials; the view must include the tags property,
+// or every lookup would silently come back tagless — the enhancer refuses
+// such a view at configuration time.
+type AWSResourceExplorer struct {
+	// ViewARN is the Resource Explorer view, e.g.
+	// arn:aws:resource-explorer-2:eu-west-2:123456789012:view/org-view/<uuid>.
+	// The region the view lives in is read from the ARN.
+	// +kubebuilder:validation:Pattern=`^arn:[a-z-]+:resource-explorer-2:[a-z0-9-]+:[0-9]{12}:view/.+$`
+	ViewARN string `json:"viewARN"`
+}
+
+// AWSResourceTags enables the context enhancer that resolves the repository
+// (and attributes) of any finding whose cloud resource lives on AWS —
+// whichever source ingested it — by reading the resource's tags from an
+// organization-level inventory. Exactly one inventory backend must be named.
+// Read-only: the context-controller authenticates by the SDK default
+// credential chain (EKS Pod Identity or IRSA on EKS, web-identity
+// federation elsewhere) and holds no Secret.
+// +kubebuilder:validation:XValidation:rule="has(self.configAggregator) != has(self.resourceExplorer)",message="exactly one of configAggregator or resourceExplorer must be set"
+type AWSResourceTags struct {
+	// Enabled turns the enhancer capability on.
+	Enabled bool `json:"enabled"`
+	// ConfigAggregator queries an AWS Config aggregator (SQL over recorded
+	// configuration items).
+	// +optional
+	ConfigAggregator *AWSConfigAggregator `json:"configAggregator,omitempty"`
+	// ResourceExplorer searches an AWS Resource Explorer view.
+	// +optional
+	ResourceExplorer *AWSResourceExplorer `json:"resourceExplorer,omitempty"`
+	// RepositoryHost is the forge host repositories named by tags live on;
+	// empty means github.com.
+	// +optional
+	RepositoryHost string `json:"repositoryHost,omitempty"`
+	// Tags overrides the resource tag names the enhancer reads.
+	// +optional
+	Tags *AssetLabelKeys `json:"tags,omitempty"`
+}
+
+// AWSIntegration is the aws provider block. It carries no credential Secret:
+// the resource-tags enhancer authenticates by the SDK default credential
+// chain, so no key material lives in the cluster.
+type AWSIntegration struct {
+	// ResourceTags enables the tag-inventory enhancer.
+	// +optional
+	ResourceTags *AWSResourceTags `json:"resourceTags,omitempty"`
+}
+
 // IntegrationSpec configures one external system. Exactly the provider block
 // matching spec.provider must be set (CEL-enforced) — integrations are
 // strongly typed, not generic.
-// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws)",message="exactly the provider block matching spec.provider must be set"
 // +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz']) || has(self.secretRef)",message="spec.secretRef is required for the github and wiz providers"
 type IntegrationSpec struct {
 	// Provider is the external system type.
@@ -292,6 +355,9 @@ type IntegrationSpec struct {
 	// Wiz is the wiz provider block.
 	// +optional
 	Wiz *WizIntegration `json:"wiz,omitempty"`
+	// AWS is the aws provider block.
+	// +optional
+	AWS *AWSIntegration `json:"aws,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -380,8 +446,8 @@ type IntegrationStatus struct {
 
 // Integration configures one external system patchy exchanges finding state
 // with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-// context enhancers (Cloud Asset Inventory), tracking out (GitHub issues),
-// and the human signals flowing back.
+// context enhancers (Cloud Asset Inventory, AWS resource tags), tracking out
+// (GitHub issues), and the human signals flowing back.
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

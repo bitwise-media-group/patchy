@@ -40,11 +40,21 @@ on Google Cloud, whichever source ingested it, and stands aside entirely when no
 only deployment concern this controller keeps is the credential: workload identity with `roles/cloudasset.viewer` on the
 controller's ServiceAccount.
 
+## The AWS resource tags enhancer
+
+The `aws-resource-tags` enhancer is the AWS sibling: it resolves the repository (and account/type/location attributes,
+plus the resource's own tags as `tag:<key>` attributes) from the ownership tags on the resource, read from an
+organization-level inventory — an AWS Config aggregator or a Resource Explorer view, whichever the estate has. Like its
+sibling it takes **no flags**: its configuration is the `resourceTags` block on the `aws` Integration, read per
+enhancement — see [AWS resource tags](../integrations/aws.md). The credential concern is the same shape: the SDK default
+chain on the controller's ServiceAccount (EKS Pod Identity or IRSA on EKS, web-identity federation elsewhere),
+read-only, no Secret.
+
 ## The static context enhancer
 
 The built-in enhancer is a deliberate placeholder for a real CMDB: a YAML map from repository to ownership and
-attributes. Without `--static-context-file` the chain is the Google Cloud labels enhancer alone (which stands aside
-unless an Integration enables it).
+attributes. Without `--static-context-file` the chain is the two cloud enhancers alone (each standing aside unless an
+Integration enables it).
 
 ```yaml
 # /etc/patchy/context/cmdb.yaml

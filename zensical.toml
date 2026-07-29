@@ -32,6 +32,7 @@ nav = [
     { "GitHub" = "integrations/github.md" },
     { "Google Cloud SCC" = "integrations/google-cloud-scc.md" },
     { "Wiz" = "integrations/wiz.md" },
+    { "AWS resource tags" = "integrations/aws.md" },
   ] },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },

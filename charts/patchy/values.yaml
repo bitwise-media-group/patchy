@@ -211,8 +211,14 @@ sourceController:
         create: true
 
 # ---- context-controller -----------------------------------------------------
-# The enhancer chain over Opened findings (the CMDB placeholder). No external
-# access at all: it reads and writes Finding CRs, nothing else. Set
+# The enhancer chain over Opened findings: the cloud tag/label enhancers and
+# the CMDB placeholder. Its only external access is the cloud inventory
+# lookups, and only when an Integration enables them — read-only, and
+# credential-less: the Google Cloud enhancer uses workload identity
+# (annotate serviceAccount with iam.gke.io/gcp-service-account and grant
+# roles/cloudasset.viewer), the AWS enhancer the SDK default chain (on EKS,
+# Pod Identity — associate the service account — or IRSA — annotate with
+# eks.amazonaws.com/role-arn; elsewhere, web-identity federation). Set
 # PATCHY_STATIC_CONTEXT_FILE via config.extra to feed the static enhancer.
 contextController:
     image: {}

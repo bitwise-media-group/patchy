@@ -93,10 +93,12 @@ consistent across the estate.
   that SHA (pure HTTP; controllers carry no git binary), and serves it from an artifact endpoint agents fetch
   credential-lessly (unguessable URL, digest-verified).
 - **context-controller** — the enhancer chain over freshly opened Findings (`pkg/enhance` plugins; CMDB
-  placeholder, plus a Google Cloud lookup that resolves a cloud finding's repository from its resource's ownership
-  labels, whichever source ingested it — its configuration is the `cloudAssetInventory` block on the `google-cloud`
-  Integration, read per enhancement). Writes Finding status and, set-once, `spec.repository` for a finding that
-  arrived without one. Holds no GitHub credential; the cloud lookup uses read-only workload identity.
+  placeholder, plus cloud lookups that resolve a cloud finding's repository from its resource's ownership
+  labels/tags, whichever source ingested it — Cloud Asset Inventory configured by the `cloudAssetInventory` block
+  on the `google-cloud` Integration, an AWS Config aggregator or Resource Explorer view configured by the
+  `resourceTags` block on the `aws` Integration, each read per enhancement). Writes Finding status and, set-once,
+  `spec.repository` for a finding that arrived without one. Holds no GitHub credential; the cloud lookups use
+  read-only ambient identity (workload identity / EKS Pod Identity / IRSA), never a Secret.
 - **investigation-controller** — the gate (admits accumulated, aged findings; materializes the Repository and one
   immutable `Investigation` per attempt) and the analysis scheduler (bounded concurrency, severity order,
   verdict routing).

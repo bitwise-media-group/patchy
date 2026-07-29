@@ -143,9 +143,9 @@ func (c *Creds) WizAPICreds(
 }
 
 // Validate checks the Integration is usable, by provider: github needs a
-// secret carrying an API credential and a webhook secret; google-cloud holds
-// no credential at all, so only its inbound-delivery settings are checked;
-// wiz needs its webhook token, plus API credentials when write-back is
+// secret carrying an API credential and a webhook secret; google-cloud and
+// aws hold no credential at all, so only their settings are checked; wiz
+// needs its webhook token, plus API credentials when write-back is
 // configured.
 func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error {
 	switch integ.Spec.Provider {
@@ -153,6 +153,8 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 		return validateGoogleCloud(integ)
 	case v1alpha1.IntegrationProviderWiz:
 		return c.validateWiz(ctx, integ)
+	case v1alpha1.IntegrationProviderAWS:
+		return validateAWS(integ)
 	}
 	secret, err := c.secret(ctx, integ)
 	if err != nil {
@@ -184,6 +186,17 @@ func validateGoogleCloud(integ *v1alpha1.Integration) error {
 	if scc.Audience == "" || scc.ServiceAccount == "" {
 		return errors.New(
 			"securityCommandCenter needs both audience and serviceAccount to authenticate the push subscription")
+	}
+	return nil
+}
+
+// validateAWS checks the aws Integration enables a capability. The CEL
+// schema already enforces exactly one inventory backend; whether that
+// backend is reachable is the enhancer's own startup check, because the
+// integration-controller holds no AWS credential to ask with.
+func validateAWS(integ *v1alpha1.Integration) error {
+	if integ.Spec.AWS == nil || integ.Spec.AWS.ResourceTags == nil {
+		return errors.New("aws integration enables no capability")
 	}
 	return nil
 }

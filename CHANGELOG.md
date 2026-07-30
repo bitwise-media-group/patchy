@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/bitwise-media-group/patchy/compare/v0.8.2...v0.9.0) (2026-07-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **context:** the context-controller flags --gcp-asset-scope, --gcp-repository-host and --gcp-label-* are removed; configure spec.googleCloud.cloudAssetInventory on the Integration instead.
+
+### Features
+
+* **api:** add wiz provider and cloudAssetInventory capability ([30bf973](https://github.com/bitwise-media-group/patchy/commit/30bf973747559260348f71e934eeebc00aadd1d5))
+* **context:** add the AWS resource-tags enhancer ([f55c9e7](https://github.com/bitwise-media-group/patchy/commit/f55c9e7fd8925a91f18c5762d59a97f6af54302d))
+* **context:** add the Azure resource-tags enhancer ([5d49885](https://github.com/bitwise-media-group/patchy/commit/5d49885d9239bc86386a9106ee74666077faedaf))
+* **context:** read the asset-inventory enhancer config from the Integration ([fe7bd09](https://github.com/bitwise-media-group/patchy/commit/fe7bd09b3952d7b3abbb4b695d34cbee89d793bd))
+* **integration:** wire the /wiz/webhooks route and write-back ([06c4c8d](https://github.com/bitwise-media-group/patchy/commit/06c4c8d61d651c9a0f56c6dc9b9f7229fc1493f7))
+* **webhook:** add shared-bearer-token authenticator ([44dd965](https://github.com/bitwise-media-group/patchy/commit/44dd96583cda0049fa2d839115e6546922de6b53))
+* **wiz:** add the Wiz Issues + Defend source package ([eb866d3](https://github.com/bitwise-media-group/patchy/commit/eb866d3e99efef33a9605d36662fbf728c477a27))
+
 ## [0.8.2](https://github.com/bitwise-media-group/patchy/compare/v0.8.1...v0.8.2) (2026-07-27)
 
 

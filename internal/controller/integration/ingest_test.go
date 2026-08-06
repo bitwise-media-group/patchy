@@ -102,6 +102,46 @@ func TestIngestCreatesFinding(t *testing.T) {
 	}
 }
 
+// A finding ingested by an integration with no issues capability of its own
+// still gets a tracking issue: trackingRef falls back to the namespace's
+// issues-enabled integration, exactly as its doc comment always promised.
+func TestIngestTrackingRefFallsBack(t *testing.T) {
+	in, c := newIngestor(t)
+	if err := c.Create(t.Context(), testIntegration()); err != nil {
+		t.Fatalf("create tracking integration: %v", err)
+	}
+	f := testSourceFinding(42)
+	f.Source = "warehouse"
+	if err := in.Ingest(t.Context(), testGenericIntegration("warehouse"), f); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	items := listFindings(t, c)
+	if len(items) != 1 {
+		t.Fatalf("findings = %d, want 1", len(items))
+	}
+	if ref := items[0].Spec.TrackingRef; ref == nil || ref.Name != "gh" {
+		t.Errorf("trackingRef = %+v, want the issues-enabled integration gh", ref)
+	}
+	if items[0].Spec.IntegrationRef.Name != "warehouse" {
+		t.Errorf("integrationRef = %+v, want the ingesting integration kept", items[0].Spec.IntegrationRef)
+	}
+}
+
+// With no issues-enabled integration anywhere, the finding is still tracked
+// in-cluster: trackingRef stays nil and ingestion proceeds.
+func TestIngestTrackingRefNoneWithoutTracker(t *testing.T) {
+	in, c := newIngestor(t)
+	f := testSourceFinding(42)
+	f.Source = "warehouse"
+	if err := in.Ingest(t.Context(), testGenericIntegration("warehouse"), f); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	items := listFindings(t, c)
+	if len(items) != 1 || items[0].Spec.TrackingRef != nil {
+		t.Errorf("trackingRef = %+v, want nil with no tracker configured", items[0].Spec.TrackingRef)
+	}
+}
+
 func TestIngestFoldsAndDedups(t *testing.T) {
 	in, c := newIngestor(t)
 	integ := testIntegration()

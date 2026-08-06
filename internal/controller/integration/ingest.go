@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -243,7 +244,7 @@ func (in *Ingestor) create(
 		},
 		Spec: v1alpha1.FindingSpec{
 			IntegrationRef: v1alpha1.LocalObjectReference{Name: integ.Name},
-			TrackingRef:    trackingRef(integ),
+			TrackingRef:    in.trackingRef(ctx, integ),
 			Source:         f.Source,
 			CloudResource:  toCloudResource(f.CloudResource),
 			Advisories:     f.Advisories,
@@ -347,12 +348,22 @@ func toAlert(f source.Finding) v1alpha1.Alert {
 
 // trackingRef denormalizes the projecting integration at creation: the
 // ingesting integration itself when issues-enabled, else the namespace's
-// issues-enabled one (nil when none — the finding is still tracked in-cluster).
-func trackingRef(integ *v1alpha1.Integration) *v1alpha1.LocalObjectReference {
+// issues-enabled one — a cloud or generic source has no issues capability of
+// its own, but its findings still deserve tracking issues. Nil when none (or
+// on a transient lookup failure): the finding is still tracked in-cluster.
+func (in *Ingestor) trackingRef(ctx context.Context, integ *v1alpha1.Integration) *v1alpha1.LocalObjectReference {
 	if issuesEnabled(integ) {
 		return &v1alpha1.LocalObjectReference{Name: integ.Name}
 	}
-	return nil
+	tracker, err := selectIntegration(ctx, in.Client, in.Namespace, issuesEnabled)
+	if err != nil {
+		if !errors.Is(err, ErrNoIntegration) {
+			in.log().LogAttrs(ctx, slog.LevelWarn, "tracking integration lookup failed",
+				slog.String("integration", integ.Name), slog.Any("error", err))
+		}
+		return nil
+	}
+	return &v1alpha1.LocalObjectReference{Name: tracker.Name}
 }
 
 func (in *Ingestor) window() time.Duration {

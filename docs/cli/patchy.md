@@ -32,6 +32,7 @@ Run `patchy can-i` to see your grants.
 * [patchy can-i](patchy_can-i.md)	 - Show which actions your RBAC allows
 * [patchy completion](patchy_completion.md)	 - Generate the autocompletion script for the specified shell
 * [patchy describe](patchy_describe.md)	 - Show the full detail of one resource
+* [patchy dev](patchy_dev.md)	 - Local test harnesses for generic-integration authors
 * [patchy expedite](patchy_expedite.md)	 - Expedite a finding past the accumulation window and the queue
 * [patchy get](patchy_get.md)	 - List patchy resources
 * [patchy resume](patchy_resume.md)	 - Resume a suspended finding

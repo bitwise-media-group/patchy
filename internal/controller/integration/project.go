@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/generic"
 	"github.com/bitwise-media-group/patchy/internal/ghas"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 	"github.com/bitwise-media-group/patchy/internal/labels"
@@ -86,6 +87,8 @@ type FindingReconciler struct {
 	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (trackerClient, error)
 	// WizAPI overrides the Wiz write-back client construction in tests.
 	WizAPI func(ctx context.Context, integ *v1alpha1.Integration) (wiz.IssueRejecter, error)
+	// GenericResolver overrides the generic write-back construction in tests.
+	GenericResolver func(ctx context.Context, integ *v1alpha1.Integration) (source.Resolver, error)
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
 }
@@ -594,8 +597,47 @@ func (r *FindingReconciler) resolverFor(
 		// seam is in place and internal/scc implements source.Handler only.
 		// Wiz Defend threats have no write-back by design: a runtime
 		// detection is a record, not a state to dismiss.
+		//
+		// Any other source id is a generic integration's name — that is
+		// what makes generic write-back a lookup rather than a new case.
+		return r.genericResolverFor(ctx, fnd, sourceID)
+	}
+}
+
+// genericResolverFor builds the write-back for a generic source, or nil when
+// the named Integration is gone, is not generic, or has the resolver off —
+// exactly the "reading is a complete source" posture of the typed providers.
+func (r *FindingReconciler) genericResolverFor(
+	ctx context.Context, fnd *v1alpha1.Finding, sourceID string,
+) (source.Resolver, error) {
+	var integ v1alpha1.Integration
+	key := types.NamespacedName{Namespace: fnd.Namespace, Name: sourceID}
+	if err := r.Get(ctx, key, &integ); err != nil {
+		if kerrors.IsNotFound(err) {
+			return nil, nil // an unknown source id has no write-back
+		}
+		return nil, fmt.Errorf("get generic integration %s: %w", key, err)
+	}
+	if !genericResolverEnabled(&integ) {
 		return nil, nil
 	}
+	if r.GenericResolver != nil {
+		return r.GenericResolver(ctx, &integ)
+	}
+	secret, err := r.Creds.WebhookSecret(ctx, &integ)
+	if err != nil {
+		return nil, err
+	}
+	res := integ.Spec.Generic.Source.Resolver
+	c, err := generic.NewClient(generic.ClientOptions{
+		URL:     res.URL,
+		Secret:  secret,
+		Timeout: res.Timeout.Duration,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return generic.NewResolver(c, integ.Name), nil
 }
 
 // wizClientFor resolves the Wiz write-back seam, honouring the test override.

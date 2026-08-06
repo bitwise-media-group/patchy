@@ -66,7 +66,7 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			slog.String("integration", integ.Name), slog.Any("error", err))
 	}
 	meta.SetStatusCondition(&integ.Status.Conditions, cond)
-	integ.Status.WebhookPath = "/" + string(integ.Spec.Provider) + "/webhooks"
+	integ.Status.WebhookPath = webhookPath(&integ)
 	integ.Status.ObservedGeneration = integ.Generation
 	// The demo reset runs regardless of the Ready condition (the parts
 	// needing credentials fail into the retry) and echoes status.resetAt

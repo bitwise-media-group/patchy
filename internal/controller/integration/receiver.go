@@ -17,6 +17,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/scc"
 	"github.com/bitwise-media-group/patchy/internal/webhook"
 	"github.com/bitwise-media-group/patchy/internal/wiz"
+	pkggeneric "github.com/bitwise-media-group/patchy/pkg/generic"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
@@ -75,6 +76,15 @@ func (r *Receiver) Endpoints() []webhook.Endpoint {
 			Auth:    &webhook.TokenAuthenticator{SecretsFor: r.WizTokens},
 			Decode:  wizDecoder,
 			Handler: webhook.HandlerFunc(r.handleWiz),
+		},
+		{
+			Path: GenericPathPattern,
+			Auth: &webhook.HMACAuthenticator{
+				Header:            pkggeneric.SignatureHeader,
+				SecretsForRequest: r.genericSecretsFor,
+			},
+			Decode:  genericDecoder,
+			Handler: webhook.HandlerFunc(r.handleGeneric),
 		},
 	}
 }

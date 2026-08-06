@@ -157,6 +157,8 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 		return validateAWS(integ)
 	case v1alpha1.IntegrationProviderAzure:
 		return validateAzure(integ)
+	case v1alpha1.IntegrationProviderGeneric:
+		return c.validateGeneric(ctx, integ)
 	}
 	secret, err := c.secret(ctx, integ)
 	if err != nil {

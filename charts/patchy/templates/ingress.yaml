@@ -11,7 +11,10 @@
 # validates the OIDC token a Pub/Sub push subscription signs (a push cannot
 # compute an HMAC — Pub/Sub composes the message, not the sender), and
 # /wiz/webhooks validates the shared bearer token a Wiz automation action
-# carries. The probes stay off the internet. See docs/deployment/webhook.md.
+# carries. /generic/ is the one prefix covering many paths — each generic
+# Integration listens at /generic/<name>/webhooks, validating an HMAC against
+# that Integration's own secret, so the list here stays static however many
+# there are. The probes stay off the internet. See docs/deployment/webhook.md.
 {{- if .Values.webhook.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -36,7 +39,7 @@ spec:
         - host: {{ required "webhook.host is required when webhook.ingress is enabled" .Values.webhook.host | quote }}
           http:
               paths:
-                  {{- range $path := list "/github/webhooks" "/google-cloud/webhooks" "/wiz/webhooks" }}
+                  {{- range $path := list "/github/webhooks" "/google-cloud/webhooks" "/wiz/webhooks" "/generic/" }}
                   - path: {{ $path }}
                     pathType: Prefix
                     backend:

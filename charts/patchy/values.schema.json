@@ -225,6 +225,13 @@
             "properties": {
                 "create": {
                     "type": "boolean"
+                },
+                "extraEgress": {
+                    "description": "Verbatim NetworkPolicy egress rules appended to the controller's policy (e.g. a generic Integration endpoint on a port other than 443).",
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
                 }
             }
         }

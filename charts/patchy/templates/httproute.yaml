@@ -9,9 +9,12 @@
 # endpoints a provider needs, and each authenticates its own way —
 # /github/webhooks by HMAC over the raw body, /google-cloud/webhooks by the
 # OIDC token a Pub/Sub push subscription signs, /wiz/webhooks by the shared
-# bearer token a Wiz automation action carries. The probes stay
-# cluster-internal. Requires the Gateway API CRDs and a Gateway to attach to
-# via parentRefs — see docs/deployment/webhook.md.
+# bearer token a Wiz automation action carries. /generic/ is the one prefix
+# covering many paths — each generic Integration listens at
+# /generic/<name>/webhooks under its own HMAC secret, so the list stays
+# static however many there are. The probes stay cluster-internal. Requires
+# the Gateway API CRDs and a Gateway to attach to via parentRefs — see
+# docs/deployment/webhook.md.
 {{- if .Values.webhook.httpRoute.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -42,6 +45,9 @@ spec:
               - path:
                     type: PathPrefix
                     value: /wiz/webhooks
+              - path:
+                    type: PathPrefix
+                    value: /generic/
           backendRefs:
               - name: {{ include "patchy.fullname" . }}-integration-controller
                 port: {{ .Values.integrationController.service.port }}

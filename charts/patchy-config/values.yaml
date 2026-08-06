@@ -169,6 +169,39 @@ integrations: []
 #               #     name: scm-repository-name
 #               #     provider: scm-repository-provider
 #               #     url: scm-repository-url
+#
+# The generic Integration registers ANY external HTTP process — a scheduled
+# job querying a warehouse store, an internal CMDB — as a finding source, a
+# context enhancer, or both. All three exchanges are JSON bodies HMAC-signed
+# (X-Patchy-Signature-256) with the shared secret under the credential
+# Secret's webhookSecret key; docs/integrations/generic.md is the payload
+# contract. Unlike every other provider, generic is NOT a singleton: each
+# entry is its own identity — its NAME is the finding source id, the
+# enrichment attribution, and the webhook path segment
+# (/generic/<name>/webhooks, advertised on status.webhookPath) — so define as
+# many as you have processes. Pair a source with a github Integration for its
+# findings' tracking issues.
+# - name: warehouse
+#   spec:
+#       provider: generic
+#       secretRef:
+#           name: patchy-warehouse  # webhookSecret (the shared HMAC secret)
+#       generic:
+#           source:
+#               enabled: true       # inbound findings at /generic/warehouse/webhooks
+#               # minSeverity: high # low|medium|high|critical, default low
+#               # resolver enables verdict write-back: a dismissed finding
+#               # POSTs {alerts, verdict} to the url, signed the same way.
+#               # resolver:
+#               #     enabled: true
+#               #     url: https://warehouse.internal/patchy/resolve
+#               #     timeout: 60s
+#           # enhance makes patchy POST each opened finding's issue view to
+#           # the url; the response body is the enrichment (204 = nothing).
+#           # enhance:
+#           #     enabled: true
+#           #     url: https://warehouse.internal/patchy/enhance
+#           #     timeout: 60s
 
 forges: []
 # - name: github

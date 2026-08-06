@@ -171,9 +171,12 @@ integrationController:
     # the Kubernetes API out. Ingress allows 8080 from anywhere (kubelet
     # probes arrive from the node IP, which no pod selector can match; your
     # ingress controller may live in any namespace); the per-Integration HMAC
-    # signature check is the authentication.
+    # signature check is the authentication. extraEgress appends verbatim
+    # NetworkPolicy egress rules — a generic Integration's resolver endpoint
+    # on a port other than 443, say; endpoints on 443 need nothing.
     networkPolicy:
         create: true
+        extraEgress: []
 
 # ---- source-controller ------------------------------------------------------
 # The Forge/Repository reconcilers plus the artifact server on :9790: the
@@ -211,9 +214,10 @@ sourceController:
         create: true
 
 # ---- context-controller -----------------------------------------------------
-# The enhancer chain over Opened findings: the cloud tag/label enhancers and
-# the CMDB placeholder. Its only external access is the cloud inventory
-# lookups, and only when an Integration enables them — read-only, and
+# The enhancer chain over Opened findings: the cloud tag/label enhancers, the
+# generic HTTP fan-out, and the CMDB placeholder. Its external access is the
+# cloud inventory lookups plus any generic Integrations' enhancer endpoints,
+# and only when an Integration enables them — the cloud lookups read-only and
 # credential-less: the Google Cloud enhancer uses workload identity
 # (annotate serviceAccount with iam.gke.io/gcp-service-account and grant
 # roles/cloudasset.viewer), the AWS enhancer the SDK default chain (on EKS,
@@ -246,8 +250,12 @@ contextController:
         create: true
         name: ""
         annotations: {}
+    # extraEgress appends verbatim NetworkPolicy egress rules — a generic
+    # Integration's enhancer endpoint on a port other than 443, say;
+    # endpoints on 443 need nothing.
     networkPolicy:
         create: true
+        extraEgress: []
 
 # ---- investigation-controller -----------------------------------------------
 # The gate (creates Repository + Investigation, parks repo-less findings) and

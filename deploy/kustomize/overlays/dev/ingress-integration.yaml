@@ -43,3 +43,10 @@ spec:
                             name: patchy-integration-controller
                             port:
                                 number: 8080
+                  - path: /generic/
+                    pathType: Prefix
+                    backend:
+                        service:
+                            name: patchy-integration-controller
+                            port:
+                                number: 8080

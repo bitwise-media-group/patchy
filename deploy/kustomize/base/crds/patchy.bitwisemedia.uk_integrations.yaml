@@ -37,9 +37,13 @@ spec:
       openAPIV3Schema:
         description: |-
           Integration configures one external system patchy exchanges finding state
-          with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-          context enhancers (Cloud Asset Inventory, AWS resource tags, Azure resource
-          tags), tracking out (GitHub issues), and the human signals flowing back.
+          with: scanners in (code-scanning alerts, Security Command Center, Wiz, or
+          any process speaking the generic HTTP contract), context enhancers (Cloud
+          Asset Inventory, AWS resource tags, Azure resource tags, generic HTTP),
+          tracking out (GitHub issues), and the human signals flowing back.
+
+          A generic Integration's name doubles as its finding source id and label
+          value, so it must not shadow a built-in source id and must fit a label.
         properties:
           apiVersion:
             description: |-
@@ -62,7 +66,8 @@ spec:
             description: |-
               IntegrationSpec configures one external system. Exactly the provider block
               matching spec.provider must be set (CEL-enforced) — integrations are
-              strongly typed, not generic.
+              strongly typed; the generic provider is the deliberate escape hatch, typed
+              around patchy's own HTTP contract rather than a vendor's.
             properties:
               aws:
                 description: AWS is the aws provider block.
@@ -174,6 +179,69 @@ spec:
                             description: URL label carries a full repository URL,
                               overriding the parts.
                             type: string
+                        type: object
+                    required:
+                    - enabled
+                    type: object
+                type: object
+              generic:
+                description: Generic is the generic provider block.
+                properties:
+                  enhance:
+                    description: Enhance enables the outbound context enhancer.
+                    properties:
+                      enabled:
+                        description: Enabled turns the enhancer capability on.
+                        type: boolean
+                      timeout:
+                        default: 60s
+                        description: Timeout bounds each call.
+                        type: string
+                      url:
+                        description: URL patchy POSTs enhancement requests to.
+                        minLength: 1
+                        pattern: ^https?://.+$
+                        type: string
+                    required:
+                    - enabled
+                    - url
+                    type: object
+                  source:
+                    description: Source enables the inbound findings webhook.
+                    properties:
+                      enabled:
+                        description: Enabled turns the inbound receiver on for this
+                          integration.
+                        type: boolean
+                      minSeverity:
+                        default: low
+                        description: MinSeverity drops findings below this severity
+                          at ingestion.
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - critical
+                        type: string
+                      resolver:
+                        description: Resolver enables verdict write-back to the external
+                          process.
+                        properties:
+                          enabled:
+                            description: Enabled turns the write-back on.
+                            type: boolean
+                          timeout:
+                            default: 60s
+                            description: Timeout bounds each call.
+                            type: string
+                          url:
+                            description: URL patchy POSTs verdicts to.
+                            minLength: 1
+                            pattern: ^https?://.+$
+                            type: string
+                        required:
+                        - enabled
+                        - url
                         type: object
                     required:
                     - enabled
@@ -342,6 +410,7 @@ spec:
                 - wiz
                 - aws
                 - azure
+                - generic
                 type: string
               replay:
                 description: |-
@@ -390,12 +459,14 @@ spec:
                   (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
                   "webhookSecret" for receiver HMAC validation. For wiz: key
                   "webhookToken" (the shared bearer token deliveries carry), plus keys
-                  "clientId" + "clientSecret" when spec.wiz.api enables write-back.
-                  Required for github and wiz, optional otherwise — a google-cloud
-                  integration holds no credential, since Pub/Sub authenticates itself
-                  with a signed OIDC token. It stays permitted for every provider so a
-                  future capability that does need one (SCC mute-on-ignore) needs no
-                  schema change.
+                  "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
+                  generic: key "webhookSecret", the shared HMAC secret signing both
+                  inbound deliveries and patchy's outbound resolver/enhancer calls.
+                  Required for github, wiz, and generic, optional otherwise — a
+                  google-cloud integration holds no credential, since Pub/Sub
+                  authenticates itself with a signed OIDC token. It stays permitted for
+                  every provider so a future capability that does need one (SCC
+                  mute-on-ignore) needs no schema change.
                 properties:
                   name:
                     description: Name of the Secret.
@@ -479,9 +550,11 @@ spec:
               rule: (self.provider == 'github') == has(self.github) && (self.provider
                 == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz')
                 == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider
-                == 'azure') == has(self.azure)
-            - message: spec.secretRef is required for the github and wiz providers
-              rule: '!(self.provider in [''github'', ''wiz'']) || has(self.secretRef)'
+                == 'azure') == has(self.azure) && (self.provider == 'generic') ==
+                has(self.generic)
+            - message: spec.secretRef is required for the github, wiz, and generic
+                providers
+              rule: '!(self.provider in [''github'', ''wiz'', ''generic'']) || has(self.secretRef)'
           status:
             description: IntegrationStatus is the integration's observed state.
             properties:
@@ -638,6 +711,13 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: a generic integration may not use a reserved source id as its name
+          rule: self.spec.provider != 'generic' || !has(self.metadata.name) || !(self.metadata.name
+            in ['ghas', 'gcp-scc', 'wiz-issues', 'wiz-defend'])
+        - message: a generic integration's name must be at most 63 characters
+          rule: self.spec.provider != 'generic' || !has(self.metadata.name) || size(self.metadata.name)
+            <= 63
     served: true
     storage: true
     subresources:

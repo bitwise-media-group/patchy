@@ -168,6 +168,10 @@ func TestSchemaValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("generic integration requires its provider block, secretRef, and an unreserved name", func(t *testing.T) {
+		testGenericIntegrationSchema(ctx, t, c)
+	})
+
 	t.Run("asset-inventory-only google-cloud integration is accepted", func(t *testing.T) {
 		good := &patchyv1.Integration{
 			ObjectMeta: metav1.ObjectMeta{Name: "gcp-cai-only", Namespace: "default"},
@@ -275,6 +279,61 @@ func TestSchemaValidation(t *testing.T) {
 			t.Error("Status().Update(confidence=1.5) = nil, want pattern rejection")
 		}
 	})
+}
+
+// testGenericIntegrationSchema exercises the generic provider's CEL rules:
+// the provider/block biconditional, the mandatory secretRef, the URL pattern,
+// and the reserved-source-id name guard.
+func testGenericIntegrationSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	generic := func(name string, spec patchyv1.IntegrationSpec) *patchyv1.Integration {
+		return &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec:       spec,
+		}
+	}
+	block := &patchyv1.GenericIntegration{
+		Source: &patchyv1.GenericSource{
+			Enabled:  true,
+			Resolver: &patchyv1.GenericResolver{Enabled: true, URL: "https://warehouse.internal/resolve"},
+		},
+		Enhance: &patchyv1.GenericEnhancer{Enabled: true, URL: "https://warehouse.internal/enhance"},
+	}
+	if err := c.Create(ctx, generic("warehouse", patchyv1.IntegrationSpec{
+		Provider:  patchyv1.IntegrationProviderGeneric,
+		SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+		Generic:   block,
+	})); err != nil {
+		t.Errorf("Create(valid generic integration) = %v, want nil", err)
+	}
+	if err := c.Create(ctx, generic("generic-no-block", patchyv1.IntegrationSpec{
+		Provider:  patchyv1.IntegrationProviderGeneric,
+		SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+	})); err == nil {
+		t.Error("Create(generic integration without generic block) = nil, want CEL rejection")
+	}
+	if err := c.Create(ctx, generic("generic-no-secret", patchyv1.IntegrationSpec{
+		Provider: patchyv1.IntegrationProviderGeneric,
+		Generic:  block,
+	})); err == nil {
+		t.Error("Create(generic integration without secretRef) = nil, want CEL rejection")
+	}
+	if err := c.Create(ctx, generic("generic-bad-url", patchyv1.IntegrationSpec{
+		Provider:  patchyv1.IntegrationProviderGeneric,
+		SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+		Generic: &patchyv1.GenericIntegration{
+			Enhance: &patchyv1.GenericEnhancer{Enabled: true, URL: "warehouse.internal/enhance"},
+		},
+	})); err == nil {
+		t.Error("Create(generic integration with schemeless URL) = nil, want pattern rejection")
+	}
+	if err := c.Create(ctx, generic("ghas", patchyv1.IntegrationSpec{
+		Provider:  patchyv1.IntegrationProviderGeneric,
+		SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+		Generic:   block,
+	})); err == nil {
+		t.Error("Create(generic integration named ghas) = nil, want reserved-name rejection")
+	}
 }
 
 // testAWSIntegrationSchema exercises the aws provider's CEL rules: the

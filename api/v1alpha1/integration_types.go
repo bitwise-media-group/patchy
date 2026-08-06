@@ -8,7 +8,7 @@ import (
 )
 
 // IntegrationProvider identifies the external system an Integration talks to.
-// +kubebuilder:validation:Enum=github;google-cloud;wiz;aws;azure
+// +kubebuilder:validation:Enum=github;google-cloud;wiz;aws;azure;generic
 type IntegrationProvider string
 
 // Integration providers.
@@ -18,6 +18,7 @@ const (
 	IntegrationProviderWiz         IntegrationProvider = "wiz"
 	IntegrationProviderAWS         IntegrationProvider = "aws"
 	IntegrationProviderAzure       IntegrationProvider = "azure"
+	IntegrationProviderGeneric     IntegrationProvider = "generic"
 )
 
 // GitHubIssues configures the tracking projection: findings are projected as
@@ -338,11 +339,77 @@ type AzureIntegration struct {
 	ResourceTags *AzureResourceTags `json:"resourceTags,omitempty"`
 }
 
+// GenericResolver configures verdict write-back to the external process: on a
+// dismissed finding patchy POSTs the verdict and the finding's alerts to the
+// URL, signing the body the same way inbound deliveries are signed. The
+// process must treat the call as idempotent — patchy retries on failure.
+type GenericResolver struct {
+	// Enabled turns the write-back on.
+	Enabled bool `json:"enabled"`
+	// URL patchy POSTs verdicts to.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^https?://.+$`
+	URL string `json:"url"`
+	// Timeout bounds each call.
+	// +optional
+	// +kubebuilder:default="60s"
+	Timeout metav1.Duration `json:"timeout,omitempty"`
+}
+
+// GenericSource configures the inbound findings webhook: the external process
+// POSTs patchy's documented findings payload (docs/integrations/generic.md)
+// to /generic/<integration-name>/webhooks, HMAC-signing each body with the
+// shared secret. Built for sources that are not event-driven — a process that
+// queries a warehouse store on its own schedule pushes whatever it found.
+type GenericSource struct {
+	// Enabled turns the inbound receiver on for this integration.
+	Enabled bool `json:"enabled"`
+	// MinSeverity drops findings below this severity at ingestion.
+	// +optional
+	// +kubebuilder:default=low
+	MinSeverity Level `json:"minSeverity,omitempty"`
+	// Resolver enables verdict write-back to the external process.
+	// +optional
+	Resolver *GenericResolver `json:"resolver,omitempty"`
+}
+
+// GenericEnhancer configures the external context enhancer: during
+// enhancement patchy POSTs each finding's issue view to the URL and the
+// response body is the enrichment (empty or 204 contributes nothing). The
+// call is synchronous and signed like every other generic exchange.
+type GenericEnhancer struct {
+	// Enabled turns the enhancer capability on.
+	Enabled bool `json:"enabled"`
+	// URL patchy POSTs enhancement requests to.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^https?://.+$`
+	URL string `json:"url"`
+	// Timeout bounds each call.
+	// +optional
+	// +kubebuilder:default="60s"
+	Timeout metav1.Duration `json:"timeout,omitempty"`
+}
+
+// GenericIntegration is the generic provider block: an external HTTP process
+// acting as a finding source, a context enhancer, or both. Unlike every other
+// provider, generic is not a namespace singleton — each generic Integration
+// is its own identity: its name is the finding source id, the enhancer
+// attribution, and the webhook path segment, so any number may coexist.
+type GenericIntegration struct {
+	// Source enables the inbound findings webhook.
+	// +optional
+	Source *GenericSource `json:"source,omitempty"`
+	// Enhance enables the outbound context enhancer.
+	// +optional
+	Enhance *GenericEnhancer `json:"enhance,omitempty"`
+}
+
 // IntegrationSpec configures one external system. Exactly the provider block
 // matching spec.provider must be set (CEL-enforced) — integrations are
-// strongly typed, not generic.
-// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider == 'azure') == has(self.azure)",message="exactly the provider block matching spec.provider must be set"
-// +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz']) || has(self.secretRef)",message="spec.secretRef is required for the github and wiz providers"
+// strongly typed; the generic provider is the deliberate escape hatch, typed
+// around patchy's own HTTP contract rather than a vendor's.
+// +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider == 'azure') == has(self.azure) && (self.provider == 'generic') == has(self.generic)",message="exactly the provider block matching spec.provider must be set"
+// +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz', 'generic']) || has(self.secretRef)",message="spec.secretRef is required for the github, wiz, and generic providers"
 type IntegrationSpec struct {
 	// Provider is the external system type.
 	Provider IntegrationProvider `json:"provider"`
@@ -350,12 +417,14 @@ type IntegrationSpec struct {
 	// (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
 	// "webhookSecret" for receiver HMAC validation. For wiz: key
 	// "webhookToken" (the shared bearer token deliveries carry), plus keys
-	// "clientId" + "clientSecret" when spec.wiz.api enables write-back.
-	// Required for github and wiz, optional otherwise — a google-cloud
-	// integration holds no credential, since Pub/Sub authenticates itself
-	// with a signed OIDC token. It stays permitted for every provider so a
-	// future capability that does need one (SCC mute-on-ignore) needs no
-	// schema change.
+	// "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
+	// generic: key "webhookSecret", the shared HMAC secret signing both
+	// inbound deliveries and patchy's outbound resolver/enhancer calls.
+	// Required for github, wiz, and generic, optional otherwise — a
+	// google-cloud integration holds no credential, since Pub/Sub
+	// authenticates itself with a signed OIDC token. It stays permitted for
+	// every provider so a future capability that does need one (SCC
+	// mute-on-ignore) needs no schema change.
 	// +optional
 	SecretRef *LocalSecretReference `json:"secretRef,omitempty"`
 	// Interval between credential revalidations.
@@ -397,6 +466,9 @@ type IntegrationSpec struct {
 	// Azure is the azure provider block.
 	// +optional
 	Azure *AzureIntegration `json:"azure,omitempty"`
+	// Generic is the generic provider block.
+	// +optional
+	Generic *GenericIntegration `json:"generic,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -484,9 +556,15 @@ type IntegrationStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Integration configures one external system patchy exchanges finding state
-// with: scanners in (code-scanning alerts, Security Command Center, Wiz),
-// context enhancers (Cloud Asset Inventory, AWS resource tags, Azure resource
-// tags), tracking out (GitHub issues), and the human signals flowing back.
+// with: scanners in (code-scanning alerts, Security Command Center, Wiz, or
+// any process speaking the generic HTTP contract), context enhancers (Cloud
+// Asset Inventory, AWS resource tags, Azure resource tags, generic HTTP),
+// tracking out (GitHub issues), and the human signals flowing back.
+//
+// A generic Integration's name doubles as its finding source id and label
+// value, so it must not shadow a built-in source id and must fit a label.
+// +kubebuilder:validation:XValidation:rule="self.spec.provider != 'generic' || !has(self.metadata.name) || !(self.metadata.name in ['ghas', 'gcp-scc', 'wiz-issues', 'wiz-defend'])",message="a generic integration may not use a reserved source id as its name"
+// +kubebuilder:validation:XValidation:rule="self.spec.provider != 'generic' || !has(self.metadata.name) || size(self.metadata.name) <= 63",message="a generic integration's name must be at most 63 characters"
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

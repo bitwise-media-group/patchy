@@ -68,14 +68,16 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 
-	// The chain needs the manager's cached client: the cloud enhancers read
-	// their configuration off their Integrations per enhancement, so a spec
-	// change takes effect without a restart.
+	// The chain needs the manager's cached client: the dynamic enhancers
+	// read their configuration off their Integrations per enhancement, so a
+	// spec change takes effect without a restart. The generic source also
+	// takes the API reader — signing secrets are never cached.
 	chain, closeChain, err := buildChain(chainOptions{
 		StaticFile: opts.String("static-context-file"),
 		Assets:     ctxctrl.AssetConfigSource(mgr.GetClient(), namespace),
 		AWSTags:    ctxctrl.AWSTagsConfigSource(mgr.GetClient(), namespace),
 		AzureTags:  ctxctrl.AzureTagsConfigSource(mgr.GetClient(), namespace),
+		Generic:    ctxctrl.GenericEnhancerConfigSource(mgr.GetClient(), mgr.GetAPIReader(), namespace, log),
 	})
 	if err != nil {
 		return err
@@ -107,19 +109,23 @@ type chainOptions struct {
 	AWSTags enhancers.AWSConfigSource
 	// AzureTags reads the Azure resource-tags capability off the Integration.
 	AzureTags enhancers.AzureConfigSource
+	// Generic reads every enabled generic enhancer endpoint.
+	Generic enhancers.GenericConfigSource
 }
 
 // buildChain assembles the enhancer chain. Order matters: the first enhancer
 // to resolve a repository wins, so the cloud lookups run ahead of the CMDB,
 // which knows about repositories rather than resources (the cloud enhancers
-// are disjoint by provider, so their order is immaterial). The cloud
-// enhancers are always in the chain — whether they act is their Integration's
-// decision, read per enhancement.
+// are disjoint by provider, so their order is immaterial); the generic
+// fan-out runs after them — the platform's own inventory outranks an
+// external process on repository resolution — and ahead of the static file.
+// The dynamic enhancers are always in the chain — whether they act is their
+// Integrations' decision, read per enhancement.
 func buildChain(o chainOptions) ([]enhance.Enhancer, func(), error) {
 	gcp := &enhancers.DynamicGoogleCloud{Config: o.Assets}
 	aws := &enhancers.DynamicAWS{Config: o.AWSTags}
 	azure := &enhancers.DynamicAzure{Config: o.AzureTags}
-	chain := []enhance.Enhancer{gcp, aws, azure}
+	chain := []enhance.Enhancer{gcp, aws, azure, &enhancers.DynamicGeneric{Configs: o.Generic}}
 	cleanup := func() {
 		_ = gcp.Close()
 		_ = aws.Close()

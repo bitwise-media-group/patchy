@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/enhancers"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 )
@@ -53,7 +54,7 @@ func openedFinding() *v1alpha1.Finding {
 }
 
 func newCRDReconciler(
-	t *testing.T, enhancers []enhance.Enhancer, objs ...client.Object,
+	t *testing.T, chain []enhance.Enhancer, objs ...client.Object,
 ) (*FindingReconciler, client.Client) {
 	t.Helper()
 	c := fake.NewClientBuilder().
@@ -63,7 +64,7 @@ func newCRDReconciler(
 		Build()
 	return &FindingReconciler{
 		Client:    c,
-		Enhancers: enhancers,
+		Enhancers: chain,
 		Now:       func() time.Time { return crdClock },
 	}, c
 }
@@ -87,7 +88,7 @@ func getFinding(t *testing.T, c client.Client) *v1alpha1.Finding {
 }
 
 func TestEnhanceAdvancesFinding(t *testing.T) {
-	enhancers := []enhance.Enhancer{
+	chain := []enhance.Enhancer{
 		&crdEnhancer{id: "cmdb", enr: &enhance.Enrichment{
 			Owners:          []string{"alice", "bob"},
 			CommentMarkdown: "owned by team-payments",
@@ -95,7 +96,7 @@ func TestEnhanceAdvancesFinding(t *testing.T) {
 		}},
 		&crdEnhancer{id: "empty"}, // (nil, nil): nothing to add
 	}
-	r, c := newCRDReconciler(t, enhancers, openedFinding())
+	r, c := newCRDReconciler(t, chain, openedFinding())
 	run(t, r)
 
 	f := getFinding(t, c)
@@ -116,12 +117,74 @@ func TestEnhanceAdvancesFinding(t *testing.T) {
 	}
 }
 
+// multiEnhancer fakes a chain entry speaking for several identities, the
+// enhancers.MultiEnhancer shape.
+type multiEnhancer struct {
+	enrs []enhancers.AttributedEnrichment
+	err  error
+}
+
+func (m *multiEnhancer) ID() string { return "generic" }
+
+func (m *multiEnhancer) Enhance(context.Context, enhance.Issue) (*enhance.Enrichment, error) {
+	return nil, nil
+}
+
+func (m *multiEnhancer) EnhanceAll(context.Context, enhance.Issue) ([]enhancers.AttributedEnrichment, error) {
+	return m.enrs, m.err
+}
+
+// A multi-identity chain entry contributes one individually-attributed
+// enrichment per identity, and its partial results survive its own partial
+// failure.
+func TestEnhanceMultiEnhancer(t *testing.T) {
+	chain := []enhance.Enhancer{
+		&crdEnhancer{id: "cmdb", enr: &enhance.Enrichment{Owners: []string{"alice"}}},
+		&multiEnhancer{
+			enrs: []enhancers.AttributedEnrichment{
+				{ID: "cmdb-bridge", Enrichment: &enhance.Enrichment{
+					Owners:          []string{"alice", "bob"},
+					CommentMarkdown: "from the bridge",
+				}},
+				{ID: "warehouse", Enrichment: &enhance.Enrichment{
+					Attributes: map[string]string{"tier": "2"},
+				}},
+			},
+			err: errors.New("a third endpoint was down"),
+		},
+	}
+	r, c := newCRDReconciler(t, chain, openedFinding())
+	run(t, r)
+
+	f := getFinding(t, c)
+	if f.Status.Phase != v1alpha1.PhaseEnhanced {
+		t.Errorf("phase = %q, want Enhanced despite the partial failure", f.Status.Phase)
+	}
+	if len(f.Status.Enrichments) != 3 {
+		t.Fatalf("enrichments = %+v, want cmdb + both identities", f.Status.Enrichments)
+	}
+	byID := map[string]v1alpha1.Enrichment{}
+	for _, e := range f.Status.Enrichments {
+		byID[e.Enhancer] = e
+	}
+	if byID["cmdb-bridge"].Markdown != "from the bridge" {
+		t.Errorf("cmdb-bridge enrichment = %+v, want its markdown attributed to it", byID["cmdb-bridge"])
+	}
+	if byID["warehouse"].Attributes["tier"] != "2" {
+		t.Errorf("warehouse enrichment = %+v, want its attributes attributed to it", byID["warehouse"])
+	}
+	// Owners merge across single and multi entries, deduped in chain order.
+	if len(f.Status.Owners) != 2 || f.Status.Owners[0] != "alice" || f.Status.Owners[1] != "bob" {
+		t.Errorf("owners = %v, want [alice bob]", f.Status.Owners)
+	}
+}
+
 func TestEnhancerErrorSkipped(t *testing.T) {
-	enhancers := []enhance.Enhancer{
+	chain := []enhance.Enhancer{
 		&crdEnhancer{id: "broken", err: errors.New("cmdb down")},
 		&crdEnhancer{id: "ok", enr: &enhance.Enrichment{Owners: []string{"carol"}}},
 	}
-	r, c := newCRDReconciler(t, enhancers, openedFinding())
+	r, c := newCRDReconciler(t, chain, openedFinding())
 	run(t, r)
 
 	f := getFinding(t, c)
@@ -155,10 +218,10 @@ func TestEnhanceSkipsSuspended(t *testing.T) {
 
 func TestEnrichmentMarkdownTruncated(t *testing.T) {
 	huge := strings.Repeat("x", maxEnrichmentMarkdown+100)
-	enhancers := []enhance.Enhancer{
+	chain := []enhance.Enhancer{
 		&crdEnhancer{id: "big", enr: &enhance.Enrichment{CommentMarkdown: huge}},
 	}
-	r, c := newCRDReconciler(t, enhancers, openedFinding())
+	r, c := newCRDReconciler(t, chain, openedFinding())
 	run(t, r)
 	if got := len(getFinding(t, c).Status.Enrichments[0].Markdown); got != maxEnrichmentMarkdown {
 		t.Errorf("markdown len = %d, want %d", got, maxEnrichmentMarkdown)

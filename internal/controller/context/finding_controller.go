@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/enhancers"
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
@@ -115,11 +116,28 @@ type chainResult struct {
 
 // runChain runs every enhancer over the finding, collecting what they
 // contribute. One broken enhancer must not wedge the pipeline, so an error is
-// logged and the chain continues; the caller decides what a failure means.
+// logged and the chain continues; the caller decides what a failure means. A
+// chain entry implementing enhancers.MultiEnhancer speaks for several
+// identities at once — its enrichments arrive individually attributed, and
+// its partial results are kept even when some of its endpoints failed.
 func (r *FindingReconciler) runChain(ctx context.Context, fnd *v1alpha1.Finding) chainResult {
 	issue := enhanceInput(fnd)
 	var out chainResult
 	for _, e := range r.Enhancers {
+		if me, ok := e.(enhancers.MultiEnhancer); ok {
+			enrs, err := me.EnhanceAll(ctx, issue)
+			if err != nil {
+				out.failed = true
+				r.log().LogAttrs(ctx, slog.LevelWarn, "enhancer failed",
+					slog.String("enhancer", e.ID()),
+					slog.String("finding", fnd.Name),
+					slog.Any("error", err))
+			}
+			for _, ae := range enrs {
+				out.collect(ae.ID, ae.Enrichment, r.now())
+			}
+			continue
+		}
 		enr, err := e.Enhance(ctx, issue)
 		if err != nil {
 			out.failed = true
@@ -129,30 +147,36 @@ func (r *FindingReconciler) runChain(ctx context.Context, fnd *v1alpha1.Finding)
 				slog.Any("error", err))
 			continue
 		}
-		if enr == nil {
-			continue
-		}
-		// First enhancer to name a repository wins, matching how the
-		// projection resolves colliding attributes.
-		if out.repository == nil && enr.Repository != nil {
-			out.repository = enr.Repository
-		}
-		if len(out.enrichments) < 8 {
-			out.enrichments = append(out.enrichments, v1alpha1.Enrichment{
-				Enhancer:   e.ID(),
-				Owners:     enr.Owners,
-				Attributes: enr.Attributes,
-				Markdown:   truncate(enr.CommentMarkdown, maxEnrichmentMarkdown),
-				AppliedAt:  metav1.NewTime(r.now()),
-			})
-		}
-		for _, o := range enr.Owners {
-			if !slices.Contains(out.owners, o) {
-				out.owners = append(out.owners, o)
-			}
-		}
+		out.collect(e.ID(), enr, r.now())
 	}
 	return out
+}
+
+// collect folds one attributed enrichment into the result: first enhancer to
+// name a repository wins (matching how the projection resolves colliding
+// attributes), enrichments cap at the CRD's 8, owners dedup across the chain
+// in order.
+func (out *chainResult) collect(id string, enr *enhance.Enrichment, now time.Time) {
+	if enr == nil {
+		return
+	}
+	if out.repository == nil && enr.Repository != nil {
+		out.repository = enr.Repository
+	}
+	if len(out.enrichments) < 8 {
+		out.enrichments = append(out.enrichments, v1alpha1.Enrichment{
+			Enhancer:   id,
+			Owners:     enr.Owners,
+			Attributes: enr.Attributes,
+			Markdown:   truncate(enr.CommentMarkdown, maxEnrichmentMarkdown),
+			AppliedAt:  metav1.NewTime(now),
+		})
+	}
+	for _, o := range enr.Owners {
+		if !slices.Contains(out.owners, o) {
+			out.owners = append(out.owners, o)
+		}
+	}
 }
 
 // requeueOnConflict turns a write conflict into a requeue — something else

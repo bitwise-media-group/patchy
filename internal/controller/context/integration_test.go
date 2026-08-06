@@ -5,7 +5,9 @@ package context
 
 import (
 	"testing"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -170,5 +172,63 @@ func TestAzureTagsConfigSourceNoIntegration(t *testing.T) {
 	cfg, err := AzureTagsConfigSource(c, "patchy")(t.Context())
 	if cfg != nil || err != nil {
 		t.Errorf("AzureTagsConfigSource() = %+v, %v; want nil, nil (capability off)", cfg, err)
+	}
+}
+
+func genericIntegration(name, url string) *v1alpha1.Integration {
+	return &v1alpha1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "patchy"},
+		Spec: v1alpha1.IntegrationSpec{
+			Provider:  v1alpha1.IntegrationProviderGeneric,
+			SecretRef: &v1alpha1.LocalSecretReference{Name: name + "-creds"},
+			Generic: &v1alpha1.GenericIntegration{
+				Enhance: &v1alpha1.GenericEnhancer{
+					Enabled: true,
+					URL:     url,
+					Timeout: metav1.Duration{Duration: 45 * time.Second},
+				},
+			},
+		},
+	}
+}
+
+func TestGenericEnhancerConfigSource(t *testing.T) {
+	suspended := genericIntegration("suspended", "https://s.internal/enhance")
+	suspended.Spec.Suspend = true
+	enhanceOff := genericIntegration("off", "https://off.internal/enhance")
+	enhanceOff.Spec.Generic.Enhance.Enabled = false
+	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).
+		WithObjects(
+			genericIntegration("warehouse", "https://wh.internal/enhance"),
+			genericIntegration("cmdb", "https://cmdb.internal/enhance"),
+			suspended,
+			enhanceOff,
+			caiIntegration("gcp", "organizations/123"),
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "warehouse-creds", Namespace: "patchy"},
+				Data:       map[string][]byte{"webhookSecret": []byte("wh-secret")},
+			},
+			// cmdb's Secret is deliberately absent: the config must still
+			// list it, secret-less, so the failure stays attributed.
+		).Build()
+
+	cfgs, err := GenericEnhancerConfigSource(c, c, "patchy", nil)(t.Context())
+	if err != nil {
+		t.Fatalf("GenericEnhancerConfigSource() = %v, want nil", err)
+	}
+	if len(cfgs) != 2 {
+		t.Fatalf("configs = %+v, want warehouse and cmdb only", cfgs)
+	}
+	byName := map[string]enhancers.GenericConfig{}
+	for _, cfg := range cfgs {
+		byName[cfg.Name] = cfg
+	}
+	wh := byName["warehouse"]
+	if wh.URL != "https://wh.internal/enhance" || string(wh.Secret) != "wh-secret" ||
+		wh.Timeout != 45*time.Second {
+		t.Errorf("warehouse config = %+v, want url, secret, and timeout from the CR", wh)
+	}
+	if cmdb := byName["cmdb"]; cmdb.URL == "" || cmdb.Secret != nil {
+		t.Errorf("cmdb config = %+v, want listed secret-less", cmdb)
 	}
 }

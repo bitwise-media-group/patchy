@@ -77,3 +77,15 @@ func AzureResourceTagsEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.Azure.ResourceTags != nil &&
 		i.Spec.Azure.ResourceTags.Enabled
 }
+
+// GenericEnhanceEnabled reports whether the Integration enables the external
+// generic enhancer. It lives here for the same reason as
+// CloudAssetInventoryEnabled: its consumer is the context-controller. Unlike
+// every other capability, generic is exempt from the Select singleton rule —
+// any number of generic integrations enhance side by side, so consumers List
+// with this predicate rather than Select with it.
+func GenericEnhanceEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.Provider == v1alpha1.IntegrationProviderGeneric &&
+		i.Spec.Generic != nil && i.Spec.Generic.Enhance != nil &&
+		i.Spec.Generic.Enhance.Enabled
+}

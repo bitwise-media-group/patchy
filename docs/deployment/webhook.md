@@ -19,7 +19,9 @@ Two properties follow:
   ("accumulation closed", "older than an hour", "a slot freed"). A rejected delivery (`503` on a full queue, downtime)
   stays in GitHub's 30-day delivery log, and the [redelivery sweep](#missed-deliveries-the-redelivery-sweep) replays it.
 - **Exposure needs nothing exotic.** Any plain Ingress or Gateway API implementation works as-is — no header matching,
-  no rewrites, no mirroring. Only `/github/webhooks` needs exposing; the probes stay cluster-internal on port 8081.
+  no rewrites, no mirroring. Only the provider webhook paths need exposing — `/github/webhooks`, plus
+  `/google-cloud/webhooks`, `/wiz/webhooks`, and the `/generic/` prefix when those Integrations are configured; the
+  probes stay cluster-internal on port 8081.
 
 The credential story: the integration-controller holds no GitHub credential in its Deployment at all — the
 `Integration`/`Forge` Secrets are read on demand through the Kubernetes API, and the components that exercise write

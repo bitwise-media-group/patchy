@@ -5,6 +5,12 @@ both ends of the pipeline are plugin seams. The public interfaces live under `pk
 are stable for external reuse — and the built-in implementations under `internal/ghas`, `internal/scc`, `internal/wiz`
 and `internal/enhancers` are reference implementations of the same interfaces.
 
+There are two ways in. An **in-tree plugin** implements the Go interfaces below and is compiled into the controllers. An
+**external process** implements the [generic HTTP contract](integrations/generic.md) instead — the same source,
+write-back, and enhancer seams spoken over signed HTTP by a `provider: generic` Integration, with no patchy code changed
+at all. Reach for generic first when the integration is yours to host; reach for an in-tree plugin when it should ship
+with patchy.
+
 ## Finding sources (`pkg/source`)
 
 A source turns an external tool's alerts into patchy findings: it parses the delivery, fetches whatever detail the
@@ -77,9 +83,13 @@ Four implementations ship:
   choose), plus the resource's tags as attributes ([format](integrations/azure.md)). Configured on the `azure`
   Integration's `resourceTags` block, same rules: any Azure finding, whichever source, standing aside unless enabled.
 
-A real CMDB integration implements the same interface: resolve the repository, return owners and attributes, let the
-chain record them. The owners an enhancer reports are who patchy hands a finding to when it routes to humans — the
-highest-leverage integration in the system.
+A fifth chain entry is not one enhancer but a fan-out: the **generic HTTP enhancer** calls every `provider: generic`
+Integration whose `enhance` capability is on ([contract](integrations/generic.md)), each under its own name, in name
+order, after the cloud lookups and before the static file. It is how a real CMDB integrates without a rebuild.
+
+A real CMDB integration implements the same interface — in-tree or over the generic contract: resolve the repository,
+return owners and attributes, let the chain record them. The owners an enhancer reports are who patchy hands a finding
+to when it routes to humans — the highest-leverage integration in the system.
 
 ## Harnesses and models
 

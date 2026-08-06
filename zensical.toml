@@ -34,6 +34,7 @@ nav = [
     { "Wiz" = "integrations/wiz.md" },
     { "AWS resource tags" = "integrations/aws.md" },
     { "Azure resource tags" = "integrations/azure.md" },
+    { "Generic (HTTP)" = "integrations/generic.md" },
   ] },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },

@@ -18,17 +18,20 @@ Eight binaries, one module. "Not monolithic" means separate binaries/deployments
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
   provider webhooks (`/github/webhooks` HMAC, `/google-cloud/webhooks` Pub/Sub OIDC, `/wiz/webhooks` bearer
-  token; per-Integration secrets), ingests scanner alerts into Findings (accumulation, duplicate merge), projects
-  Findings out as tracking issues, and applies human signals (issue close, `/approve`, PR merge) back onto
-  Findings.
+  token, the `/generic/{name}/webhooks` wildcard with strictly per-name HMAC; per-Integration secrets), ingests
+  scanner alerts into Findings (accumulation, duplicate merge), projects Findings out as tracking issues
+  (trackingRef falls back to the namespace's issues-enabled Integration for non-github sources), applies human
+  signals (issue close, `/approve`, PR merge) back onto Findings, and POSTs dismissal verdicts to generic
+  integrations' resolver endpoints.
 - `cmd/source-controller` — `Forge` + `Repository` reconcilers: validates forge credentials, pins
   each Repository's head SHA once, downloads the tarball archive at that SHA (pure HTTP, no git binary), and
   serves it from the artifact endpoint (`:9790`) agent pods fetch credential-lessly.
 - `cmd/context-controller` — runs the enhancer chain (CMDB placeholder + the Cloud Asset Inventory lookup, whose
   config is the `cloudAssetInventory` block on the `google-cloud` Integration, + the AWS and Azure resource-tags
-  lookups, whose configs are the `resourceTags` blocks on the `aws` and `azure` Integrations) over `Opened`
-  Findings, writes enrichments/owners to status, transitions to `Enhanced`. No GitHub access at all; reads
-  Integrations read-only.
+  lookups, whose configs are the `resourceTags` blocks on the `aws` and `azure` Integrations, + the generic HTTP
+  fan-out — one signed synchronous call per `generic` Integration with `enhance` on, N instances, each attributed
+  by its own name) over `Opened` Findings, writes enrichments/owners to status, transitions to `Enhanced`. No
+  GitHub access at all; reads Integrations read-only plus generic signing Secrets by name.
 - `cmd/investigation-controller` — the gate (admits accumulated, aged findings; creates the Repository and one
   immutable `Investigation` per attempt) plus the analysis scheduler (bounded concurrency, launches agent Jobs,
   routes verdicts onto the Finding).
@@ -66,7 +69,8 @@ cmd/<binary>/       package main, thin: build root command, delegate to internal
                     because hack/build.sh builds everything there.
 internal/           All private code, one package per concern (see "Packages" below).
 pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
-                    enhancers). Exported signatures must not reference internal/ types.
+                    enhancers), pkg/generic (the generic integration's HTTP wire contract, importable
+                    by external processes). Exported signatures must not reference internal/ types.
 deploy/             kustomize base/overlays; deploy/README.md is the operator doc. The container
                     Dockerfile.* live at the repo root (goreleaser dockers_v2 builds them).
 charts/             Helm rendering of the same stack, pushed to ghcr OCI on release
@@ -127,6 +131,10 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   cookie sessions, zero k8s imports); `authz` = what you may do (SubjectAccessReviews for the custom verbs
   approve/retry/expedite/suspend/resume + native get).
 - `ghas`, `enhancers` — the built-in `pkg/source` and `pkg/enhance` implementations.
+- `generic` — the generic integration's behavior over the `pkg/generic` wire contract: the validating source
+  handler (source id = the Integration's NAME; N integrations coexist) and the HMAC-signing outbound client behind
+  both the verdict resolver and the enhancer call. The enhancer fan-out itself is
+  `enhancers.DynamicGeneric`/`MultiEnhancer` (internal seam; `pkg/enhance` stays one-plugin-one-identity).
 - `harness`, `runner` — adapted from evolve: harness builds argv, runner executes (observe-and-collect with a
   token-budget kill switch), harness parses stdout. Keep that separation.
 - `agentrun` — the in-pod stage flow (`investigate` | `remediate`); `report`/`envelope` are its contracts

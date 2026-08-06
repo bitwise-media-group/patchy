@@ -7,11 +7,13 @@ resources as the state machine and GitHub issues as a human-facing projection.
 
 1. The solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings), Google Cloud
    Security Command Center, and Wiz (Issues and Defend detections), and is tool-agnostic through a plugin
-   architecture:
+   architecture — including a `generic` provider through which any external HTTP process (a scheduled job over a
+   warehouse store, say — sources that are not event-driven) delivers findings in patchy's own documented contract,
+   receives verdict write-back, and serves as a context enhancer, any number of them side by side:
    - providers deliver findings to a single internet-facing receiver, each route authenticating on the provider's own
      terms — an HMAC over the raw body for GitHub, the OIDC token a Pub/Sub push subscription signs for Google Cloud,
-     which cannot compute an HMAC at all, and the shared bearer token a Wiz automation action carries, since it can
-     only send static headers;
+     which cannot compute an HMAC at all, the shared bearer token a Wiz automation action carries, since it can
+     only send static headers, and per-integration HMAC on the generic wildcard route (`/generic/<name>/webhooks`);
    - each alert is retrieved in full and folded into a `Finding` custom resource carrying all relevant context
      (advisories, rule, severity, locations, or the cloud resource it was raised against);
    - every Finding is projected to a GitHub tracking issue labelled with its source, its CVE/CWE/GHSA advisory
@@ -84,7 +86,8 @@ consistent across the estate.
 ### Components
 
 - **integration-controller** — the single internet-facing entry point, driven by `Integration` resources. Inbound:
-  validates provider webhooks (per-Integration secrets: GitHub HMAC, Pub/Sub OIDC, Wiz bearer token) and ingests
+  validates provider webhooks (per-Integration secrets: GitHub HMAC, Pub/Sub OIDC, Wiz bearer token, generic
+  per-integration HMAC) and ingests
   scanner alerts into Findings through the `pkg/source` handler seam (accumulation, duplicate merge). Outbound: projects Findings to tracking issues
   (body, labels, enrichment and report comments) and applies human signals (close, `/approve`, PR merge/close)
   back onto Findings.

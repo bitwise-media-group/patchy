@@ -2,11 +2,11 @@
 
 The single internet-facing entry point, driven by `Integration` custom resources. Inbound: it validates provider
 webhooks — `POST /github/webhooks` (per-Integration HMAC secrets), `POST /google-cloud/webhooks` (Pub/Sub-signed OIDC
-tokens), `POST /wiz/webhooks` (per-Integration bearer tokens) — and ingests scanner alerts into `Finding` resources —
-accumulation, duplicate merge. Outbound: it projects Findings to their tracking issues (body, labels, enrichment and
-report comments) and applies human signals (issue close and reopen, `/approve` comments, PR merge/close) back onto
-Findings. It holds no GitHub credential itself — the credentials live in the Secrets your Integrations reference, read
-on demand.
+tokens), `POST /wiz/webhooks` (per-Integration bearer tokens), `POST /generic/<name>/webhooks` (each generic
+Integration's own HMAC secret) — and ingests scanner alerts into `Finding` resources — accumulation, duplicate merge.
+Outbound: it projects Findings to their tracking issues (body, labels, enrichment and report comments) and applies human
+signals (issue close and reopen, `/approve` comments, PR merge/close) back onto Findings. It holds no GitHub credential
+itself — the credentials live in the Secrets your Integrations reference, read on demand.
 
 ```sh
 integration-controller serve --namespace patchy --accumulation-window 1h
@@ -30,7 +30,10 @@ One route per provider on `--listen-addr`, each authenticating on the provider's
 `POST /github/webhooks` validates `X-Hub-Signature-256` (constant-time HMAC) against the `webhookSecret` of every
 configured github Integration; `POST /google-cloud/webhooks` validates the OIDC token a Pub/Sub push signs against the
 SCC Integration's audience and service account; `POST /wiz/webhooks` validates the bearer token against every wiz
-Integration's `webhookToken` (also constant-time). All three answer the same way:
+Integration's `webhookToken` (also constant-time). The exception to one-route-per-provider is generic: the wildcard
+`POST /generic/{name}/webhooks` serves every generic Integration, validating `X-Patchy-Signature-256` against **only**
+the named Integration's `webhookSecret` — never the whole candidate set, so one integration's secret cannot admit a
+delivery addressed to another. All of them answer the same way:
 
 | Response | Meaning                                                        |
 | -------- | -------------------------------------------------------------- |

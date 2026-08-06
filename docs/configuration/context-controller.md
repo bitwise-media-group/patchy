@@ -3,7 +3,8 @@
 Runs the enhancer chain over `Opened` findings: ownership and infrastructure context recorded as enrichments and owners
 on Finding status, then the `Opened → Enhanced` transition. The integration-controller projects each enrichment's
 attributes as `security-context` issue labels and its markdown as a sticky issue comment — this controller itself has
-**no GitHub access at all**; it reads and writes Finding resources, nothing else.
+**no GitHub access at all**; it reads and writes Finding resources, reads Integrations, and reads generic Integrations'
+signing Secrets by name, nothing else.
 
 ```sh
 context-controller serve --namespace patchy --static-context-file /etc/patchy/context/cmdb.yaml
@@ -59,6 +60,16 @@ the `resourceTags` block on the `azure` Integration, read per enhancement — se
 [Azure resource tags](../integrations/azure.md). The credential concern is the same shape: the Azure default chain on
 the controller's ServiceAccount (Microsoft Entra Workload ID on AKS, workload identity federation elsewhere), read-only,
 no Secret.
+
+## The generic HTTP enhancer
+
+The `generic` chain entry is a fan-out, not one enhancer: it calls the enhancer endpoint of **every**
+`provider: generic` Integration whose `enhance` capability is on — each request signed with that Integration's own
+`webhookSecret`, bounded by its own `timeout`, and its enrichment attributed to that Integration's name (the
+sticky-comment identity and attribute-precedence key). Integrations run in name order, after the cloud lookups and
+before the static file. Like its siblings it takes **no flags**: everything is the `enhance` block on each generic
+Integration, read per enhancement — see [Generic (HTTP)](../integrations/generic.md) for the request/response contract.
+One endpoint failing (or timing out) skips only that integration's contribution; the others' enrichments still land.
 
 ## The static context enhancer
 

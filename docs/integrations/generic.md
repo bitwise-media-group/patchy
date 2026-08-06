@@ -200,6 +200,54 @@ Any `2xx` answer is success. **Idempotency is your obligation**: patchy sends on
 so the same alerts may be resolved more than once — treat "already closed" as success. `ignore` is the only verdict kind
 today. A source with the resolver off is a complete source; dismissal simply skips the write-back.
 
+## Testing your integration locally
+
+The `patchy` CLI ships a harness that exercises all three exchanges against your process without a cluster.
+`patchy dev generic` hosts the real receiver — the same server, HMAC authentication, deduplication, and validation the
+integration-controller runs — keeps ingested findings in memory, and immediately drives the enhancer call and the
+resolver write-back at the endpoints you configure:
+
+```sh
+# Terminal A — the harness (omit the secret to have one generated and printed):
+patchy dev generic --secret dev-secret \
+  --enhance-url http://127.0.0.1:9000/enhance \
+  --resolve-url http://127.0.0.1:9000/resolve
+
+# Terminal B — deliver a signed payload:
+sig="sha256=$(openssl dgst -sha256 -hmac dev-secret -r < findings.json | cut -d' ' -f1)"
+curl -i -X POST http://127.0.0.1:8100/generic/dev/webhooks \
+  -H 'Content-Type: application/json' \
+  -H "X-Patchy-Signature-256: $sig" \
+  --data-binary @findings.json
+```
+
+A process that is **only an enhancer or resolver** never delivers findings, so there is nothing to host: the one-shot
+commands fire a single signed exchange from a findings payload instead (the same envelope the webhook accepts, validated
+by the same code):
+
+```sh
+patchy dev enhance --url http://127.0.0.1:9000/enhance --secret dev-secret findings.json
+patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findings.json
+```
+
+Every `dev` flag also resolves from a `PATCHY_DEV_*` environment variable (`PATCHY_DEV_ENHANCE_URL`, …) and an optional
+`.patchy.yaml`/`.yml`/`.json` in the working directory, with explicit flags winning over the environment and the
+environment over the file:
+
+```yaml
+dev:
+  name: warehouse
+  secret-file: ./webhook.secret
+  enhance-url: http://127.0.0.1:9000/enhance
+  resolve-url: http://127.0.0.1:9000/resolve
+```
+
+What the harness deliberately does **not** emulate: accumulation and duplicate-merge into Finding resources, tracking
+issues, and the investigation between enhancement and dismissal. The resolve call fires immediately after enhancement
+(production sends it only at dismissal, typically much later) and carries one alert per call rather than a finding's
+accumulated set. Rejections answer `401` with no reason on the wire, exactly as in production — the reason appears in
+the harness's stderr log instead. `-o json` emits one JSON event per line on stdout for piping into `jq`.
+
 ## Network posture
 
 Patchy's controllers dial your endpoints from inside the cluster: the resolver from the integration-controller, the

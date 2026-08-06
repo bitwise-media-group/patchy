@@ -199,6 +199,25 @@ patchy suspend finding -l patchy.bitwisemedia.uk/severity=critical -y    # bulk,
 Bulk operations prompt above one finding unless you pass `-y`, report each finding individually, and exit non-zero if
 any failed — one unavailable finding never stops the rest.
 
+## Testing a generic integration
+
+The `dev` commands are the one part of the CLI that never touches a cluster: a local test harness for authors of
+[generic integrations](integrations/generic.md).
+
+```sh
+patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance
+```
+
+hosts the real generic webhook receiver on your workstation — the same HMAC authentication, deduplication, and
+validation the integration-controller runs — retains ingested findings in memory, and drives the enhancer call and
+resolver write-back at your endpoints, so one signed POST tests every exchange of the contract. For a process that is
+only an enhancer or resolver, `patchy dev enhance` / `patchy dev resolve` fire a single signed exchange from a findings
+payload file, no server involved.
+
+Uniquely in the CLI, every `dev` flag also resolves from `PATCHY_DEV_*` environment variables and an optional
+`.patchy.yaml` in the working directory (flag beats environment beats file). See the
+[generic integration guide](integrations/generic.md#testing-your-integration-locally) for the full walkthrough.
+
 ## Permissions
 
 Each action is a **custom RBAC verb** on `findings.patchy.bitwisemedia.uk`, granted independently: holding `approve`

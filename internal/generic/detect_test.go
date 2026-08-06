@@ -55,6 +55,17 @@ func TestDeliveryID(t *testing.T) {
 	}
 }
 
+func TestPathForRoundTrip(t *testing.T) {
+	for _, name := range []string{"warehouse", "a-b-c", "dev"} {
+		t.Run(name, func(t *testing.T) {
+			got, ok := NameFromPath(PathFor(name))
+			if !ok || got != name {
+				t.Errorf("NameFromPath(PathFor(%q)) = (%q, %v), want (%q, true)", name, got, ok, name)
+			}
+		})
+	}
+}
+
 func TestNameFromPath(t *testing.T) {
 	tests := []struct {
 		path string

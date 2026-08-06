@@ -21,16 +21,16 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/wiz"
 )
 
-// GenericPathPattern is the wildcard route generic integrations deliver to:
-// unlike the per-provider routes, each generic Integration has its own path,
-// because each has its own secret and identity. The /generic/ prefix keeps
-// the ingress path list static and keeps integration names out of the
-// provider routes' namespace.
-const GenericPathPattern = "/generic/{name}/webhooks"
+// GenericPathPattern is the wildcard route generic integrations deliver to.
+// The pattern itself lives with the contract helpers in internal/generic (a
+// k8s-free package the CLI dev harness also hosts it from); the /generic/
+// prefix keeps the ingress path list static and keeps integration names out
+// of the provider routes' namespace.
+const GenericPathPattern = generic.PathPattern
 
 // GenericPathFor is the concrete webhook path of one generic Integration,
 // advertised on status.webhookPath.
-func GenericPathFor(name string) string { return "/generic/" + name + "/webhooks" }
+func GenericPathFor(name string) string { return generic.PathFor(name) }
 
 // reservedSourceIDs are the built-in source ids a generic Integration's name
 // must not shadow: the name becomes its finding source id, and a collision

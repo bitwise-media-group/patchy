@@ -156,12 +156,14 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.serve(ctx, ln)
+	return s.Serve(ctx, ln)
 }
 
-// serve runs the accept loop on ln; split from Run so tests can inject a
-// listener on an ephemeral port.
-func (s *Server) serve(ctx context.Context, ln net.Listener) error {
+// Serve runs the accept loop on a caller-owned listener; Run is Serve with
+// the listener bound from cfg.Addr. A caller that needs the bound address —
+// an ephemeral-port test, the CLI dev harness printing its webhook URL —
+// listens itself and hands the listener in.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	mux := http.NewServeMux()
 	for _, e := range s.cfg.Endpoints {
 		mux.HandleFunc("POST "+e.Path, s.receiver(e))

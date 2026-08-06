@@ -59,7 +59,7 @@ func startServer(t *testing.T, cfg Config) (string, func()) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- s.serve(ctx, ln) }()
+	go func() { done <- s.Serve(ctx, ln) }()
 
 	return "http://" + ln.Addr().String(), func() {
 		cancel()

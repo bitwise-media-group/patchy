@@ -55,6 +55,15 @@ func DeliveryID(r *http.Request, body []byte) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// PathPattern is the wildcard ServeMux route generic integrations deliver
+// to: unlike the per-provider routes, each generic Integration has its own
+// path, because each has its own secret and identity.
+const PathPattern = "/generic/{name}/webhooks"
+
+// PathFor is the concrete webhook path of one named generic integration,
+// the inverse of NameFromPath.
+func PathFor(name string) string { return "/generic/" + name + "/webhooks" }
+
 // NameFromPath extracts the integration name from a concrete request path of
 // the form /generic/<name>/webhooks.
 func NameFromPath(path string) (string, bool) {

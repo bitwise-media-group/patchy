@@ -54,8 +54,10 @@ type Event struct {
 	DeliveryID string
 	// Payload is the raw JSON body.
 	Payload []byte
-	// Path is the endpoint the delivery arrived on, so a handler serving more
-	// than one can tell them apart.
+	// Path is the request path the delivery arrived on, so a handler serving
+	// more than one route can tell them apart. It equals the endpoint's
+	// pattern for exact routes; for a wildcard route it is the concrete path,
+	// carrying the matched segments (e.g. the integration name).
 	Path string
 }
 
@@ -258,16 +260,19 @@ func (s *Server) receiver(e Endpoint) http.HandlerFunc {
 			return
 		}
 
-		// Dedup keys include the path: two providers' id spaces are unrelated,
+		// Dedup keys include the request path: two providers' id spaces are
+		// unrelated — as are two integrations' behind one wildcard route —
 		// and a collision between them would silently drop a delivery.
-		key := e.Path + "|" + deliveryID
+		key := r.URL.Path + "|" + deliveryID
 		if deliveryID != "" && !s.seen.add(key) {
 			s.count(ctx, e.Path, eventType, "duplicate")
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
 
-		event := Event{Type: eventType, DeliveryID: deliveryID, Payload: body, Path: e.Path}
+		// Metrics stay on the endpoint pattern (bounded cardinality); the
+		// event carries the concrete request path.
+		event := Event{Type: eventType, DeliveryID: deliveryID, Payload: body, Path: r.URL.Path}
 		select {
 		case s.queue <- queued{event: event, handler: e.Handler}:
 			s.count(ctx, e.Path, eventType, "accepted")

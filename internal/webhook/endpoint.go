@@ -71,6 +71,12 @@ type Endpoint struct {
 type HMACAuthenticator struct {
 	// SecretsFor returns the candidate secrets for a delivery.
 	SecretsFor func(ctx context.Context) [][]byte
+	// SecretsForRequest returns the candidate secrets for a delivery whose
+	// candidate set depends on the request — a wildcard route whose path
+	// names the integration the secret belongs to. When set it supersedes
+	// SecretsFor. Returning an empty set fails authentication, so an
+	// unknown path segment is indistinguishable from a bad signature.
+	SecretsForRequest func(ctx context.Context, r *http.Request) [][]byte
 	// Header carries the signature; empty means X-Hub-Signature-256.
 	Header string
 }
@@ -83,7 +89,10 @@ func (a *HMACAuthenticator) Authenticate(ctx context.Context, r *http.Request, b
 	}
 	sig := r.Header.Get(header)
 	var secrets [][]byte
-	if a.SecretsFor != nil {
+	switch {
+	case a.SecretsForRequest != nil:
+		secrets = a.SecretsForRequest(ctx, r)
+	case a.SecretsFor != nil:
 		secrets = a.SecretsFor(ctx)
 	}
 	if slices.ContainsFunc(secrets, func(secret []byte) bool {

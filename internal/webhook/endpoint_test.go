@@ -145,6 +145,104 @@ func TestMultipleEndpoints(t *testing.T) {
 	}
 }
 
+// A wildcard route serves many integrations from one endpoint: the path
+// segment picks the candidate secret, the event carries the concrete request
+// path, and delivery ids are scoped per concrete path rather than per route.
+func TestWildcardEndpoint(t *testing.T) {
+	secrets := map[string][]byte{
+		"warehouse": []byte("w-secret"),
+		"cmdb":      []byte("c-secret"),
+	}
+
+	var mu sync.Mutex
+	var got []Event
+	received := make(chan struct{}, 8)
+	record := HandlerFunc(func(_ context.Context, e Event) error {
+		mu.Lock()
+		got = append(got, e)
+		mu.Unlock()
+		received <- struct{}{}
+		return nil
+	})
+
+	wildcard := Endpoint{
+		Path: "/generic/{name}/webhooks",
+		Auth: &HMACAuthenticator{
+			Header: "X-Patchy-Signature-256",
+			// SecretsFor is a decoy: SecretsForRequest must supersede it.
+			SecretsFor: func(context.Context) [][]byte { return [][]byte{[]byte("decoy")} },
+			SecretsForRequest: func(_ context.Context, r *http.Request) [][]byte {
+				s, ok := secrets[r.PathValue("name")]
+				if !ok {
+					return nil
+				}
+				return [][]byte{s}
+			},
+		},
+		Decode: func(r *http.Request, _ []byte) (string, string, error) {
+			return "generic.findings", r.Header.Get("X-Patchy-Delivery"), nil
+		},
+		Handler: record,
+	}
+
+	url, stop := startServer(t, Config{Endpoints: []Endpoint{wildcard}})
+	defer stop()
+
+	body := []byte(`{"version":"v1","event":"findings"}`)
+	deliver := func(name, id string, secret []byte) int {
+		return post(t, url+"/generic/"+name+"/webhooks", map[string]string{
+			"X-Patchy-Signature-256": sign(secret, body),
+			"X-Patchy-Delivery":      id,
+		}, body)
+	}
+
+	if s := deliver("warehouse", "d-1", secrets["warehouse"]); s != http.StatusAccepted {
+		t.Fatalf("signed delivery = %d, want 202", s)
+	}
+	<-received
+
+	// The same id on another integration's path is a different delivery.
+	if s := deliver("cmdb", "d-1", secrets["cmdb"]); s != http.StatusAccepted {
+		t.Fatalf("same id on another integration = %d, want 202", s)
+	}
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivery never handled; its id was deduped against another integration's")
+	}
+
+	// The same id on the same path is a duplicate.
+	if s := deliver("warehouse", "d-1", secrets["warehouse"]); s != http.StatusAccepted {
+		t.Fatalf("duplicate delivery = %d, want 202", s)
+	}
+
+	// One integration's secret must not admit a delivery addressed to
+	// another, an unknown name yields no candidates at all, and the decoy
+	// SecretsFor set proves SecretsForRequest supersedes it.
+	if s := deliver("cmdb", "d-2", secrets["warehouse"]); s != http.StatusUnauthorized {
+		t.Errorf("cross-integration secret = %d, want 401", s)
+	}
+	if s := deliver("unknown", "d-3", secrets["warehouse"]); s != http.StatusUnauthorized {
+		t.Errorf("unknown integration = %d, want 401", s)
+	}
+	if s := deliver("warehouse", "d-4", []byte("decoy")); s != http.StatusUnauthorized {
+		t.Errorf("SecretsFor decoy admitted = %d, want 401 (SecretsForRequest must supersede)", s)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("handled %d events, want 2", len(got))
+	}
+	paths := map[string]bool{}
+	for _, e := range got {
+		paths[e.Path] = true
+	}
+	if !paths["/generic/warehouse/webhooks"] || !paths["/generic/cmdb/webhooks"] {
+		t.Errorf("event paths = %v, want the concrete request paths", paths)
+	}
+}
+
 // A decoder that cannot make sense of the body is a 400: the delivery
 // authenticated, so the caller is trusted enough to be told it sent rubbish.
 func TestDecoderFailureIsBadRequest(t *testing.T) {

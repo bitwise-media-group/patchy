@@ -1,0 +1,19 @@
+{
+    "version": "v1",
+    "event": "findings",
+    "findings": [
+        {
+            "repo": { "owner": "acme", "name": "orders" },
+            "alertId": "e2e-wh-1001",
+            "advisories": ["CVE-2026-4242", "CWE-89"],
+            "ruleId": "warehouse/sql-injection",
+            "title": "SQL injection in the nightly export",
+            "description": "The export job interpolates user-controlled column names into its SELECT statement.",
+            "severity": "high",
+            "htmlUrl": "https://warehouse.internal/findings/1001",
+            "locations": [
+                { "path": "jobs/export.go", "start_line": 88, "end_line": 92 }
+            ]
+        }
+    ]
+}

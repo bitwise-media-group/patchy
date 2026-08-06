@@ -27,6 +27,13 @@
 //
 //	replay -secret-file wiz.token ../fixtures/webhooks/wiz.issue.created.json
 //
+// A generic fixture is signed like a GitHub one but into the generic
+// contract's header (X-Patchy-Signature-256), and its route carries the
+// Integration's name — supply it with -generic-name:
+//
+//	replay -generic-name warehouse -secret-file warehouse.secret \
+//	    ../fixtures/webhooks/generic.findings.json
+//
 // The route is inferred from the fixture name, so -url is only needed when
 // the controller is not on the default port.
 package main
@@ -70,6 +77,8 @@ func run() error {
 		"OIDC token for a Pub/Sub push fixture, e.g. "+
 			"$(gcloud auth print-identity-token --audiences=<the Integration's audience>)")
 	event := flag.String("event", "", "event type (default: inferred from the fixture name)")
+	genericName := flag.String("generic-name", "warehouse",
+		"generic Integration name a generic.* fixture delivers to (the route's path segment)")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -91,7 +100,7 @@ func run() error {
 	prov := providerOf(fixture)
 	endpoint := *url
 	if endpoint == "" {
-		endpoint = defaultHost + defaultPath(prov)
+		endpoint = defaultHost + defaultPath(prov, *genericName)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(payload))
@@ -125,6 +134,26 @@ func run() error {
 			return fmt.Errorf("a Wiz fixture needs its webhook token via -bearer or -secret-file")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
+	case providerGeneric:
+		if *bearer != "" {
+			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; generic deliveries are signed")
+		}
+		if *devSecret {
+			return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a generic fixture needs " +
+				"its Integration's webhookSecret via -secret-file")
+		}
+		if *secretFile == "" {
+			return fmt.Errorf("a generic fixture needs its Integration's webhookSecret via -secret-file")
+		}
+		raw, err := os.ReadFile(*secretFile)
+		if err != nil {
+			return err
+		}
+		secret := []byte(strings.TrimRight(string(raw), "\r\n"))
+		mac := hmac.New(sha256.New, secret)
+		mac.Write(payload)
+		req.Header.Set("X-Patchy-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("X-Patchy-Delivery", deliveryID())
 	default:
 		if *bearer != "" {
 			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; GitHub deliveries are signed")
@@ -180,6 +209,7 @@ const (
 	providerGitHub provider = iota
 	providerPubSub
 	providerWiz
+	providerGeneric
 )
 
 // providerOf infers the provider from the fixture name's prefix.
@@ -189,18 +219,24 @@ func providerOf(path string) provider {
 		return providerPubSub
 	case strings.HasPrefix(name, "wiz."):
 		return providerWiz
+	case strings.HasPrefix(name, "generic."):
+		return providerGeneric
 	default:
 		return providerGitHub
 	}
 }
 
-// defaultPath is the receiver route for the fixture's provider.
-func defaultPath(p provider) string {
+// defaultPath is the receiver route for the fixture's provider. genericName
+// is the path segment of a generic delivery — the Integration's name — and
+// is ignored by every other provider.
+func defaultPath(p provider, genericName string) string {
 	switch p {
 	case providerPubSub:
 		return "/google-cloud/webhooks"
 	case providerWiz:
 		return "/wiz/webhooks"
+	case providerGeneric:
+		return "/generic/" + genericName + "/webhooks"
 	default:
 		return "/github/webhooks"
 	}

@@ -1,0 +1,23 @@
+{
+    "version": "v1",
+    "event": "findings",
+    "findings": [
+        {
+            "cloudResource": {
+                "provider": "google",
+                "name": "//storage.googleapis.com/acme-warehouse-staging",
+                "type": "storage.googleapis.com/Bucket",
+                "project": "acme-warehouse",
+                "location": "europe-west2",
+                "display_name": "acme-warehouse-staging"
+            },
+            "alertId": "e2e-wh-2001",
+            "advisories": ["generic-rule:warehouse/public-bucket"],
+            "ruleId": "warehouse/public-bucket",
+            "title": "Staging bucket is publicly readable",
+            "description": "The staging bucket grants allUsers read access.",
+            "severity": "medium",
+            "htmlUrl": "https://warehouse.internal/findings/2001"
+        }
+    ]
+}

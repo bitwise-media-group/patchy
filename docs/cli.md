@@ -202,7 +202,7 @@ any failed — one unavailable finding never stops the rest.
 ## Testing a generic integration
 
 The `dev` commands are the one part of the CLI that never touches a cluster: a local test harness for authors of
-[generic integrations](integrations/generic.md).
+[generic integrations](integrations/sources/generic.md).
 
 ```sh
 patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance
@@ -216,7 +216,7 @@ payload file, no server involved.
 
 Uniquely in the CLI, every `dev` flag also resolves from `PATCHY_DEV_*` environment variables and an optional
 `.patchy.yaml` in the working directory (flag beats environment beats file). See the
-[generic integration guide](integrations/generic.md#testing-your-integration-locally) for the full walkthrough.
+[generic integration guide](integrations/sources/generic.md#testing-your-integration-locally) for the full walkthrough.
 
 ## Permissions
 
@@ -247,14 +247,8 @@ See [Kustomize](deployment/kustomize.md) for the manifest and the role ladder.
     enforcement degrades silently to "whoever holds `update` owns the whole resource". Check with
     `kubectl api-resources | grep validatingadmissionpolic`.
 
-### Adding a field to FindingSpec
-
-The policy has to enumerate the spec fields it freezes, because CEL cannot express "everything except these four". A new
-field would otherwise become writable by anyone holding `update`. `TestAdmissionPolicyCovers‑ EveryFindingSpecField` in
-`internal/action` reflects over the Go type and fails if a field is unaccounted for — when it fires, add the field to
-the frozen-fields validation in **both** `deploy/kustomize/base/admission-policy.yaml` and
-`charts/patchy/templates/admission-policy.yaml`. The test checks both renderings; a Helm install left out of step would
-silently ship a policy that leaves the field writable.
+Because the policy enumerates the spec fields it freezes, contributors adding a field to `FindingSpec` must extend it —
+see [Extending](extending.md#adding-a-field-to-findingspec).
 
 ## Exit codes
 

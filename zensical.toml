@@ -29,12 +29,23 @@ nav = [
   { "How it works" = "how-it-works.md" },
   { "State machine & labels" = "labels.md" },
   { "Integrations" = [
-    { "GitHub" = "integrations/github.md" },
-    { "Google Cloud SCC" = "integrations/google-cloud-scc.md" },
-    { "Wiz" = "integrations/wiz.md" },
-    { "AWS resource tags" = "integrations/aws.md" },
-    { "Azure resource tags" = "integrations/azure.md" },
-    { "Generic (HTTP)" = "integrations/generic.md" },
+    { "Overview" = "integrations/index.md" },
+    { "Finding sources" = [
+      { "GitHub code scanning" = "integrations/sources/github.md" },
+      { "Google Cloud SCC" = "integrations/sources/google-scc.md" },
+      { "Wiz" = "integrations/sources/wiz.md" },
+      { "Generic (HTTP)" = "integrations/sources/generic.md" },
+    ] },
+    { "Context enhancers" = [
+      { "Resolving a repository" = "integrations/enhancers/index.md" },
+      { "Google Cloud labels" = "integrations/enhancers/google-cai.md" },
+      { "AWS resource tags" = "integrations/enhancers/aws.md" },
+      { "Azure resource tags" = "integrations/enhancers/azure.md" },
+      { "Generic (HTTP)" = "integrations/enhancers/generic.md" },
+    ] },
+    { "Forges" = [
+      { "GitHub" = "integrations/forges/github.md" },
+    ] },
   ] },
   { "Configuration" = [
     { "Overview" = "configuration/index.md" },
@@ -51,16 +62,19 @@ nav = [
     { "Webhook exposure" = "deployment/webhook.md" },
     { "Kustomize" = "deployment/kustomize.md" },
     { "Local dev on Colima" = "deployment/colima.md" },
+    { "Demo tooling" = "deployment/dev-fake.md" },
     { "Isolation model" = "deployment/isolation.md" },
   ] },
-  { "The status page" = "status-ui.md" },
+  { "Operations" = [
+    { "The status page" = "status-ui.md" },
+    { "Observability" = "observability.md" },
+  ] },
   # cli/patchy.md is the root of the generated per-command reference
   # (`mise run docs`); every other cli/patchy_*.md page is reached from it.
   { "The patchy CLI" = [
     { "Overview" = "cli.md" },
     { "Command reference" = "cli/patchy.md" },
   ] },
-  { "Observability" = "observability.md" },
   { "Extending" = "extending.md" },
 ]
 
@@ -72,6 +86,7 @@ features = [
   "navigation.instant",
   "navigation.tracking",
   "navigation.sections",
+  "navigation.indexes",
   "navigation.top",
   "navigation.footer",
   "content.code.copy",

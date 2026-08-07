@@ -13,16 +13,12 @@ source-controller serve --namespace patchy --artifact-addr :9790
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
-<div class="nowrap-first" markdown>
-
 | Flag                   | Env                         | Default              | Purpose                                                                            |
 | ---------------------- | --------------------------- | -------------------- | ---------------------------------------------------------------------------------- |
 | `--artifact-addr`      | `PATCHY_ARTIFACT_ADDR`      | `:9790`              | Listen address of the artifact server                                              |
 | `--artifact-base-url`  | `PATCHY_ARTIFACT_BASE_URL`  | in-cluster Service   | Base URL minted into Repository statuses for agent fetches                         |
 | `--artifact-dir`       | `PATCHY_ARTIFACT_DIR`       | `/data/artifacts`    | Directory the artifact tarballs are stored in                                      |
 | `--max-artifact-bytes` | `PATCHY_MAX_ARTIFACT_BYTES` | `1073741824` (1 GiB) | Largest repository tarball stored; larger repositories stall (`Stalled` condition) |
-
-</div>
 
 `--artifact-base-url` only needs setting when the Service name differs from the default
 `http://patchy-source-controller.<namespace>.svc.cluster.local:<port>` — the deployments leave it unset.

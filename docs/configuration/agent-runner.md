@@ -14,8 +14,6 @@ matters when debugging a Job spec or running the runtime standalone.
 
 ## Identity and phase
 
-<div class="nowrap-first" markdown>
-
 | Env                | Default          | Purpose                                                                                           |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------------------------- |
 | `PATCHY_REPO`      | — (**required**) | `owner/name` of the repository under analysis                                                     |
@@ -23,8 +21,6 @@ matters when debugging a Job spec or running the runtime standalone.
 | `PATCHY_BASE_SHA`  | —                | The remote commit the workspace tree corresponds to (the changeset's push base)                   |
 | `PATCHY_PHASE`     | `investigate`    | `investigate` or `remediate`                                                                      |
 | `PATCHY_WORKSPACE` | `/workspace`     | Pod workspace root (`repo/`, `input/`, `reports/`)                                                |
-
-</div>
 
 ## Stage configuration
 
@@ -46,8 +42,6 @@ absent on a cold start, and the prompt then omits the section entirely.
 
 Two knobs exist only here:
 
-<div class="nowrap-first" markdown>
-
 | Env                                 | Default            | Purpose                                                             |
 | ----------------------------------- | ------------------ | ------------------------------------------------------------------- |
 | `PATCHY_CHANGESET_MAX_BYTES`        | `5242880` (5 MiB)  | Size cap on the changeset's file contents carried out of the pod    |
@@ -55,8 +49,6 @@ Two knobs exist only here:
 | `PATCHY_TRANSCRIPT_MAX_TURNS`       | `500`              | Turn cap for one run's conversation                                 |
 | `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES` | `524288` (512 KiB) | Total cap on one run's conversation, before compression             |
 | `PATCHY_FAKE_FIXTURE`               | —                  | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
-
-</div>
 
 Malformed values fail fast with an error naming the exact `PATCHY_<KEY>`.
 
@@ -71,8 +63,6 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 
 ## Credentials in the pod
 
-<div class="nowrap-first" markdown>
-
 | Env                         | Source                                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `ANTHROPIC_API_KEY`         | The claude runner's Secret via `secretKeyRef` (`--claude-secret`, the default `--claude-secret-env`)         |
@@ -83,8 +73,6 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 | `CODEX_ACCESS_TOKEN`        | The codex runner's Secret when `--codex-secret-env=CODEX_ACCESS_TOKEN` — a ChatGPT-plan workspace token      |
 | `COPILOT_GITHUB_TOKEN`      | The copilot runner's Secret via `secretKeyRef` (`--copilot-secret`) — a GitHub token, not a model API key    |
 | `GH_TOKEN` / `GITHUB_TOKEN` | The copilot runner's Secret when `--copilot-secret-env` names one of them                                    |
-
-</div>
 
 Only **one** of these reaches a given pod: the Job wires the `secretKeyRef` of the harness it runs, so a claude Job
 carries only the Anthropic credential and a codex Job only the OpenAI one. The agent container's environment passes

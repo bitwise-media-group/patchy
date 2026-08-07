@@ -1,6 +1,6 @@
 # Isolation model
 
-Patchy hands untrusted inputs — repository contents and security-alert text — to a coding agent. DESIGN.md asks for an
+Patchy hands untrusted inputs — repository contents and security-alert text — to a coding agent. The design calls for an
 agent with "no internet access and no GitHub credentials"; taken literally the first half is unachievable, because
 `claude -p` **is** a network client of `api.anthropic.com`. What is actually delivered is layered — credential absence,
 RBAC, pod security, and network egress — and the first layer is the one that matters.

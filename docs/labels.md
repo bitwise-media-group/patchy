@@ -12,8 +12,6 @@ are a **one-way projection** of this state for humans and issue searches; nothin
 `Queued` when a human must approve, and `Dismissed` / `HandedOff` / `Failed` as the other terminal phases. `Queued` is a
 real phase — remediation runs in priority order with bounded concurrency, so findings observably wait for a slot.
 
-<div class="nowrap-first" markdown>
-
 | Phase              | Meaning                                                                                 |
 | ------------------ | --------------------------------------------------------------------------------------- |
 | `Opened`           | Ingested from the first alert; accumulating, awaiting enhancement                       |
@@ -27,8 +25,6 @@ real phase — remediation runs in priority order with bounded concurrency, so f
 | `Failed`           | Retries exhausted, fatal stage outcome, or PR closed unmerged. **Terminal**             |
 | `Dismissed`        | Investigation verdict `ignore`: alerts dismissed, issue closed. **Terminal**, revivable |
 | `HandedOff`        | Verdict `manual`, or a human closed the tracking issue. **Terminal**, revivable         |
-
-</div>
 
 Terminal entry sets `status.completedAt`, which starts the [finding TTL](configuration/remediation-controller.md)
 (default 14 days — the `FindingRollup` objects retain the statistics after deletion). `Dismissed` and `HandedOff` are
@@ -67,8 +63,6 @@ stateDiagram-v2
 Every non-terminal phase additionally has an edge to `HandedOff`, written by the integration-controller when a human
 closes the tracking issue — a person can always pull a finding out of the machine's hands.
 
-<div class="nowrap-first" markdown>
-
 | Edge                                                                                   | Writer                   | Trigger                                                              |
 | -------------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------- |
 | _(none)_ → `Opened`                                                                    | integration-controller   | First alert of an advisory family for a repository                   |
@@ -84,14 +78,10 @@ closes the tracking issue — a person can always pull a finding out of the mach
 | `Dismissed` → `HandedOff`                                                              | integration-controller   | Human reopened the tracking issue                                    |
 | any non-terminal → `HandedOff`                                                         | integration-controller   | Human closed the tracking issue                                      |
 
-</div>
-
 ## Conditions
 
 Facts that are not phases ride on `status.conditions`. Accumulation is the important one: alerts keep folding into a
 Finding **while** enhancement runs, so the window close cannot be a phase.
-
-<div class="nowrap-first" markdown>
 
 | Condition                                               | On                         | Meaning                                                                                                     |
 | ------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -104,8 +94,6 @@ Finding **while** enhancement runs, so the window close cannot be a phase.
 | `ForgeResolved`                                         | Finding                    | The repository resolved to exactly one Forge (`False` reasons: `NoRepository`, `NoForgeMatch`, `Ambiguous`) |
 | `Complete`                                              | Investigation, Remediation | The stage finished; the reason carries the outcome                                                          |
 | `RolledUpTotal` / `…Repository` / `…Harness` / `…Model` | Finding                    | Per-scope rollup accounting markers (exactly-once, finalizer-backed)                                        |
-
-</div>
 
 Findings parked with `ForgeResolved: False` are re-queued automatically when `Forge` resources change. A finding can
 also be paused by a human: `spec.suspend: true` halts pipeline progress until cleared.
@@ -131,8 +119,6 @@ integration-controller (`internal/labels`). Every label is `<key>: <value>`, tru
 multi-valued advisory key emits one label per identifier. Patchy only touches labels in the `security-` namespace,
 ignores foreign or malformed `security-*` labels, and does not manage label colors or descriptions.
 
-<div class="nowrap-first" markdown>
-
 | Key                       | Cardinality        | Values                                                                                                                                                                      |
 | ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `security-source`         | single             | The source handler that ingested the finding, e.g. `ghas`, `gcp-scc`, `wiz-issues`, `wiz-defend`, or a generic Integration's name                                           |
@@ -141,8 +127,6 @@ ignores foreign or malformed `security-*` labels, and does not manage label colo
 | `security-severity`       | single             | `low` \| `medium` \| `high` \| `critical` (scanner-assigned)                                                                                                                |
 | `security-priority`       | single             | `low` \| `medium` \| `high` \| `critical` (derived from the investigation)                                                                                                  |
 | `security-recommendation` | single             | `remediate` \| `ignore` \| `manual` (the investigation verdict)                                                                                                             |
-
-</div>
 
 That is the whole list — the projection is deliberately small. Labels exist for issue searches and human triage; the CR
 is the state, so no machine or usage labels exist on issues anymore.

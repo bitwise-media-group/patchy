@@ -1,8 +1,14 @@
 # Google Cloud Security Command Center
 
 Patchy ingests Security Command Center findings and triages them alongside code-scanning alerts. A cloud finding is
-about a **resource**, not a file, so the pipeline treats it differently in two places: how it accumulates, and how it
-finds a repository to work in.
+about a **resource**, not a file, so the pipeline treats it differently in two places: how it accumulates (below), and
+how it [finds a repository to work in](../enhancers/google-cai.md).
+
+!!! info "One provider, two capabilities"
+
+    The SCC source on this page and the [Cloud Asset Inventory enhancer](../enhancers/google-cai.md) are independent
+    halves of the one `google-cloud` Integration — an estate sourcing findings from Wiz alone still configures the
+    enhancer half, without enabling the source. The [integrations overview](../index.md) maps every provider's roles.
 
 ## How findings arrive
 
@@ -62,84 +68,6 @@ an operational problem for whoever owns the SCC configuration, not something to 
 re-notifications fold into one `Finding`. Two different buckets with the same misconfiguration stay separate, because
 repository resolution is per resource and a family spanning resources could resolve to two different repositories with
 no right answer.
-
-## Finding a repository
-
-The whole pipeline past triage needs a SHA-pinned repository to work in, and an SCC notification names none. Patchy
-resolves one from **ownership labels on the resource itself**, read through Cloud Asset Inventory by the
-context-controller's `google-cloud-labels` enhancer.
-
-The enhancer keys purely on the finding's cloud resource, not on where the finding came from: any finding whose resource
-lives on Google Cloud gets the same lookup, whether Security Command Center or [Wiz](wiz.md) ingested it. The two
-capabilities are independent halves of the `google-cloud` Integration — an estate sourcing findings from Wiz alone still
-configures `cloudAssetInventory` here, without enabling `securityCommandCenter`.
-
-### The ownership labels
-
-```text
-scm-repository-org:      acme          # the organization
-scm-repository-name:     infra-prod    # the repository
-scm-repository-provider: github        # optional; defaults to github
-```
-
-Or, where a single value is easier to manage:
-
-```text
-scm-repository-url:      github.com/acme/infra-prod
-```
-
-The URL form supersedes the triple, and is the only one that can name a self-hosted forge. Google Cloud label values are
-lowercase alphanumerics, hyphens and underscores capped at 63 characters — which cannot hold `https://` — so the scheme
-is optional and added when absent. Security marks have no such limit and can carry a full URL.
-
-The key names are configurable (`cloudAssetInventory.labels`, below) for estates with an existing convention.
-
-### Enabling it
-
-The enhancer is configured on the `google-cloud` Integration itself, beside (or instead of) the SCC source — the
-context-controller reads it from there per enhancement, so changes apply without a restart:
-
-```yaml
-spec:
-  provider: google-cloud
-  googleCloud:
-    cloudAssetInventory:
-      enabled: true
-      # Bounds the asset search: organizations/<id>, folders/<id>, or projects/<id>.
-      scope: organizations/123456789012
-      # Optional: the forge host composed into a resolved URL (default github.com).
-      # repositoryHost: github.example.com
-      # Optional: override the label names read off a resource.
-      # labels:
-      #   org: scm-repository-org
-      #   name: scm-repository-name
-      #   provider: scm-repository-provider
-      #   url: scm-repository-url
-```
-
-The credential is workload identity with `roles/cloudasset.viewer` — read-only, and the only cloud credential anywhere
-in patchy. No key file exists, and the Integration still carries no `secretRef`:
-
-```yaml
-contextController:
-  serviceAccount:
-    annotations:
-      iam.gke.io/gcp-service-account: patchy-assets@x-patchy-app.iam.gserviceaccount.com
-```
-
-(Earlier releases configured this through `PATCHY_GCP_*` environment variables on the context-controller; those flags
-are gone, and the Integration block above is the only configuration surface.)
-
-### When no repository resolves
-
-Most resources carry no ownership labels, and that is not a failure. Such a finding still ingests, still gets enriched
-with its project and resource type, and still reaches a human — it simply cannot be remediated automatically, so the
-investigation gate hands it off. Set `github.issues.fallbackRepository` on the tracking Integration to give those
-findings a tracking issue somewhere visible; without one they are reachable only through `kubectl` and the status page.
-
-A finding whose lookup _failed_ — as opposed to one that cleanly has no labels — is held and retried instead, so a
-transient Asset Inventory outage does not permanently cost it a repository. The hold is bounded by the accumulation
-window.
 
 ## What is not implemented
 

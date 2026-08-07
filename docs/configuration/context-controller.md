@@ -14,13 +14,9 @@ context-controller serve --namespace patchy --static-context-file /etc/patchy/co
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
-<div class="nowrap-first" markdown>
-
 | Flag                    | Env                          | Default | Purpose                                                                  |
 | ----------------------- | ---------------------------- | ------- | ------------------------------------------------------------------------ |
 | `--static-context-file` | `PATCHY_STATIC_CONTEXT_FILE` | —       | YAML file mapping repositories to owners/attributes (fake-CMDB enhancer) |
-
-</div>
 
 ## Behavior
 
@@ -36,10 +32,10 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 The `google-cloud-labels` enhancer resolves a cloud finding's repository (and project/type/location attributes) from the
 ownership labels on the resource itself, read through Cloud Asset Inventory. It takes **no flags**: its configuration is
 the `cloudAssetInventory` block on the `google-cloud` Integration, read from the cluster per enhancement — see
-[Google Cloud SCC](../integrations/google-cloud-scc.md#enabling-it). It acts on any finding whose cloud resource lives
-on Google Cloud, whichever source ingested it, and stands aside entirely when no Integration enables the capability. The
-only deployment concern this controller keeps is the credential: workload identity with `roles/cloudasset.viewer` on the
-controller's ServiceAccount.
+[Google Cloud labels](../integrations/enhancers/google-cai.md#enabling-it). It acts on any finding whose cloud resource
+lives on Google Cloud, whichever source ingested it, and stands aside entirely when no Integration enables the
+capability. The only deployment concern this controller keeps is the credential: workload identity with
+`roles/cloudasset.viewer` on the controller's ServiceAccount.
 
 ## The AWS resource tags enhancer
 
@@ -47,9 +43,9 @@ The `aws-resource-tags` enhancer is the AWS sibling: it resolves the repository 
 plus the resource's own tags as `tag:<key>` attributes) from the ownership tags on the resource, read from an
 organization-level inventory — an AWS Config aggregator or a Resource Explorer view, whichever the estate has. Like its
 sibling it takes **no flags**: its configuration is the `resourceTags` block on the `aws` Integration, read per
-enhancement — see [AWS resource tags](../integrations/aws.md). The credential concern is the same shape: the SDK default
-chain on the controller's ServiceAccount (EKS Pod Identity or IRSA on EKS, web-identity federation elsewhere),
-read-only, no Secret.
+enhancement — see [AWS resource tags](../integrations/enhancers/aws.md). The credential concern is the same shape: the
+SDK default chain on the controller's ServiceAccount (EKS Pod Identity or IRSA on EKS, web-identity federation
+elsewhere), read-only, no Secret.
 
 ## The Azure resource tags enhancer
 
@@ -57,9 +53,9 @@ The `azure-resource-tags` enhancer completes the trio: it resolves the repositor
 attributes, plus the resource's own tags as `tag:<key>` attributes) from the ownership tags on the resource, read from
 Azure Resource Graph — tenant-wide, no backend to choose. Like its siblings it takes **no flags**: its configuration is
 the `resourceTags` block on the `azure` Integration, read per enhancement — see
-[Azure resource tags](../integrations/azure.md). The credential concern is the same shape: the Azure default chain on
-the controller's ServiceAccount (Microsoft Entra Workload ID on AKS, workload identity federation elsewhere), read-only,
-no Secret.
+[Azure resource tags](../integrations/enhancers/azure.md). The credential concern is the same shape: the Azure default
+chain on the controller's ServiceAccount (Microsoft Entra Workload ID on AKS, workload identity federation elsewhere),
+read-only, no Secret.
 
 ## The generic HTTP enhancer
 
@@ -68,8 +64,9 @@ The `generic` chain entry is a fan-out, not one enhancer: it calls the enhancer 
 `webhookSecret`, bounded by its own `timeout`, and its enrichment attributed to that Integration's name (the
 sticky-comment identity and attribute-precedence key). Integrations run in name order, after the cloud lookups and
 before the static file. Like its siblings it takes **no flags**: everything is the `enhance` block on each generic
-Integration, read per enhancement — see [Generic (HTTP)](../integrations/generic.md) for the request/response contract.
-One endpoint failing (or timing out) skips only that integration's contribution; the others' enrichments still land.
+Integration, read per enhancement — see [Generic (HTTP)](../integrations/enhancers/generic.md) for the request/response
+contract. One endpoint failing (or timing out) skips only that integration's contribution; the others' enrichments still
+land.
 
 ## The static context enhancer
 

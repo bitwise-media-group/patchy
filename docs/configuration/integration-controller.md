@@ -16,13 +16,9 @@ integration-controller serve --namespace patchy --accumulation-window 1h
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
-<div class="nowrap-first" markdown>
-
 | Flag                    | Env                          | Default | Purpose                                                                |
 | ----------------------- | ---------------------------- | ------- | ---------------------------------------------------------------------- |
 | `--accumulation-window` | `PATCHY_ACCUMULATION_WINDOW` | `1h`    | How long alerts of one finding family accumulate into a single Finding |
-
-</div>
 
 ## The webhook receiver
 

@@ -107,8 +107,9 @@ values surface is on the [Helm chart page](../deployment/helm.md).
 
 ## Switch the pipeline on: the `patchy-config` chart
 
-The controllers idle until two custom resources exist: an **Integration** (where findings come from, where the tracking
-issues go, webhook validation) and a **Forge** (how repositories are fetched and pushed). They ship as the separate
+The controllers idle until two custom resources exist: an [**Integration**](../integrations/sources/github.md) (where
+findings come from, where the tracking issues go, webhook validation) and a
+[**Forge**](../integrations/forges/github.md) (how repositories are fetched and pushed). They ship as the separate
 `patchy-config` chart — separate because Helm validates every manifest against the API server before applying anything,
 so the CRs cannot install in the same first release as the CRDs they depend on. Install it **after** the `patchy` chart,
 into the **same namespace**:

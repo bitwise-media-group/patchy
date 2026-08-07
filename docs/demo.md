@@ -495,5 +495,5 @@ Optional · have ready, don’t force
 
 ## Source material
 
-Drawn from Patchy product docs: `DESIGN.md`, `docs/how-it-works.md`, `docs/status-ui.md`, `docs/labels.md`,
+Drawn from Patchy product docs: `docs/how-it-works.md`, `docs/status-ui.md`, `docs/labels.md`,
 `docs/getting-started/verify.md`, `docs/extending.md`, and the investigation prompt contract (`internal/templates`).

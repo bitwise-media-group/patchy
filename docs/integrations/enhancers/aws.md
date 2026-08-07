@@ -1,10 +1,10 @@
 # AWS resource tags
 
-Patchy has no AWS scanner source — AWS findings arrive through [Wiz](wiz.md) (or a future source). What the `aws`
-Integration provides is the other half: the **context enhancer** that looks a finding's AWS resource up in an
+Patchy has no AWS scanner source — AWS findings arrive through [Wiz](../sources/wiz.md) (or a future source). What the
+`aws` Integration provides is the [context enhancer](index.md): it looks a finding's AWS resource up in an
 organization-level inventory, carries its tags onto the finding, and resolves the owning repository from them. It is the
-AWS sibling of the [Cloud Asset Inventory enhancer](google-cloud-scc.md#finding-a-repository), and follows the same
-rule: it keys purely on the finding's cloud resource, not on where the finding came from.
+AWS sibling of the [Cloud Asset Inventory enhancer](google-cai.md), and like every enhancer it keys purely on the
+finding's cloud resource, not on where the finding came from.
 
 ## Two inventories, one question
 
@@ -30,26 +30,15 @@ take a few minutes to appear.
 Both inventories are eventually consistent, which costs nothing here: a finding accumulates for an hour before
 enhancement runs. Nothing downstream can tell the backends apart — the enrichment is identical.
 
-## Finding a repository
+## The ownership tags
 
-The [ownership vocabulary is the same one Google Cloud resources use](google-cloud-scc.md#the-ownership-labels), spelled
-as tags:
+The [shared vocabulary](index.md#the-ownership-labels), spelled as tags:
 
-```text
-scm-repository-org:      acme          # the organization
-scm-repository-name:     infra-prod    # the repository
-scm-repository-provider: github        # optional; defaults to github
-```
+--8<-- ".snippets/ownership-labels.md"
 
-Or, where a single value is easier to manage:
-
-```text
-scm-repository-url:      https://github.com/acme/infra-prod
-```
-
-The URL form supersedes the triple, and is the only one that can name a self-hosted forge. Unlike a Google Cloud label,
-an AWS tag value can carry `://` verbatim — though the scheme is still optional, for a vocabulary shared across clouds.
-The key names are configurable (`resourceTags.tags`, below) for estates with an existing convention.
+Unlike a Google Cloud label, an AWS tag value can carry `://` verbatim — though the scheme is still optional, for a
+vocabulary shared across clouds. The key names are configurable (`resourceTags.tags`, below) for estates with an
+existing convention.
 
 Beyond the repository, the resource's tags themselves become finding attributes (`tag:<key>`, capped at 24, beside
 `aws-account`, `resource-type` and `location`) — visible on the tracking issue and to the investigating agent, whether
@@ -117,11 +106,11 @@ default chain, read-only (`config:SelectAggregateResourceConfig` + `config:Descr
 
 ## When no repository resolves
 
-Same as the Google Cloud enhancer: a resource without ownership tags — or one the inventory has no record of, which
-Resource Explorer's indexing gaps make more common — is a clean answer, not a failure. The finding keeps its attributes,
-reaches a human, and the investigation gate hands it off (give it a visible home with
-`github.issues.fallbackRepository`). A lookup that _failed_ — throttling, an identity binding still propagating, a
-misconfigured aggregator or view — holds the finding and retries instead, bounded by the accumulation window.
+[The shared semantics apply](index.md#when-no-repository-resolves): a resource without ownership tags — or one the
+inventory has no record of, which Resource Explorer's indexing gaps make more common — is a clean answer; a lookup that
+_failed_ (throttling, an identity binding still propagating, a misconfigured aggregator or view) holds and retries
+instead.
 
-One AWS-specific wrinkle: a [Wiz Defend](wiz.md) threat that names no concrete resource falls back to a synthetic
-account-level pseudo-resource. No inventory records those, so the enhancer stands aside rather than looking them up.
+One AWS-specific wrinkle: a [Wiz Defend](../sources/wiz.md) threat that names no concrete resource falls back to a
+synthetic account-level pseudo-resource. No inventory records those, so the enhancer stands aside rather than looking
+them up.

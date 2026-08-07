@@ -95,7 +95,7 @@ can launder an approval by deleting a finding and recreating it with one preset.
   (`patchy-fakegithub`, with a NodePort on 30990 for host-side inspection), the `Integration`/`Forge` CRs point at its
   Service, the agent image is a scripted stand-in (`hack/fake-agent`) that needs no model key, and one extra egress rule
   reaches the fake. The whole CR pipeline — ingestion through pull request, rollups, and the TTL — runs against it; the
-  [Colima walkthrough](colima.md#credential-less-end-to-end-the-dev-fake-overlay) shows the full loop.
+  [demo-tooling walkthrough](dev-fake.md#credential-less-end-to-end-the-dev-fake-overlay) shows the full loop.
 - **prod** uses the real intervals (1h accumulation and min-age, the 14-day TTL), the `claude` harness, the Cilium FQDN
   component, production-sized requests, and **digest-pinned images** — the checked-in `sha256:0000…` values are
   placeholders to replace with your release's published digests, including the `PATCHY_CLAUDE_AGENT_IMAGE` value in the

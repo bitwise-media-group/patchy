@@ -3,11 +3,11 @@
 Patchy ingests two Wiz feeds and triages them alongside code-scanning alerts and SCC findings: **Wiz Issues** (cloud
 misconfigurations and toxic combinations, source `wiz-issues`) and **Wiz Defend** (runtime threat detections, source
 `wiz-defend`). Both are cloud findings — about a **resource**, not a file — so they arrive repo-less and lean on the
-cloud enhancers — [Cloud Asset Inventory](google-cloud-scc.md#finding-a-repository) for Google Cloud resources,
-[AWS resource tags](aws.md) for AWS ones, [Azure resource tags](azure.md) for Azure ones — to resolve a repository from
-the resource's ownership labels or tags. A Wiz estate typically runs several Integrations side by side: `wiz` to source
-findings, `google-cloud` with `cloudAssetInventory` and/or `aws`/`azure` with `resourceTags` to enhance the cloud
-findings, and `github` to carry the tracking issues.
+[context enhancers](../enhancers/index.md) — [Cloud Asset Inventory](../enhancers/google-cai.md) for Google Cloud
+resources, [AWS resource tags](../enhancers/aws.md) for AWS ones, [Azure resource tags](../enhancers/azure.md) for Azure
+ones — to resolve a repository from the resource's ownership labels or tags. A Wiz estate typically runs several
+Integrations side by side: `wiz` to source findings, `google-cloud` with `cloudAssetInventory` and/or `aws`/`azure` with
+`resourceTags` to enhance the cloud findings, and [`github`](github.md) to carry the tracking issues.
 
 ## How findings arrive
 
@@ -56,89 +56,91 @@ means re-triggering the automation rule from the Wiz console.
 
 The webhook body is whatever the automation action's template renders, so **these templates are the contract**: patchy
 decodes exactly this shape, and a rule configured differently will be answered `204` (unrecognized shape) or ingest
-incompletely. Configure the Issues rule's action body as:
+incompletely.
 
-```json
-{
-  "trigger": {
-    "source": "{{triggerSource}}",
-    "type": "{{triggerType}}",
-    "ruleId": "{{ruleId}}",
-    "ruleName": "{{ruleName}}"
-  },
-  "issue": {
-    "id": "{{issue.id}}",
-    "status": "{{issue.status}}",
-    "severity": "{{issue.severity}}",
-    "created": "{{issue.createdAt}}",
-    "projects": "{{#issue.projects}}{{name}} {{/issue.projects}}",
-    "description": "{{issue.description}}",
-    "resolutionRecommendation": "{{issue.resolutionRecommendation}}",
-    "url": "{{issue.url}}",
-    "control": {
-      "id": "{{issue.sourceRule.id}}",
-      "name": "{{issue.sourceRule.name}}",
-      "description": "{{issue.sourceRule.cloudConfigurationRuleDescription}}",
-      "severity": "{{issue.severity}}"
-    }
-  },
-  "entitySnapshot": {
-    "id": "{{issue.entitySnapshot.id}}",
-    "type": "{{issue.entitySnapshot.type}}",
-    "nativeType": "{{issue.entitySnapshot.nativeType}}",
-    "name": "{{issue.entitySnapshot.name}}",
-    "cloudPlatform": "{{issue.entitySnapshot.cloudPlatform}}",
-    "cloudProviderURL": "{{issue.entitySnapshot.cloudProviderURL}}",
-    "providerId": "{{issue.entitySnapshot.providerId}}",
-    "region": "{{issue.entitySnapshot.region}}",
-    "resourceGroupExternalId": "{{issue.entitySnapshot.resourceGroupExternalId}}",
-    "subscriptionExternalId": "{{issue.entitySnapshot.subscriptionExternalId}}",
-    "subscriptionName": "{{issue.entitySnapshot.subscriptionName}}"
-  }
-}
-```
+??? note "The Issues rule's action body"
 
-and the Defend rule's as:
-
-```json
-{
-  "trigger": {
-    "source": "{{triggerSource}}",
-    "type": "{{triggerType}}",
-    "ruleId": "{{ruleId}}",
-    "ruleName": "{{ruleName}}"
-  },
-  "threat": {
-    "id": "{{threat.id}}",
-    "name": "{{threat.name}}",
-    "description": "{{threat.description}}",
-    "severity": "{{threat.severity}}",
-    "status": "{{threat.status}}",
-    "createdAt": "{{threat.createdAt}}",
-    "ruleId": "{{threat.ruleMatch.rule.id}}",
-    "ruleName": "{{threat.ruleMatch.rule.name}}",
-    "cloudPlatform": "{{threat.cloudPlatform}}",
-    "cloudAccounts": ["{{#threat.cloudAccounts}}{{externalId}}{{/threat.cloudAccounts}}"],
-    "mitreTactics": ["{{#threat.mitreTactics}}{{id}}{{/threat.mitreTactics}}"],
-    "mitreTechniques": ["{{#threat.mitreTechniques}}{{id}}{{/threat.mitreTechniques}}"],
-    "detectionIds": ["{{#threat.detections}}{{id}}{{/threat.detections}}"],
-    "url": "{{threat.url}}",
-    "actors": [{ "id": "{{actor.id}}", "name": "{{actor.name}}", "type": "{{actor.type}}" }],
-    "resources": [
-      {
-        "id": "{{resource.id}}",
-        "name": "{{resource.name}}",
-        "type": "{{resource.type}}",
-        "nativeType": "{{resource.nativeType}}",
-        "providerId": "{{resource.providerId}}",
-        "region": "{{resource.region}}",
-        "cloudPlatform": "{{resource.cloudPlatform}}",
-        "subscriptionExternalId": "{{resource.subscriptionExternalId}}"
+    ```json
+    {
+      "trigger": {
+        "source": "{{triggerSource}}",
+        "type": "{{triggerType}}",
+        "ruleId": "{{ruleId}}",
+        "ruleName": "{{ruleName}}"
+      },
+      "issue": {
+        "id": "{{issue.id}}",
+        "status": "{{issue.status}}",
+        "severity": "{{issue.severity}}",
+        "created": "{{issue.createdAt}}",
+        "projects": "{{#issue.projects}}{{name}} {{/issue.projects}}",
+        "description": "{{issue.description}}",
+        "resolutionRecommendation": "{{issue.resolutionRecommendation}}",
+        "url": "{{issue.url}}",
+        "control": {
+          "id": "{{issue.sourceRule.id}}",
+          "name": "{{issue.sourceRule.name}}",
+          "description": "{{issue.sourceRule.cloudConfigurationRuleDescription}}",
+          "severity": "{{issue.severity}}"
+        }
+      },
+      "entitySnapshot": {
+        "id": "{{issue.entitySnapshot.id}}",
+        "type": "{{issue.entitySnapshot.type}}",
+        "nativeType": "{{issue.entitySnapshot.nativeType}}",
+        "name": "{{issue.entitySnapshot.name}}",
+        "cloudPlatform": "{{issue.entitySnapshot.cloudPlatform}}",
+        "cloudProviderURL": "{{issue.entitySnapshot.cloudProviderURL}}",
+        "providerId": "{{issue.entitySnapshot.providerId}}",
+        "region": "{{issue.entitySnapshot.region}}",
+        "resourceGroupExternalId": "{{issue.entitySnapshot.resourceGroupExternalId}}",
+        "subscriptionExternalId": "{{issue.entitySnapshot.subscriptionExternalId}}",
+        "subscriptionName": "{{issue.entitySnapshot.subscriptionName}}"
       }
-    ]
-  }
-}
-```
+    }
+    ```
+
+??? note "The Defend rule's action body"
+
+    ```json
+    {
+      "trigger": {
+        "source": "{{triggerSource}}",
+        "type": "{{triggerType}}",
+        "ruleId": "{{ruleId}}",
+        "ruleName": "{{ruleName}}"
+      },
+      "threat": {
+        "id": "{{threat.id}}",
+        "name": "{{threat.name}}",
+        "description": "{{threat.description}}",
+        "severity": "{{threat.severity}}",
+        "status": "{{threat.status}}",
+        "createdAt": "{{threat.createdAt}}",
+        "ruleId": "{{threat.ruleMatch.rule.id}}",
+        "ruleName": "{{threat.ruleMatch.rule.name}}",
+        "cloudPlatform": "{{threat.cloudPlatform}}",
+        "cloudAccounts": ["{{#threat.cloudAccounts}}{{externalId}}{{/threat.cloudAccounts}}"],
+        "mitreTactics": ["{{#threat.mitreTactics}}{{id}}{{/threat.mitreTactics}}"],
+        "mitreTechniques": ["{{#threat.mitreTechniques}}{{id}}{{/threat.mitreTechniques}}"],
+        "detectionIds": ["{{#threat.detections}}{{id}}{{/threat.detections}}"],
+        "url": "{{threat.url}}",
+        "actors": [{ "id": "{{actor.id}}", "name": "{{actor.name}}", "type": "{{actor.type}}" }],
+        "resources": [
+          {
+            "id": "{{resource.id}}",
+            "name": "{{resource.name}}",
+            "type": "{{resource.type}}",
+            "nativeType": "{{resource.nativeType}}",
+            "providerId": "{{resource.providerId}}",
+            "region": "{{resource.region}}",
+            "cloudPlatform": "{{resource.cloudPlatform}}",
+            "subscriptionExternalId": "{{resource.subscriptionExternalId}}"
+          }
+        ]
+      }
+    }
+    ```
 
 The exact mustache variable names available to an automation rule vary by Wiz release and trigger — treat the right-hand
 sides as the intent ("the issue's id", "the entity's providerId") and verify them against your tenant's template editor;
@@ -161,16 +163,17 @@ tests.
   act on.
 - **GCP identifiers are normalized at ingest.** Wiz reports Google Cloud resources by API self-link
   (`https://www.googleapis.com/compute/v1/projects/...`); patchy rewrites that to the Cloud Asset Inventory name form
-  (`//compute.googleapis.com/projects/...`) so the asset-inventory enhancer can resolve ownership labels. An identifier
-  that cannot be rewritten still ingests — the enhancer falls back to a display-name lookup, accepting only an
-  unambiguous single hit. AWS and Azure identifiers need no such rewriting: `providerId` is the ARN or the ARM resource
-  ID, kept verbatim, and it is exactly what the [AWS](aws.md) and [Azure](azure.md) resource-tags enhancers look up.
+  (`//compute.googleapis.com/projects/...`) so the [asset-inventory enhancer](../enhancers/google-cai.md) can resolve
+  ownership labels. An identifier that cannot be rewritten still ingests — the enhancer falls back to a display-name
+  lookup, accepting only an unambiguous single hit. AWS and Azure identifiers need no such rewriting: `providerId` is
+  the ARN or the ARM resource ID, kept verbatim, and it is exactly what the [AWS](../enhancers/aws.md) and
+  [Azure](../enhancers/azure.md) resource-tags enhancers look up.
 - **Accumulation is per resource and per control/rule.** Re-notifications of the same control on the same resource fold
   into one `Finding`; a Defend threat naming several resources becomes one Finding per resource, each accumulating where
   it belongs. A threat naming no resources falls back to one Finding per cloud account.
 - **Skipped deliveries.** Trigger types other than Created/Updated/Reopened (notably `Resolved`), statuses other than
   OPEN/IN_PROGRESS, and severities below `minSeverity`. An inbound `Resolved` does **not** yet resolve the patchy
-  Finding — future work, alongside SCC's mute.
+  Finding — future work, alongside [SCC's mute](google-scc.md#what-is-not-implemented).
 
 Defend findings track like any other, but a runtime detection is rarely something a coding agent can remediate with a
 pull request: expect them to route to humans (the investigation gate hands off findings with no repository, and a
@@ -203,8 +206,8 @@ kubectl -n patchy patch secret patchy-wiz -p '{"stringData": {
 
 ## Replaying fixtures
 
-The [replay tool](../configuration/integration-controller.md) infers the route from the fixture name and sends the token
-as the bearer credential:
+The [replay tool](../../deployment/colima.md#apply-the-dev-overlay) infers the route from the fixture name and sends the
+token as the bearer credential:
 
 ```sh
 mise run replay -- -bearer "$WIZ_WEBHOOK_TOKEN" fixtures/webhooks/wiz.issue.created.json

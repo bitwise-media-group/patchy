@@ -1045,14 +1045,18 @@
     border-color: color-mix(in oklab, var(--pt-soil) 34%, transparent);
 }
 
-/* Field/key tables: keep the first column on one line. Opt-in per table via a
-   `.nowrap-first` wrapper (md_in_html) so the narrow name/flag/label column
-   never breaks an identifier mid-token — stealing the width from the wide
-   final column instead. Scoped to opted-in tables so wide reference tables
-   keep their natural first-column wrapping. */
-.md-typeset .nowrap-first th:first-child,
-.md-typeset .nowrap-first td:first-child {
+/* Tables: keep the first column on one line by default — the site's tables
+   lead with a name/flag/label column whose identifiers must never break
+   mid-token, stealing the width from the wide final column instead. A table
+   whose first column is prose can opt back out with a `.wrap-first` wrapper
+   (md_in_html). */
+.md-typeset table th:first-child,
+.md-typeset table td:first-child {
     white-space: nowrap;
+}
+.md-typeset .wrap-first th:first-child,
+.md-typeset .wrap-first td:first-child {
+    white-space: normal;
 }
 
 /* keyframes */

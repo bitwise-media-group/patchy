@@ -1,28 +1,23 @@
-# GitHub
+# GitHub code scanning
 
-GitHub is the only **two-way** integration: findings come in from code scanning, and patchy writes back — tracking
-issues, dismissals, remediation branches and pull requests. Everything else in the system is one-way.
+GitHub is the only **two-way** source: findings come in from code scanning, and patchy writes back — tracking issues,
+dismissals, remediation branches and pull requests. Everything else in the system is one-way.
 
-That split lives in two custom resources, and the separation is deliberate:
+!!! info "One provider, two resources"
 
-| Resource      | Direction         | Used by                                                  | Holds                             |
-| ------------- | ----------------- | -------------------------------------------------------- | --------------------------------- |
-| `Integration` | events and issues | integration-controller                                   | the webhook secret + a credential |
-| `Forge`       | repository access | source-controller (read), remediation-controller (write) | a credential                      |
+    This page is the GitHub **Integration** — alerts in, tracking issues and dismissals out. Repository clone and
+    push access is the separate [GitHub **Forge**](../forges/github.md); one GitHub App can back both. The
+    [integrations overview](../index.md) maps every provider's roles.
 
-One GitHub App can back both. They are separate objects because they are separate blast radii — the `Forge` is the only
-place a write credential is exercised, and splitting read and write across two Apps is a supported posture rather than a
-refactor.
-
-If you have not registered the App yet, start at [Create the GitHub App](../getting-started/github-app.md); this page is
-about what the resulting resources do.
+If you have not registered the App yet, start at [Create the GitHub App](../../getting-started/github-app.md); this page
+is about what the resulting resource does.
 
 ## How alerts arrive
 
 `POST /github/webhooks` is the one URL the App delivers to. Each delivery's `X-Hub-Signature-256` is HMAC-validated
 against the `webhookSecret` of every configured `Integration`, before any handling — see
-[integration-controller](../configuration/integration-controller.md#the-webhook-receiver) for the response codes and the
-delivery-queue behaviour.
+[integration-controller](../../configuration/integration-controller.md#the-webhook-receiver) for the response codes and
+the delivery-queue behaviour.
 
 ```yaml
 apiVersion: patchy.bitwisemedia.uk/v1alpha1
@@ -46,7 +41,7 @@ spec:
 
 Each capability block is independent. An `Integration` with only `codeScanningAlerts` ingests findings and never opens
 an issue; one with only `issues` is a tracking surface for findings that arrived from somewhere else — which is exactly
-how a [Google Cloud SCC](google-cloud-scc.md) estate gets its tracking issues.
+how a [Google Cloud SCC](google-scc.md) estate gets its tracking issues.
 
 Only `created` and `reopened` alert actions produce a finding. `fixed`, `closed_by_user`, `appeared_in_branch` and the
 rest are state GitHub already manages.
@@ -74,13 +69,20 @@ so accumulation still has a stable key. Alerts sharing an advisory family agains
 Three write paths, each gated differently:
 
 - **The tracking issue.** A Finding is projected to an issue: templated body, the
-  [projected labels](../labels.md#the-projected-labels), enrichments and reports as comments, and open/closed state.
+  [projected labels](../../labels.md#the-projected-labels), enrichments and reports as comments, and open/closed state.
   Strictly one-way — issue state is never parsed back into pipeline state, only the explicit signals below are.
 - **Alert dismissal.** An `ignore` verdict closes the code-scanning alert as a false positive. This is the write-back
   half of the `codeScanningAlerts` capability; the SCC analogue (muting) is
-  [not yet implemented](google-cloud-scc.md#what-is-not-implemented).
-- **The remediation branch and pull request.** Pushed through the `Forge`, not the `Integration` — a different
-  credential and a different controller.
+  [not yet implemented](google-scc.md#what-is-not-implemented).
+- **The remediation branch and pull request.** Pushed through the [`Forge`](../forges/github.md), not the `Integration`
+  — a different credential and a different controller.
+
+### The fallback repository
+
+A cloud finding that [never resolves a repository](../enhancers/index.md#when-no-repository-resolves) has nowhere
+natural to carry its tracking issue. `github.issues.fallbackRepository` (`"owner/repo"`) names one: findings with no
+repository of their own are projected there instead, so they stay visible to humans. They still cannot be remediated —
+the issue is a human surface, not a work tree.
 
 ### Human signals
 
@@ -98,34 +100,9 @@ These are the only things on GitHub that move `Finding` state:
 but on an issue it is whoever can comment — so treat the comment as a convenience for repositories whose write access
 already matches your approval policy.
 
-## Repository access
-
-A `Forge` answers "how do I clone and push this repository". It is matched by host equality, then the optional `orgs`
-allowlist, then the optional repository-name regexes; **the most-constrained match wins**, so a narrow `Forge` for one
-sensitive org overrides a broad default without ordering rules.
-
-```yaml
-apiVersion: patchy.bitwisemedia.uk/v1alpha1
-kind: Forge
-metadata:
-  name: github
-  namespace: patchy
-spec:
-  provider: github
-  secretRef:
-    name: patchy-github
-  # orgs: [acme]                          # optional allowlist
-  # repositories: ["^acme/payments-.*$"]  # optional regexes
-  interval: 10m
-```
-
-Agent pods never hold this credential, or any other. source-controller downloads the archive at a pinned SHA and serves
-it from its own artifact endpoint; remediation-controller replays the agent's changeset through the Git Data API. See
-[the isolation model](../deployment/isolation.md).
-
 ## Credentials
 
-One Secret, referenced by both resources. Two accepted shapes:
+One Secret, which the [Forge](../forges/github.md#credentials) can reference too. Two accepted shapes:
 
 | Keys                   | Use                                                             |
 | ---------------------- | --------------------------------------------------------------- |
@@ -157,15 +134,11 @@ On each reconcile interval the controller lists recent deliveries and asks GitHu
 
 ## GitHub Enterprise Server
 
-Point both resources at your instance and everything else is identical:
+Point the resource at your instance and everything else is identical (the
+[Forge](../forges/github.md#github-enterprise-server) takes the same field):
 
 ```yaml
-# Integration
 spec:
   github:
     baseURL: https://ghes.example.com/api/v3
-
-# Forge
-spec:
-  baseURL: https://ghes.example.com/api/v3
 ```

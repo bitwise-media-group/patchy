@@ -125,69 +125,12 @@ kubectl -n patchy create secret generic patchy-github \
 To use real GitHub App credentials instead, write `appID` + `privateKey` keys into the same Secret, as described in
 `deploy/kustomize/overlays/dev/secret-dev.yaml`.
 
-## Credential-less end to end: the dev-fake overlay
+## Credential-less end to end
 
-To watch **every custom resource** progress — `Finding` through `Repository`, `Investigation`, `Remediation`, the pull
-request, `FindingRollup`, and the TTL sweep — without a GitHub token _or_ a model key, the `dev-fake` overlay replaces
-both external dependencies:
-
-- **GitHub** becomes the e2e suite's in-memory API, run **in the cluster** as part of the overlay (`patchy-fakegithub`,
-  built from `e2e/fakegithub` by `dev-colima`). It serves everything the controllers call: alert detail, the issue
-  projection, repository tarballs, the Git Data push, and pull requests. The overlay points the `Integration`/`Forge`
-  CRs at its Service DNS name and adds the one egress NetworkPolicy rule k3s needs; a NodePort (30990) exposes the same
-  API to your host for inspection.
-- **The model** becomes a scripted agent image (`hack/fake-agent`): a shell script named `agent-runner` that prints the
-  same two stdout streams the real runner does — a paced `PATCHY-TURN` conversation followed by the stage's
-  `PATCHY-EVENT` result. The Jobs are real — init container, artifact fetch, digest check — only the verdict is scripted
-  (remediate at 0.92 confidence, so findings flow straight through the queue). Because the turns are real turns, each
-  run's conversation is captured into its transcript `ConfigMap` and streams live onto the status page while the Job is
-  still running, and both stages carry a full report.
-
-```sh
-PATCHY_OVERLAY=dev-fake make dev-colima    # builds the fake images too
-
-mise run replay -- -dev-secret \
-  fixtures/webhooks/code_scanning_alert.created.json
-
-kubectl get patchy -n patchy -w            # every patchy kind, live
-```
-
-Within a couple of minutes (2-minute accumulation window + minimum age) the Finding walks
-`Opened → Enhanced → Investigating → Queued → Remediating → InReview`: the `Repository` pins the fake's head SHA and
-serves its artifact, the `Investigation` and `Remediation` children appear with their Jobs, and the push + PR land in
-the fake — visible on its API:
-
-```sh
-curl -s http://localhost:30990/api/v3/repos/acme/shop/issues | jq '.[].title'   # the projected issue
-curl -s http://localhost:30990/api/v3/repos/acme/shop/pulls  | jq '.[].number'  # the remediation PR
-```
-
-(30990 is the fake's Service NodePort, forwarded to `localhost` by colima like the webhook's 30079.)
-
-Close the loop by "merging" the PR — the merge signal resolves the Finding by its branch name, so substitute the real
-finding name into the recorded fixture:
-
-```sh
-name=$(kubectl -n patchy get findings -o jsonpath='{.items[0].metadata.name}')
-sed "s/patchy\/finding-cccccccccc-1/patchy\/$name/" \
-  e2e/fixtures/webhooks/pull_request.merged.json > /tmp/merged.json
-mise run replay -- -dev-secret /tmp/merged.json
-```
-
-Each stage's conversation and report are on the status page under the finding — open the run while its Job is still
-alive and the turns stream in as the script emits them (it paces itself for exactly that reason). The same turns are
-persisted, so they stay readable after the Job's TTL takes the pod:
-
-```sh
-kubectl -n patchy get cm -l patchy.bitwisemedia.uk/finding="$name"    # one transcript per run
-```
-
-The Finding goes `Remediated`, `kubectl get findingrollups -n patchy -o yaml` shows the counts and (scripted) token/cost
-totals ticking, and after the dev TTL (30 minutes) the Finding and its children are deleted while the rollups remain.
-The fake's state is in-memory — `kubectl -n patchy rollout restart deployment patchy-fakegithub` for a clean slate
-(every `dev-colima` re-run restarts it too; live Findings notice their tracking issue vanished and re-project a fresh
-one) — and other routes (`ignore`, `manual`, an `await_approval` hold) are one edit away in
-`hack/fake-agent/agent-runner`.
+To watch **every custom resource** progress without a GitHub token _or_ a model key, the `dev-fake` overlay replaces
+GitHub with the e2e suite's in-memory API (run in-cluster) and the model with a scripted agent —
+`PATCHY_OVERLAY=dev-fake make dev-colima` builds and deploys the fakes alongside everything above. The full walkthrough
+is on [Demo tooling](dev-fake.md#credential-less-end-to-end-the-dev-fake-overlay).
 
 ## Ingress for the integration-controller
 

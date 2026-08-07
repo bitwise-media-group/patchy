@@ -1,11 +1,10 @@
 # Azure resource tags
 
-Patchy has no Azure scanner source — Azure findings arrive through [Wiz](wiz.md) (or a future source). What the `azure`
-Integration provides is the other half: the **context enhancer** that looks a finding's Azure resource up in Azure
+Patchy has no Azure scanner source — Azure findings arrive through [Wiz](../sources/wiz.md) (or a future source). What
+the `azure` Integration provides is the [context enhancer](index.md): it looks a finding's Azure resource up in Azure
 Resource Graph, carries its tags onto the finding, and resolves the owning repository from them. It is the Azure sibling
-of the [Cloud Asset Inventory enhancer](google-cloud-scc.md#finding-a-repository) and the
-[AWS resource-tags enhancer](aws.md), and follows the same rule: it keys purely on the finding's cloud resource, not on
-where the finding came from.
+of the [Cloud Asset Inventory](google-cai.md) and [AWS resource-tags](aws.md) enhancers, and like every enhancer it keys
+purely on the finding's cloud resource, not on where the finding came from.
 
 ## One inventory, one question
 
@@ -19,27 +18,15 @@ to one management group.
 Resource Graph is eventually consistent by minutes, which costs nothing here: a finding accumulates for an hour before
 enhancement runs.
 
-## Finding a repository
+## The ownership tags
 
-The [ownership vocabulary is the same one Google Cloud resources use](google-cloud-scc.md#the-ownership-labels), spelled
-as tags:
+The [shared vocabulary](index.md#the-ownership-labels), spelled as tags:
 
-```text
-scm-repository-org:      acme          # the organization
-scm-repository-name:     infra-prod    # the repository
-scm-repository-provider: github        # optional; defaults to github
-```
+--8<-- ".snippets/ownership-labels.md"
 
-Or, where a single value is easier to manage:
-
-```text
-scm-repository-url:      https://github.com/acme/infra-prod
-```
-
-The URL form supersedes the triple, and is the only one that can name a self-hosted forge. Like an AWS tag — and unlike
-a Google Cloud label — an Azure tag value can carry `://` verbatim, though the scheme is still optional, for a
-vocabulary shared across clouds. The key names are configurable (`resourceTags.tags`, below) for estates with an
-existing convention.
+Like an AWS tag — and unlike a Google Cloud label — an Azure tag value can carry `://` verbatim, though the scheme is
+still optional, for a vocabulary shared across clouds. The key names are configurable (`resourceTags.tags`, below) for
+estates with an existing convention.
 
 Beyond the repository, the resource's tags themselves become finding attributes (`tag:<key>`, capped at 24, beside
 `azure-subscription`, `resource-type` and `location`) — visible on the tracking issue and to the investigating agent,
@@ -97,12 +84,10 @@ enough):
 
 ## When no repository resolves
 
-Same as the Google Cloud and AWS enhancers: a resource without ownership tags — or one Resource Graph has no record of,
-because it was deleted or is not indexed yet — is a clean answer, not a failure. The finding keeps its attributes,
-reaches a human, and the investigation gate hands it off (give it a visible home with
-`github.issues.fallbackRepository`). A lookup that _failed_ — throttling, an identity binding still propagating — holds
-the finding and retries instead, bounded by the accumulation window.
+[The shared semantics apply](index.md#when-no-repository-resolves): a resource without ownership tags — or one Resource
+Graph has no record of, because it was deleted or is not indexed yet — is a clean answer; a lookup that _failed_
+(throttling, an identity binding still propagating) holds and retries instead.
 
-One wrinkle shared with AWS: a [Wiz Defend](wiz.md) threat that names no concrete resource falls back to a synthetic
-subscription-level pseudo-resource. No inventory records those, so the enhancer stands aside rather than looking them
-up.
+One wrinkle shared with [AWS](aws.md): a [Wiz Defend](../sources/wiz.md) threat that names no concrete resource falls
+back to a synthetic subscription-level pseudo-resource. No inventory records those, so the enhancer stands aside rather
+than looking them up.

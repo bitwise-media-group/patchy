@@ -92,8 +92,6 @@ no tokens are spent; on [Colima](../deployment/colima.md) the whole loop is `mak
 
 ## Troubleshooting
 
-<div class="nowrap-first" markdown>
-
 | Symptom                                    | Likely cause                                                                                         |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | Webhook deliveries show `401`              | Webhook secret mismatch between the App and `patchy-github`, or no Integration exists                |
@@ -103,5 +101,3 @@ no tokens are spent; on [Colima](../deployment/colima.md) the whole loop is `mak
 | Issue projection / artifacts erroring      | The `patchy-github` credential is a placeholder or lacks a permission                                |
 | Findings bounce `Investigating → Enhanced` | Job launch or stage failed; retried up to `--max-attempts` (2), then `Failed`                        |
 | Egress "works" on kind                     | kindnet ignores NetworkPolicy — a green dev apply is not a working sandbox                           |
-
-</div>

@@ -11,8 +11,8 @@ reads and writes the identical custom resources, so the two surfaces never disag
 
 ## Views
 
-The screenshots below show the [canned dev data](#canned-data-in-dev) — every finding deliberately suspended, hence the
-`suspended` pill on each row.
+The screenshots below show the [canned dev data](deployment/dev-fake.md#canned-status-page-data) — every finding
+deliberately suspended, hence the `suspended` pill on each row.
 
 - **Findings** — stat tiles, the eleven-phase lifecycle rail with live counts (click a phase to filter),
   severity/verdict/repository/text filters, and the board: severity, phase (with a live-dot while an agent run is active
@@ -90,18 +90,12 @@ the finding fails again, another retry is required.
 minimum-age wait, and both schedulers rank the finding's runs ahead of all non-expedited work. It does not bypass an
 `AwaitingApproval` hold — that remains approve's job.
 
-## The user menu: demo tooling
+## The user menu
 
-The signed-in name in the top bar drops a menu holding sign-out and two namespace-wide actions, each behind its own
-custom RBAC verb and hidden without the grant:
-
-| Action                | Verb     | What happens                                                                                                                                                                                                                                   |
-| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Replay deliveries** | `replay` | Writes `spec.replay` on the active Integrations; the integration-controller then redelivers the App webhook's delivery log — successes included — through the [redelivery sweep](deployment/webhook.md#missed-deliveries-the-redelivery-sweep) |
-| **Reset all data**    | `reset`  | Deletes every pipeline resource in the namespace — findings, investigation/remediation runs, pinned repositories, rollups. Configuration (Integrations, Forges) survives. Two clicks to confirm                                                |
-
-Reset then Replay re-runs the entire pipeline from ingestion — the demo loop. Grant these verbs sparingly; the
-`patchy-findings-admin` example tier in `rbac.users.example.yaml` bundles them with the operator verbs.
+The signed-in name in the top bar drops a menu holding sign-out and two namespace-wide demo actions — **Replay
+deliveries** (RBAC verb `replay`) and **Reset all data** (verb `reset`) — each hidden without its grant. Together they
+re-run the entire pipeline from ingestion; what they write and when to grant them is covered in
+[Demo tooling](deployment/dev-fake.md#the-demo-loop-replay-and-reset).
 
 ## Access model
 
@@ -142,18 +136,5 @@ kubectl -n patchy port-forward svc/patchy-status-server 8080:8080
 # → http://localhost:8080  (with the dev overlay's `mode: none` auth: full access)
 ```
 
-## Canned data in dev
-
-The dev overlay ships representative canned data so the page is worth looking at without running the pipeline:
-`deploy/kustomize/overlays/dev/findings-demo.yaml` carries one `Finding` per lifecycle phase (the screenshots above)
-plus `FindingRollup` statistics for every scope. `kubectl apply -k` creates the objects but cannot write their status
-subresource, so seed the phases and rollup buckets with:
-
-```sh
-mise run status-demo
-```
-
-The data is deliberately inert — every finding is **suspended** (the enhancer, gate, and spawner all skip suspended
-findings), none carries a `trackingRef` (so nothing is projected to GitHub), and terminal phases carry no `completedAt`
-(so the rollup/TTL loop neither aggregates nor reaps them). Actions still work against it: resume one of the canned
-findings and the controllers will pick it up for real, which is a fine way to watch the pipeline run.
+Want the page populated without running the pipeline? The dev overlay ships
+[canned data](deployment/dev-fake.md#canned-status-page-data) — one finding per lifecycle phase plus rollup statistics.

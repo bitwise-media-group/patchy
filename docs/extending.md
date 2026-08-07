@@ -6,7 +6,7 @@ are stable for external reuse — and the built-in implementations under `intern
 and `internal/enhancers` are reference implementations of the same interfaces.
 
 There are two ways in. An **in-tree plugin** implements the Go interfaces below and is compiled into the controllers. An
-**external process** implements the [generic HTTP contract](integrations/generic.md) instead — the same source,
+**external process** implements the [generic HTTP contract](integrations/sources/generic.md) instead — the same source,
 write-back, and enhancer seams spoken over signed HTTP by a `provider: generic` Integration, with no patchy code changed
 at all. Reach for generic first when the integration is yours to host; reach for an in-tree plugin when it should ship
 with patchy.
@@ -20,9 +20,9 @@ Finding's description and the tracking issue's body. The built-in `ghas` handler
 `code_scanning_alert` deliveries; `gcp-scc` does it for Security Command Center notifications, which need no API call at
 all because the notification carries everything.
 
-The design intent (see `DESIGN.md`) is that SAST tools, dependency scanners, cloud posture tools, or even agentic
-reviewers plug in here without touching the accumulation, projection, or remediation machinery — the `Finding` schema is
-source-agnostic, and `spec.source` (projected as the `security-source` label) records where a finding came from.
+The design intent is that SAST tools, dependency scanners, cloud posture tools, or even agentic reviewers plug in here
+without touching the accumulation, projection, or remediation machinery — the `Finding` schema is source-agnostic, and
+`spec.source` (projected as the `security-source` label) records where a finding came from.
 
 **Not every finding is about code.** A finding may name a repository, a `CloudResource`, or both, and that choice
 decides how it accumulates: code findings group per repository, cloud findings per resource. A finding without a
@@ -72,20 +72,20 @@ Four implementations ship:
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
 - **Google Cloud labels** — reads `scm-repository-*` labels off the cloud resource a finding was raised against, via
   Cloud Asset Inventory, and resolves the repository from them
-  ([format](integrations/google-cloud-scc.md#the-ownership-labels)). Configured on the `google-cloud` Integration's
+  ([format](integrations/enhancers/index.md#the-ownership-labels)). Configured on the `google-cloud` Integration's
   `cloudAssetInventory` block and read per enhancement, it acts on any Google Cloud finding whichever source ingested
   it, and stands aside when no Integration enables it.
 - **AWS resource tags** — the same vocabulary spelled as tags, read from an organization-level inventory (an AWS Config
-  aggregator or a Resource Explorer view), plus the resource's tags as attributes ([format](integrations/aws.md)).
-  Configured on the `aws` Integration's `resourceTags` block, same rules: any AWS finding, whichever source, standing
-  aside unless enabled.
+  aggregator or a Resource Explorer view), plus the resource's tags as attributes
+  ([format](integrations/enhancers/aws.md)). Configured on the `aws` Integration's `resourceTags` block, same rules: any
+  AWS finding, whichever source, standing aside unless enabled.
 - **Azure resource tags** — the same again for Azure, read from Azure Resource Graph (tenant-wide, no backend to
-  choose), plus the resource's tags as attributes ([format](integrations/azure.md)). Configured on the `azure`
+  choose), plus the resource's tags as attributes ([format](integrations/enhancers/azure.md)). Configured on the `azure`
   Integration's `resourceTags` block, same rules: any Azure finding, whichever source, standing aside unless enabled.
 
 A fifth chain entry is not one enhancer but a fan-out: the **generic HTTP enhancer** calls every `provider: generic`
-Integration whose `enhance` capability is on ([contract](integrations/generic.md)), each under its own name, in name
-order, after the cloud lookups and before the static file. It is how a real CMDB integrates without a rebuild.
+Integration whose `enhance` capability is on ([contract](integrations/enhancers/generic.md)), each under its own name,
+in name order, after the cloud lookups and before the static file. It is how a real CMDB integrates without a rebuild.
 
 A real CMDB integration implements the same interface — in-tree or over the generic contract: resolve the repository,
 return owners and attributes, let the chain record them. The owners an enhancer reports are who patchy hands a finding
@@ -142,3 +142,12 @@ for one harness that can run every model.
 - The custom resources are the state, and the [projected labels](labels.md#the-projected-labels) are a one-way rendering
   of it: new sources and enhancers express state through the `Finding` schema, never by inventing parallel labels or
   parsing issues.
+
+### Adding a field to FindingSpec
+
+The [`ValidatingAdmissionPolicy`](cli.md#permissions) has to enumerate the spec fields it freezes, because CEL cannot
+express "everything except these four". A new field would otherwise become writable by anyone holding `update`.
+`TestAdmissionPolicyCoversEveryFindingSpecField` in `internal/action` reflects over the Go type and fails if a field is
+unaccounted for — when it fires, add the field to the frozen-fields validation in **both**
+`deploy/kustomize/base/admission-policy.yaml` and `charts/patchy/templates/admission-policy.yaml`. The test checks both
+renderings; a Helm install left out of step would silently ship a policy that leaves the field writable.

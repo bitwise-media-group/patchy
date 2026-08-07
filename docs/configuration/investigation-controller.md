@@ -7,14 +7,12 @@ in severity order, parses the `PATCHY-EVENT:` stream, stamps the results, and ro
 
 ```sh
 investigation-controller serve --namespace patchy \
-  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.6.0
+  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.9.0 # match your installed release
 ```
 
 ## Pipeline flags
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
-
-<div class="nowrap-first" markdown>
 
 | Flag                              | Env                                    | Default | Purpose                                             |
 | --------------------------------- | -------------------------------------- | ------- | --------------------------------------------------- |
@@ -25,8 +23,6 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 | `--priority-aging-interval`       | `PATCHY_PRIORITY_AGING_INTERVAL`       | `24h`   | Wait per effective-priority point of aging boost    |
 | `--priority-aging-cap`            | `PATCHY_PRIORITY_AGING_CAP`            | `25`    | Maximum aging boost                                 |
 
-</div>
-
 ## Agent Job flags
 
 Shared with the [remediation-controller](remediation-controller.md) — both job controllers build Jobs the same way, from
@@ -34,8 +30,6 @@ a per-harness runner fleet. A runner is _configured_ when its image flag is set 
 `--harnesses` (or, when that is empty, its credential Secret exists). The controller resolves each stage's model to a
 harness and runs the matching runner. At startup it validates that every allowlisted model has an enabled harness that
 supports it, refusing to start otherwise.
-
-<div class="nowrap-first" markdown>
 
 | Flag                      | Env                            | Default                | Purpose                                                                                                                             |
 | ------------------------- | ------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,16 +53,12 @@ supports it, refusing to start otherwise.
 | `--job-ttl`               | `PATCHY_JOB_TTL`               | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                        |
 | `--model-allowlist`       | `PATCHY_MODEL_ALLOWLIST`       | canonical ids          | Canonical model ids the investigation may request for remediation (comma-separated)                                                 |
 
-</div>
-
 ## Stage flags
 
 The investigation stage's limits are **absolute** — the stage runs on exactly these. Its model is a canonical,
 provider-qualified id (e.g. `anthropic/claude-sonnet-5`); the harness that runs it is derived from the model. The two
 `remediate` ceilings exist here because this controller clamps what the investigation report requests before it ever
 reaches the queue.
-
-<div class="nowrap-first" markdown>
 
 | Flag                         | Env                               | Default                     | Purpose                                             |
 | ---------------------------- | --------------------------------- | --------------------------- | --------------------------------------------------- |
@@ -78,8 +68,6 @@ reaches the queue.
 | `--investigate-token-budget` | `PATCHY_INVESTIGATE_TOKEN_BUDGET` | `150000`                    | Output-token budget for the analysis stage          |
 | `--remediate-max-turns`      | `PATCHY_REMEDIATE_MAX_TURNS`      | `80`                        | Ceiling on the report's suggested remediation turns |
 | `--remediate-token-budget`   | `PATCHY_REMEDIATE_TOKEN_BUDGET`   | `400000`                    | Ceiling on the suggested remediation budget         |
-
-</div>
 
 The stage flags are re-serialized into `PATCHY_*` environment variables injected into every investigation pod
 ([agent-runner](agent-runner.md) reads them), so this controller's flags are the single operator-facing configuration

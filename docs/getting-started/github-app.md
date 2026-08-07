@@ -17,8 +17,6 @@ fill in:
 
 Grant exactly these — nothing more:
 
-<div class="nowrap-first" markdown>
-
 | Permission               | Access       | Why                                                          |
 | ------------------------ | ------------ | ------------------------------------------------------------ |
 | **Code scanning alerts** | Read & write | Read alert detail; dismiss false positives                   |
@@ -27,13 +25,9 @@ Grant exactly these — nothing more:
 | **Pull requests**        | Read & write | Open the pull request a human reviews                        |
 | **Metadata**             | Read         | Mandatory for every App                                      |
 
-</div>
-
 ## Webhook events
 
 Subscribe to these four events:
-
-<div class="nowrap-first" markdown>
 
 | Event                 | Purpose                                                               |
 | --------------------- | --------------------------------------------------------------------- |
@@ -41,8 +35,6 @@ Subscribe to these four events:
 | `issues`              | Human signals on the tracking issue — close hands off, reopen revives |
 | `issue_comment`       | The `/approve` release for held findings                              |
 | `pull_request`        | Close the loop when the remediation PR merges (or closes unmerged)    |
-
-</div>
 
 All four are consumed by the **integration-controller** — the only webhook receiver in the system. Pipeline progress
 itself is not webhook-driven: the reconcile loops carry it, and the webhook path is ingestion and human-in-the-loop

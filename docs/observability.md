@@ -12,15 +12,11 @@ The pipeline itself is observable without any of this: the custom resources **ar
 
 Each controller resolves its telemetry mode at startup, in this order:
 
-<div class="nowrap-first" markdown>
-
 | Mode     | Selected when                    | Behavior                                                                                  |
 | -------- | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | file     | `PATCHY_TELEMETRY_DIR` is set    | One JSON file per signal (`traces.json`, `metrics.json`, `logs.json`) under the directory |
 | env      | Any active `OTEL_*` exporter var | Standard OTel autoexport / OTLP                                                           |
 | disabled | Neither                          | Stderr logging only; no providers installed                                               |
-
-</div>
 
 `PATCHY_TELEMETRY_DIR` is environment-only (no flag) and always wins — it exists for tests and local debugging, where a
 file you can `jq` beats a collector.

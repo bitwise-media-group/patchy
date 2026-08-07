@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.1](https://github.com/bitwise-media-group/patchy/compare/v0.9.0...v0.9.1) (2026-08-07)
+
+
+### Features
+
+* **api:** add the generic integration provider block ([a44b56a](https://github.com/bitwise-media-group/patchy/commit/a44b56afcf7293a58ad7f008c00dac25d025c2d5))
+* **cli:** add patchy dev, a local test harness for generic integrations ([1684932](https://github.com/bitwise-media-group/patchy/commit/1684932088f38a779750c4c06302107187c78752))
+* **context-controller:** fan enhancement out to generic integrations ([15fa126](https://github.com/bitwise-media-group/patchy/commit/15fa1267384c5f74449a9edd0ec718d763103c5d))
+* **deploy:** expose the generic surfaces ([c350b45](https://github.com/bitwise-media-group/patchy/commit/c350b455e3a3f74f6cdc2f7ed76295a9c0e16404))
+* **generic:** add the wire contract and validating source handler ([c40bf7b](https://github.com/bitwise-media-group/patchy/commit/c40bf7b2f076a1bed670053a3f76db831d248cc9))
+* **integration-controller:** serve the generic route and write-back ([7292b37](https://github.com/bitwise-media-group/patchy/commit/7292b37ddeba881146a41571b41ebcab43919763))
+* **webhook:** support wildcard paths and request-scoped HMAC candidates ([026c32d](https://github.com/bitwise-media-group/patchy/commit/026c32de3bfb8135a424020b8a44086c2f8b9b19))
+
+
+### Bug Fixes
+
+* **integration:** fall trackingRef back to the issues-enabled integration ([faa0f8b](https://github.com/bitwise-media-group/patchy/commit/faa0f8b681510d1068487f7bc3a8923170807fa4))
+
 ## [0.9.0](https://github.com/bitwise-media-group/patchy/compare/v0.8.2...v0.9.0) (2026-07-30)
 
 

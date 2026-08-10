@@ -11,7 +11,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph v0.10.0
 	github.com/aws/aws-sdk-go-v2 v1.43.3
 	github.com/aws/aws-sdk-go-v2/config v1.32.34
-	github.com/aws/aws-sdk-go-v2/service/configservice v1.68.2
+	github.com/aws/aws-sdk-go-v2/service/configservice v1.68.3
 	github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.3
 	github.com/aws/smithy-go v1.27.6
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0

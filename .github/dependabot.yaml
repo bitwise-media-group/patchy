@@ -15,6 +15,14 @@ updates:
           prefix-development: deps
       schedule:
           interval: daily
+      groups:
+          # The otel/log API, SDK, exporters, and contrib bridges are separate
+          # modules that only compile against matching release trains — a lone
+          # bump (e.g. sdk/log 0.21.0 without otelslog 0.20.0) fails the build,
+          # so ship the whole family as one PR.
+          opentelemetry:
+              patterns:
+                  - go.opentelemetry.io/*
 
     # The pinned dev CLIs (addlicense, golangci-lint, goreleaser, ...) and the
     # task archetypes come from the toolchain submodule at .mise/. Track it so a

@@ -3,6 +3,16 @@
 #
 # ---- repo-local tasks (the long tail the library intentionally omits) -------
 
+# Overrides the archetype's go-lint: same golangci-lint pass, but
+# govulncheck runs through hack/govulncheck.sh, which carries the reviewed
+# acceptance for advisories with no fix (currently GO-2026-5932, the
+# unmaintained x/crypto/openpgp cosign drags in — see the script for the
+# rationale and the re-review trigger).
+[go-lint]
+hide = true
+dir = "{{cwd}}"
+run = ["golangci-lint run", "hack/govulncheck.sh"]
+
 # The e2e suite is a separate module: it boots an envtest kube-apiserver
 # (the CRD state machine), builds the real controller binaries, and drives
 # them with recorded webhook fixtures against an in-memory GitHub. No real

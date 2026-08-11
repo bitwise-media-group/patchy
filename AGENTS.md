@@ -49,7 +49,9 @@ Eight binaries, one module. "Not monolithic" means separate binaries/deployments
   caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
   action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API
   writes is the ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`, NOT the CLI's
-  own SelfSubjectAccessReview (that is ergonomics). Builds for windows too, and ships a `kubectl-patchy`
+  own SelfSubjectAccessReview (that is ergonomics). Two cluster-free command groups ride along: `dev` (the
+  generic-integration test harness) and `mirror` (vendored chart/artifact mirroring over `internal/mirror`;
+  kubeconfig flags inert, git never touched). Builds for windows too, and ships a `kubectl-patchy`
   alias. Ships no container image: it is distributed as its own `patchy-cli` release archive (separate from
   the cluster binaries' `patchy` archive) and as a Homebrew cask in bitwise-media-group/homebrew-tap.
 
@@ -144,6 +146,17 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from.
 - `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref); the
   only place a write credential is exercised. No git binary anywhere controller-side.
+- `mirror` — the engine behind `patchy mirror` (CLI-only; no controller consumes it): vendored mirroring of
+  upstream helm charts and OCI artifacts into a platform registry. One concern per subpackage: `spec` (the
+  mirror.yaml/manifest/lock schema + glob discovery — the tree is the registry of entries), `imageref`,
+  `semverpick` (constraints + cooldown walks), `yamledit` (comment-preserving byte-splice edits, never
+  re-encode), `helmchart` (pull/extract/tree-diff/push), `render` (byte-stable `helm template` equivalent —
+  helm SDK pinned; upgrades are deliberate, the validate gate byte-compares output), `discover` (4-pass image
+  discovery), `distro` (distribution-manifests → generated images.extra.yaml sidecar), `verify`/`sign`
+  (cosign: upstream provenance in, bundle-referrers signatures out; KMS via sigstore providers), `scan`
+  (pluggable: osv library + grype/kubescape shell-outs), `allowlist` (derive with keep-expiry/drop-stale
+  rules). The engine never touches git — the calling pipeline owns commits/branches/PRs — and only the
+  upgrade path may consult the wall clock, keeping `validate`'s byte-identity gate deterministic.
 
 ## Conventions
 

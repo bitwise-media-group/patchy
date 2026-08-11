@@ -12,7 +12,7 @@ import (
 )
 
 // parseDevGeneric builds the harness command and parses args, without
-// running it, so loadDevConfig can be exercised in isolation.
+// running it, so loadCLIConfig can be exercised in isolation.
 func parseDevGeneric(t *testing.T, args ...string) *cobra.Command {
 	t.Helper()
 	cmd := newDevGenericCmd(&Options{})
@@ -35,9 +35,9 @@ func TestLoadDevConfigPrecedence(t *testing.T) {
 	t.Setenv("PATCHY_DEV_NAME", "env-name")
 
 	cmd := parseDevGeneric(t, "--addr", "flag-addr:1")
-	v, err := loadDevConfig(cmd, devGenericKeys)
+	v, err := loadCLIConfig(cmd, devGenericKeys)
 	if err != nil {
-		t.Fatalf("loadDevConfig: %v", err)
+		t.Fatalf("loadCLIConfig: %v", err)
 	}
 
 	if got := v.GetString("dev.addr"); got != "flag-addr:1" {
@@ -67,7 +67,7 @@ func TestLoadDevConfigAmbiguousFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := loadDevConfig(parseDevGeneric(t), devGenericKeys)
+	_, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("error = %v, want the ambiguity refusal", err)
 	}
@@ -81,7 +81,7 @@ func TestLoadDevConfigMalformedFile(t *testing.T) {
 	if err := os.WriteFile(".patchy.yaml", []byte("dev: ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := loadDevConfig(parseDevGeneric(t), devGenericKeys)
+	_, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
 	if err == nil || !strings.Contains(err.Error(), ".patchy.yaml") {
 		t.Fatalf("error = %v, want a parse failure naming the file", err)
 	}

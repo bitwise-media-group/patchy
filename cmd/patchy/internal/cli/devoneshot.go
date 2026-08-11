@@ -103,7 +103,7 @@ func bindDevOneShotFlags(cmd *cobra.Command, f *devOneShotFlags, urlHelp string)
 }
 
 func runDevOneShot(cmd *cobra.Command, opts *Options, f *devOneShotFlags, leg string, files []string) error {
-	v, err := loadDevConfig(cmd, devOneShotKeys(leg))
+	v, err := loadCLIConfig(cmd, devOneShotKeys(leg))
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func runDevOneShot(cmd *cobra.Command, opts *Options, f *devOneShotFlags, leg st
 	f.secret = v.GetString("dev.secret")
 	f.secretFile = v.GetString("dev.secret-file")
 	f.timeout = v.GetDuration("dev." + leg + "-timeout")
-	noteDevConfig(opts, v)
+	noteConfigFile(opts, v)
 
 	if err := validateDevName(f.name); err != nil {
 		return err

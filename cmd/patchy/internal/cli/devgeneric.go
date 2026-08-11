@@ -20,7 +20,7 @@ import (
 )
 
 // devGenericFlags carries the harness configuration; every field also
-// resolves from PATCHY_DEV_* and .patchy.<ext> via loadDevConfig.
+// resolves from PATCHY_DEV_* and .patchy.<ext> via loadCLIConfig.
 type devGenericFlags struct {
 	addr           string
 	name           string
@@ -98,7 +98,7 @@ func newDevGenericCmd(opts *Options) *cobra.Command {
 }
 
 func runDevGeneric(cmd *cobra.Command, opts *Options, f *devGenericFlags) error {
-	v, err := loadDevConfig(cmd, devGenericKeys)
+	v, err := loadCLIConfig(cmd, devGenericKeys)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func runDevGeneric(cmd *cobra.Command, opts *Options, f *devGenericFlags) error 
 	f.resolveTimeout = v.GetDuration("dev.resolve-timeout")
 	f.resolveDelay = v.GetDuration("dev.resolve-delay")
 	f.noAutoResolve = v.GetBool("dev.no-auto-resolve")
-	noteDevConfig(opts, v)
+	noteConfigFile(opts, v)
 
 	if err := validateDevName(f.name); err != nil {
 		return err

@@ -218,6 +218,29 @@ Uniquely in the CLI, every `dev` flag also resolves from `PATCHY_DEV_*` environm
 `.patchy.yaml` in the working directory (flag beats environment beats file). See the
 [generic integration guide](integrations/sources/generic.md#testing-your-integration-locally) for the full walkthrough.
 
+## Maintaining a chart and image mirror
+
+The `mirror` commands are the other cluster-free group: they maintain a vendored mirror store — a git repository where
+`mirror.yaml` holds global defaults and every `charts/<name>/` or `artifacts/<name>/` directory pins one upstream helm
+chart or OCI artifact, vendored for PR review, digest-locked, provenance-verified, scanned, and published signed to a
+platform registry.
+
+```sh
+patchy mirror upgrade --check -o json   # what would move, as data
+patchy mirror upgrade --all             # move pins, regenerate everything derived
+patchy mirror validate --all            # the CI gate: current, verified, clean
+patchy mirror sync --all                # converge the registry, idempotently
+```
+
+`upgrade` mutates files and nothing else — patchy never runs git, so branches, commits, and pull requests belong to the
+calling pipeline. Entries that share a `lockstep` group bump together, holding at the lowest version every member has
+published. `sync` never replaces an existing chart tag and skips anything already current and signed, so re-runs are
+safe. `validate` regenerates the derived state out-of-tree and byte-compares it, which is why upgrade is the only verb
+allowed to consult the wall clock (tracked-tag cooldowns, allowlist expiry stamping).
+
+Like `dev`, the `mirror` flags also resolve from `PATCHY_MIRROR_*` environment variables and `.patchy.yaml` (`mirror:`
+block); `-C` points at a store checkout from anywhere.
+
 ## Permissions
 
 Each action is a **custom RBAC verb** on `findings.patchy.bitwisemedia.uk`, granted independently: holding `approve`

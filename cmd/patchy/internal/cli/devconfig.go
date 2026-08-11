@@ -14,26 +14,27 @@ import (
 	"github.com/spf13/viper"
 )
 
-// devConfigExtensions lists the accepted config-file extensions, in search
+// cliConfigExtensions lists the accepted config-file extensions, in search
 // order: the file is .patchy.<ext> in the working directory.
-var devConfigExtensions = []string{"yaml", "yml", "json"}
+var cliConfigExtensions = []string{"yaml", "yml", "json"}
 
-// loadDevConfig layers the environment and an optional project config file
-// under a dev command's flags: explicit flag > PATCHY_DEV_* environment >
-// .patchy.<ext> > flag default. Config keys live under a `dev:` block —
-// combined with the key replacer, `dev.enhance-url` answers to
-// PATCHY_DEV_ENHANCE_URL — so future CLI configuration can claim sibling
-// blocks. keys maps each flag name to its config key.
+// loadCLIConfig layers the environment and an optional project config file
+// under a command's flags: explicit flag > PATCHY_* environment >
+// .patchy.<ext> > flag default. Each command group claims a config block —
+// `dev:` for the dev commands, `mirror:` for the mirror commands — and the
+// key replacer maps dots and dashes to underscores, so `dev.enhance-url`
+// answers to PATCHY_DEV_ENHANCE_URL and `mirror.directory` to
+// PATCHY_MIRROR_DIRECTORY. keys maps each flag name to its config key.
 //
-// Only the dev commands are viper-resolved; the rest of the CLI reads plain
-// flags, because a kubeconfig-backed verb already has kubectl's own
-// configuration story.
-func loadDevConfig(cmd *cobra.Command, keys map[string]string) (*viper.Viper, error) {
+// Only the cluster-free command groups are viper-resolved; the rest of the
+// CLI reads plain flags, because a kubeconfig-backed verb already has
+// kubectl's own configuration story.
+func loadCLIConfig(cmd *cobra.Command, keys map[string]string) (*viper.Viper, error) {
 	v := viper.New()
 	v.SetEnvPrefix("PATCHY")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	v.AutomaticEnv()
-	if err := readDevConfigFile(v); err != nil {
+	if err := readCLIConfigFile(v); err != nil {
 		return nil, err
 	}
 	for flag, key := range keys {
@@ -44,12 +45,12 @@ func loadDevConfig(cmd *cobra.Command, keys map[string]string) (*viper.Viper, er
 	return v, nil
 }
 
-// readDevConfigFile finds and loads the single .patchy.<ext> in the working
+// readCLIConfigFile finds and loads the single .patchy.<ext> in the working
 // directory. None is fine — the file is optional; several are ambiguous and
 // rejected rather than silently prioritized.
-func readDevConfigFile(v *viper.Viper) error {
+func readCLIConfigFile(v *viper.Viper) error {
 	var found []string
-	for _, ext := range devConfigExtensions {
+	for _, ext := range cliConfigExtensions {
 		path := ".patchy." + ext
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
 			found = append(found, path)
@@ -69,9 +70,9 @@ func readDevConfigFile(v *viper.Viper) error {
 	return nil
 }
 
-// noteDevConfig narrates which config file was loaded, if any, so a value
+// noteConfigFile narrates which config file was loaded, if any, so a value
 // arriving from disk is never a mystery.
-func noteDevConfig(opts *Options, v *viper.Viper) {
+func noteConfigFile(opts *Options, v *viper.Viper) {
 	if path := v.ConfigFileUsed(); path != "" {
 		notef(opts.ErrOut, "patchy: using %s\n", filepath.Base(path))
 	}

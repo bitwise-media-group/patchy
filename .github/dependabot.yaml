@@ -24,6 +24,29 @@ updates:
               patterns:
                   - go.opentelemetry.io/*
 
+    # The embedded status-page SPA (internal/web/ui) has its own npm lockfile.
+    # Regular bumps land as two grouped PRs (production vs development deps);
+    # security updates ship together in their own group regardless of type.
+    - package-ecosystem: npm
+      directory: /internal/web/ui
+      cooldown:
+          default-days: 7
+      commit-message:
+          include: scope
+          prefix: deps
+          prefix-development: deps
+      schedule:
+          interval: daily
+      groups:
+          development:
+              dependency-type: development
+          production:
+              dependency-type: production
+          security-updates:
+              applies-to: security-updates
+              patterns:
+                  - '*'
+
     # The pinned dev CLIs (addlicense, golangci-lint, goreleaser, ...) and the
     # task archetypes come from the toolchain submodule at .mise/. Track it so a
     # library release (a new `release` branch head) flows here as a bump.

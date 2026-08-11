@@ -1,0 +1,206 @@
+// Copyright 2026 Bitwise Media Group Ltd.
+// SPDX-License-Identifier: MIT
+
+package allowlist
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
+)
+
+var today = time.Date(2026, 8, 11, 15, 0, 0, 0, time.UTC)
+
+func TestDeriveKeepNewDrop(t *testing.T) {
+	prev := &spec.Allowlist{Vulnerabilities: []spec.AllowlistEntry{
+		{ID: "CVE-2026-0001", Statement: "old statement", ExpiredAt: "2026-09-01", Notes: "human analysis"},
+		{ID: "CVE-2026-9999", Statement: "gone", ExpiredAt: "2026-09-01"},
+	}}
+	findings := []Finding{
+		{ID: "CVE-2026-0001", Package: "libfoo", Installed: "1.9.0", FixedIn: []string{"2.0.0"}},
+		{ID: "GHSA-new-0001", Package: "libbar", Installed: "3.1.0", FixedIn: []string{"3.2.0"}},
+	}
+	entries, stats := Derive(findings, prev, today, 90)
+	if stats.Kept != 1 || stats.Added != 1 || len(stats.Dropped) != 1 || stats.Dropped[0] != "CVE-2026-9999" {
+		t.Errorf("stats = %+v", stats)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d", len(entries))
+	}
+	// Sorted by ID: CVE before GHSA.
+	kept := entries[0]
+	if kept.ID != "CVE-2026-0001" {
+		t.Fatalf("entries[0] = %+v", kept)
+	}
+	// Surviving entries keep their original expiry and notes; the
+	// statement is always freshly derived.
+	if kept.ExpiredAt != "2026-09-01" || kept.Notes != "human analysis" {
+		t.Errorf("kept = %+v", kept)
+	}
+	if !strings.Contains(kept.Statement, "Fixed in libfoo 2.0.0") ||
+		!strings.Contains(kept.Statement, "ships 1.9.0") {
+		t.Errorf("statement = %q", kept.Statement)
+	}
+	added := entries[1]
+	if added.ExpiredAt != "2026-11-09" { // today + 90d
+		t.Errorf("new expiry = %q", added.ExpiredAt)
+	}
+}
+
+func TestDeriveEmptyFindings(t *testing.T) {
+	prev := &spec.Allowlist{Vulnerabilities: []spec.AllowlistEntry{{ID: "CVE-1", ExpiredAt: "2026-09-01"}}}
+	entries, stats := Derive(nil, prev, today, 90)
+	if len(entries) != 0 || len(stats.Dropped) != 1 {
+		t.Errorf("entries=%v stats=%+v", entries, stats)
+	}
+}
+
+func TestStatementMinimalFix(t *testing.T) {
+	tests := []struct {
+		name string
+		rows []Finding
+		want string
+	}{
+		{
+			name: "minimal fix above installed",
+			// The Go stdlib pattern: fixes across branches, image ships
+			// go1.26.4 — the useful number is 1.26.5, not the 1.27 rc.
+			rows: []Finding{{
+				ID: "GO-1", Package: "stdlib", Installed: "go1.26.4",
+				FixedIn: []string{"1.25.9", "1.26.5", "1.27.0-rc.2"},
+			}},
+			want: "Fixed in stdlib 1.26.5; the locked image ships go1.26.4.",
+		},
+		{
+			name: "fix only on older branch falls back to newest",
+			rows: []Finding{{
+				ID: "X-1", Package: "libx", Installed: "3.0.0",
+				FixedIn: []string{"1.9.0", "2.1.0"},
+			}},
+			want: "Fixed in libx 2.1.0; the locked image ships 3.0.0.",
+		},
+		{
+			name: "no fixes at all",
+			rows: []Finding{{ID: "X-2", Package: "liby", Installed: "1.0.0"}},
+			want: "Fixed in liby an unreleased version; the locked image ships 1.0.0.",
+		},
+		{
+			name: "multiple packages and installs aggregate",
+			rows: []Finding{
+				{ID: "X-3", Package: "docker", Installed: "28.5.2+incompatible", FixedIn: []string{"28.6.0"}},
+				{ID: "X-3", Package: "buildx", Installed: "0.17.0", FixedIn: []string{"28.6.0"}},
+			},
+			want: "Fixed in buildx/docker 28.6.0; the locked image ships 0.17.0/28.5.2+incompatible.",
+		},
+		{
+			name: "space-joined fix chains split",
+			rows: []Finding{{
+				ID: "X-4", Package: "libz", Installed: "1.2.0",
+				FixedIn: []string{"1.2.1 1.3.0"},
+			}},
+			want: "Fixed in libz 1.2.1; the locked image ships 1.2.0.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := statement(tt.rows)
+			if !strings.HasPrefix(got, tt.want) {
+				t.Errorf("statement:\n got %q\nwant prefix %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVersionLess(t *testing.T) {
+	ordered := []string{"0.17.0", "1.2.0", "1.2.1", "1.9.0", "1.10.0", "2.0.0", "28.5.2", "28.6.0"}
+	for i := 0; i+1 < len(ordered); i++ {
+		if !versionLess(ordered[i], ordered[i+1]) {
+			t.Errorf("versionLess(%q, %q) = false", ordered[i], ordered[i+1])
+		}
+		if versionLess(ordered[i+1], ordered[i]) {
+			t.Errorf("versionLess(%q, %q) = true", ordered[i+1], ordered[i])
+		}
+	}
+	if versionLess("1.2.0", "1.2.0") {
+		t.Error("equal versions")
+	}
+	// Prefix: shorter sorts first.
+	if !versionLess("1.2", "1.2.3") {
+		t.Error("prefix ordering")
+	}
+}
+
+func TestRenderGolden(t *testing.T) {
+	entries := []spec.AllowlistEntry{
+		{
+			ID: "GO-2026-4970",
+			Statement: "Fixed in stdlib 1.26.5; the locked image ships go1.26.4. " +
+				"Derived from the image scan at bump time; accepted in PR review.",
+			ExpiredAt: "2026-10-01",
+			Notes:     "dind-only, latent unless containerMode is enabled.",
+		},
+		{
+			ID: "GHSA-xxxx-yyyy",
+			Statement: "Fixed in libbar 3.2.0; the locked image ships 3.1.0. " +
+				"Derived from the image scan at bump time; accepted in PR review.",
+			ExpiredAt: "2026-11-09",
+		},
+	}
+	got := string(Render(entries, "Every entry here is latent.\n\nSecond paragraph.\n"))
+	want := `# GENERATED by patchy mirror — do not hand-edit the entries.
+# Regenerated by ` + "`patchy mirror upgrade`" + ` from a fresh scan of the locked images:
+# findings that no longer appear are dropped, surviving entries keep their
+# original expired_at, and per-entry notes are preserved. Whole-file context
+# lives in scan.allowlist.preamble in manifest.yaml; per-finding analysis goes
+# in a "notes" field on the entry.
+#
+# Every entry here is latent.
+#
+# Second paragraph.
+vulnerabilities:
+  - id: GO-2026-4970
+    statement: ` + "Fixed in stdlib 1.26.5; the locked image ships go1.26.4. " +
+		"Derived from the image scan at bump time; accepted in PR review." + `
+    expired_at: "2026-10-01"
+    notes: dind-only, latent unless containerMode is enabled.
+  - id: GHSA-xxxx-yyyy
+    statement: ` + "Fixed in libbar 3.2.0; the locked image ships 3.1.0. " +
+		"Derived from the image scan at bump time; accepted in PR review." + `
+    expired_at: "2026-11-09"
+`
+	if got != want {
+		t.Errorf("Render:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderEmpty(t *testing.T) {
+	got := string(Render(nil, ""))
+	if !strings.HasSuffix(got, "vulnerabilities: []\n") {
+		t.Errorf("empty render:\n%s", got)
+	}
+}
+
+func TestRenderRoundTrips(t *testing.T) {
+	// The generated file must parse back through the spec loader.
+	entries := []spec.AllowlistEntry{
+		{ID: "CVE-1", Statement: "tricky: colon value", ExpiredAt: "2026-10-01", Notes: "line one\nline two"},
+	}
+	raw := Render(entries, "")
+	dir := t.TempDir() + "/security"
+	if err := mkdirWrite(dir, "allowlist.yaml", raw); err != nil {
+		t.Fatal(err)
+	}
+	got, err := spec.LoadAllowlist(strings.TrimSuffix(dir, "/security"))
+	if err != nil {
+		t.Fatalf("LoadAllowlist of rendered output: %v\n%s", err, raw)
+	}
+	if len(got.Vulnerabilities) != 1 {
+		t.Fatalf("entries = %d", len(got.Vulnerabilities))
+	}
+	e := got.Vulnerabilities[0]
+	if e.Statement != "tricky: colon value" || e.Notes != "line one\nline two" {
+		t.Errorf("round trip = %+v\nrendered:\n%s", e, raw)
+	}
+}

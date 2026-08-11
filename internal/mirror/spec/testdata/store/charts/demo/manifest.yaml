@@ -1,0 +1,60 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
+kind: Chart
+name: demo
+chart:
+  repo: oci://ghcr.io/example/charts
+  name: demo
+  lockstep: pair
+  version: "1.2.3"
+  versionConstraint: ">=1.0.0 <2.0.0"
+  verifyUpstream:
+    provider: cosign-keyless
+    certificateIdentityRegexp: "^https://github.com/example/"
+discovery:
+  namespace: demo-system
+  valuesFiles: [values/discovery.yaml]
+  kubeVersion: "1.34.0"
+images:
+  track:
+    - image: ghcr.io/example/runner
+      versionConstraint: ">=2.0.0 <3.0.0"
+      valuesFile: values/discovery.yaml
+      valuesPath: .runner.image
+  distributionManifests:
+    artifact: oci://ghcr.io/example/manifests:{appVersion}
+    components: [source-controller]
+  extra:
+    - image: "ghcr.io/example/solver:{appVersion}"
+      reason: launched per-challenge, invisible to helm template
+  exclude:
+    - pattern: "ghcr.io/example/test-*"
+  verifyUpstream:
+    - match: "ghcr.io/example/*"
+      provider: cosign-keyless
+      certificateIdentityRegexp: "^https://github.com/example/"
+      certificateOidcIssuer: https://token.actions.githubusercontent.com
+    - match: "quay.io/legacy/*"
+      provider: cosign-key
+      key: https://example.com/pubkey.pem
+      signatureDigestAlgorithm: sha512
+    - match: "*"
+      provider: none
+ociRefs:
+  allow:
+    - pattern: "oci://ghcr.io/example/manifests:*"
+      reason: chart-default neutralized by consumers
+scan:
+  failOn: [CRITICAL]
+  ignoreUnfixed: false
+  allowlist:
+    generate: true
+    preamble: |
+      Whole-file context for reviewers.
+signing:
+  provider: kms
+  kms:
+    key: gcpkms://projects/p/locations/l/keyRings/r/cryptoKeys/k
+publish:
+  chartRepo: charts/demo

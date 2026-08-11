@@ -1,0 +1,10 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+vulnerabilities:
+  - id: GO-2026-4970
+    statement: Fixed in Go 1.26.5; no release is built with a patched Go.
+    expired_at: "2026-10-01"
+    notes: dind-only, latent unless containerMode is enabled.
+  - id: CVE-2026-0001
+    statement: Fixed in libfoo 2.0.0; the locked image ships 1.9.
+    expired_at: "2026-09-15"

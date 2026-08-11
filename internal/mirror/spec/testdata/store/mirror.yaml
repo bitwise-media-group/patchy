@@ -1,0 +1,27 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
+kind: MirrorConfig
+registry:
+  url: registry.example.com/org/platform
+  chartNamespace: charts
+  imageNamespace: images
+signing:
+  provider: keyless
+  keyless:
+    certificateIdentity: https://github.com/org/repo/.github/workflows/publish.yaml@refs/heads/main
+    certificateOidcIssuer: https://token.actions.githubusercontent.com
+    tlogUpload: true
+update:
+  cooldownDays: 3
+scan:
+  scanners:
+    osv: {enabled: true}
+    grype: {enabled: false}
+    kubescape: {enabled: true, mode: warn}
+  failOn: [CRITICAL, HIGH]
+  ignoreUnfixed: true
+  allowlistMaxDays: 90
+  allowlistNewDays: 90
+sourceRegistryRewrites:
+  docker.io: mirror.example.com/dockerhub

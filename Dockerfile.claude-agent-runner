@@ -29,7 +29,7 @@
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir). Nothing in
 # this image may write outside those at runtime: claude keeps its state under
 # $HOME=/workspace, and DISABLE_AUTOUPDATER pins it to the baked version.
-FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS fetch
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
 
 # hadolint ignore=DL3008
 RUN apt-get update \
@@ -64,7 +64,7 @@ RUN case "${TARGETARCH}" in \
     && echo "${checksum}  /claude" | sha256sum -c - \
     && chmod 0755 /claude
 
-FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's

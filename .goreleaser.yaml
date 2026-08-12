@@ -63,6 +63,22 @@ builds:
       goarch:
           - amd64
           - arm64
+    - id: evaluation-controller
+      main: ./cmd/evaluation-controller
+      binary: evaluation-controller
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+      goarch:
+          - amd64
+          - arm64
     - id: remediation-controller
       main: ./cmd/remediation-controller
       binary: remediation-controller
@@ -201,6 +217,7 @@ archives:
           - source-controller
           - context-controller
           - remediation-controller
+          - evaluation-controller
           - integration-controller
           - investigation-controller
           - agent-runner
@@ -268,6 +285,24 @@ dockers_v2:
           - linux/arm64
       build_args:
           TARGET: context-controller
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: evaluation-controller
+      ids: [evaluation-controller]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/evaluation-controller
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: evaluation-controller
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT

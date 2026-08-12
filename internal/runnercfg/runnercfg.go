@@ -26,7 +26,9 @@ import (
 
 // RegisterFlags adds the per-harness runner flags shared by both job
 // controllers: an image per harness (unset = that runner is not configured),
-// its credential Secret name/key/env, and the harness restrict list.
+// its credential Secret name/key/env, and the harness restrict list. Mutually
+// exclusive with RegisterEvolveFlags within one binary — both register the
+// shared credential flags.
 func RegisterFlags(f *pflag.FlagSet) {
 	f.String("claude-agent-image", "", "claude-agent-runner image (claude CLI); unset disables the claude runner")
 	f.String("codex-agent-image", "", "codex-agent-runner image (codex CLI); unset disables the codex runner")
@@ -34,6 +36,28 @@ func RegisterFlags(f *pflag.FlagSet) {
 		"copilot-agent-runner image (copilot CLI); unset disables the copilot runner")
 	f.String("fake-agent-image", "", "fake agent image for dev/e2e (replays fixtures, no credential)")
 
+	registerSharedFlags(f)
+}
+
+// RegisterEvolveFlags adds the evolve-runner fleet flags for the evaluation
+// controller: an evolve-runner image per harness plus the same shared
+// credential Secret flags the finding runners use — one Secret per model
+// vendor in the agents namespace, whichever fleet exercises it.
+func RegisterEvolveFlags(f *pflag.FlagSet) {
+	f.String("evolve-claude-image", "",
+		"evolve-runner image with the claude CLI; unset disables the claude evaluation runner")
+	f.String("evolve-codex-image", "",
+		"evolve-runner image with the codex CLI; unset disables the codex evaluation runner")
+	f.String("evolve-copilot-image", "",
+		"evolve-runner image with the copilot CLI; unset disables the copilot evaluation runner")
+	f.String("evolve-fake-image", "", "fake evolve runner for dev/e2e (replays fixtures, no credential)")
+
+	registerSharedFlags(f)
+}
+
+// registerSharedFlags adds the credential and restrict flags common to both
+// runner fleets.
+func registerSharedFlags(f *pflag.FlagSet) {
 	f.String("claude-secret", "patchy-anthropic", "Secret (agent namespace) holding the Anthropic credential")
 	f.String("claude-secret-key", "api-key", "key within the Anthropic credential Secret")
 	f.String("claude-secret-env", "ANTHROPIC_API_KEY", secretEnvUsage("Anthropic", model.HarnessClaude))
@@ -99,6 +123,41 @@ func Runners(opts *cli.Options) (map[string]jobs.Runner, error) {
 	if len(runners) == 0 {
 		return nil, errors.New("no agent runner configured (set at least one of " +
 			"--claude-agent-image / --codex-agent-image / --copilot-agent-image / --fake-agent-image)")
+	}
+	return runners, nil
+}
+
+// EvolveRunners builds the evolve-runner fleet from the flags, mirroring
+// Runners: a harness is a candidate only when its evolve image flag is set,
+// and its credential env var is validated against the harness's accepted
+// channels. Credentials reuse the shared --<harness>-secret flags.
+func EvolveRunners(opts *cli.Options) (map[string]jobs.Runner, error) {
+	runners := map[string]jobs.Runner{}
+
+	// Flag names derive from the harness ids: evolve-<id>-image and
+	// <id>-secret{,-key,-env}.
+	for _, h := range []string{model.HarnessClaude, model.HarnessCodex, model.HarnessCopilot} {
+		img := opts.String("evolve-" + h + "-image")
+		if img == "" {
+			continue
+		}
+		env := opts.String(h + "-secret-env")
+		if !accepts(h, env) {
+			return nil, fmt.Errorf("--%s-secret-env %q is not a credential the %s harness accepts (one of %v)",
+				h, env, h, envKeys(h))
+		}
+		runners[h] = jobs.Runner{
+			Image: img, Secret: opts.String(h + "-secret"),
+			SecretKey: opts.String(h + "-secret-key"), SecretEnv: env,
+		}
+	}
+	if img := opts.String("evolve-fake-image"); img != "" {
+		runners[model.HarnessFake] = jobs.Runner{Image: img} // no credential
+	}
+
+	if len(runners) == 0 {
+		return nil, errors.New("no evolve runner configured (set at least one of " +
+			"--evolve-claude-image / --evolve-codex-image / --evolve-copilot-image / --evolve-fake-image)")
 	}
 	return runners, nil
 }

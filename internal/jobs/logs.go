@@ -77,6 +77,35 @@ func (c *Client) Result(ctx context.Context, jobName string) (RunOutput, error) 
 	return out, nil
 }
 
+// ResultLines waits for the agent container to finish, then reads its full
+// log and offers every raw line to fn. It is the envelope-agnostic sibling of
+// Result: the evaluation collector decodes its own event vocabulary from the
+// lines, so this package never learns it. A slice passed to fn is only valid
+// for the duration of the call.
+func (c *Client) ResultLines(ctx context.Context, jobName string, fn func(line []byte) error) error {
+	pod, err := c.waitForAgent(ctx, jobName, true)
+	if err != nil {
+		return err
+	}
+	stream, err := c.logs.Stream(ctx, pod, agentContainerName, false)
+	if err != nil {
+		return fmt.Errorf("jobs: read logs of %s: %w", jobName, err)
+	}
+	defer func() { _ = stream.Close() }()
+
+	sc := bufio.NewScanner(stream)
+	sc.Buffer(make([]byte, 64<<10), maxEventLine)
+	for sc.Scan() {
+		if err := fn(sc.Bytes()); err != nil {
+			return err
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("jobs: read logs of %s: %w", jobName, err)
+	}
+	return nil
+}
+
 // scanLog splits the agent's log into its two prefixed streams, delivering
 // each line to the matching handler and ignoring everything else; a handler
 // error stops the scan. Either handler may be nil.

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.3](https://github.com/bitwise-media-group/patchy/compare/v0.9.2...v0.9.3) (2026-08-12)
+
+
+### Features
+
+* **api:** add Evaluation and EvaluationUnit kinds ([c319140](https://github.com/bitwise-media-group/patchy/commit/c319140bb543a8af5443dba5a3d46af7ef593a4b))
+* **artifact:** content-addressed workspace blobs ([7cc510a](https://github.com/bitwise-media-group/patchy/commit/7cc510ab47ea0a3daaa38e8a2d0f1e45145dcabe))
+* **deploy:** ship the evaluation controller (default off) ([a315601](https://github.com/bitwise-media-group/patchy/commit/a315601362f841323a6adbac888d9a61366882e6))
+* **evalapi:** the evolve-facing evaluation API ([de5deaa](https://github.com/bitwise-media-group/patchy/commit/de5deaa28421560b1bca810f20d259304e3167e0))
+* **evaluation-controller:** the optional ninth binary ([61df358](https://github.com/bitwise-media-group/patchy/commit/61df3587d2517968083d51dc43ba005b14a3a163))
+* **evaluation:** add the pkg/evaluation wire contract ([3be19ed](https://github.com/bitwise-media-group/patchy/commit/3be19ed559b1ff1363f681e3e9cf546d4725b94f))
+* **evaluation:** gate, unit scheduler, and TTL reconcilers ([4515374](https://github.com/bitwise-media-group/patchy/commit/4515374fea50d6a9de066f45fb73929d12b26217))
+* **jobs:** evaluation Jobs and the evolve runner fleet ([9bbb034](https://github.com/bitwise-media-group/patchy/commit/9bbb034a74610d3f9014d8fab8ab99d6e8cdf02c))
+
 ## [0.9.2](https://github.com/bitwise-media-group/patchy/compare/v0.9.1...v0.9.2) (2026-08-12)
 
 

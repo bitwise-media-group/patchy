@@ -42,6 +42,13 @@ data:
     # Service address, so it only needs setting when the Service name differs.
     PATCHY_ARTIFACT_ADDR: ":9790"
     PATCHY_ARTIFACT_DIR: /data/artifacts
+    # The internal workspace-blob endpoint evaluation-controller streams
+    # uploads to (NetworkPolicy-gated to that one client). Unset disables it —
+    # remove this key when the evaluation controller is not deployed.
+    PATCHY_ARTIFACT_INTERNAL_ADDR: ":9791"
+    # Workspace bundles unused this long are swept; a needed-but-swept bundle
+    # surfaces as WorkspaceLost and the client re-uploads.
+    PATCHY_WORKSPACE_RETENTION: 168h
 
     # ---- context-controller -------------------------------------------------
     # PATCHY_STATIC_CONTEXT_FILE: unset in base -> the Noop enhancer (the CMDB
@@ -151,3 +158,19 @@ data:
     PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET: "400000"
     PATCHY_REMEDIATE_MANUAL_MAX_TURNS: "240"
     PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET: "1200000"
+
+    # ---- evaluation-controller ----------------------------------------------
+    # The remote-evaluation engine (optional; only read by
+    # evaluation-controller). The evolve-runner images are the counterpart of
+    # the agent-runner images above: evolve + the harness CLI, shipped from
+    # the evolve repository and pinned by the operator. Credentials reuse the
+    # PATCHY_<HARNESS>_SECRET* keys above — one Secret per model vendor,
+    # whichever fleet exercises it.
+    PATCHY_MAX_CONCURRENT_UNITS: "4"
+    PATCHY_EVALUATION_TTL: 72h
+    PATCHY_EVOLVE_CLAUDE_IMAGE: ghcr.io/bitwise-media-group/evolve-runner-claude:latest
+    PATCHY_EVOLVE_CODEX_IMAGE: ghcr.io/bitwise-media-group/evolve-runner-codex:latest
+    PATCHY_EVOLVE_COPILOT_IMAGE: ghcr.io/bitwise-media-group/evolve-runner-copilot:latest
+    # PATCHY_ARTIFACT_UPLOAD_URL / PATCHY_ARTIFACT_BASE_URL default to the
+    # source-controller Service (:9791 / :9790), so they only need setting
+    # when the Service name differs.

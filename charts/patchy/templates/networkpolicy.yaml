@@ -80,6 +80,17 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
+        {{- if $.Values.evaluationController.enabled }}
+        # The internal blob-upload endpoint: only the evaluation controller
+        # streams workspace bundles to it.
+        - from:
+              - podSelector:
+                    matchLabels:
+                        {{- include "patchy.selectorLabels" (dict "root" $ "name" "evaluation-controller") | nindent 24 }}
+          ports:
+              - protocol: TCP
+                port: 9791
+        {{- end }}
         {{- end }}
     egress:
         # DNS.

@@ -46,6 +46,16 @@ The binary's own default base URL assumes the kustomize Service name
 controller, so the URL minted into Repository statuses is pinned here.
 */}}
 {{- $_ := set $data "PATCHY_ARTIFACT_BASE_URL" (printf "http://%s-source-controller.%s.svc.cluster.local:9790" (include "patchy.fullname" $) $.Release.Namespace) }}
+{{- if $.Values.evaluationController.enabled }}
+{{/*
+The internal workspace-blob endpoint the evaluation controller streams
+uploads to (NetworkPolicy-gated to that one client). Rendered only when the
+evaluation controller is deployed — without it the second listener never
+starts.
+*/}}
+{{- $_ := set $data "PATCHY_ARTIFACT_INTERNAL_ADDR" ":9791" }}
+{{- $_ := set $data "PATCHY_WORKSPACE_RETENTION" $.Values.evaluationController.workspaceRetention }}
+{{- end }}
 {{- else if or (eq $c.name "investigation-controller") (eq $c.name "remediation-controller") }}
 {{/*
 The job-controller block, shared by both: how the agent Jobs run, and the

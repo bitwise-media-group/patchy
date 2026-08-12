@@ -14,7 +14,7 @@ hour, get context-enhanced, then a sandboxed `claude -p` run investigates each o
 remediated in priority order into pull requests, everything else routes to humans. Completed findings expire on a
 TTL; `FindingRollup` resources keep the all-time statistics.
 
-Eight binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Nine binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
   provider webhooks (`/github/webhooks` HMAC, `/google-cloud/webhooks` Pub/Sub OIDC, `/wiz/webhooks` bearer
@@ -40,6 +40,13 @@ Eight binaries, one module. "Not monolithic" means separate binaries/deployments
 - `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
   Kubernetes API; no credentials beyond the model key.
+- `cmd/evaluation-controller` — OPTIONAL (default-off in the chart): remote skill-evaluation execution for
+  evolve. Hosts the bearer-authenticated HTTP API (`pkg/evaluation` wire contract: workspace upload streamed to
+  source-controller's `:9791` blob endpoint, submission, snapshot, SSE monitoring, cancel; OIDC verify + SAR on
+  the `evaluations` resource, native verbs only) and the reconcilers: gate (Evaluation → EvaluationUnit
+  children), unit scheduler (bounded concurrency over the same sandboxed agent-Job machinery; pods run
+  `evolve exec-unit` and emit `EVOLVE-EVENT:` JSONL), and the TTL loop. Patchy never learns eval semantics —
+  bounded summaries land on unit status, the opaque results entry in a per-unit ConfigMap.
 - `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
   SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, the access-review-gated
   approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
@@ -72,7 +79,9 @@ cmd/<binary>/       package main, thin: build root command, delegate to internal
 internal/           All private code, one package per concern (see "Packages" below).
 pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
                     enhancers), pkg/generic (the generic integration's HTTP wire contract, importable
-                    by external processes). Exported signatures must not reference internal/ types.
+                    by external processes), pkg/evaluation (the remote-evaluation wire contract —
+                    submissions, the in-pod EVOLVE-EVENT stream, the SSE monitor — stdlib-only,
+                    imported by evolve). Exported signatures must not reference internal/ types.
 deploy/             kustomize base/overlays; deploy/README.md is the operator doc. The container
                     Dockerfile.* live at the repo root (goreleaser dockers_v2 builds them).
 charts/             Helm rendering of the same stack, pushed to ghcr OCI on release
@@ -108,7 +117,9 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   `controller/integration` (receiver, ingest, projection, human signals), `controller/source` (Forge +
   Repository reconcilers), `controller/context` (the enhancer chain), `controller/investigation` (gate +
   analysis scheduler), `controller/remediation` (spawner + priority scheduler + push/PR), `controller/rollup`
-  (all-time stats + finding TTL; hosted by the remediation binary).
+  (all-time stats + finding TTL; hosted by the remediation binary), `controller/evaluation` (Evaluation gate +
+  unit scheduler + evaluation TTL; single writer for both evaluation kinds — their phases are local enums,
+  never part of the Finding transition table).
 - `kube` — the controller-runtime manager wrapper: scheme, kubeconfig/in-cluster config, leader election,
   multi-namespace cache, health probes, logr↔slog bridge. Secrets are never cached.
 - `forge` — the shared forge seam: resolve a repository URL to its covering `Forge` CR (host → orgs → repo
@@ -142,8 +153,17 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `agentrun` — the in-pod stage flow (`investigate` | `remediate`); `report`/`envelope` are its contracts
   (frontmatter schemas in, JSONL events out); `agentresult` converts envelope results onto CR status.
 - `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here: no credential of any kind in
-  the pod; the init container fetches the digest-verified artifact tarball.
-- `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from.
+  the pod; the init container fetches the digest-verified artifact tarball. `eval.go` is the evaluation Job
+  flavour (same posture; `evolve exec-unit` instead of `agent-runner`, no git init, unit.json handoff);
+  `ResultLines` is the envelope-agnostic log reader the evaluation collector decodes its own events from.
+- `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from, plus the
+  content-addressed workspace-blob side: sha256-named bundles (64-hex files beside the 32-hex repo tarballs),
+  index rebuilt from disk on restart, last-access retention sweep, the `:9791` internal upload handler, and
+  the `Client` other processes reach it with.
+- `evalapi` — the evaluation controller's HTTP surface (`pkg/evaluation` contract): bearer OIDC verify (claims
+  via `web/auth.MapClaims`), SAR authorization (`web/authz.ResourceReviewer`, native verbs on `evaluations`),
+  workspace upload proxy, submission validation, snapshot, SSE monitor (replay + change re-emit + explicit
+  `end`). `evalresults` is the per-unit results ConfigMap store (transcriptstore's sibling).
 - `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref); the
   only place a write credential is exercised. No git binary anywhere controller-side.
 - `mirror` — the engine behind `patchy mirror` (CLI-only; no controller consumes it): vendored mirroring of

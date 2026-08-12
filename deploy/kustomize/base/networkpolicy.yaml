@@ -89,6 +89,17 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
+        # The internal blob-upload endpoint (source-controller :9791): only
+        # the evaluation controller streams workspace bundles to it. Only
+        # source-controller listens on the port, so scoping the sender is the
+        # whole rule.
+        - from:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: evaluation-controller
+          ports:
+              - protocol: TCP
+                port: 9791
     egress:
         # DNS.
         - to:
@@ -115,6 +126,32 @@ spec:
           ports:
               - protocol: TCP
                 port: 80
+---
+# ---- patchy namespace: evaluation-controller extras -------------------------
+# Additive to patchy-controllers (which already grants ingress 8080 for the
+# API, DNS, the Kubernetes API server, and 443 out for the OIDC issuer):
+# the one extra hole is streaming workspace uploads to source-controller's
+# internal blob endpoint.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-evaluation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: evaluation-controller
+    policyTypes: [Egress]
+    egress:
+        - to:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: source-controller
+          ports:
+              - protocol: TCP
+                port: 9791
 ---
 # ---- patchy namespace: the status server -----------------------------------
 # Selected separately (component: server, not controller): its surface is a

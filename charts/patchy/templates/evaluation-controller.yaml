@@ -1,0 +1,506 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The evaluation controller, in one file (status-server precedent): it is an
+# optional component (evaluationController.enabled, default false), the only
+# controller with an auth mount and a machine-facing authenticated API, and
+# the only consumer of source-controller's internal blob endpoint — whose
+# conditional :9791 rendering in configmap/deployments/services/networkpolicy
+# is keyed on the same flag. Mirrors deploy/kustomize/base/
+# {deployment-evaluation-controller,rbac,service,networkpolicy}.yaml.
+{{- if .Values.evaluationController.enabled }}
+{{- $vals := .Values.evaluationController }}
+{{- $name := "evaluation-controller" }}
+{{- $authSecret := $vals.auth.existingSecret | default (printf "%s-evaluation-auth" (include "patchy.fullname" .)) }}
+{{- if and $vals.auth.existingSecret $vals.auth.config }}
+{{- fail "evaluationController.auth.existingSecret and evaluationController.auth.config are mutually exclusive" }}
+{{- end }}
+{{- if not (or $vals.auth.existingSecret $vals.auth.config) }}
+{{- fail "evaluationController requires auth configuration: set evaluationController.auth.existingSecret or .auth.config (mode oidc, or mode none for dev)" }}
+{{- end }}
+{{- if $vals.auth.config }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: {{ $authSecret }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+type: Opaque
+stringData:
+    config.yaml: |
+        {{- toYaml $vals.auth.config | nindent 8 }}
+{{- end }}
+{{- if $vals.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+    name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.serviceAccount.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+{{- end }}
+---
+{{/*
+The evolve-runner fleet: images ship from the evolve repository (they are NOT
+<prefix>/<binary> chart images), so runners.<harness>.image is a full
+reference the operator pins. Credentials reuse agent.runners.<harness> —
+one Secret per model vendor in the agents namespace, whichever fleet
+exercises it.
+*/}}
+{{- $data := dict
+    "PATCHY_HEALTH_ADDR" ":8081"
+    "PATCHY_LISTEN_ADDR" ":8080"
+    "PATCHY_AUTH_CONFIG" "/etc/patchy/auth/config.yaml"
+    "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
+    "PATCHY_AGENT_SERVICE_ACCOUNT" .Values.agent.serviceAccount
+    "PATCHY_JOB_DEADLINE" $vals.config.jobDeadline
+    "PATCHY_JOB_TTL" .Values.agent.jobTTL
+    "PATCHY_MAX_CONCURRENT_UNITS" $vals.config.maxConcurrentUnits
+    "PATCHY_EVALUATION_TTL" $vals.config.evaluationTTL
+    "PATCHY_MAX_UNITS_PER_EVALUATION" $vals.config.maxUnitsPerEvaluation
+    "PATCHY_MAX_SUBMISSION_BYTES" $vals.config.maxSubmissionBytes
+    "PATCHY_MAX_WORKSPACE_BYTES" $vals.config.maxWorkspaceBytes
+    "PATCHY_LOG_LEVEL" ($vals.config.logLevel | default .Values.config.logLevel)
+    "PATCHY_ARTIFACT_BASE_URL" (printf "http://%s-source-controller.%s.svc.cluster.local:9790" (include "patchy.fullname" .) .Release.Namespace)
+    "PATCHY_ARTIFACT_UPLOAD_URL" (printf "http://%s-source-controller.%s.svc.cluster.local:9791" (include "patchy.fullname" .) .Release.Namespace)
+}}
+{{- $enabled := list }}
+{{- range $id, $r := $vals.runners }}
+{{- if $r.enabled }}
+{{- $enabled = append $enabled $id }}
+{{- $_ := set $data (printf "PATCHY_EVOLVE_%s_IMAGE" (upper $id)) $r.image }}
+{{- $agentRunner := index $.Values.agent.runners $id }}
+{{- if and $agentRunner $agentRunner.secret }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET" (upper $id)) $agentRunner.secret }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET_KEY" (upper $id)) $agentRunner.secretKey }}
+{{- $_ := set $data (printf "PATCHY_%s_SECRET_ENV" (upper $id)) $agentRunner.secretEnv }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not $enabled }}
+{{- fail "evaluationController.enabled requires at least one evaluationController.runners.<harness>.enabled" }}
+{{- end }}
+{{- $_ := set $data "PATCHY_HARNESSES" (join "," $enabled) }}
+{{- range $k, $v := .Values.config.extra }}
+{{- $_ := set $data $k $v }}
+{{- end }}
+{{- range $k, $v := $vals.config.extra }}
+{{- $_ := set $data $k $v }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ include "patchy.configMapName" (dict "root" . "name" $name) }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+data:
+    {{- range $k, $v := $data }}
+    {{- /* Integral floats render as integers (Helm parses values numbers as
+           float64 and toString would produce scientific notation). */ -}}
+    {{- $s := $v | toString }}
+    {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
+    {{- $s = int64 $v | toString }}
+    {{- end }}
+    {{ $k }}: {{ $s | quote }}
+    {{- end }}
+---
+# The remote-evaluation engine's own kinds: the API creates Evaluations and
+# deletes them (cancel); the gate creates EvaluationUnit children; the
+# scheduler stamps statuses and rolls the parent up; the TTL loop deletes
+# expired Evaluations. `update` on evaluationunits (not just status) is the
+# jobs-finalizer removal; configmaps are the per-unit results objects,
+# addressed by deterministic name only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations]
+      verbs: [create, get, list, watch, delete]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluationunits]
+      verbs: [create, get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluationunits/status]
+      verbs: [get, update, patch]
+    - apiGroups: [""]
+      resources: [configmaps]
+      verbs: [create, get, update]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+      namespace: {{ .Release.Namespace }}
+---
+# The agents-namespace grant: the same Job machinery as the two finding job
+# controllers (rbac.yaml binds them to an identical Role; the kind label
+# keeps the three watches apart — RBAC cannot express that split).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-jobs
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [batch]
+      resources: [jobs]
+      verbs: [create, get, list, watch, delete]
+    - apiGroups: [""]
+      resources: [pods]
+      verbs: [get, list, watch]
+    - apiGroups: [""]
+      resources: [pods/log]
+      verbs: [get]
+    - apiGroups: [""]
+      resources: [secrets]
+      verbs: [create, get, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-jobs
+    namespace: {{ .Values.agent.namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-jobs
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+      namespace: {{ .Release.Namespace }}
+---
+# SubjectAccessReview: "may user U create/get/delete evaluations?" — the
+# bearer-authenticated submitters are authorized by RBAC bindings on the
+# evaluations resource, native verbs only. Review-only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authz
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [authorization.k8s.io]
+      resources: [subjectaccessreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authz
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authz
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+      namespace: {{ .Release.Namespace }}
+{{- if $vals.rbac.userRoles }}
+---
+# Example submitter tier. Bindings are yours to bring: bind Users/Groups to
+# the OIDC claims' values in the release namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: {{ include "patchy.fullname" . }}-evaluations-submitter
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations]
+      verbs: [create, get, delete]
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name "component" "controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}
+    template:
+        metadata:
+            labels:
+                {{- include "patchy.labels" (dict "root" . "name" $name "component" "controller") | nindent 16 }}
+                {{- with $vals.podLabels }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+            {{- with include "patchy.annotations" (dict "root" . "extra" $vals.podAnnotations) }}
+            annotations:
+                {{- . | nindent 16 }}
+            {{- end }}
+        spec:
+            serviceAccountName: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+            {{- with .Values.image.pullSecrets }}
+            imagePullSecrets:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                fsGroupChangePolicy: Always
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: controller
+                  image: {{ include "patchy.image" (dict "root" . "binary" $name "image" $vals.image) }}
+                  imagePullPolicy: {{ .Values.image.pullPolicy }}
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: {{ include "patchy.configMapName" (dict "root" . "name" $name) }}
+                  env:
+                      - name: POD_NAMESPACE
+                        valueFrom:
+                            fieldRef:
+                                fieldPath: metadata.namespace
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                      - name: health
+                        containerPort: 8081
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: health
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: health
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  {{- with $vals.resources }}
+                  resources:
+                      {{- toYaml . | nindent 22 }}
+                  {{- end }}
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: auth
+                        mountPath: /etc/patchy/auth
+                        readOnly: true
+                      - name: tmp
+                        mountPath: /tmp
+            {{- with $vals.nodeSelector }}
+            nodeSelector:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $vals.tolerations }}
+            tolerations:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $vals.affinity }}
+            affinity:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            volumes:
+                - name: auth
+                  secret:
+                      secretName: {{ $authSecret }}
+                - name: tmp
+                  emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.service.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    type: {{ $vals.service.type }}
+    selector:
+        {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 8 }}
+    ports:
+        - name: http
+          port: {{ $vals.service.port }}
+          targetPort: http
+          protocol: TCP
+          {{- with $vals.service.nodePort }}
+          nodePort: {{ . }}
+          {{- end }}
+{{- if $vals.networkPolicy.create }}
+---
+# Ingress: 8080 from anywhere (the fronting ingress/gateway lives wherever
+# yours does; bearer authentication carries the access control) plus 8081
+# probes. Egress: DNS, the Kubernetes API server, TCP 443 out (the OIDC
+# issuer, an OTLP collector), and source-controller's internal blob endpoint
+# (:9791) for workspace uploads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+spec:
+    podSelector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - ports:
+              - protocol: TCP
+                port: 8080
+              - protocol: TCP
+                port: 8081
+    egress:
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+        - to:
+              - podSelector:
+                    matchLabels:
+                        {{- include "patchy.selectorLabels" (dict "root" . "name" "source-controller") | nindent 24 }}
+          ports:
+              - protocol: TCP
+                port: 9791
+{{- end }}
+{{- if $vals.ingress.enabled }}
+---
+# The evaluation API's exposure, plain-Ingress flavour: /api/v1 only lives
+# here, but routing the whole host keeps the rule simple.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.ingress.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    {{- with $vals.ingress.className }}
+    ingressClassName: {{ . }}
+    {{- end }}
+    {{- with $vals.ingress.tls }}
+    tls:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    rules:
+        - host: {{ required "evaluationController.host is required when evaluationController.ingress is enabled" $vals.host | quote }}
+          http:
+              paths:
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                        service:
+                            name: {{ include "patchy.fullname" . }}-{{ $name }}
+                            port:
+                                name: http
+{{- end }}
+{{- if $vals.httpRoute.enabled }}
+---
+# The evaluation API's exposure, Gateway API flavour.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.httpRoute.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    {{- with $vals.httpRoute.parentRefs }}
+    parentRefs:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    hostnames:
+        - {{ required "evaluationController.host is required when evaluationController.httpRoute is enabled" $vals.host | quote }}
+    rules:
+        - matches:
+              - path:
+                    type: PathPrefix
+                    value: /
+          backendRefs:
+              - name: {{ include "patchy.fullname" . }}-{{ $name }}
+                port: {{ $vals.service.port }}
+{{- end }}
+{{- end }}

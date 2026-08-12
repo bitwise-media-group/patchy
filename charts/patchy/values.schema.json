@@ -731,6 +731,228 @@
                 }
             }
         },
+        "evaluationController": {
+            "type": "object",
+            "description": "The remote-evaluation engine: the evolve-facing authenticated HTTP API plus the reconcilers running submitted units in sandboxed agent Jobs. Optional, off by default.",
+            "additionalProperties": false,
+            "required": [
+                "enabled",
+                "auth",
+                "ingress",
+                "httpRoute",
+                "rbac",
+                "runners",
+                "serviceAccount",
+                "service",
+                "networkPolicy"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "maxConcurrentUnits": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "evaluationTTL": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "maxUnitsPerEvaluation": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "maxSubmissionBytes": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "maxWorkspaceBytes": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "jobDeadline": {
+                            "$ref": "#/definitions/duration"
+                        },
+                        "logLevel": {
+                            "$ref": "#/definitions/logLevel"
+                        },
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
+                    }
+                },
+                "auth": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "existingSecret": {
+                            "type": "string"
+                        },
+                        "config": {
+                            "type": "object",
+                            "description": "Inline auth config rendered into a chart-managed Secret (config.yaml: mode none|oidc); prefer existingSecret in production"
+                        }
+                    }
+                },
+                "host": {
+                    "type": "string"
+                },
+                "ingress": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "className": {
+                            "type": "string"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "tls": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "httpRoute": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "annotations": {
+                            "type": "object"
+                        },
+                        "parentRefs": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "rbac": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "userRoles"
+                    ],
+                    "properties": {
+                        "userRoles": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "runners": {
+                    "type": "object",
+                    "description": "The evolve-runner fleet: full image references shipped from the evolve repository, pinned by the operator; credentials reuse agent.runners.<harness>.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "claude": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "enabled",
+                                "image"
+                            ],
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "image": {
+                                    "type": "string",
+                                    "minLength": 1
+                                }
+                            }
+                        },
+                        "codex": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "enabled",
+                                "image"
+                            ],
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "image": {
+                                    "type": "string",
+                                    "minLength": 1
+                                }
+                            }
+                        },
+                        "copilot": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "enabled",
+                                "image"
+                            ],
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "image": {
+                                    "type": "string",
+                                    "minLength": 1
+                                }
+                            }
+                        }
+                    }
+                },
+                "workspaceRetention": {
+                    "$ref": "#/definitions/duration"
+                },
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "service": {
+                    "$ref": "#/definitions/service"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
+            }
+        },
         "statusServer": {
             "type": "object",
             "description": "The human-facing status page: public rollup statistics, authenticated findings review, RBAC-gated approve/suspend/resume",

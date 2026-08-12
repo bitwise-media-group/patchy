@@ -322,6 +322,115 @@ remediationController:
     networkPolicy:
         create: true
 
+# ---- evaluation-controller ---------------------------------------------------
+# The remote-evaluation engine (templates/evaluation-controller.yaml): the
+# evolve-facing authenticated HTTP API (workspace upload, submission, SSE
+# monitoring) plus the reconcilers that run each submitted unit in a
+# sandboxed agent Job. OPTIONAL and off by default — deployments that never
+# submit remote evaluations render none of it. Enabling it also renders
+# source-controller's internal blob endpoint (:9791) the workspace uploads
+# stream through.
+evaluationController:
+    enabled: false
+    # Override of <prefix>/evaluation-controller; same shape as
+    # <controller>.image (repository / tag / digest).
+    image: {}
+    config:
+        # Evaluation units running at once across all submissions.
+        maxConcurrentUnits: 4
+        # Retention of finished evaluations (spec.ttlSecondsAfterFinished
+        # overrides per submission; "0" keeps forever).
+        evaluationTTL: 72h
+        # Submission bounds.
+        maxUnitsPerEvaluation: 200
+        maxSubmissionBytes: 8388608
+        maxWorkspaceBytes: 67108864
+        # Evaluation Jobs may run much longer than a single finding stage
+        # (a unit sweeps every case), so the deadline is its own knob;
+        # the Job TTL reuses agent.jobTTL.
+        jobDeadline: 2h
+        # Extra PATCHY_* keys for the evaluation controller only.
+        extra: {}
+    # Bearer-token authentication for the API, mounted at
+    # /etc/patchy/auth/config.yaml. REQUIRED (unlike the status server there
+    # is no unauthenticated posture): set exactly one of the two. No client
+    # secret — evolve is a public PKCE client; the API only verifies tokens.
+    auth:
+        # Name of an existing Secret with a config.yaml key (see
+        # deploy/kustomize/base/secrets.example.yaml).
+        existingSecret: ""
+        # Inline configuration rendered into a chart-managed Secret.
+        config: {}
+        # config:
+        #     mode: oidc
+        #     oidc:
+        #         issuerURL: https://sso.example.com
+        #         clientID: evolve
+        #         # claims: {username: email, groups: groups}
+    # The API's external hostname, e.g. patchy-evals.example.com. Required
+    # when either exposure flavour below is enabled; its own hostname keeps
+    # the machine edge apart from the human surfaces.
+    host: ""
+    ingress:
+        enabled: false
+        className: ""
+        annotations: {}
+        tls: []
+    httpRoute:
+        enabled: false
+        annotations: {}
+        parentRefs: []
+    rbac:
+        # Render the example submitter ClusterRole (create/get/delete on
+        # evaluations — native verbs; RBAC bindings are the API's whole
+        # authorization surface). Bindings are yours to bring.
+        userRoles: false
+    # The evolve-runner fleet: evolve + each harness CLI, shipped from the
+    # evolve repository (NOT chart <prefix>/<binary> images), pinned here by
+    # the operator. A runner is enabled only when `enabled: true` AND its
+    # credential Secret exists (checked at controller startup); credentials
+    # reuse agent.runners.<harness> — one Secret per model vendor in the
+    # agents namespace, whichever fleet exercises it. The per-harness egress
+    # network policies (agent.runners.<harness>.hosts) apply to evaluation
+    # Jobs unchanged.
+    runners:
+        claude:
+            enabled: true
+            image: ghcr.io/bitwise-media-group/evolve-runner-claude:latest
+        codex:
+            enabled: false
+            image: ghcr.io/bitwise-media-group/evolve-runner-codex:latest
+        copilot:
+            enabled: false
+            image: ghcr.io/bitwise-media-group/evolve-runner-copilot:latest
+    # Workspace bundles unused this long are swept from source-controller's
+    # cache; a needed-but-swept bundle surfaces as WorkspaceLost and the
+    # client re-uploads.
+    workspaceRetention: 168h
+    resources:
+        requests:
+            cpu: 50m
+            memory: 96Mi
+        limits:
+            cpu: 500m
+            memory: 256Mi
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    serviceAccount:
+        create: true
+        name: ""
+        annotations: {}
+    service:
+        type: ClusterIP
+        port: 8080
+        nodePort: null
+        annotations: {}
+    networkPolicy:
+        create: true
+
 # ---- status-server ----------------------------------------------------------
 # The human-facing status page (templates/status-server.yaml): the findings
 # board/detail with the approve/retry/expedite/suspend/resume actions, and the rollup

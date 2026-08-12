@@ -90,6 +90,11 @@ spec:
                       - name: artifact
                         containerPort: 9790
                         protocol: TCP
+                      {{- if $.Values.evaluationController.enabled }}
+                      - name: internal
+                        containerPort: 9791
+                        protocol: TCP
+                      {{- end }}
                       {{- end }}
                       - name: health
                         containerPort: 8081

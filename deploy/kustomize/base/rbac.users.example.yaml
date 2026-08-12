@@ -142,3 +142,35 @@ subjects:
     - kind: User
       apiGroup: rbac.authorization.k8s.io
       name: dev@example.com # a `username` claim value
+---
+# Remote-evaluation submitters (the evolve CLI): create submits an
+# evaluation and uploads workspaces, get reads snapshots and streams the SSE
+# monitor, delete cancels. Native verbs only — no custom verbs, no admission
+# policy involved; these bindings are the evaluation API's entire
+# authorization surface.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-evaluations-submitter
+    labels:
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations]
+      verbs: [create, get, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-evaluations-submitters
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: patchy-evaluations-submitter
+subjects:
+    - kind: Group
+      apiGroup: rbac.authorization.k8s.io
+      name: skill-authors # a `groups` claim value

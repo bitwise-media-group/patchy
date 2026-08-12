@@ -133,6 +133,24 @@ the model API key is the only secret in the pod; NetworkPolicies (plus optional 
 restrict egress to the artifact server and the model API. All GitHub side effects — issue projection, alert
 dismissal, branch push, pull requests — happen controller-side with short-lived, per-repository scoped tokens.
 
+### Evaluation execution (optional)
+
+The same machinery optionally executes **remote skill evaluations** for evolve, patchy's sibling
+coding-agent-evaluation tool. The division of knowledge is strict: evolve owns every evaluation semantic —
+specs, grading, the LLM judge, baselines — co-located with the workspace inside the pod (the pod runs
+`evolve exec-unit` from a per-harness evolve-runner image); patchy owns scheduling, sandboxing, and state.
+`evolve` uploads a content-addressed workspace bundle (sha256-deduplicated, cached by source-controller and
+served from the same artifact endpoint agent pods already fetch from), submits an immutable `Evaluation` CR
+(one `EvaluationUnit` child per skill × model × tier), and monitors an SSE stream; the evaluation controller
+schedules units through the agent-Job machinery with bounded concurrency, parses the pod's `EVOLVE-EVENT:`
+stdout stream, stamps bounded summaries onto unit statuses, and stores each unit's opaque results entry in a
+per-unit ConfigMap that evolve reassembles into its local results files. Finished evaluations expire on a TTL.
+
+The isolation model is unchanged: no credential of any kind in the pod beyond the model key, the workspace
+arrives as a digest-verified tarball, and the per-harness egress policies apply to evaluation Jobs exactly as
+to finding runs. Submitters authenticate with OIDC bearer tokens (`evolve login`, PKCE, no client secret) and
+are authorized by RBAC alone — native create/get/delete on the `evaluations` resource.
+
 ## Projected labels
 
 The tracking-issue projection stamps a trimmed, human-facing label vocabulary (rendered from the Finding; the CR

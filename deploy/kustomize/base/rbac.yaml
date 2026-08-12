@@ -461,6 +461,95 @@ subjects:
       name: patchy-status-server
       namespace: patchy
 ---
+# ---- evaluation-controller ---------------------------------------------------
+# The remote-evaluation engine: the HTTP API creates Evaluations (submissions)
+# and deletes them (cancel); the gate creates EvaluationUnit children; the
+# scheduler stamps unit statuses and rolls the parent up; the TTL loop deletes
+# expired Evaluations (cascade). `update` on evaluationunits (not just status)
+# is the jobs-finalizer removal. configmaps create/get/update: the per-unit
+# results objects, owner-referenced to their unit, only ever addressed by
+# deterministic name (plus get for the API's snapshot lift). No secrets in
+# this namespace — the auth config is a mounted volume.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    name: patchy-evaluation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations]
+      verbs: [create, get, list, watch, delete]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluations/status]
+      verbs: [get, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluationunits]
+      verbs: [create, get, list, watch, update, patch]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [evaluationunits/status]
+      verbs: [get, update, patch]
+    - apiGroups: [""]
+      resources: [configmaps]
+      verbs: [create, get, update]
+    - apiGroups: [coordination.k8s.io]
+      resources: [leases]
+      verbs: [get, create, update]
+    - apiGroups: [""]
+      resources: [events]
+      verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-evaluation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: patchy-evaluation-controller
+subjects:
+    - kind: ServiceAccount
+      name: patchy-evaluation-controller
+      namespace: patchy
+---
+# SubjectAccessReview for the evaluation API: "may user U create/get/delete
+# evaluations in patchy?" — the bearer-authenticated submitters are authorized
+# by RBAC bindings on the evaluations resource (see rbac.users.example.yaml),
+# native verbs only. Review-only, same as the status server's.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-evaluation-controller-authz
+    labels:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [authorization.k8s.io]
+      resources: [subjectaccessreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: patchy-evaluation-controller-authz
+    labels:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: patchy-evaluation-controller-authz
+subjects:
+    - kind: ServiceAccount
+      name: patchy-evaluation-controller
+      namespace: patchy
+---
 # ---- patchy-agents: the two job controllers --------------------------------
 # What internal/jobs uses, and nothing more:
 #   jobs      create (Create), get/list/watch (status + orphan reap), delete
@@ -511,4 +600,9 @@ subjects:
       namespace: patchy
     - kind: ServiceAccount
       name: patchy-remediation-controller
+      namespace: patchy
+    # The evaluation scheduler launches its Jobs through the same machinery;
+    # the kind label keeps its watches and reapers off the finding runs.
+    - kind: ServiceAccount
+      name: patchy-evaluation-controller
       namespace: patchy

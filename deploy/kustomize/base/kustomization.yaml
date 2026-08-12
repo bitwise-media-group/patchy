@@ -8,6 +8,8 @@ kind: Kustomization
 resources:
     # CRDs first: everything else may reference the kinds they define. The
     # files are controller-gen output (mise run codegen) — never hand-edited.
+    - crds/patchy.bitwisemedia.uk_evaluations.yaml
+    - crds/patchy.bitwisemedia.uk_evaluationunits.yaml
     - crds/patchy.bitwisemedia.uk_findings.yaml
     - crds/patchy.bitwisemedia.uk_findingrollups.yaml
     - crds/patchy.bitwisemedia.uk_forges.yaml
@@ -24,6 +26,7 @@ resources:
     - deployment-context-controller.yaml
     - deployment-investigation-controller.yaml
     - deployment-remediation-controller.yaml
+    - deployment-evaluation-controller.yaml
     - deployment-status-server.yaml
     - service.yaml
     - networkpolicy.yaml
@@ -56,6 +59,8 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/evaluation-controller
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
       newTag: latest

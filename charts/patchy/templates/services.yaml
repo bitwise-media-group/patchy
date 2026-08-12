@@ -42,4 +42,12 @@ spec:
           {{- with $svc.nodePort }}
           nodePort: {{ . }}
           {{- end }}
+        {{- if and (eq $c.name "source-controller") $.Values.evaluationController.enabled }}
+        # The internal workspace-blob endpoint, dialled only by the
+        # evaluation controller (NetworkPolicy-gated).
+        - name: internal
+          port: 9791
+          targetPort: internal
+          protocol: TCP
+        {{- end }}
 {{- end }}

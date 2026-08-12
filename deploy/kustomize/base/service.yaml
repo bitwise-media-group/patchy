@@ -1,17 +1,22 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Three Services, because only three things are dialled by anything:
+# Four Services, because only four things are dialled by anything:
 #
 #   * patchy-integration-controller:8080 — the machine-facing entry point
 #     (the provider webhook receivers, e.g. POST /github/webhooks).
 #     Put an Ingress / Gateway in front of it in your environment overlay.
 #   * patchy-source-controller:9790 — the artifact server the agent pods
-#     fetch SHA-pinned repository tarballs from (in-cluster only; the
-#     NetworkPolicies restrict it to the patchy-agents namespace).
+#     fetch SHA-pinned repository tarballs (and workspace bundles) from
+#     (in-cluster only; the NetworkPolicies restrict it to the patchy-agents
+#     namespace) — plus :9791, the internal blob-upload endpoint only
+#     evaluation-controller may reach.
 #   * patchy-status-server:8080 — the human-facing status page. Front it
 #     with your Ingress / Gateway too (a separate hostname from the webhook
 #     endpoint keeps authn concerns apart).
+#   * patchy-evaluation-controller:8080 — the evolve-facing evaluation API.
+#     Front it with your Ingress / Gateway (bearer-authenticated; its own
+#     hostname keeps it apart from the human surfaces).
 #
 # The other controllers serve nothing but kubelet probes on :8081, which hit
 # the pod directly — no Service needed.
@@ -52,6 +57,29 @@ spec:
         - name: artifact
           port: 9790
           targetPort: artifact
+          protocol: TCP
+        - name: internal
+          port: 9791
+          targetPort: internal
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-evaluation-controller
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: evaluation-controller
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
           protocol: TCP
 ---
 apiVersion: v1

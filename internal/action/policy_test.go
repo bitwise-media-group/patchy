@@ -110,7 +110,10 @@ func TestAdmissionPolicyExemptsEveryController(t *testing.T) {
 	for _, line := range strings.Split(string(accounts), "\n") {
 		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "name:"))
 		// The agent SA runs in the agents namespace and never touches the API.
+		// The evaluation controller owns the Evaluation/EvaluationUnit kinds
+		// only — it never writes Finding spec, so it needs no exemption.
 		if !strings.HasPrefix(name, "patchy-") || name == "patchy-agent" ||
+			name == "patchy-evaluation-controller" ||
 			strings.Contains(line, "app.kubernetes.io") {
 			continue
 		}

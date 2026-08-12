@@ -54,6 +54,7 @@ nav = [
     { "context-controller" = "configuration/context-controller.md" },
     { "investigation-controller" = "configuration/investigation-controller.md" },
     { "remediation-controller" = "configuration/remediation-controller.md" },
+    { "evaluation-controller" = "configuration/evaluation-controller.md" },
     { "agent-runner" = "configuration/agent-runner.md" },
     { "status-server" = "configuration/status-server.md" },
   ] },

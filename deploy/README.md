@@ -37,10 +37,19 @@ the image of the harness resolved for its model.
 
 Two namespaces, and the split between them is the security boundary.
 
-| Namespace       | Workload                                                                                                                                                      | Credentials it holds                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `patchy`        | `integration-controller` (the only internet-facing workload), `source-controller`, `context-controller`, `investigation-controller`, `remediation-controller` | reads the GitHub Secret referenced by your Integration/Forge CRs |
-| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the two job controllers                                                                                         | the model API key — and nothing else                             |
+| Namespace       | Workload                                                                                                                                                                                                                                                                            | Credentials it holds                                             |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `patchy`        | `integration-controller` (the only internet-facing workload), `source-controller`, `context-controller`, `investigation-controller`, `remediation-controller`, `evaluation-controller` (optional; the evolve-facing evaluation API — front its Service with your ingress when used) | reads the GitHub Secret referenced by your Integration/Forge CRs |
+| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the three job-launching controllers                                                                                                                                                                                                   | the model API key — and nothing else                             |
+
+The **evaluation controller** is optional: it executes remote skill evaluations submitted by
+[evolve](https://github.com/bitwise-media-group/evolve) through the same agent-Job machinery (see
+`docs/configuration/evaluation-controller.md`). It needs the `patchy-evaluation-auth` Secret (bearer-auth configuration
+— `secrets.example.yaml`), evolve-runner images pinned in the ConfigMap (`PATCHY_EVOLVE_*_IMAGE`), RBAC bindings for
+submitters (`rbac.users.example.yaml`, `patchy-evaluations-submitter`), and source-controller's internal blob endpoint
+(`PATCHY_ARTIFACT_INTERNAL_ADDR: ":9791"`, NetworkPolicy-gated to the evaluation controller). Remove the Deployment (and
+that ConfigMap key) to run without it; in the Helm chart the whole feature sits behind
+`evaluationController.enabled: false`.
 
 The custom resources in `patchy` — `Finding`, `Repository`, `Investigation`, `Remediation`, `FindingRollup`, plus the
 `Integration`/`Forge` configuration kinds — **are** the state machine; etcd is the only state store. The CRDs render

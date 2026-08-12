@@ -28,9 +28,13 @@ const (
 	// to exactly one Forge (False reasons: NoRepository, NoForgeMatch,
 	// Ambiguous). Parked findings are re-queued when Forges change.
 	ConditionForgeResolved = "ForgeResolved"
-	// ConditionComplete marks a finished Investigation/Remediation; the
-	// reason carries the stage outcome.
+	// ConditionComplete marks a finished Investigation/Remediation (reason:
+	// the stage outcome), a settled EvaluationUnit (reason: Complete or the
+	// unit failure reason), or a settled Evaluation (reason: Complete/Failed).
 	ConditionComplete = "Complete"
+	// ConditionUnitsCreated marks an Evaluation whose child EvaluationUnits
+	// all exist.
+	ConditionUnitsCreated = "UnitsCreated"
 
 	// Per-scope rollup markers. A scope's finalizer is removed only when its
 	// condition is True and deletion is underway — remaining finalizers show

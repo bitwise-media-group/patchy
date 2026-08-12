@@ -279,6 +279,100 @@ func TestSchemaValidation(t *testing.T) {
 			t.Error("Status().Update(confidence=1.5) = nil, want pattern rejection")
 		}
 	})
+
+	t.Run("evaluation spec is immutable and bounded", func(t *testing.T) {
+		testEvaluationSchema(ctx, t, c)
+	})
+
+	t.Run("evaluation unit spec is immutable and its failure reason is an enum", func(t *testing.T) {
+		testEvaluationUnitSchema(ctx, t, c)
+	})
+}
+
+// evalUnitPlan is a minimal valid UnitPlan for schema tests.
+func evalUnitPlan() patchyv1.UnitPlan {
+	return patchyv1.UnitPlan{
+		Skill:     "workflow-commit",
+		Tier:      2,
+		Model:     "anthropic/claude-sonnet-5",
+		Harnesses: []patchyv1.HarnessOption{{Harness: "claude", ModelID: "claude-sonnet-5"}},
+		Workspace: patchyv1.WorkspaceRef{
+			Digest:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			SizeBytes: 1024,
+		},
+	}
+}
+
+// testEvaluationSchema exercises the Evaluation CEL rules: spec immutability,
+// the units bounds, the workspace digest pattern, and the tier range.
+func testEvaluationSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	eval := func(name string, units []patchyv1.UnitPlan) *patchyv1.Evaluation {
+		return &patchyv1.Evaluation{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec:       patchyv1.EvaluationSpec{Submitter: "dev@example.com", Units: units},
+		}
+	}
+	good := eval("eval-ok", []patchyv1.UnitPlan{evalUnitPlan()})
+	if err := c.Create(ctx, good); err != nil {
+		t.Fatalf("Create(valid evaluation) = %v, want nil", err)
+	}
+	good.Spec.Units[0].Skill = "another-skill"
+	if err := c.Update(ctx, good); err == nil {
+		t.Error("Update(evaluation spec) = nil, want immutability rejection")
+	}
+	if err := c.Create(ctx, eval("eval-no-units", nil)); err == nil {
+		t.Error("Create(evaluation without units) = nil, want MinItems rejection")
+	}
+	badDigest := evalUnitPlan()
+	badDigest.Workspace.Digest = "not-a-digest"
+	if err := c.Create(ctx, eval("eval-bad-digest", []patchyv1.UnitPlan{badDigest})); err == nil {
+		t.Error("Create(evaluation with malformed digest) = nil, want pattern rejection")
+	}
+	badTier := evalUnitPlan()
+	badTier.Tier = 3
+	if err := c.Create(ctx, eval("eval-bad-tier", []patchyv1.UnitPlan{badTier})); err == nil {
+		t.Error("Create(evaluation with tier 3) = nil, want range rejection")
+	}
+	noHarness := evalUnitPlan()
+	noHarness.Harnesses = nil
+	if err := c.Create(ctx, eval("eval-no-harness", []patchyv1.UnitPlan{noHarness})); err == nil {
+		t.Error("Create(evaluation without harness options) = nil, want MinItems rejection")
+	}
+}
+
+// testEvaluationUnitSchema exercises the EvaluationUnit CEL rules: spec
+// immutability and the failure-reason enum.
+func testEvaluationUnitSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	unit := &patchyv1.EvaluationUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "eval-ok-u000", Namespace: "default"},
+		Spec: patchyv1.EvaluationUnitSpec{
+			EvaluationRef: patchyv1.ObjectReference{Name: "eval-ok"},
+			Index:         0,
+			Unit:          evalUnitPlan(),
+		},
+	}
+	if err := c.Create(ctx, unit); err != nil {
+		t.Fatalf("Create(evaluation unit) = %v, want nil", err)
+	}
+	unit.Spec.Index = 1
+	if err := c.Update(ctx, unit); err == nil {
+		t.Error("Update(evaluation unit spec) = nil, want immutability rejection")
+	}
+	fresh := &patchyv1.EvaluationUnit{}
+	if err := c.Get(ctx, client.ObjectKey{Name: "eval-ok-u000", Namespace: "default"}, fresh); err != nil {
+		t.Fatalf("Get(evaluation unit) = %v", err)
+	}
+	fresh.Status.Phase = patchyv1.RunFailed
+	fresh.Status.Reason = "Bogus"
+	if err := c.Status().Update(ctx, fresh); err == nil {
+		t.Error("Status().Update(reason=Bogus) = nil, want enum rejection")
+	}
+	fresh.Status.Reason = patchyv1.UnitWorkspaceLost
+	if err := c.Status().Update(ctx, fresh); err != nil {
+		t.Errorf("Status().Update(reason=WorkspaceLost) = %v, want nil", err)
+	}
 }
 
 // testGenericIntegrationSchema exercises the generic provider's CEL rules:

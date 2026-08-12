@@ -38,6 +38,11 @@ const (
 	LabelHarness = "patchy.bitwisemedia.uk/harness"
 	// LabelScope carries the rollup scope type on FindingRollup objects.
 	LabelScope = "patchy.bitwisemedia.uk/scope"
+	// LabelEvaluation names the owning Evaluation on EvaluationUnit children
+	// and evaluation agent Jobs.
+	LabelEvaluation = "patchy.bitwisemedia.uk/evaluation"
+	// LabelUnitIndex carries the unit's 0-based index within its Evaluation.
+	LabelUnitIndex = "patchy.bitwisemedia.uk/unit-index"
 
 	// AnnotationRepo carries the true "owner/name" on Investigation and
 	// Remediation children (label values cannot hold it), so the rollup can

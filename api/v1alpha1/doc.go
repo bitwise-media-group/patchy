@@ -18,6 +18,11 @@
 //   - Statistics: FindingRollup objects — one per scope value (total,
 //     repository, harness, model) — accumulate all-time counters that survive
 //     the TTL deletion of completed Findings.
+//   - Remote evaluations: Evaluation is one submission of coding-agent skill
+//     evaluations from an external client (evolve); EvaluationUnit is its
+//     one-per-unit immutable child recording each sandboxed run. Both expire
+//     on a TTL; their phases are local enums, not part of the Finding state
+//     machine.
 //
 // Structural-schema rules shape the types: no floats (confidence and cost are
 // validated decimal strings; rollup sums are int64 micro-USD; durations are

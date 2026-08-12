@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.2](https://github.com/bitwise-media-group/patchy/compare/v0.9.1...v0.9.2) (2026-08-12)
+
+
+### Features
+
+* **cli:** patchy mirror command group ([6d8b9c3](https://github.com/bitwise-media-group/patchy/commit/6d8b9c3497d786d6eec50d9ccb02459b6c485412))
+* **mirror:** vendored chart/artifact mirroring engine ([cb01087](https://github.com/bitwise-media-group/patchy/commit/cb0108771ddeccf2de147d1c0fd90741ffc2ccce))
+
+
+### Bug Fixes
+
+* **ui:** reference vite/client types for CSS side-effect import ([af8140f](https://github.com/bitwise-media-group/patchy/commit/af8140f73fb9770d4641c8bf1ae18c901d41702d))
+
 ## [0.9.1](https://github.com/bitwise-media-group/patchy/compare/v0.9.0...v0.9.1) (2026-08-07)
 
 

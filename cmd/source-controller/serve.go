@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -41,7 +42,32 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("artifact-dir", "/data/artifacts", "directory the artifact tarballs are stored in")
 	f.Int("max-artifact-bytes", int(source.DefaultMaxArtifactBytes),
 		"largest repository tarball stored; larger repositories stall")
+	f.String("artifact-internal-addr", "",
+		"listen address of the internal workspace-upload endpoint (empty disables it; deploy :9791)")
+	f.String("internal-upload-token-file", "",
+		"file holding the shared bearer token internal uploads must present (optional defense-in-depth)")
+	f.Int("max-workspace-bytes", 64<<20, "largest workspace bundle accepted on the internal endpoint")
+	f.Duration("workspace-retention", 7*24*time.Hour,
+		"remove workspace bundles not accessed for this long (0 keeps forever)")
 	return cmd
+}
+
+// internalUploadToken reads the optional shared secret internal uploads must
+// present; an empty flag means NetworkPolicy is the only gate.
+func internalUploadToken(opts *cli.Options) (string, error) {
+	path := opts.String("internal-upload-token-file")
+	if path == "" {
+		return "", nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("internal-upload-token-file: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return "", errors.New("internal-upload-token-file: file is empty")
+	}
+	return token, nil
 }
 
 // artifactBaseURL is the URL minted into Repository statuses; unless
@@ -121,9 +147,19 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	internalSrv, err := internalServer(opts, store)
+	if err != nil {
+		return err
+	}
+	internalAddr := ""
+	if internalSrv != nil {
+		internalAddr = internalSrv.Addr
+	}
+
 	log.LogAttrs(ctx, slog.LevelInfo, "source-controller starting",
 		slog.String("namespace", namespace),
 		slog.String("artifact_addr", srv.Addr),
+		slog.String("artifact_internal_addr", internalAddr),
 		slog.String("artifact_base_url", baseURL))
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -140,8 +176,60 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	})
+	if internalSrv != nil {
+		g.Go(func() error {
+			if err := internalSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		})
+		g.Go(func() error {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			return internalSrv.Shutdown(shutdownCtx)
+		})
+	}
+	if retention := opts.Duration("workspace-retention"); retention > 0 {
+		g.Go(func() error { return sweepBlobs(ctx, store, retention, log) })
+	}
 	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	return nil
+}
+
+// internalServer builds the optional workspace-upload listener; nil when the
+// endpoint is disabled.
+func internalServer(opts *cli.Options, store *artifact.Store) (*http.Server, error) {
+	addr := opts.String("artifact-internal-addr")
+	if addr == "" {
+		return nil, nil
+	}
+	token, err := internalUploadToken(opts)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           store.InternalHandler(token, int64(opts.Int("max-workspace-bytes"))),
+		ReadHeaderTimeout: 10 * time.Second,
+	}, nil
+}
+
+// sweepBlobs runs the hourly last-access retention sweep until ctx ends.
+func sweepBlobs(ctx context.Context, store *artifact.Store, retention time.Duration, log *slog.Logger) error {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if removed := store.SweepBlobs(time.Now().Add(-retention)); removed > 0 {
+				log.LogAttrs(ctx, slog.LevelInfo, "workspace blobs swept",
+					slog.Int("removed", removed))
+			}
+		}
+	}
 }

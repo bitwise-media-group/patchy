@@ -46,8 +46,9 @@ type Store struct {
 	baseURL string
 
 	mu      sync.Mutex
-	entries map[string]entry // owner key → entry
-	byID    map[string]entry // random id → entry
+	entries map[string]entry      // owner key → entry
+	byID    map[string]entry      // random id → entry
+	blobs   map[string]*blobEntry // sha256 digest → workspace bundle
 }
 
 // NewStore builds a Store rooted at dir, minting URLs under baseURL (the
@@ -57,12 +58,20 @@ func NewStore(dir, baseURL string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("artifact dir: %w", err)
 	}
-	return &Store{
+	s := &Store{
 		dir:     dir,
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		entries: make(map[string]entry),
 		byID:    make(map[string]entry),
-	}, nil
+		blobs:   make(map[string]*blobEntry),
+	}
+	// Repository tarballs are reproducible (a restart re-fetches), but
+	// workspace blobs are not — only the client can rebuild one — so their
+	// index is recovered from disk.
+	if err := s.rescanBlobs(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // Put stores the tarball read from r under the owner key, replacing any
@@ -124,11 +133,16 @@ func (s *Store) Delete(key string) {
 	}
 }
 
-// Handler serves GET /artifacts/<id>.tar.gz.
+// Handler serves GET /artifacts/<id>.tar.gz: 32-hex ids are repository
+// tarballs, 64-hex ids are content-addressed workspace blobs.
 func (s *Store) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /artifacts/{file}", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSuffix(r.PathValue("file"), ".tar.gz")
+		if blobDigest(id) {
+			s.serveBlob(w, r, id)
+			return
+		}
 		s.mu.Lock()
 		e, ok := s.byID[id]
 		s.mu.Unlock()

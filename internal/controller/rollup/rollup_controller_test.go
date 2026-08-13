@@ -339,3 +339,54 @@ func TestNonTerminalDeleteCountsAsDeleted(t *testing.T) {
 		t.Errorf("deleted bucket = %d, want 1 (spend was real)", got)
 	}
 }
+
+// TestFindingRollupRelevant locks the event filter's admit set: everything
+// it drops must be a provable no-op in ReconcileFinding.
+func TestFindingRollupRelevant(t *testing.T) {
+	now := metav1.Now()
+	cases := []struct {
+		name string
+		fnd  *v1alpha1.Finding
+		want bool
+	}{
+		{"in-flight finding is a no-op", &v1alpha1.Finding{
+			Status: v1alpha1.FindingStatus{Phase: v1alpha1.PhaseInvestigating},
+		}, false},
+		{"phaseless finding is a no-op", &v1alpha1.Finding{}, false},
+		{"terminal finding counts", &v1alpha1.Finding{
+			Status: v1alpha1.FindingStatus{Phase: v1alpha1.PhaseRemediated},
+		}, true},
+		{"terminal but unstamped still admits", &v1alpha1.Finding{
+			Status: v1alpha1.FindingStatus{Phase: v1alpha1.PhaseFailed},
+		}, true},
+		{"deleting finding releases finalizers", &v1alpha1.Finding{
+			ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now, Finalizers: []string{v1alpha1.FinalizerRollupTotal}},
+			Status:     v1alpha1.FindingStatus{Phase: v1alpha1.PhaseQueued},
+		}, true},
+		{"revived counted finding reverses", &v1alpha1.Finding{
+			Status: v1alpha1.FindingStatus{
+				Phase: v1alpha1.PhaseQueued,
+				Conditions: []metav1.Condition{{
+					Type: v1alpha1.ConditionRolledUpTotal, Status: metav1.ConditionTrue,
+					Reason: "Aggregated", Message: "phase=handedoff;seq=1;rec=",
+				}},
+			},
+		}, true},
+		{"unrelated conditions stay filtered", &v1alpha1.Finding{
+			Status: v1alpha1.FindingStatus{
+				Phase: v1alpha1.PhaseEnhanced,
+				Conditions: []metav1.Condition{{
+					Type: v1alpha1.ConditionAccumulationComplete, Status: metav1.ConditionTrue,
+					Reason: "WindowElapsed",
+				}},
+			},
+		}, false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := findingRollupRelevant(tt.fnd); got != tt.want {
+				t.Errorf("findingRollupRelevant() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

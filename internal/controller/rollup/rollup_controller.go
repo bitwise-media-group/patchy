@@ -32,7 +32,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -497,6 +499,31 @@ func (r *Reconciler) applyScope(
 	})
 }
 
+// findingRollupRelevant reports whether a finding event can possibly change
+// the rollup: it is terminal (counts to record), deleting (finalizers to
+// release), or already condition-marked as counted (a revival to reverse).
+// Everything else — the whole in-flight pipeline population — provably
+// no-ops in ReconcileFinding, and at backlog scale those events dominate the
+// watch stream. TTL requeues are unaffected: RequeueAfter re-enqueues bypass
+// watch predicates.
+func findingRollupRelevant(obj client.Object) bool {
+	f, ok := obj.(*v1alpha1.Finding)
+	if !ok {
+		return false
+	}
+	if !f.DeletionTimestamp.IsZero() || v1alpha1.Terminal(f.Status.Phase) {
+		return true
+	}
+	for _, cond := range f.Status.Conditions {
+		switch cond.Type {
+		case v1alpha1.ConditionRolledUpTotal, v1alpha1.ConditionRolledUpRepository,
+			v1alpha1.ConditionRolledUpHarness, v1alpha1.ConditionRolledUpModel:
+			return true
+		}
+	}
+	return false
+}
+
 // SetupWithManager registers the three aggregation controllers.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := ctrl.NewControllerManagedBy(mgr).
@@ -512,7 +539,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Finding{}).
+		For(&v1alpha1.Finding{}, builder.WithPredicates(predicate.NewPredicateFuncs(findingRollupRelevant))).
 		Named("rollup-finding").
 		Complete(reconcile.Func(r.ReconcileFinding))
 }

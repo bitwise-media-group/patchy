@@ -1013,8 +1013,8 @@ github.com/sigstore/sigstore-go v1.2.2 h1:xAJ8hxaoecC0HKBYVbrwUjkeAI+GJYu6vLqbxD
 github.com/sigstore/sigstore-go v1.2.2/go.mod h1:MIFwBxAHJD+/lKgZzt9n/4Zhq/3T2+EuGX8iGrIsZgU=
 github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8 h1:tofVQ+UWJgad/69I5zbqxdFCN5gpIn9tRQP7iBzIpBw=
 github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8/go.mod h1:73AfJE8H6w5KGCFPBu4x/OG+i1Yxgmh0L/FtV7prd88=
-github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.8 h1:8Mt7J36GcUEmbiJaiFhz2tud5ZIgkfVVCe2H/WJCHmw=
-github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.8/go.mod h1:YiTpAsxoWXhF9KlLOVWCh7BckN5cYO8X01WufDq1ido=
+github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.9 h1:zcg/EG6JW/8RSx9T2g5j6zqxplaE4dymmhiFflDE6ks=
+github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.9/go.mod h1:e7QngtHib0McuP1C/+Dt9f/7a8ic8FXvPB75OQzWgU4=
 github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.10.9 h1:DG8R4orWDs3l9trp70fLRTgazedEDoAIo/cHEN7Qo0k=
 github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.10.9/go.mod h1:d6oIwQ0YiYHMcFO4xqFcAx5njXwIf0dm5KfdytOar8A=
 github.com/sigstore/sigstore/pkg/signature/kms/hashivault v1.10.8 h1:1DGe4/clcdOnkz5MINEczWlmEvjUtZd+AjPPT/cBhQ8=

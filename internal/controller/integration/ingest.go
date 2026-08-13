@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -30,6 +31,22 @@ const maxAlerts = 64
 
 // DefaultWindow is the accumulation window when unconfigured.
 const DefaultWindow = time.Hour
+
+// KeyHashIndex is the field index over the key-hash label. Every ingested
+// alert selects its finding family by this value; without the index that
+// List is a full informer-store scan per alert — O(backlog), ruinous on a
+// brownfield estate — where the index lookup is O(1).
+const KeyHashIndex = "labels.key-hash"
+
+// KeyHashIndexer extracts the index value: the finding's key-hash label.
+// Exported so fake-client tests register the same recipe the manager does.
+func KeyHashIndexer(obj client.Object) []string {
+	hash := obj.GetLabels()[v1alpha1.LabelKeyHash]
+	if hash == "" {
+		return nil
+	}
+	return []string{hash}
+}
 
 // Ingestor folds scanner findings into Finding resources. The deterministic
 // name plus AlreadyExists-tolerant create is the idempotency mechanism — no
@@ -62,6 +79,18 @@ func keyHash(integration, sourceID, scope, advisory string) string {
 	return hex.EncodeToString(sum[:5])
 }
 
+// SetupWithManager registers the key-hash field index on the manager's
+// cache. The Ingestor is webhook-driven — it runs no reconciler — so this is
+// its only manager hook; without it every family List errors, which is the
+// loud failure mode we want over a silent full scan.
+func (in *Ingestor) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(), &v1alpha1.Finding{}, KeyHashIndex, KeyHashIndexer); err != nil {
+		return fmt.Errorf("index %s: %w", KeyHashIndex, err)
+	}
+	return nil
+}
+
 // Ingest folds one scanner finding into the cluster: append its alert to the
 // live pre-investigation Finding of its family, or create the next
 // generation.
@@ -79,7 +108,7 @@ func (in *Ingestor) Ingest(ctx context.Context, integ *v1alpha1.Integration, f s
 
 	var family v1alpha1.FindingList
 	if err := in.List(ctx, &family, client.InNamespace(in.Namespace),
-		client.MatchingLabels{v1alpha1.LabelKeyHash: hash}); err != nil {
+		client.MatchingFields{KeyHashIndex: hash}); err != nil {
 		return fmt.Errorf("list finding family %s: %w", hash, err)
 	}
 

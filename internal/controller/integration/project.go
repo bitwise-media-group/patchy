@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -81,6 +82,11 @@ type FindingReconciler struct {
 	Creds *Creds
 	// Namespace the Findings live in.
 	Namespace string
+	// Concurrency is the number of findings projected in parallel; <=1 means
+	// serial. Kept conservative by default — every projection may spend
+	// GitHub API requests, and parallelism multiplies burst pressure on the
+	// installation's rate limit.
+	Concurrency int
 	// Now is the clock seam; nil means time.Now.
 	Now func() time.Time
 	// ClientFor overrides the tracker-client construction in tests.
@@ -835,6 +841,7 @@ func (r *FindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.Finding{}).
 		Watches(&v1alpha1.Investigation{}, mapChild).
 		Watches(&v1alpha1.Remediation{}, mapChild).
+		WithOptions(controller.Options{MaxConcurrentReconciles: max(1, r.Concurrency)}).
 		Named("finding-projection").
 		Complete(r)
 }

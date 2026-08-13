@@ -33,6 +33,8 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("namespace", "", "namespace the patchy resources live in (default: POD_NAMESPACE)")
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
+	f.Int("projection-concurrency", 2,
+		"findings projected to tracking issues in parallel (each projection may spend GitHub API requests)")
 	f.String("google-oidc-issuer", "",
 		"OIDC issuer the Pub/Sub push route verifies tokens against "+
 			"(default: Google, the only correct value in production; overridable for e2e)")
@@ -80,6 +82,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Window:    opts.Duration("accumulation-window"),
 		Log:       log,
 	}
+	if err := ingestor.SetupWithManager(mgr); err != nil {
+		return err
+	}
 	signals := &integration.Signals{Client: mgr.GetClient(), Namespace: namespace, Log: log}
 	receiver := &integration.Receiver{
 		Reader:     mgr.GetClient(),
@@ -106,7 +111,10 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if err := ic.SetupWithManager(mgr); err != nil {
 		return err
 	}
-	fp := &integration.FindingReconciler{Client: mgr.GetClient(), Creds: creds, Namespace: namespace, Log: log}
+	fp := &integration.FindingReconciler{
+		Client: mgr.GetClient(), Creds: creds, Namespace: namespace,
+		Concurrency: opts.Int("projection-concurrency"), Log: log,
+	}
 	if err := fp.SetupWithManager(mgr); err != nil {
 		return err
 	}

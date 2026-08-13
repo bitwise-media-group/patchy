@@ -54,6 +54,10 @@ func newIngestor(t *testing.T) (*Ingestor, client.Client) {
 	c := fake.NewClientBuilder().
 		WithScheme(kube.Scheme()).
 		WithStatusSubresource(&v1alpha1.Finding{}).
+		// The same index Ingestor.SetupWithManager registers on the real
+		// cache; without it the fake errors on the family List, so a missing
+		// registration fails loud here too.
+		WithIndex(&v1alpha1.Finding{}, KeyHashIndex, KeyHashIndexer).
 		Build()
 	return &Ingestor{
 		Client:    c,

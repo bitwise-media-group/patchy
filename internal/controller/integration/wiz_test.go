@@ -73,6 +73,7 @@ func newWizReceiver(t *testing.T, objs ...client.Object) *Receiver {
 		WithScheme(kube.Scheme()).
 		WithStatusSubresource(&v1alpha1.Finding{}).
 		WithObjects(objs...).
+		WithIndex(&v1alpha1.Finding{}, KeyHashIndex, KeyHashIndexer).
 		Build()
 	return &Receiver{
 		Reader:    c,

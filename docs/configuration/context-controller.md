@@ -14,9 +14,12 @@ context-controller serve --namespace patchy --static-context-file /etc/patchy/co
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
-| Flag                    | Env                          | Default | Purpose                                                                  |
-| ----------------------- | ---------------------------- | ------- | ------------------------------------------------------------------------ |
-| `--static-context-file` | `PATCHY_STATIC_CONTEXT_FILE` | —       | YAML file mapping repositories to owners/attributes (fake-CMDB enhancer) |
+| Flag                     | Env                           | Default | Purpose                                                                                                                                            |
+| ------------------------ | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--static-context-file`  | `PATCHY_STATIC_CONTEXT_FILE`  | —       | YAML file mapping repositories to owners/attributes (fake-CMDB enhancer)                                                                           |
+| `--enhance-concurrency`  | `PATCHY_ENHANCE_CONCURRENCY`  | `4`     | Findings enhanced in parallel (each finding's chain still runs serially)                                                                           |
+| `--enhance-max-outbound` | `PATCHY_ENHANCE_MAX_OUTBOUND` | `8`     | Concurrent outbound generic enhancer calls across **all** findings; `0` means unbounded                                                            |
+| `--enhancer-config-ttl`  | `PATCHY_ENHANCER_CONFIG_TTL`  | `10s`   | How long the generic endpoint list and signing secrets are cached; a rotated secret takes effect within this window (`0` re-reads per enhancement) |
 
 ## Behavior
 

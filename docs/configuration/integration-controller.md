@@ -16,9 +16,10 @@ integration-controller serve --namespace patchy --accumulation-window 1h
 
 The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
-| Flag                    | Env                          | Default | Purpose                                                                |
-| ----------------------- | ---------------------------- | ------- | ---------------------------------------------------------------------- |
-| `--accumulation-window` | `PATCHY_ACCUMULATION_WINDOW` | `1h`    | How long alerts of one finding family accumulate into a single Finding |
+| Flag                       | Env                             | Default | Purpose                                                                                       |
+| -------------------------- | ------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `--accumulation-window`    | `PATCHY_ACCUMULATION_WINDOW`    | `1h`    | How long alerts of one finding family accumulate into a single Finding                        |
+| `--projection-concurrency` | `PATCHY_PROJECTION_CONCURRENCY` | `2`     | Findings projected to tracking issues in parallel (each projection may spend GitHub requests) |
 
 ## The webhook receiver
 

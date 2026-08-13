@@ -17,6 +17,7 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 | Flag                              | Env                                    | Default | Purpose                                             |
 | --------------------------------- | -------------------------------------- | ------- | --------------------------------------------------- |
 | `--finding-min-age`               | `PATCHY_FINDING_MIN_AGE`               | `1h`    | How old a finding must be before the gate admits it |
+| `--gate-concurrency`              | `PATCHY_GATE_CONCURRENCY`              | `4`     | Findings admitted through the gate in parallel      |
 | `--max-attempts`                  | `PATCHY_MAX_ATTEMPTS`                  | `2`     | Analysis attempts per finding before it fails       |
 | `--max-concurrent-investigations` | `PATCHY_MAX_CONCURRENT_INVESTIGATIONS` | `3`     | Simultaneously running investigation Jobs           |
 | `--confidence-threshold`          | `PATCHY_CONFIDENCE_THRESHOLD`          | `0.75`  | Confidence required to queue automated remediation  |

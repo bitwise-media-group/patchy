@@ -69,6 +69,7 @@ nav = [
   { "Operations" = [
     { "The status page" = "status-ui.md" },
     { "Observability" = "observability.md" },
+    { "Benchmarks & load tests" = "dev/benchmarks.md" },
   ] },
   # cli/patchy.md is the root of the generated per-command reference
   # (`mise run docs`); every other cli/patchy_*.md page is reached from it.

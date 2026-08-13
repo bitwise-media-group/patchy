@@ -50,6 +50,23 @@ description = "regenerate deepcopy + CRD manifests from api/v1alpha1"
 dir = "{{cwd}}"
 run = "./hack/codegen.sh"
 
+# The Tier-1 microbenchmark suite for the 2M-findings scale work: per-package
+# benchmarks over synthetic datasets (internal/loadgen) plus the env-gated
+# complexity-ratio assertions. Opt-in — never part of `make pr` or CI; the
+# numbers are recorded under coverage/bench/ for benchstat comparison.
+[bench]
+description = "run the tier-1 microbenchmarks with complexity assertions"
+dir = "{{cwd}}"
+run = "./hack/bench.sh"
+
+# The Tier-2 load suite: envtest + the real binaries at 50-100k findings
+# (PATCHY_LOAD_N sizes it). Opt-in for the same reason — a full run takes
+# tens of minutes and is meant for before/after measurement, not the gate.
+[load]
+description = "run the opt-in load tests (envtest, real binaries, 50k+ findings)"
+dir = "{{cwd}}"
+run = "./hack/load.sh"
+
 # Tests that need a real API server (CRD schema validation, controller
 # integration): setup-envtest provisions kube-apiserver/etcd, then the suites
 # that skip without KUBEBUILDER_ASSETS run for real.

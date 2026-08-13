@@ -46,6 +46,10 @@ url = "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_windows_amd6
 url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/440146721"
 provenance = "cosign"
 
+[[tools."go:golang.org/x/perf/cmd/benchstat"]]
+version = "0.0.0-20260709024250-82a0b07e230d"
+backend = "go:golang.org/x/perf/cmd/benchstat"
+
 [[tools."go:sigs.k8s.io/controller-runtime/tools/setup-envtest"]]
 version = "0.24.1"
 backend = "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"

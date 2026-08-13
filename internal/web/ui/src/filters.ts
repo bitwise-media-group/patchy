@@ -1,7 +1,7 @@
 // Client-side filtering and sorting over the flat findings list. The server
 // never aggregates or filters; this module is the single source of truth.
 
-import type { Finding, Level, Phase, Recommendation } from "./types";
+import type { FindingSummary, Level, Phase, Recommendation } from "./types";
 import { PHASE_ORDER } from "./types";
 
 export interface Selection {
@@ -26,7 +26,7 @@ export function hasActiveFilters(sel: Selection): boolean {
   );
 }
 
-export function repoOptions(findings: Finding[]): string[] {
+export function repoOptions(findings: FindingSummary[]): string[] {
   const repos = new Set<string>();
   for (const f of findings) {
     if (f.repository?.name) repos.add(f.repository.name);
@@ -34,7 +34,7 @@ export function repoOptions(findings: Finding[]): string[] {
   return [...repos].sort();
 }
 
-function matchesSearch(f: Finding, needle: string): boolean {
+function matchesSearch(f: FindingSummary, needle: string): boolean {
   const haystack = [
     f.name,
     f.title,
@@ -49,7 +49,7 @@ function matchesSearch(f: Finding, needle: string): boolean {
   return haystack.includes(needle);
 }
 
-export function filterFindings(findings: Finding[], sel: Selection): Finding[] {
+export function filterFindings(findings: FindingSummary[], sel: Selection): FindingSummary[] {
   const needle = sel.search.trim().toLowerCase();
   return findings.filter((f) => {
     if (sel.phases.size > 0 && (!f.phase || !sel.phases.has(f.phase))) return false;
@@ -76,7 +76,7 @@ const PHASE_RANK: Record<Phase, number> = Object.fromEntries([
 
 // sortFindings: needs-attention first — severity, then phase progress, then
 // most recently observed.
-export function sortFindings(findings: Finding[]): Finding[] {
+export function sortFindings(findings: FindingSummary[]): FindingSummary[] {
   return [...findings].sort((a, b) => {
     const sa = a.severity ? SEVERITY_RANK[a.severity] : 9;
     const sb = b.severity ? SEVERITY_RANK[b.severity] : 9;
@@ -89,7 +89,7 @@ export function sortFindings(findings: Finding[]): Finding[] {
 }
 
 // phaseCounts returns per-phase totals plus how many are suspended.
-export function phaseCounts(findings: Finding[]): { counts: Map<Phase, number>; suspended: number } {
+export function phaseCounts(findings: FindingSummary[]): { counts: Map<Phase, number>; suspended: number } {
   const counts = new Map<Phase, number>();
   let suspended = 0;
   for (const f of findings) {

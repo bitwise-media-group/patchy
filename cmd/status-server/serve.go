@@ -107,6 +107,12 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 
+	// The finding-detail projection looks child runs up by owning finding;
+	// the index must exist before the cache starts serving.
+	if err := web.RegisterIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+
 	// Mode none bypasses access reviews entirely; every other posture asks
 	// the cluster per identity.
 	var granter web.Granter = authz.NewReviewer(mgr.GetClient(), namespace, 0)

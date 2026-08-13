@@ -2,7 +2,7 @@
 // terminals, each with a live count. Clicking a phase toggles it as a
 // filter.
 
-import type { Finding, Phase } from "../types";
+import type { FindingSummary, Phase } from "../types";
 import { PHASE_ORDER } from "../types";
 import { PHASE_LABELS } from "../format";
 import { phaseCounts } from "../filters";
@@ -14,7 +14,7 @@ export function PhasePipeline({
   selected,
   onToggle,
 }: {
-  findings: Finding[];
+  findings: FindingSummary[];
   selected: Set<Phase>;
   onToggle: (phase: Phase) => void;
 }) {

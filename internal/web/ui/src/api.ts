@@ -5,7 +5,14 @@
 // finding's permitted verbs already resolved for the requesting user, and a
 // mutation is re-checked on POST. The client only reflects 401/403.
 
-import type { ActionVerb, AdminVerb, Dataset, Finding, TranscriptTurn } from "./types";
+import type {
+  ActionVerb,
+  AdminVerb,
+  Dataset,
+  Finding,
+  OfflineDataset,
+  TranscriptTurn,
+} from "./types";
 import { availableActions, retryTarget } from "./actions";
 import { mockDataset, mockTranscript } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
@@ -21,7 +28,7 @@ export class AuthRequiredError extends Error {
 export class ForbiddenError extends Error {}
 
 export interface SnapshotPayload {
-  dataset: Dataset;
+  dataset: OfflineDataset;
 }
 
 declare global {
@@ -52,9 +59,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ---- demo state ----------------------------------------------------------
 
-let demoData: Dataset | null = null;
+let demoData: OfflineDataset | null = null;
 
-function demoDataset(): Dataset {
+function demoDataset(): OfflineDataset {
   if (!demoData) demoData = mockDataset();
   return demoData;
 }
@@ -106,6 +113,33 @@ export async function fetchFindings(persona: Persona = DEFAULT_PERSONA): Promise
     };
   }
   return request<Dataset>("/api/findings");
+}
+
+// fetchFinding loads one finding's full detail — description, alerts,
+// enrichments, the phase log, and the run reports the list payload omits.
+// Resolves null when the finding is gone (completed findings expire on a
+// TTL); offline modes answer from their full local dataset.
+export async function fetchFinding(
+  name: string,
+  persona: Persona = DEFAULT_PERSONA,
+): Promise<Finding | null> {
+  const mode = dataMode();
+  if (mode !== "live") {
+    const data =
+      mode === "snapshot" ? window.__PATCHY_STATUS_SNAPSHOT__!.dataset : demoDataset();
+    const f = data.findings.find((x) => x.name === name);
+    if (!f) return null;
+    return mode === "demo" ? { ...f, userActions: [...persona.grants] } : f;
+  }
+  const res = await fetch(`/api/findings/${encodeURIComponent(name)}`);
+  if (res.status === 404) return null;
+  if (res.status === 401) throw new AuthRequiredError();
+  if (res.status === 403) {
+    const text = (await res.text()).trim();
+    throw new ForbiddenError(text || "Permission denied.");
+  }
+  if (!res.ok) throw new Error(`/api/findings/${name}: HTTP ${res.status}`);
+  return (await res.json()) as Finding;
 }
 
 // fetchRollups is the always-public statistics projection: the same dataset

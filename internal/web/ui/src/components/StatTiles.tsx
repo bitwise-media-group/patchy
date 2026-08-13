@@ -1,7 +1,7 @@
-import type { Finding } from "../types";
+import type { FindingSummary } from "../types";
 import { TERMINAL_PHASES } from "../types";
 
-export function StatTiles({ findings }: { findings: Finding[] }) {
+export function StatTiles({ findings }: { findings: FindingSummary[] }) {
   const open = findings.filter((f) => f.phase && !TERMINAL_PHASES.has(f.phase)).length;
   const awaiting = findings.filter((f) => f.phase === "AwaitingApproval").length;
   const inFlight = findings.filter(

@@ -132,6 +132,8 @@ func testServer(t *testing.T, objs ...client.Object) *Server {
 		WithScheme(kube.Scheme()).
 		WithObjects(objs...).
 		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.FindingRollup{}).
+		WithIndex(&v1alpha1.Investigation{}, RunFindingIndex, RunFindingIndexer).
+		WithIndex(&v1alpha1.Remediation{}, RunFindingIndex, RunFindingIndexer).
 		Build()
 	s := NewServer(c, "patchy", stubAuth{}, stubGranter{}, nil)
 	s.now = func() time.Time { return testClock }
@@ -169,7 +171,49 @@ func TestBuildDatasetProjection(t *testing.T) {
 	}
 
 	f := asMap(t, ds.Findings[0])
-	// Contract field names (ui/src/types.ts) on a fully populated finding.
+	// Contract field names (ui/src/types.ts FindingSummary) on a fully
+	// populated finding.
+	for _, key := range []string{
+		"name", "createdAt", "integration", "source", "repository", "cloudResource",
+		"advisories", "ruleID", "title", "severity", "suspend", "phase",
+		"firstObservedAt", "accumulateUntil", "owners", "priority",
+		"investigation", "remediation", "pullRequest",
+		"attempts", "activeRun", "lastFailureReason", "completedAt", "userActions",
+	} {
+		if _, ok := f[key]; !ok {
+			t.Errorf("finding summary JSON is missing %q", key)
+		}
+	}
+	// The unbounded detail stays off the list payload — that is the whole
+	// point of the split (the detail route carries it).
+	for _, key := range []string{
+		"description", "alerts", "overflowAlerts", "related", "approval",
+		"phaseTimes", "tracking", "enrichments", "totalUsage",
+	} {
+		if _, ok := f[key]; ok {
+			t.Errorf("finding summary JSON leaked detail field %q", key)
+		}
+	}
+	if inv := f["investigation"].(map[string]any); inv["report"] != nil {
+		t.Errorf("summary investigation leaked report: %v", inv)
+	}
+	if f["integration"] != "gh" {
+		t.Errorf("integration = %v, want gh (flattened integrationRef.name)", f["integration"])
+	}
+	if f["createdAt"] != "2026-07-21T10:00:00Z" {
+		t.Errorf("createdAt = %v", f["createdAt"])
+	}
+}
+
+func TestBuildFindingDetailProjection(t *testing.T) {
+	s := testServer(t, fullFinding())
+	out, err := s.buildFindingDetail(t.Context(), "gh-cs-orders-1", []string{"approve"})
+	if err != nil {
+		t.Fatalf("buildFindingDetail: %v", err)
+	}
+	f := asMap(t, out)
+	// Contract field names (ui/src/types.ts Finding) on a fully populated
+	// finding: the summary fields plus the detail-only ones.
 	for _, key := range []string{
 		"name", "createdAt", "integration", "source", "repository", "cloudResource",
 		"advisories", "ruleID",
@@ -179,14 +223,8 @@ func TestBuildDatasetProjection(t *testing.T) {
 		"attempts", "activeRun", "lastFailureReason", "completedAt", "userActions",
 	} {
 		if _, ok := f[key]; !ok {
-			t.Errorf("finding JSON is missing %q", key)
+			t.Errorf("finding detail JSON is missing %q", key)
 		}
-	}
-	if f["integration"] != "gh" {
-		t.Errorf("integration = %v, want gh (flattened integrationRef.name)", f["integration"])
-	}
-	if f["createdAt"] != "2026-07-21T10:00:00Z" {
-		t.Errorf("createdAt = %v", f["createdAt"])
 	}
 	// The tracking wire type drops the server-only integration field.
 	if tracking := f["tracking"].(map[string]any); tracking["integration"] != nil {
@@ -194,13 +232,13 @@ func TestBuildDatasetProjection(t *testing.T) {
 	}
 
 	// Related edges are named from this finding's perspective.
-	rel := ds.Findings[0].Related
+	rel := out.Related
 	if len(rel) != 2 || rel[0].Name != "gh-cs-orders-0" || rel[1].Name != "gh-cs-billing-9" {
 		t.Errorf("related = %+v", rel)
 	}
 }
 
-func TestBuildDatasetAttachesRunDetail(t *testing.T) {
+func TestBuildFindingDetailAttachesRunDetail(t *testing.T) {
 	childMeta := func(name string) metav1.ObjectMeta {
 		return metav1.ObjectMeta{
 			Name: name, Namespace: "patchy",
@@ -240,11 +278,10 @@ func TestBuildDatasetAttachesRunDetail(t *testing.T) {
 		},
 	}
 	s := testServer(t, fullFinding(), invOld, inv, rem)
-	ds, err := s.buildDataset(t.Context(), true, nil, nil)
+	f, err := s.buildFindingDetail(t.Context(), "gh-cs-orders-1", nil)
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
+		t.Fatalf("buildFindingDetail: %v", err)
 	}
-	f := ds.Findings[0]
 	if f.Investigation == nil || f.Investigation.Report != "## Analysis\n\ninjectable" {
 		t.Errorf("investigation report = %+v", f.Investigation)
 	}
@@ -271,12 +308,40 @@ func TestBuildDatasetAttachesRunDetail(t *testing.T) {
 	// An expired/absent child leaves report and accounting empty rather
 	// than erroring.
 	s = testServer(t, fullFinding())
-	if ds, err = s.buildDataset(t.Context(), true, nil, nil); err != nil {
-		t.Fatalf("buildDataset without children: %v", err)
+	if f, err = s.buildFindingDetail(t.Context(), "gh-cs-orders-1", nil); err != nil {
+		t.Fatalf("buildFindingDetail without children: %v", err)
 	}
-	f = ds.Findings[0]
 	if f.Investigation.Report != "" || f.Investigation.Usage != nil || f.TotalUsage != nil {
 		t.Errorf("run detail without children = %+v / total %+v, want empty", f.Investigation, f.TotalUsage)
+	}
+}
+
+// A sibling finding's children never bleed in: the child lookup is by
+// owning-finding label, not "whatever the namespace holds".
+func TestBuildFindingDetailIsolatesSiblings(t *testing.T) {
+	inv := &v1alpha1.Investigation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "gh-cs-orders-1-inv-1", Namespace: "patchy",
+			Labels: map[string]string{v1alpha1.LabelFinding: "gh-cs-orders-1"},
+		},
+		Status: v1alpha1.InvestigationStatus{
+			Report: "## Analysis\n\ninjectable",
+			Stage: &v1alpha1.StageResult{
+				Outcome: "ok", Usage: v1alpha1.UsageSummary{InputTokens: 100, CostUSD: "0.25"},
+			},
+		},
+	}
+	// The sibling references the same child name in its status; only the
+	// label decides ownership.
+	other := fullFinding()
+	other.Name = "gh-cs-billing-9"
+	s := testServer(t, fullFinding(), other, inv)
+	f, err := s.buildFindingDetail(t.Context(), "gh-cs-billing-9", nil)
+	if err != nil {
+		t.Fatalf("buildFindingDetail sibling: %v", err)
+	}
+	if f.Investigation.Report != "" || f.TotalUsage != nil {
+		t.Errorf("sibling absorbed another finding's children: %+v / %+v", f.Investigation, f.TotalUsage)
 	}
 }
 
@@ -323,7 +388,7 @@ func TestBuildDatasetMinimalFinding(t *testing.T) {
 	f := asMap(t, ds.Findings[0])
 	// Optional zero values are omitted, not rendered as false/""/null noise.
 	for _, key := range []string{
-		"suspend", "repository", "approval", "phase", "investigation", "remediation",
+		"suspend", "repository", "phase", "investigation", "remediation",
 		"pullRequest", "attempts", "activeRun", "completedAt", "userActions", "createdAt",
 	} {
 		if _, ok := f[key]; ok {

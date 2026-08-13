@@ -4,6 +4,7 @@
 package web
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
@@ -90,6 +92,7 @@ func (s *Server) WithTranscripts(reader client.Reader, tailer Tailer) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/findings", s.handleFindings)
+	mux.HandleFunc("GET /api/findings/{name}", s.handleFinding)
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
 	mux.HandleFunc("POST /api/findings/{name}/actions/{verb}", s.handleAction)
 	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
@@ -158,8 +161,9 @@ type viewer struct {
 	grants authz.Grants
 }
 
-// handleFindings serves the full dataset to an authenticated identity whose
-// RBAC grants viewing; rollups-only readers use /api/rollups.
+// handleFindings serves the trimmed list dataset to an authenticated
+// identity whose RBAC grants viewing; per-finding detail comes from
+// /api/findings/{name}, and rollups-only readers use /api/rollups.
 func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.authorize(w, r)
 	if !ok {
@@ -173,7 +177,31 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load findings", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, ds)
+	writeJSONGzip(w, r, ds)
+}
+
+// handleFinding serves the full projection of one finding — description,
+// alerts, enrichments, the phase log, and the run reports the list payload
+// deliberately omits. Same view gate as the list; finding data never leaks
+// past it.
+func (s *Server) handleFinding(w http.ResponseWriter, r *http.Request) {
+	v, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	out, err := s.buildFindingDetail(r.Context(), r.PathValue("name"), v.grants.Verbs)
+	if apierrors.IsNotFound(err) {
+		// Completed findings expire on a TTL; the client renders "no longer
+		// present" rather than an error.
+		http.Error(w, "finding not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.log.LogAttrs(r.Context(), slog.LevelError, "build finding detail", slog.Any("error", err))
+		http.Error(w, "failed to load finding", http.StatusInternalServerError)
+		return
+	}
+	writeJSONGzip(w, r, out)
 }
 
 // handleRollups serves the always-public statistics projection: the same
@@ -185,7 +213,7 @@ func (s *Server) handleRollups(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load rollups", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, ds)
+	writeJSONGzip(w, r, ds)
 }
 
 // staticHandler serves the embedded SPA. Unknown paths fall back to the
@@ -222,10 +250,32 @@ func stubPage(w http.ResponseWriter, _ *http.Request) {
 		`<code>-tags withui</code>), or use a release image.</p>`))
 }
 
-// writeJSON encodes v as the response body.
+// writeJSON encodes v compactly as the response body. No indentation: the
+// dataset endpoints ship the whole backlog, and pretty-printing roughly
+// doubles the bytes for a payload only machines read.
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeJSONGzip is writeJSON behind content negotiation, for the two dataset
+// endpoints whose payloads grow with the backlog (JSON this shape compresses
+// ~10×). Never used on /events — SSE needs every write flushed unbuffered.
+func writeJSONGzip(w http.ResponseWriter, r *http.Request, v any) {
+	w.Header().Add("Vary", "Accept-Encoding")
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		writeJSON(w, v)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Encoding", "gzip")
+	// BestSpeed: the payload is served from memory and re-encoded per
+	// request, so cheap-and-fast beats maximal ratio.
+	gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	if err != nil {
+		writeJSON(w, v)
+		return
+	}
+	_ = json.NewEncoder(gz).Encode(v)
+	_ = gz.Close()
 }

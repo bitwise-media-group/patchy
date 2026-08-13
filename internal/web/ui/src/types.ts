@@ -152,6 +152,8 @@ export interface Budget {
   grantedTokenBudget?: number;
 }
 
+// InvestigationSummary mirrors the finding's own investigation status —
+// the bounded verdict fields the list rows render.
 export interface InvestigationSummary {
   name?: string;
   attempt?: number;
@@ -165,7 +167,11 @@ export interface InvestigationSummary {
   holdReasons?: HoldReason[];
   estimate?: Estimate; // what it predicted the remediation would cost
   completedAt?: string;
-  // Lifted from the Investigation child (absent once it expires).
+}
+
+// InvestigationDetail adds what the detail route lifts from the
+// Investigation child (absent once it expires).
+export interface InvestigationDetail extends InvestigationSummary {
   report?: string;
   harness?: string;
   model?: string;
@@ -175,6 +181,7 @@ export interface InvestigationSummary {
   transcript?: TranscriptSummary;
 }
 
+// RemediationSummary mirrors the finding's own remediation status.
 export interface RemediationSummary {
   name?: string;
   attempt?: number;
@@ -182,7 +189,11 @@ export interface RemediationSummary {
   success?: boolean;
   branch?: string;
   completedAt?: string;
-  // Lifted from the Remediation child (absent once it expires).
+}
+
+// RemediationDetail adds what the detail route lifts from the Remediation
+// child (absent once it expires).
+export interface RemediationDetail extends RemediationSummary {
   report?: string;
   harness?: string;
   model?: string;
@@ -232,9 +243,11 @@ export interface ActiveRun {
   name: string;
 }
 
-// Finding is the flattened per-finding projection: metadata + spec + status
-// plus the requesting user's permitted verbs.
-export interface Finding {
+// FindingSummary is the trimmed list row GET /api/findings ships: what the
+// findings table, filters, and stat tiles render, and nothing whose size is
+// unbounded (description, alert snippets, enrichment markdown, run reports —
+// those come from the per-finding detail route when a finding is opened).
+export interface FindingSummary {
   name: string; // metadata.name
   createdAt?: string;
   // spec
@@ -248,35 +261,43 @@ export interface Finding {
   advisories: string[]; // [0] is authoritative (GHSA > CVE > CWE)
   ruleID?: string;
   title?: string;
-  description?: string;
   severity?: Level;
-  alerts?: Alert[];
-  overflowAlerts?: number;
-  related?: RelatedFinding[];
   suspend?: boolean;
-  approval?: Approval;
-  retry?: ActionRequest;
-  expedite?: ActionRequest;
   // status
   phase?: Phase;
-  phaseTimes?: PhaseTime[];
   firstObservedAt?: string;
   accumulateUntil?: string;
-  tracking?: TrackingStatus;
   owners?: string[];
-  enrichments?: Enrichment[];
   priority?: Level;
   investigation?: InvestigationSummary;
   remediation?: RemediationSummary;
   pullRequest?: PullRequestStatus;
   attempts?: AttemptCounts;
-  totalUsage?: Usage; // summed across every attempt of both stages
   activeRun?: ActiveRun;
   lastFailureReason?: string;
   completedAt?: string;
   // authorization: verbs the requesting user may invoke on this finding.
   // Empty or absent means read-only; the action bar does not render.
   userActions?: ActionVerb[];
+}
+
+// Finding is the full per-finding projection behind GET /api/findings/{name}:
+// the summary plus the unbounded detail, with the run summaries widened to
+// carry the lifted child fields (report markdown, usage, transcript).
+export interface Finding extends FindingSummary {
+  description?: string;
+  alerts?: Alert[];
+  overflowAlerts?: number;
+  related?: RelatedFinding[];
+  approval?: Approval;
+  retry?: ActionRequest;
+  expedite?: ActionRequest;
+  phaseTimes?: PhaseTime[];
+  tracking?: TrackingStatus;
+  enrichments?: Enrichment[];
+  investigation?: InvestigationDetail;
+  remediation?: RemediationDetail;
+  totalUsage?: Usage; // summed across every attempt of both stages
 }
 
 // ---- Rollups (api/v1alpha1/findingrollup_types.go) ----
@@ -354,7 +375,7 @@ export interface DatasetUser {
   adminActions?: AdminVerb[];
 }
 
-// Dataset is the payload behind GET /api/findings (everything) and
+// Dataset is the payload behind GET /api/findings (trimmed summaries) and
 // GET /api/rollups (findings empty, no user — the always-public statistics
 // surface). One flat list per concern; all filtering, sorting, and
 // derivation is client-side so the server stays a thin read-only projection.
@@ -363,6 +384,13 @@ export interface Dataset {
   namespace?: string;
   version?: string;
   user?: DatasetUser;
-  findings: Finding[];
+  findings: FindingSummary[];
   rollups?: Rollup[];
+}
+
+// OfflineDataset is a Dataset whose findings are full: what the demo kit and
+// the embedded snapshot carry, since neither has a detail route to lazily
+// fetch from.
+export interface OfflineDataset extends Dataset {
+  findings: Finding[];
 }

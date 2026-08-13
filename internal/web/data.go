@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -19,15 +20,16 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/version"
 )
 
-// Dataset is the payload behind GET /api/findings (everything) and
-// GET /api/rollups (findings empty, no user). It mirrors ui/src/types.ts.
+// Dataset is the payload behind GET /api/findings (the trimmed list
+// projection) and GET /api/rollups (findings empty, no user). It mirrors
+// ui/src/types.ts.
 type Dataset struct {
-	GeneratedAt string    `json:"generatedAt"`
-	Namespace   string    `json:"namespace,omitempty"`
-	Version     string    `json:"version,omitempty"`
-	User        *User     `json:"user,omitempty"`
-	Findings    []Finding `json:"findings"`
-	Rollups     []Rollup  `json:"rollups,omitempty"`
+	GeneratedAt string           `json:"generatedAt"`
+	Namespace   string           `json:"namespace,omitempty"`
+	Version     string           `json:"version,omitempty"`
+	User        *User            `json:"user,omitempty"`
+	Findings    []FindingSummary `json:"findings"`
+	Rollups     []Rollup         `json:"rollups,omitempty"`
 }
 
 // User is the signed-in identity the top bar renders.
@@ -39,8 +41,48 @@ type User struct {
 	AdminActions []string `json:"adminActions,omitempty"`
 }
 
-// Finding is the flattened metadata+spec+status projection of one Finding,
-// plus the requesting user's granted action verbs.
+// FindingSummary is the trimmed per-finding projection the list payload
+// carries: what the findings table, filters, and stat tiles render, and
+// nothing whose size is unbounded (description, alert snippets, enrichment
+// markdown, run reports). The payload behind GET /api/findings scales with
+// finding count × row size, so the row stays bounded; everything else moves
+// to the per-finding detail route.
+type FindingSummary struct {
+	Name        string      `json:"name"`
+	CreatedAt   string      `json:"createdAt,omitempty"`
+	Integration string      `json:"integration,omitempty"`
+	Source      string      `json:"source,omitempty"`
+	Repository  *Repository `json:"repository,omitempty"`
+	// CloudResource is set on a finding raised against infrastructure rather
+	// than repository code — it is the row's identity when there is no
+	// repository to name.
+	CloudResource     *CloudResource        `json:"cloudResource,omitempty"`
+	Advisories        []string              `json:"advisories"`
+	RuleID            string                `json:"ruleID,omitempty"`
+	Title             string                `json:"title,omitempty"`
+	Severity          string                `json:"severity,omitempty"`
+	Suspend           bool                  `json:"suspend,omitempty"`
+	Phase             string                `json:"phase,omitempty"`
+	FirstObservedAt   string                `json:"firstObservedAt,omitempty"`
+	AccumulateUntil   string                `json:"accumulateUntil,omitempty"`
+	Owners            []string              `json:"owners,omitempty"`
+	Priority          string                `json:"priority,omitempty"`
+	Investigation     *InvestigationSummary `json:"investigation,omitempty"`
+	Remediation       *RemediationSummary   `json:"remediation,omitempty"`
+	PullRequest       *PullRequest          `json:"pullRequest,omitempty"`
+	Attempts          *Attempts             `json:"attempts,omitempty"`
+	ActiveRun         *ActiveRun            `json:"activeRun,omitempty"`
+	LastFailureReason string                `json:"lastFailureReason,omitempty"`
+	CompletedAt       string                `json:"completedAt,omitempty"`
+	// UserActions are the verbs the requesting user may invoke; the client
+	// intersects them with the state machine. Absent means read-only.
+	UserActions []string `json:"userActions,omitempty"`
+}
+
+// Finding is the full flattened metadata+spec+status projection of one
+// Finding — the payload behind GET /api/findings/{name}. It is the summary's
+// superset (same JSON keys for the shared fields; the lockstep tests pin
+// both), plus the unbounded detail the list deliberately drops.
 type Finding struct {
 	Name        string      `json:"name"`
 	CreatedAt   string      `json:"createdAt,omitempty"`
@@ -162,9 +204,9 @@ type Enrichment struct {
 	AppliedAt  string            `json:"appliedAt,omitempty"`
 }
 
-// Investigation mirrors the Finding's investigation summary, plus the
-// report markdown and run accounting lifted from the Investigation child.
-type Investigation struct {
+// InvestigationSummary mirrors the Finding's own investigation status —
+// bounded verdict fields the list rows render (recommendation, confidence).
+type InvestigationSummary struct {
 	Name           string   `json:"name,omitempty"`
 	Attempt        int32    `json:"attempt,omitempty"`
 	Outcome        string   `json:"outcome,omitempty"`
@@ -179,11 +221,17 @@ type Investigation struct {
 	// cost; the remediation's Budget reports what it was granted and spent.
 	Estimate    *Estimate `json:"estimate,omitempty"`
 	CompletedAt string    `json:"completedAt,omitempty"`
-	Report      string    `json:"report,omitempty"`
-	Harness     string    `json:"harness,omitempty"`
-	Model       string    `json:"model,omitempty"`
-	NumTurns    int32     `json:"numTurns,omitempty"`
-	Usage       *Usage    `json:"usage,omitempty"`
+}
+
+// Investigation is the summary plus the report markdown and run accounting
+// lifted from the Investigation child — detail-route only.
+type Investigation struct {
+	InvestigationSummary
+	Report   string `json:"report,omitempty"`
+	Harness  string `json:"harness,omitempty"`
+	Model    string `json:"model,omitempty"`
+	NumTurns int32  `json:"numTurns,omitempty"`
+	Usage    *Usage `json:"usage,omitempty"`
 	// SessionID is the agent CLI's own session identifier — a correlation key
 	// for operators reading model-provider logs, not a handle anything can be
 	// fetched with (the CLI session dies with the pod).
@@ -193,21 +241,26 @@ type Investigation struct {
 	Transcript *TranscriptSummary `json:"transcript,omitempty"`
 }
 
-// Remediation mirrors the Finding's remediation summary, plus the report
-// markdown and run accounting lifted from the Remediation child.
+// RemediationSummary mirrors the Finding's own remediation status.
+type RemediationSummary struct {
+	Name        string `json:"name,omitempty"`
+	Attempt     int32  `json:"attempt,omitempty"`
+	Outcome     string `json:"outcome,omitempty"`
+	Success     bool   `json:"success,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+// Remediation is the summary plus the report markdown and run accounting
+// lifted from the Remediation child — detail-route only.
 type Remediation struct {
-	Name        string  `json:"name,omitempty"`
-	Attempt     int32   `json:"attempt,omitempty"`
-	Outcome     string  `json:"outcome,omitempty"`
-	Success     bool    `json:"success,omitempty"`
-	Branch      string  `json:"branch,omitempty"`
-	CompletedAt string  `json:"completedAt,omitempty"`
-	Report      string  `json:"report,omitempty"`
-	Harness     string  `json:"harness,omitempty"`
-	Model       string  `json:"model,omitempty"`
-	NumTurns    int32   `json:"numTurns,omitempty"`
-	Budget      *Budget `json:"budget,omitempty"`
-	Usage       *Usage  `json:"usage,omitempty"`
+	RemediationSummary
+	Report   string  `json:"report,omitempty"`
+	Harness  string  `json:"harness,omitempty"`
+	Model    string  `json:"model,omitempty"`
+	NumTurns int32   `json:"numTurns,omitempty"`
+	Budget   *Budget `json:"budget,omitempty"`
+	Usage    *Usage  `json:"usage,omitempty"`
 	// SessionID is the agent CLI's own session identifier; see Investigation.
 	SessionID string `json:"sessionID,omitempty"`
 	// Transcript summarises the captured conversation.
@@ -332,32 +385,41 @@ type MonthlyBucket struct {
 	CostMicroUSD int64 `json:"costMicroUSD,omitempty"`
 }
 
-// buildDataset assembles the payload from the cached client. userActions is
-// stamped uniformly — RBAC grants are namespace-scoped, and the client
-// intersects with each finding's state machine itself. withFindings=false
-// produces the public rollups-only projection.
+// buildDataset assembles the list payload from the cached client: trimmed
+// finding summaries only — no Investigation/Remediation children are read,
+// so the build cost scales with finding count alone. userActions is stamped
+// uniformly — RBAC grants are namespace-scoped, and the client intersects
+// with each finding's state machine itself. withFindings=false produces the
+// public rollups-only projection.
 func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []string, user *User) (*Dataset, error) {
 	ds := &Dataset{
 		GeneratedAt: s.now().UTC().Format(time.RFC3339),
 		Namespace:   s.namespace,
 		Version:     version.Version,
 		User:        user,
-		Findings:    []Finding{},
+		Findings:    []FindingSummary{},
 	}
 
+	// Sorting happens on index slices over the CR items, not on the projected
+	// wire structs: the wide Finding value is ~1KB, and a comparison sort
+	// moving those by value dominates the build at backlog scale.
 	var rollups v1alpha1.FindingRollupList
 	if err := s.client.List(ctx, &rollups, client.InNamespace(s.namespace)); err != nil {
 		return nil, fmt.Errorf("list rollups: %w", err)
 	}
-	for i := range rollups.Items {
-		ds.Rollups = append(ds.Rollups, projectRollup(&rollups.Items[i]))
-	}
-	slices.SortFunc(ds.Rollups, func(a, b Rollup) int {
-		if c := cmp.Compare(a.Scope.Type, b.Scope.Type); c != 0 {
+	rollupOrder := indexOrder(len(rollups.Items), func(a, b int) int {
+		as, bs := &rollups.Items[a].Spec.Scope, &rollups.Items[b].Spec.Scope
+		if c := cmp.Compare(as.Type, bs.Type); c != 0 {
 			return c
 		}
-		return cmp.Compare(a.Scope.Key, b.Scope.Key)
+		return cmp.Compare(as.Key, bs.Key)
 	})
+	if len(rollups.Items) > 0 {
+		ds.Rollups = make([]Rollup, 0, len(rollups.Items))
+	}
+	for _, i := range rollupOrder {
+		ds.Rollups = append(ds.Rollups, projectRollup(&rollups.Items[i]))
+	}
 
 	if !withFindings {
 		return ds, nil
@@ -366,57 +428,117 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 	if err := s.client.List(ctx, &findings, client.InNamespace(s.namespace)); err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
-	runs := s.loadRunDetails(ctx)
-	for i := range findings.Items {
-		out := projectFinding(&findings.Items[i], verbs)
-		runs.attach(&findings.Items[i], &out)
-		ds.Findings = append(ds.Findings, out)
+	// Newest first, stable across refetches. Second-truncated to match the
+	// projected RFC3339 stamps the previous wire-side sort compared, so
+	// sub-second neighbours still order by name.
+	sortStamp := func(f *v1alpha1.Finding) time.Time {
+		if t := f.Status.FirstObservedAt; t != nil && !t.IsZero() {
+			return t.Truncate(time.Second)
+		}
+		return f.CreationTimestamp.Truncate(time.Second)
 	}
-	// Newest first, stable across refetches.
-	slices.SortFunc(ds.Findings, func(a, b Finding) int {
-		at, bt := cmp.Or(a.FirstObservedAt, a.CreatedAt), cmp.Or(b.FirstObservedAt, b.CreatedAt)
-		if c := cmp.Compare(bt, at); c != 0 {
+	order := indexOrder(len(findings.Items), func(a, b int) int {
+		if c := sortStamp(&findings.Items[b]).Compare(sortStamp(&findings.Items[a])); c != 0 {
 			return c
 		}
-		return cmp.Compare(a.Name, b.Name)
+		return cmp.Compare(findings.Items[a].Name, findings.Items[b].Name)
 	})
+	ds.Findings = make([]FindingSummary, 0, len(findings.Items))
+	for _, i := range order {
+		ds.Findings = append(ds.Findings, projectFindingSummary(&findings.Items[i], verbs))
+	}
 	return ds, nil
 }
 
-// runDetails indexes the Investigation/Remediation children, listed once
-// per dataset build: the summarised (latest) child's report and stage
-// accounting by child name, plus per-finding usage totals across every
-// attempt of both stages.
+// buildFindingDetail assembles the full projection of one finding: the whole
+// spec+status flattening plus the report markdown and run accounting lifted
+// from its Investigation/Remediation children. A NotFound from the cache
+// passes through for the handler to map onto 404.
+func (s *Server) buildFindingDetail(ctx context.Context, name string, verbs []string) (*Finding, error) {
+	var f v1alpha1.Finding
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: s.namespace, Name: name}, &f); err != nil {
+		return nil, fmt.Errorf("get finding: %w", err)
+	}
+	out := projectFinding(&f, verbs)
+	runs := s.loadRunDetails(ctx, name)
+	runs.attach(&f, &out)
+	return &out, nil
+}
+
+// indexOrder returns [0, n) sorted by cmpIdx.
+func indexOrder(n int, cmpIdx func(a, b int) int) []int {
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortFunc(order, cmpIdx)
+	return order
+}
+
+// RunFindingIndex is the cache field index the detail projection looks a
+// finding's Investigation/Remediation children up by (the finding label), so
+// a detail request is an index hit rather than a namespace scan.
+const RunFindingIndex = "patchy.web/finding"
+
+// RegisterIndexes installs the child-run index on the manager's cache. Call
+// before the manager starts; the fake-client tests install the same extractor
+// via WithIndex.
+func RegisterIndexes(ctx context.Context, idx client.FieldIndexer) error {
+	for _, obj := range []client.Object{&v1alpha1.Investigation{}, &v1alpha1.Remediation{}} {
+		if err := idx.IndexField(ctx, obj, RunFindingIndex, RunFindingIndexer); err != nil {
+			return fmt.Errorf("index %T by finding: %w", obj, err)
+		}
+	}
+	return nil
+}
+
+// RunFindingIndexer extracts the owning finding's name from a child run.
+func RunFindingIndexer(obj client.Object) []string {
+	if name := obj.GetLabels()[v1alpha1.LabelFinding]; name != "" {
+		return []string{name}
+	}
+	return nil
+}
+
+// runDetails indexes one finding's Investigation/Remediation children: the
+// summarised (latest) child's report and stage accounting by child name,
+// plus the usage total across every attempt of both stages.
 type runDetails struct {
 	inv    map[string]*v1alpha1.Investigation
 	rem    map[string]*v1alpha1.Remediation
 	totals map[string]Usage
 }
 
-// loadRunDetails lists the children. Errors degrade gracefully — reports
-// and usage are absent, the findings surface still renders (a deployment
-// whose RBAC predates the child read grant must not lose the whole page).
-func (s *Server) loadRunDetails(ctx context.Context) runDetails {
+// loadRunDetails lists one finding's children through the RunFindingIndex.
+// Errors degrade gracefully — reports and usage are absent, the finding
+// still renders (a deployment whose RBAC predates the child read grant, or
+// whose cache lacks the index, must not lose the whole page).
+func (s *Server) loadRunDetails(ctx context.Context, finding string) runDetails {
 	d := runDetails{
 		inv:    map[string]*v1alpha1.Investigation{},
 		rem:    map[string]*v1alpha1.Remediation{},
 		totals: map[string]Usage{},
 	}
+	sel := client.MatchingFields{RunFindingIndex: finding}
 	var invs v1alpha1.InvestigationList
-	if err := s.client.List(ctx, &invs, client.InNamespace(s.namespace)); err == nil {
+	if err := s.client.List(ctx, &invs, client.InNamespace(s.namespace), sel); err == nil {
 		for i := range invs.Items {
 			child := &invs.Items[i]
 			d.inv[child.Name] = child
 			d.addStage(child.Labels[v1alpha1.LabelFinding], child.Status.Stage)
 		}
+	} else {
+		s.log.LogAttrs(ctx, slog.LevelWarn, "list investigations", slog.Any("error", err))
 	}
 	var rems v1alpha1.RemediationList
-	if err := s.client.List(ctx, &rems, client.InNamespace(s.namespace)); err == nil {
+	if err := s.client.List(ctx, &rems, client.InNamespace(s.namespace), sel); err == nil {
 		for i := range rems.Items {
 			child := &rems.Items[i]
 			d.rem[child.Name] = child
 			d.addStage(child.Labels[v1alpha1.LabelFinding], child.Status.Stage)
 		}
+	} else {
+		s.log.LogAttrs(ctx, slog.LevelWarn, "list remediations", slog.Any("error", err))
 	}
 	return d
 }
@@ -535,7 +657,127 @@ func holdStrings(hs []v1alpha1.HoldReason) []string {
 	return out
 }
 
-// projectFinding flattens one Finding CR onto the wire type.
+// wireRepository converts the repository reference onto the wire type.
+func wireRepository(r *v1alpha1.FindingRepository) *Repository {
+	if r == nil {
+		return nil
+	}
+	return &Repository{
+		Type:          string(r.Type),
+		URL:           r.URL,
+		Name:          r.Name,
+		DefaultBranch: r.DefaultBranch,
+	}
+}
+
+// wireCloudResource converts the cloud-resource reference onto the wire type.
+func wireCloudResource(cr *v1alpha1.FindingCloudResource) *CloudResource {
+	if cr == nil {
+		return nil
+	}
+	return &CloudResource{
+		Provider:    string(cr.Provider),
+		Name:        cr.Name,
+		Type:        cr.Type,
+		Project:     cr.Project,
+		Location:    cr.Location,
+		DisplayName: cr.DisplayName,
+	}
+}
+
+// wireInvestigationSummary converts the finding's own investigation status.
+func wireInvestigationSummary(inv *v1alpha1.InvestigationSummary) *InvestigationSummary {
+	if inv == nil {
+		return nil
+	}
+	return &InvestigationSummary{
+		Name:           inv.Name,
+		Attempt:        inv.Attempt,
+		Outcome:        inv.Outcome,
+		Recommendation: string(inv.Recommendation),
+		Confidence:     inv.Confidence,
+		Exploitability: string(inv.Exploitability),
+		Likelihood:     string(inv.Likelihood),
+		Impact:         string(inv.Impact),
+		AwaitApproval:  inv.AwaitApproval,
+		HoldReasons:    holdStrings(inv.HoldReasons),
+		Estimate:       wireEstimate(inv.Estimate),
+		CompletedAt:    stampPtr(inv.CompletedAt),
+	}
+}
+
+// wireRemediationSummary converts the finding's own remediation status.
+func wireRemediationSummary(rem *v1alpha1.RemediationSummary) *RemediationSummary {
+	if rem == nil {
+		return nil
+	}
+	return &RemediationSummary{
+		Name:        rem.Name,
+		Attempt:     rem.Attempt,
+		Outcome:     rem.Outcome,
+		Success:     rem.Success,
+		Branch:      rem.Branch,
+		CompletedAt: stampPtr(rem.CompletedAt),
+	}
+}
+
+// wirePullRequest converts the remediation PR's lifecycle.
+func wirePullRequest(pr *v1alpha1.PullRequestStatus) *PullRequest {
+	if pr == nil {
+		return nil
+	}
+	return &PullRequest{Number: pr.Number, URL: pr.URL, State: pr.State, MergedAt: stampPtr(pr.MergedAt)}
+}
+
+// wireAttempts converts the per-stage attempt tallies; an all-zero count
+// stays absent.
+func wireAttempts(a v1alpha1.AttemptCounts) *Attempts {
+	if a == (v1alpha1.AttemptCounts{}) {
+		return nil
+	}
+	return &Attempts{Investigation: a.Investigation, Remediation: a.Remediation}
+}
+
+// wireActiveRun converts the currently-running child pointer.
+func wireActiveRun(ar *v1alpha1.ActiveRun) *ActiveRun {
+	if ar == nil {
+		return nil
+	}
+	return &ActiveRun{Kind: string(ar.Kind), Name: ar.Name}
+}
+
+// projectFindingSummary flattens one Finding CR onto the trimmed list row.
+func projectFindingSummary(f *v1alpha1.Finding, verbs []string) FindingSummary {
+	spec, st := &f.Spec, &f.Status
+	return FindingSummary{
+		Name:              f.Name,
+		CreatedAt:         stamp(f.CreationTimestamp),
+		Integration:       spec.IntegrationRef.Name,
+		Source:            spec.Source,
+		Repository:        wireRepository(spec.Repository),
+		CloudResource:     wireCloudResource(spec.CloudResource),
+		Advisories:        spec.Advisories,
+		RuleID:            spec.RuleID,
+		Title:             spec.Title,
+		Severity:          string(spec.Severity),
+		Suspend:           spec.Suspend,
+		Phase:             string(st.Phase),
+		FirstObservedAt:   stampPtr(st.FirstObservedAt),
+		AccumulateUntil:   stampPtr(st.AccumulateUntil),
+		Owners:            st.Owners,
+		Priority:          string(st.Priority),
+		Investigation:     wireInvestigationSummary(st.Investigation),
+		Remediation:       wireRemediationSummary(st.Remediation),
+		PullRequest:       wirePullRequest(st.PullRequest),
+		Attempts:          wireAttempts(st.Attempts),
+		ActiveRun:         wireActiveRun(st.ActiveRun),
+		LastFailureReason: st.LastFailureReason,
+		CompletedAt:       stampPtr(st.CompletedAt),
+		UserActions:       verbs,
+	}
+}
+
+// projectFinding flattens one Finding CR onto the full detail wire type.
 func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 	spec, st := &f.Spec, &f.Status
 	out := Finding{
@@ -543,6 +785,8 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 		CreatedAt:         stamp(f.CreationTimestamp),
 		Integration:       spec.IntegrationRef.Name,
 		Source:            spec.Source,
+		Repository:        wireRepository(spec.Repository),
+		CloudResource:     wireCloudResource(spec.CloudResource),
 		Advisories:        spec.Advisories,
 		RuleID:            spec.RuleID,
 		Title:             spec.Title,
@@ -555,27 +799,12 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 		AccumulateUntil:   stampPtr(st.AccumulateUntil),
 		Owners:            st.Owners,
 		Priority:          string(st.Priority),
+		PullRequest:       wirePullRequest(st.PullRequest),
+		Attempts:          wireAttempts(st.Attempts),
+		ActiveRun:         wireActiveRun(st.ActiveRun),
 		LastFailureReason: st.LastFailureReason,
 		CompletedAt:       stampPtr(st.CompletedAt),
 		UserActions:       verbs,
-	}
-	if spec.Repository != nil {
-		out.Repository = &Repository{
-			Type:          string(spec.Repository.Type),
-			URL:           spec.Repository.URL,
-			Name:          spec.Repository.Name,
-			DefaultBranch: spec.Repository.DefaultBranch,
-		}
-	}
-	if cr := spec.CloudResource; cr != nil {
-		out.CloudResource = &CloudResource{
-			Provider:    string(cr.Provider),
-			Name:        cr.Name,
-			Type:        cr.Type,
-			Project:     cr.Project,
-			Location:    cr.Location,
-			DisplayName: cr.DisplayName,
-		}
 	}
 	for _, a := range spec.Alerts {
 		alert := Alert{ID: a.ID, URL: a.URL}
@@ -618,45 +847,11 @@ func projectFinding(f *v1alpha1.Finding, verbs []string) Finding {
 			Markdown: e.Markdown, AppliedAt: stamp(e.AppliedAt),
 		})
 	}
-	if inv := st.Investigation; inv != nil {
-		out.Investigation = &Investigation{
-			Name:           inv.Name,
-			Attempt:        inv.Attempt,
-			Outcome:        inv.Outcome,
-			Recommendation: string(inv.Recommendation),
-			Confidence:     inv.Confidence,
-			Exploitability: string(inv.Exploitability),
-			Likelihood:     string(inv.Likelihood),
-			Impact:         string(inv.Impact),
-			AwaitApproval:  inv.AwaitApproval,
-			HoldReasons:    holdStrings(inv.HoldReasons),
-			Estimate:       wireEstimate(inv.Estimate),
-			CompletedAt:    stampPtr(inv.CompletedAt),
-		}
+	if inv := wireInvestigationSummary(st.Investigation); inv != nil {
+		out.Investigation = &Investigation{InvestigationSummary: *inv}
 	}
-	if rem := st.Remediation; rem != nil {
-		out.Remediation = &Remediation{
-			Name:        rem.Name,
-			Attempt:     rem.Attempt,
-			Outcome:     rem.Outcome,
-			Success:     rem.Success,
-			Branch:      rem.Branch,
-			CompletedAt: stampPtr(rem.CompletedAt),
-		}
-	}
-	if pr := st.PullRequest; pr != nil {
-		out.PullRequest = &PullRequest{
-			Number: pr.Number, URL: pr.URL, State: pr.State, MergedAt: stampPtr(pr.MergedAt),
-		}
-	}
-	if st.Attempts != (v1alpha1.AttemptCounts{}) {
-		out.Attempts = &Attempts{
-			Investigation: st.Attempts.Investigation,
-			Remediation:   st.Attempts.Remediation,
-		}
-	}
-	if st.ActiveRun != nil {
-		out.ActiveRun = &ActiveRun{Kind: string(st.ActiveRun.Kind), Name: st.ActiveRun.Name}
+	if rem := wireRemediationSummary(st.Remediation); rem != nil {
+		out.Remediation = &Remediation{RemediationSummary: *rem}
 	}
 	return out
 }

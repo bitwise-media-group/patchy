@@ -3,7 +3,7 @@
 // patchy api/v1alpha1 types. Timestamps are fixed ISO strings so the demo is
 // deterministic; relative times are computed at render.
 
-import type { Dataset, Finding, Rollup, TranscriptTurn } from "../types";
+import type { Finding, OfflineDataset, Rollup, TranscriptTurn } from "../types";
 
 const findings: Finding[] = [
   {
@@ -958,7 +958,7 @@ const rollups: Rollup[] = [
   },
 ];
 
-export function mockDataset(): Dataset {
+export function mockDataset(): OfflineDataset {
   // Deep-clone so demo actions can mutate freely and "reset" is a re-call.
   return JSON.parse(
     JSON.stringify({
@@ -968,7 +968,7 @@ export function mockDataset(): Dataset {
       findings,
       rollups,
     }),
-  ) as Dataset;
+  ) as OfflineDataset;
 }
 
 // investigationTranscript is a representative analysis conversation for the

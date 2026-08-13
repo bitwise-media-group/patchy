@@ -1,11 +1,11 @@
-import type { Finding } from "../types";
+import type { FindingSummary } from "../types";
 import { confidencePercent, formatAgo, formatConfidence } from "../format";
 import { hrefForFinding } from "../router";
 import { Icon } from "./icons";
 import { PhasePill, SeverityPill, VerdictPill, Pill } from "./Pills";
 import { PullRequestPill } from "./PullRequest";
 
-function FindingRow({ finding }: { finding: Finding }) {
+function FindingRow({ finding }: { finding: FindingSummary }) {
   const advisory = finding.advisories[0] ?? finding.ruleID ?? finding.name;
   return (
     <a class="ps-grid-board ps-hover-row min-h-[72px] px-4.5 py-3 text-inherit no-underline" href={hrefForFinding(finding.name)}>
@@ -52,7 +52,7 @@ function FindingRow({ finding }: { finding: Finding }) {
   );
 }
 
-export function FindingsTable({ findings }: { findings: Finding[] }) {
+export function FindingsTable({ findings }: { findings: FindingSummary[] }) {
   return (
     <section class="mt-3.5 overflow-hidden rounded-xl border border-line-2 bg-surface shadow-card max-lg:overflow-x-auto" aria-label="Findings">
       <div class="ps-grid-board ps-table-header" aria-hidden="true">

@@ -13,9 +13,11 @@ The exposure contract is deliberately asymmetric — see [the status page](../st
 grammar:
 
 - **Rollup statistics are public.** `GET /api/rollups` (and the SSE stream) serve without a session.
-- **The findings surface always requires authentication.** `GET /api/findings` and every action `POST` demand a
-  signed-in identity whose RBAC passes the corresponding access review. With no auth config at all the server runs in
-  the _unconfigured_ posture: rollups only, and the page explains that sign-in is not configured.
+- **The findings surface always requires authentication.** `GET /api/findings` (the trimmed list projection),
+  `GET /api/findings/{name}` (one finding's full detail — description, alerts, enrichments, the phase log, and the run
+  reports the list omits), and every action `POST` demand a signed-in identity whose RBAC passes the corresponding
+  access review. With no auth config at all the server runs in the _unconfigured_ posture: rollups only, and the page
+  explains that sign-in is not configured.
 - **Agent conversations ride the findings gate.**
   `GET /api/findings/{name}/runs/{investigation|remediation}/{attempt}/transcript` is Server-Sent Events in both modes:
   a finished run replays its stored ConfigMap, a running one streams from the agent's pod log. Following a live run

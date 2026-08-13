@@ -4,6 +4,7 @@ import {
   AuthRequiredError,
   ForbiddenError,
   dataMode,
+  fetchFinding,
   fetchFindings,
   fetchRollups,
   postAction,
@@ -11,7 +12,7 @@ import {
   subscribe,
 } from "./api";
 import { consumeLogoutMarker, readAuthError, readProvider, signInURL, signOut } from "./auth";
-import type { ActionVerb, AdminVerb, Dataset, Phase } from "./types";
+import type { ActionVerb, AdminVerb, Dataset, Finding, Phase } from "./types";
 import { emptySelection, filterFindings, repoOptions, sortFindings, type Selection } from "./filters";
 import { useRoute } from "./router";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
@@ -76,6 +77,36 @@ export function App() {
     void load(persona);
   }, [load, persona]);
 
+  // The detail view lazily fetches its finding: the list payload carries
+  // trimmed summaries only. detail is null while loading or when the finding
+  // has expired; detailMissing separates the two.
+  const detailName = route.view === "detail" ? route.name : null;
+  const [detail, setDetail] = useState<Finding | null>(null);
+  const [detailMissing, setDetailMissing] = useState(false);
+  const detailRoute = useRef<string | null>(null);
+  const loadDetail = useCallback(async (name: string, p: Persona) => {
+    try {
+      const f = await fetchFinding(name, p);
+      // A slow response for a finding the user has navigated away from must
+      // not clobber the one now open.
+      if (detailRoute.current !== name) return;
+      setDetail(f);
+      setDetailMissing(!f);
+    } catch (e) {
+      if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
+        setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    }
+  }, []);
+  useEffect(() => {
+    detailRoute.current = detailName;
+    setDetail(null);
+    setDetailMissing(false);
+    if (detailName) void loadDetail(detailName, persona);
+  }, [detailName, loadDetail, persona]);
+
   // autoLogin: bounce straight to the provider when the server asks for it,
   // unless sign-in just failed or the user just signed out.
   useEffect(() => {
@@ -86,7 +117,17 @@ export function App() {
     }
   }, [findingsBlocked, authError]);
 
-  useEffect(() => subscribe(() => void load(persona)), [load, persona]);
+  // One findings-changed signal refetches the list and, when a detail view
+  // is open, that one finding — both requests are cheap now that the list is
+  // trimmed and the detail is a single object.
+  useEffect(
+    () =>
+      subscribe(() => {
+        void load(persona);
+        if (detailName) void loadDetail(detailName, persona);
+      }),
+    [load, loadDetail, detailName, persona],
+  );
 
   const onAction = useCallback(
     async (name: string, verb: ActionVerb) => {
@@ -95,6 +136,7 @@ export function App() {
         await postAction(name, verb, persona);
         pushToast(`${verb} applied to ${name}.`, "green");
         await load(persona);
+        if (detailRoute.current) await loadDetail(detailRoute.current, persona);
       } catch (e) {
         if (e instanceof AuthRequiredError) {
           setFindingsBlocked("unauthenticated");
@@ -107,7 +149,7 @@ export function App() {
         setBusy(null);
       }
     },
-    [load, persona, pushToast],
+    [load, loadDetail, persona, pushToast],
   );
 
   const [adminBusy, setAdminBusy] = useState<AdminVerb | null>(null);
@@ -216,19 +258,23 @@ export function App() {
   } else if (route.view === "rollups") {
     body = <RollupsView rollups={dataset.rollups ?? []} scope={route.scope} />;
   } else if (route.view === "detail") {
-    const finding = findings.find((f) => f.name === route.name);
-    body = finding ? (
-      <FindingDetail
-        finding={finding}
-        tab={route.tab}
-        demo={mode === "demo"}
-        busy={busy}
-        onAction={(verb) => void onAction(finding.name, verb)}
-        onSimulate403={simulate403}
-      />
-    ) : (
-      <MissingFinding name={route.name} />
-    );
+    if (detailMissing) {
+      body = <MissingFinding name={route.name} />;
+    } else if (!detail) {
+      body = <div class="px-5 py-11 text-center text-muted">Loading…</div>;
+    } else {
+      const finding = detail;
+      body = (
+        <FindingDetail
+          finding={finding}
+          tab={route.tab}
+          demo={mode === "demo"}
+          busy={busy}
+          onAction={(verb) => void onAction(finding.name, verb)}
+          onSimulate403={simulate403}
+        />
+      );
+    }
   } else {
     body = (
       <>

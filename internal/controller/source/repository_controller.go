@@ -15,8 +15,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/artifact"
@@ -243,9 +245,13 @@ func (r *RepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		return out
 	}
+	// Spec changes only: the Forge reconciler's own status writes (credential
+	// validation) would otherwise re-queue every Repository in the namespace
+	// on each pass, and resolution reads Forge spec alone.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Repository{}).
-		Watches(&v1alpha1.Forge{}, handler.EnqueueRequestsFromMapFunc(mapForge)).
+		Watches(&v1alpha1.Forge{}, handler.EnqueueRequestsFromMapFunc(mapForge),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("repository").
 		Complete(r)
 }

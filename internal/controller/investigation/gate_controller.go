@@ -16,12 +16,30 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/forge"
 )
+
+// FindingPhaseIndex is the field index over status.phase, registered by the
+// gate: its Forge watch re-gates only Enhanced findings, and without the
+// index that selection is a full informer-store scan per Forge event.
+const FindingPhaseIndex = "status.phase"
+
+// FindingPhaseIndexer extracts the index value; findings with no phase yet
+// are left out. Exported so fake-client tests register the same recipe.
+func FindingPhaseIndexer(obj client.Object) []string {
+	f, ok := obj.(*v1alpha1.Finding)
+	if !ok || f.Status.Phase == "" {
+		return nil
+	}
+	return []string{string(f.Status.Phase)}
+}
 
 // GateReconciler admits Enhanced findings into investigation: gates on the
 // accumulation window and minimum age, resolves the Forge, materializes the
@@ -36,6 +54,11 @@ type GateReconciler struct {
 	Namespace string
 	// MinAge a finding must reach before investigation picks it up.
 	MinAge time.Duration
+	// Concurrency is the number of findings gated in parallel; <=1 means
+	// serial. Safe to raise: child names are deterministic per attempt, the
+	// create tolerates AlreadyExists, and the phase advance runs under
+	// conflict retry — two racing reconciles converge on one lease.
+	Concurrency int
 	// Parameters bound the analysis stage (model/turns/budget), from flags.
 	Parameters v1alpha1.AgentParameters
 	// Now is the clock seam; nil means time.Now.
@@ -277,19 +300,30 @@ func (r *GateReconciler) park(ctx context.Context, fnd *v1alpha1.Finding, reason
 // watches that re-queue affected findings (an operator adding a Forge must
 // revive parked findings without human action; a Repository turning Ready
 // resumes its finding).
+//
+// The Forge watch is the fan-out bomb of this controller — one Forge event
+// re-queues every Enhanced finding — so it is bounded twice: the phase field
+// index turns the selection from a full scan into a lookup, and the
+// generation predicate drops the status-only Forge updates (the source
+// controller's validation writes) that cannot change resolution. Forge
+// resolution reads spec alone, so only spec changes (and create/delete) can
+// revive a parked finding.
 func (r *GateReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(), &v1alpha1.Finding{}, FindingPhaseIndex, FindingPhaseIndexer); err != nil {
+		return fmt.Errorf("index %s: %w", FindingPhaseIndex, err)
+	}
 	mapForge := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		var findings v1alpha1.FindingList
-		if err := mgr.GetClient().List(ctx, &findings, client.InNamespace(obj.GetNamespace())); err != nil {
+		if err := mgr.GetClient().List(ctx, &findings, client.InNamespace(obj.GetNamespace()),
+			client.MatchingFields{FindingPhaseIndex: string(v1alpha1.PhaseEnhanced)}); err != nil {
 			return nil
 		}
-		var out []ctrl.Request
+		out := make([]ctrl.Request, 0, len(findings.Items))
 		for i := range findings.Items {
-			if findings.Items[i].Status.Phase == v1alpha1.PhaseEnhanced {
-				out = append(out, ctrl.Request{NamespacedName: types.NamespacedName{
-					Namespace: findings.Items[i].Namespace, Name: findings.Items[i].Name,
-				}})
-			}
+			out = append(out, ctrl.Request{NamespacedName: types.NamespacedName{
+				Namespace: findings.Items[i].Namespace, Name: findings.Items[i].Name,
+			}})
 		}
 		return out
 	})
@@ -302,8 +336,10 @@ func (r *GateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Finding{}).
-		Watches(&v1alpha1.Forge{}, mapForge).
+		Watches(&v1alpha1.Forge{}, mapForge,
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.Repository{}, mapRepo).
+		WithOptions(controller.Options{MaxConcurrentReconciles: max(1, r.Concurrency)}).
 		Named("investigation-gate").
 		Complete(r)
 }

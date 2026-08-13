@@ -38,6 +38,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.Duration("finding-min-age", time.Hour, "how old a finding must be before investigation picks it up")
+	f.Int("gate-concurrency", 4, "findings admitted through the investigation gate in parallel")
 	f.Int("max-attempts", 2, "analysis attempts per finding before it fails")
 	f.Int("max-concurrent-investigations", 3, "simultaneously running investigation jobs")
 	f.Float64("confidence-threshold", 0.75, "confidence required to queue automated remediation")
@@ -157,10 +158,11 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}, log)
 
 	gate := &investigation.GateReconciler{
-		Client:    mgr.GetClient(),
-		Forges:    forge.NewStore(mgr.GetAPIReader()),
-		Namespace: namespace,
-		MinAge:    opts.Duration("finding-min-age"),
+		Client:      mgr.GetClient(),
+		Forges:      forge.NewStore(mgr.GetAPIReader()),
+		Namespace:   namespace,
+		MinAge:      opts.Duration("finding-min-age"),
+		Concurrency: opts.Int("gate-concurrency"),
 		Parameters: v1alpha1.AgentParameters{
 			Model:       investigateModel,
 			Harness:     investigateHarness,

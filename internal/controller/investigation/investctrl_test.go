@@ -66,6 +66,9 @@ func newGate(t *testing.T, objs ...client.Object) (*GateReconciler, client.Clien
 		WithScheme(kube.Scheme()).
 		WithObjects(objs...).
 		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.Repository{}, &v1alpha1.Investigation{}).
+		// The same index SetupWithManager registers on the real cache, so a
+		// test reaching the mapForge selection fails loud if it drifts.
+		WithIndex(&v1alpha1.Finding{}, FindingPhaseIndex, FindingPhaseIndexer).
 		Build()
 	return &GateReconciler{
 		Client:    c,
@@ -588,5 +591,21 @@ func TestLaunchSurvivesStalledRollupCache(t *testing.T) {
 	}
 	if got := runner.created[0].Calibration; got != "" {
 		t.Errorf("calibration = %q, want empty when the cache never syncs", got)
+	}
+}
+
+// TestFindingPhaseIndexer locks the recipe behind the gate's Forge-event
+// selection: phased findings index under their phase, phaseless ones not at
+// all, and non-findings are ignored.
+func TestFindingPhaseIndexer(t *testing.T) {
+	fnd := enhancedFinding()
+	if got := FindingPhaseIndexer(fnd); len(got) != 1 || got[0] != string(v1alpha1.PhaseEnhanced) {
+		t.Errorf("FindingPhaseIndexer(enhanced) = %v, want [Enhanced]", got)
+	}
+	if got := FindingPhaseIndexer(&v1alpha1.Finding{}); got != nil {
+		t.Errorf("FindingPhaseIndexer(phaseless) = %v, want nil", got)
+	}
+	if got := FindingPhaseIndexer(&v1alpha1.Forge{}); got != nil {
+		t.Errorf("FindingPhaseIndexer(non-finding) = %v, want nil", got)
 	}
 }

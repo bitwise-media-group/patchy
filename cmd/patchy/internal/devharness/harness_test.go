@@ -290,7 +290,12 @@ func TestMinSeverityDropsSilently(t *testing.T) {
 	if got := post(t, r.url, testSecret, "", twoFindings); got != http.StatusAccepted {
 		t.Fatalf("delivery = %d, want 202", got)
 	}
-	ev := drain(t, r, "delivery", 1)[0]
+	// Wait for the finding event, not just the delivery event: the worker
+	// emits delivery before appending to the store, so reading Findings()
+	// after only the delivery event races the append. The finding event is
+	// emitted after it.
+	all := drainAll(t, r, "finding", 1)
+	ev := filter(all, "delivery")[0]
 	if ev.Delivered != 2 || ev.Ingested != 1 {
 		t.Errorf("delivery event = %+v, want 2 delivered, 1 ingested", ev)
 	}

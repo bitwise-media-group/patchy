@@ -46,6 +46,39 @@ type statusDataset struct {
 	} `json:"user"`
 }
 
+// statusFindingDetail mirrors the slice of the per-finding detail payload
+// this test asserts.
+type statusFindingDetail struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PhaseTimes  []struct {
+		Phase string `json:"phase"`
+	} `json:"phaseTimes"`
+	Investigation *struct {
+		Transcript *struct {
+			Turns int `json:"turns"`
+		} `json:"transcript"`
+	} `json:"investigation"`
+	UserActions []string `json:"userActions"`
+}
+
+func getFindingDetail(t *testing.T, url string) *statusFindingDetail {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: %d", url, resp.StatusCode)
+	}
+	var d statusFindingDetail
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		t.Fatalf("decode %s: %v", url, err)
+	}
+	return &d
+}
+
 func getDataset(t *testing.T, url string) (*http.Response, *statusDataset) {
 	t.Helper()
 	resp, err := http.Get(url)
@@ -131,6 +164,51 @@ func TestStatusServer(t *testing.T) {
 			if !slices.Contains(f.UserActions, verb) {
 				t.Errorf("finding %s userActions = %v, want all verbs (mode none)", f.Name, f.UserActions)
 			}
+		}
+	}
+
+	// The list payload is trimmed: detail-only fields (both fixtures carry a
+	// description and a phase log) stay off it.
+	listResp, err := http.Get(base + "/api/findings")
+	if err != nil {
+		t.Fatalf("GET /api/findings (raw): %v", err)
+	}
+	var raw struct {
+		Findings []map[string]any `json:"findings"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode raw list: %v", err)
+	}
+	_ = listResp.Body.Close()
+	for _, f := range raw.Findings {
+		for _, key := range []string{"description", "phaseTimes", "alerts", "enrichments"} {
+			if _, ok := f[key]; ok {
+				t.Errorf("list finding %v carried detail field %q", f["name"], key)
+			}
+		}
+	}
+
+	// The per-finding detail carries what the list omits, including the run
+	// detail lifted from the Investigation child.
+	detail := getFindingDetail(t, base+"/api/findings/"+awaiting.Name)
+	if detail.Description == "" || len(detail.PhaseTimes) == 0 {
+		t.Errorf("detail = %+v, want description and phaseTimes", detail)
+	}
+	if detail.Investigation == nil || detail.Investigation.Transcript == nil ||
+		detail.Investigation.Transcript.Turns != 2 {
+		t.Errorf("detail investigation = %+v, want transcript with 2 turns", detail.Investigation)
+	}
+	if !slices.Contains(detail.UserActions, "approve") {
+		t.Errorf("detail userActions = %v", detail.UserActions)
+	}
+
+	// An unknown (TTL-expired) finding is 404, not an error page.
+	if resp, err := http.Get(base + "/api/findings/no-such-finding"); err != nil {
+		t.Fatalf("GET detail (missing): %v", err)
+	} else {
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET detail (missing) = %d, want 404", resp.StatusCode)
 		}
 	}
 
@@ -226,6 +304,15 @@ func TestStatusServer(t *testing.T) {
 	if resp, _ := getDataset(t, publicBase+"/api/findings"); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("unconfigured GET /api/findings = %d, want 401", resp.StatusCode)
 	}
+	// The detail route shares the findings gate exactly.
+	if resp, err := http.Get(publicBase + "/api/findings/" + awaiting.Name); err != nil {
+		t.Fatalf("GET detail (unconfigured): %v", err)
+	} else {
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("unconfigured GET detail = %d, want 401", resp.StatusCode)
+		}
+	}
 	if resp, ds := getDataset(t, publicBase+"/api/rollups"); resp.StatusCode != http.StatusOK ||
 		len(ds.Findings) != 0 || len(ds.Rollups) != 1 {
 		t.Errorf("unconfigured GET /api/rollups = %d findings=%d rollups=%d, want public rollups",
@@ -249,7 +336,12 @@ func fabricateTranscript(t *testing.T, cl *cluster, finding string) {
 	t.Helper()
 	ctx := context.Background()
 	inv := &v1alpha1.Investigation{
-		ObjectMeta: metav1.ObjectMeta{Name: finding + "-inv-1", Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: finding + "-inv-1", Namespace: namespace,
+			// The finding label is how the detail projection finds child runs;
+			// the real controllers stamp it on every child.
+			Labels: map[string]string{v1alpha1.LabelFinding: finding},
+		},
 		Spec: v1alpha1.InvestigationSpec{
 			FindingRef: v1alpha1.ObjectReference{Name: finding}, Attempt: 1,
 		},

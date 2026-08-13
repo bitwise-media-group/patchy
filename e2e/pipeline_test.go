@@ -37,6 +37,7 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,6 +46,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/e2e/fakegithub"
@@ -95,6 +97,15 @@ func build(t *testing.T, name string) string {
 	}
 	buildBins[name] = bin
 	return bin
+}
+
+// TestMain sets the controller-runtime global logger before anything starts:
+// this process uses controller-runtime only as a client library (the real
+// controllers log for themselves), and without a logger envtest prints a
+// "log.SetLogger(...) was never called" stack trace mid-test.
+func TestMain(m *testing.M) {
+	ctrllog.SetLogger(logr.Discard())
+	os.Exit(m.Run())
 }
 
 // ---- cluster ---------------------------------------------------------------
@@ -232,9 +243,10 @@ func freePort(t *testing.T) int {
 }
 
 // controller starts a real controller binary against the envtest cluster and
-// waits for its readiness probe. Returned is the health base URL; callers
-// that need the webhook port pass --listen-addr themselves.
-func (cl *cluster) controller(t *testing.T, name string, extra ...string) {
+// waits for its readiness probe, returning the subprocess pid (the load
+// tests sample its RSS). Callers that need the webhook port pass
+// --listen-addr themselves.
+func (cl *cluster) controller(t *testing.T, name string, extra ...string) int {
 	t.Helper()
 	health := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	args := append([]string{
@@ -259,6 +271,7 @@ func (cl *cluster) controller(t *testing.T, name string, extra ...string) {
 		}
 	})
 	waitReady(t, "http://"+health+"/readyz")
+	return cmd.Process.Pid
 }
 
 func waitReady(t *testing.T, url string) {
@@ -552,6 +565,7 @@ func fabricateFinding(t *testing.T, cl *cluster, name string, severity v1alpha1.
 			Source:         "ghas",
 			Advisories:     []string{"CWE-79"},
 			Title:          "Reflected cross-site scripting",
+			Description:    "User-controlled input is written into the response unescaped.",
 			Severity:       severity,
 		},
 	}

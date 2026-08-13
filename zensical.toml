@@ -161,7 +161,7 @@ link = "https://bsky.app/profile/bitwisemediagroup.bsky.social"
 # the visitor accepting the `analytics` cookie in the consent dialog below.
 [project.extra.analytics]
 provider = "google"
-property = ""
+property = "G-Y34HV8TX89"
 
 # Cookie consent / GDPR. https://zensical.org/docs/setup/data-privacy/
 # Re-openable any time via the "Change cookie settings" footer link (copyright,

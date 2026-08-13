@@ -22,6 +22,25 @@ func TestReleases(t *testing.T) {
 	}
 }
 
+func TestDefaultConstraint(t *testing.T) {
+	for pin, want := range map[string]string{
+		"v2.44.0": ">=2.44.0 <3.0.0",
+		"0.21.0":  ">=0.21.0 <1.0.0",
+		"2.336.0": ">=2.336.0 <3.0.0",
+	} {
+		got, err := DefaultConstraint(pin)
+		if err != nil {
+			t.Errorf("DefaultConstraint(%q): %v", pin, err)
+		}
+		if got != want {
+			t.Errorf("DefaultConstraint(%q) = %q, want %q", pin, got, want)
+		}
+	}
+	if _, err := DefaultConstraint("latest"); err == nil {
+		t.Error("DefaultConstraint(latest): want error")
+	}
+}
+
 func TestSatisfies(t *testing.T) {
 	tests := []struct {
 		v, c    string

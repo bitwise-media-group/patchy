@@ -437,3 +437,57 @@ publish:
 		t.Errorf("values after pick:\n%s\nwant:\n%s", values, want)
 	}
 }
+
+func TestEngineTrackedPickBareTag(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	app := f.host + "/apps/app"
+	// v3.0.0 sits outside the derived constraint (the v2 train of the
+	// pin), v2.45.1 has soaked, v2.45.2 is fresh.
+	f.pushImage(app+":v2.44.0", testNow.AddDate(0, 0, -40))
+	f.pushImage(app+":v2.45.1", testNow.AddDate(0, 0, -10))
+	f.pushImage(app+":v2.45.2", testNow.AddDate(0, 0, -1))
+	f.pushImage(app+":v3.0.0", testNow.AddDate(0, 0, -20))
+
+	f.pushChart(f.host+"/upstream", "demo", "1.0.0", f.chartTgz("demo", "1.0.0", "1.0.0", app+":0.0.0"))
+	// No versionConstraint: the rule derives the pin's release train. The
+	// values pin is a bare tag (the chart splits repository from tag).
+	f.write("charts/demo/manifest.yaml", fmt.Sprintf(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
+kind: Chart
+name: demo
+chart:
+  repo: oci://%[1]s/upstream
+  name: demo
+  version: "1.0.0"
+discovery:
+  valuesFiles: [values/discovery.yaml]
+images:
+  track:
+    - image: %[2]s
+      valuesPath: .image.tag
+  verifyUpstream:
+    - match: "*"
+      provider: none
+publish:
+  chartRepo: charts/demo
+`, f.host, app))
+	f.write("charts/demo/values/discovery.yaml", "image:\n  # tracked pin — never hand-edit\n  tag: v2.44.0\n")
+	eng := f.engine()
+
+	entry, err := eng.Entry("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := eng.ApplyTracks(ctx, entry)
+	if err != nil {
+		t.Fatalf("ApplyTracks: %v", err)
+	}
+	if len(plans) != 1 || plans[0].Current != "v2.44.0" || plans[0].Selected != "v2.45.1" || !plans[0].TagOnly {
+		t.Errorf("plans = %+v", plans)
+	}
+	values := f.read("charts/demo/values/discovery.yaml")
+	want := "image:\n  # tracked pin — never hand-edit\n  tag: v2.45.1\n"
+	if values != want {
+		t.Errorf("values after pick:\n%s\nwant:\n%s", values, want)
+	}
+}

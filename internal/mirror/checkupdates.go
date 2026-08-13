@@ -60,6 +60,9 @@ type TrackPlan struct {
 	ValuesPath string `json:"valuesPath"`
 	Current    string `json:"current"`
 	Selected   string `json:"selected"`
+	// TagOnly means the values pin is a bare tag (the chart splits
+	// repository from tag), so the pick splices just the tag.
+	TagOnly bool `json:"tagOnly,omitempty"`
 }
 
 // Changed reports whether the pick moves the pin.

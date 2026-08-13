@@ -102,9 +102,15 @@ type Images struct {
 
 // Track is one tracked image: the tag is machine-picked into a values file,
 // so the rule names both an image and a path that must already resolve there
-// — the pick replaces a value, it never invents one.
+// — the pick replaces a value, it never invents one. The value there is
+// either a full image reference (the pick replaces image:tag) or a bare
+// tag for charts that split image.repository from image.tag (the pick
+// replaces just the tag).
 type Track struct {
-	Image             string `yaml:"image"`
+	Image string `yaml:"image"`
+	// VersionConstraint bounds the pick; empty derives the pinned tag's
+	// own release train (">=<pin> <<major+1>.0.0"), so picks follow the
+	// current major and never hop one on their own.
 	VersionConstraint string `yaml:"versionConstraint"`
 	// CooldownDays overrides the global soak for this image; 0 disables
 	// the soak for an image that should track head.

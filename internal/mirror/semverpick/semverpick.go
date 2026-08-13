@@ -86,6 +86,19 @@ func Newest(current string, candidates []string, constraint string) (string, boo
 	return found, found != "", nil
 }
 
+// DefaultConstraint derives the allowed range from a pinned version: the
+// pin's own release train, ">=<pin> <<major+1>.0.0". A tracked image with
+// no explicit constraint follows its current major forward — crossing a
+// major boundary is a deliberate hand edit of the pin, never a machine
+// pick.
+func DefaultConstraint(pin string) (string, error) {
+	v, err := semver.NewVersion(pin)
+	if err != nil {
+		return "", fmt.Errorf("parse pinned version %q: %w", pin, err)
+	}
+	return fmt.Sprintf(">=%d.%d.%d <%d.0.0", v.Major(), v.Minor(), v.Patch(), v.Major()+1), nil
+}
+
 // CreatedFunc reports when a tag was published. ok=false means the registry
 // records no creation timestamp for the tag; the walk skips it with a
 // warning rather than failing.

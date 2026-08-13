@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/imageref"
+	"github.com/bitwise-media-group/patchy/internal/mirror/semverpick"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 	"github.com/bitwise-media-group/patchy/internal/mirror/yamledit"
 )
@@ -59,9 +61,29 @@ func (e *Engine) checkTrack(ctx context.Context, entry spec.Entry, i int, rule s
 		// value, it never invents one.
 		return TrackPlan{}, fmt.Errorf("%s: %q does not resolve in %s: %w", entry.Name, rule.ValuesPath, valuesFile, err)
 	}
-	parsed, err := imageref.Parse(currentRef)
-	if err != nil {
-		return TrackPlan{}, fmt.Errorf("%s: current pin %q: %w", entry.Name, currentRef, err)
+	// A value with no slash is a bare tag pin (charts that split
+	// image.repository from image.tag); the pick then replaces just the
+	// tag. A full reference carries at least registry/path.
+	tagOnly := !strings.Contains(currentRef, "/")
+	current := currentRef
+	if !tagOnly {
+		parsed, err := imageref.Parse(currentRef)
+		if err != nil {
+			return TrackPlan{}, fmt.Errorf("%s: current pin %q: %w", entry.Name, currentRef, err)
+		}
+		current = parsed.Tag
+	}
+
+	constraint := rule.VersionConstraint
+	if constraint == "" {
+		// No explicit range: follow the pin's own release train. The pin
+		// starts at the chart's default tag, so the derived range is the
+		// major that default declared support for.
+		if constraint, err = semverpick.DefaultConstraint(current); err != nil {
+			return TrackPlan{}, fmt.Errorf("%s: images.track[%d]: derive constraint (set versionConstraint explicitly): %w",
+				entry.Name, i, err)
+		}
+		e.notef(entry.Name, "track", "%s: derived constraint %q from the pinned tag", rule.Image, constraint)
 	}
 
 	cooldownDays := e.global.Update.EffectiveCooldownDays()
@@ -73,7 +95,7 @@ func (e *Engine) checkTrack(ctx context.Context, entry spec.Entry, i int, rule s
 		return TrackPlan{}, fmt.Errorf("%s: %w", entry.Name, err)
 	}
 	e.notef(entry.Name, "track", "%s: picking newest tag past the %dd cooldown", rule.Image, cooldownDays)
-	selected, err := e.cooldownPick(ctx, entry.Name, rule.Image, candidates, rule.VersionConstraint, cooldownDays)
+	selected, err := e.cooldownPick(ctx, entry.Name, rule.Image, candidates, constraint, cooldownDays)
 	if err != nil {
 		return TrackPlan{}, fmt.Errorf("%s: %s: %w", entry.Name, rule.Image, err)
 	}
@@ -81,8 +103,9 @@ func (e *Engine) checkTrack(ctx context.Context, entry spec.Entry, i int, rule s
 		Image:      rule.Image,
 		ValuesFile: valuesFile,
 		ValuesPath: rule.ValuesPath,
-		Current:    parsed.Tag,
+		Current:    current,
 		Selected:   selected,
+		TagOnly:    tagOnly,
 	}, nil
 }
 
@@ -111,7 +134,11 @@ func (e *Engine) ApplyTracks(ctx context.Context, entry spec.Entry) ([]TrackPlan
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", entry.Name, err)
 		}
-		edited, err := yamledit.Set(raw, plan.ValuesPath, oldRef, plan.Image+":"+plan.Selected)
+		newVal := plan.Image + ":" + plan.Selected
+		if plan.TagOnly {
+			newVal = plan.Selected
+		}
+		edited, err := yamledit.Set(raw, plan.ValuesPath, oldRef, newVal)
 		if err != nil {
 			return nil, fmt.Errorf("%s: splice %s: %w", entry.Name, plan.ValuesFile, err)
 		}

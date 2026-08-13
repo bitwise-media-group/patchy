@@ -1,12 +1,8 @@
-<!--
- Copyright 2026 Bitwise Media Group Ltd.
- SPDX-License-Identifier: MIT
--->
 {# overrides/home.html Custom landing for Patchy. Injected full-bleed between the (turf-skinned) Material header and the
 page body via the `tabs` block. The normal article `content` block is emptied; index.md sets `hide: [navigation, toc]`.
 Content mirrors the design-system kit (design-system/ui_kits/patchy): the hero follows one finding from alert to pull
-request, the lifecycle strip makes the happy-path phases visible, and the architecture specimen hangs six binaries
-off one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
+request, the lifecycle strip makes the happy-path phases visible, and the architecture specimen hangs six binaries off
+one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
 <div class="pt">
     <!-- HERO -->
     <header class="pt-hero">
@@ -105,9 +101,9 @@ off one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tab
             <code>kubectl get findings -w</code> is the whole pipeline, live.
         </p>
         <div class="pt-pipeline" role="list" aria-label="Security finding lifecycle">
-            {% set pt_states = [ ["01", "Opened", "Alert lands"], ["02", "Enhanced", "Owner added"], ["03",
-            "Investigating", "Agent assesses"], ["04", "Queued", "Slot awaited"], ["05", "InReview", "PR opened"],
-            ["06", "Remediated", "Patch merged"] ] %} {% for s in pt_states %}
+            {% set pt_states = [ [ "01", "Opened", "Alert lands" ], [ "02", "Enhanced", "Owner added" ], [ "03",
+            "Investigating", "Agent assesses" ], [ "04", "Queued", "Slot awaited" ], [ "05", "InReview", "PR opened" ],
+            [ "06", "Remediated", "Patch merged" ] ] %} {% for s in pt_states %}
             <div class="pt-state" role="listitem">
                 <div class="pt-state__top">
                     <span>{{ s[0] }}</span>
@@ -167,15 +163,15 @@ off one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tab
             <div class="pt-card">
                 <h3>Let related alerts gather</h3>
                 <p>
-                    Alerts of one advisory family accumulate into a single Finding for an hour, so one weakness
-                    becomes one useful tracking issue instead of forty noisy ones.
+                    Alerts of one advisory family accumulate into a single Finding for an hour, so one weakness becomes
+                    one useful tracking issue instead of forty noisy ones.
                 </p>
             </div>
             <div class="pt-card">
                 <h3>Context before code</h3>
                 <p>
-                    Repository ownership and infrastructure relationships arrive on the finding before the
-                    investigation decides a route.
+                    Repository ownership and infrastructure relationships arrive on the finding before the investigation
+                    decides a route.
                 </p>
             </div>
             <div class="pt-card">

@@ -8,3 +8,4 @@ site/**
 completions/**
 internal/web/ui/**
 internal/mirror/spec/testdata/**
+overrides/**

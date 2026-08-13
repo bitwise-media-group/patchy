@@ -1,46 +1,29 @@
-<!--
- Copyright 2026 Bitwise Media Group Ltd.
- SPDX-License-Identifier: MIT
--->
-{# overrides/demo.html
-   Presenter-facing layout for docs/demo.md (hidden from nav). Sticky act rail,
-   body class for .pt-demo styles, and noindex so the script stays off search. #}
-{% extends "main.html" %}
-
-{% block extrahead %}
-  {{ super() }}
-  <meta name="robots" content="noindex, nofollow" />
-{% endblock %}
-
-{% block announce %}
-  <aside class="pt-demo-banner" role="note">
+{# overrides/demo.html Presenter-facing layout for docs/demo.md (hidden from nav). Sticky act rail, body class for
+.pt-demo styles, and noindex so the script stays off search. #} {% extends "main.html" %} {% block extrahead %} {{
+super() }}
+<meta name="robots" content="noindex, nofollow" />
+{% endblock %} {% block announce %}
+<aside class="pt-demo-banner" role="note">
     <span class="pt-demo-banner__mark">Presenter script</span>
     <span class="pt-demo-banner__text"
-      >Hidden from site navigation · for live demos and recordings · 10–15&nbsp;min</span
+        >Hidden from site navigation · for live demos and recordings · 10–15&nbsp;min</span
     >
-  </aside>
-{% endblock %}
-
-{% block tabs %}
-  {{ super() }}
-  <nav class="pt-demo-rail" aria-label="Demo acts">
+</aside>
+{% endblock %} {% block tabs %} {{ super() }}
+<nav class="pt-demo-rail" aria-label="Demo acts">
     <div class="pt-demo-rail__inner">
-      <a class="pt-demo-rail__link" href="#prep">Prep</a>
-      <a class="pt-demo-rail__link" href="#act-0">0 Frame</a>
-      <a class="pt-demo-rail__link" href="#act-1">1 Dual view</a>
-      <a class="pt-demo-rail__link" href="#act-2">2 Context</a>
-      <a class="pt-demo-rail__link" href="#act-3">3 Investigate</a>
-      <a class="pt-demo-rail__link" href="#act-4">4 FP exit</a>
-      <a class="pt-demo-rail__link" href="#act-5">5 Remediate</a>
-      <a class="pt-demo-rail__link" href="#act-6">6 Close</a>
-      <a class="pt-demo-rail__link pt-demo-rail__link--accent" href="#timing-card">Timing</a>
-      <a class="pt-demo-rail__link" href="#qa">Q&amp;A</a>
+        <a class="pt-demo-rail__link" href="#prep">Prep</a>
+        <a class="pt-demo-rail__link" href="#act-0">0 Frame</a>
+        <a class="pt-demo-rail__link" href="#act-1">1 Dual view</a>
+        <a class="pt-demo-rail__link" href="#act-2">2 Context</a>
+        <a class="pt-demo-rail__link" href="#act-3">3 Investigate</a>
+        <a class="pt-demo-rail__link" href="#act-4">4 FP exit</a>
+        <a class="pt-demo-rail__link" href="#act-5">5 Remediate</a>
+        <a class="pt-demo-rail__link" href="#act-6">6 Close</a>
+        <a class="pt-demo-rail__link pt-demo-rail__link--accent" href="#timing-card">Timing</a>
+        <a class="pt-demo-rail__link" href="#qa">Q&amp;A</a>
     </div>
-  </nav>
-{% endblock %}
-
-{% block content %}
-  <div class="pt-demo">
-    {{ super() }}
-  </div>
+</nav>
+{% endblock %} {% block content %}
+<div class="pt-demo">{{ super() }}</div>
 {% endblock %}

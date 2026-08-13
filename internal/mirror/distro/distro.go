@@ -36,7 +36,7 @@ func Derive(archive io.Reader, components []string, registry, artifactRef string
 	if err != nil {
 		return nil, err
 	}
-	product, version, err := newestVersion(files)
+	product, version, err := newestVersion(files, components)
 	if err != nil {
 		return nil, err
 	}
@@ -92,26 +92,38 @@ func readManifestFiles(archive io.Reader) (map[string][]byte, error) {
 	return files, nil
 }
 
-// newestVersion finds the single product root and its newest version
-// directory (<product>/<version>/...).
-func newestVersion(files map[string][]byte) (product, version string, err error) {
+// newestVersion finds the product root carrying the requested component
+// manifests and its newest version directory (<product>/<version>/...).
+// Distribution artifacts carry sibling trees the derive must ignore —
+// flux-operator-manifests ships image-variant lists (flux-images/) and VEX
+// data (flux-vex/) beside the controller manifests — so only trees holding
+// at least one <product>/<version>/<component>.yaml qualify.
+func newestVersion(files map[string][]byte, components []string) (product, version string, err error) {
+	wanted := map[string]bool{}
+	for _, c := range components {
+		wanted[c+".yaml"] = true
+	}
 	products := map[string]bool{}
 	versions := map[string]bool{}
 	for p := range files {
 		parts := strings.Split(p, "/")
-		if len(parts) < 3 {
+		if len(parts) != 3 || !wanted[parts[2]] {
 			continue
 		}
 		products[parts[0]] = true
 		versions[parts[0]+"/"+parts[1]] = true
 	}
-	if len(products) != 1 {
+	if len(products) == 0 {
+		return "", "", fmt.Errorf("no product tree in the artifact contains the requested components (%s)",
+			strings.Join(components, ", "))
+	}
+	if len(products) > 1 {
 		names := make([]string, 0, len(products))
 		for p := range products {
 			names = append(names, p)
 		}
 		sort.Strings(names)
-		return "", "", fmt.Errorf("expected one product tree in the artifact, found %d (%s)",
+		return "", "", fmt.Errorf("expected one product tree with the requested components, found %d (%s)",
 			len(names), strings.Join(names, ", "))
 	}
 	for p := range products {

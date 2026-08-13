@@ -55,6 +55,12 @@ func TestDerive(t *testing.T) {
 		"flux/v2.9.3/source-controller.yaml": sourceController,
 		"flux/v2.9.3/helm-controller.yaml": strings.ReplaceAll(
 			strings.ReplaceAll(sourceController, "source-controller", "helm-controller"), "v1.9.3", "v1.6.3"),
+		// Sibling trees without the requested components must be ignored,
+		// even versioned ones with a newer version directory
+		// (flux-operator-manifests ships flux-images/ and flux-vex/).
+		"flux-images/v2.9.4/upstream-alpine.yaml": "images:\n  - ghcr.io/fluxcd/source-controller:v1.9.4\n",
+		"flux-vex/v2.9.json":                      "{}",
+		"flux-operator/install.yaml":              sourceController,
 	})
 	extras, err := Derive(archive, []string{"source-controller", "helm-controller"}, "",
 		"oci://ghcr.io/example/manifests:v0.56.0")
@@ -97,12 +103,20 @@ func TestDeriveErrors(t *testing.T) {
 			t.Error("want error")
 		}
 	})
-	t.Run("two product trees", func(t *testing.T) {
+	t.Run("two product trees with the components", func(t *testing.T) {
 		archive := makeArchive(t, map[string]string{
 			"a/v1.0.0/x.yaml": sourceController,
 			"b/v1.0.0/x.yaml": sourceController,
 		})
 		if _, err := Derive(archive, []string{"x"}, "", "ref"); err == nil {
+			t.Error("want error")
+		}
+	})
+	t.Run("no tree with the components", func(t *testing.T) {
+		archive := makeArchive(t, map[string]string{
+			"flux-images/v1.0.0/upstream-alpine.yaml": "images: []\n",
+		})
+		if _, err := Derive(archive, []string{"source-controller"}, "", "ref"); err == nil {
 			t.Error("want error")
 		}
 	})

@@ -74,6 +74,14 @@ func RestConfig(kubeconfig string) (*rest.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("kubeconfig %s: %w", kubeconfig, err)
 		}
+		if cfg.QPS == 0 {
+			// Match ctrl.GetConfig's in-cluster behavior: disable the
+			// client-side rate limiter and rely on API priority and fairness.
+			// Left at zero, client-go defaults to 5 QPS — a hidden ceiling
+			// on every controller run with an explicit kubeconfig (e2e, the
+			// load tests, out-of-cluster operation).
+			cfg.QPS = -1
+		}
 		return cfg, nil
 	}
 	cfg, err := ctrl.GetConfig()
@@ -138,6 +146,12 @@ func NewManager(opts Options) (ctrl.Manager, error) {
 		Client: client.Options{
 			Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.Secret{}}},
 		},
+		// managedFields are server-side-apply bookkeeping no controller reads,
+		// and on a Finding they can rival the object itself in size — at a
+		// 2M-findings backlog that is gigabytes of informer memory for
+		// nothing. Nothing else is stripped: ingest, projection, and the
+		// enhancers all read spec.alerts (snippets included) from this cache.
+		Cache: cache.Options{DefaultTransform: cache.TransformStripManagedFields()},
 	}
 	if opts.LeaderElectionID != "" {
 		mgrOpts.LeaderElection = true
@@ -149,7 +163,7 @@ func NewManager(opts Options) (ctrl.Manager, error) {
 		for _, ns := range opts.Namespaces {
 			nss[ns] = cache.Config{}
 		}
-		mgrOpts.Cache = cache.Options{DefaultNamespaces: nss}
+		mgrOpts.Cache.DefaultNamespaces = nss
 	}
 	if opts.AgentNamespace != "" {
 		agentNS := map[string]cache.Config{opts.AgentNamespace: {}}

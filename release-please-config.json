@@ -12,7 +12,12 @@
             "extra-files": [
                 { "type": "generic", "path": "charts/patchy/Chart.yaml" },
                 { "type": "generic", "path": "charts/patchy-config/Chart.yaml" },
-                { "type": "generic", "path": "pyproject.toml" }
+                { "type": "generic", "path": "pyproject.toml" },
+                {
+                    "type": "toml",
+                    "path": "uv.lock",
+                    "jsonpath": "$.package[?(@.name.value=='patchy')].version"
+                }
             ]
         }
     }

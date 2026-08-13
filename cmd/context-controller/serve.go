@@ -8,8 +8,10 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	ctxctrl "github.com/bitwise-media-group/patchy/internal/controller/context"
@@ -32,6 +34,12 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.String("static-context-file", "",
 		"YAML file mapping repositories to owners/attributes (the fake-CMDB enhancer)")
+	f.Int("enhance-concurrency", 4, "findings enhanced in parallel")
+	f.Int("enhance-max-outbound", 8,
+		"concurrent outbound generic enhancer calls across all findings (0 = unbounded)")
+	f.Duration("enhancer-config-ttl", 10*time.Second,
+		"how long the generic enhancer endpoint list and signing secrets are cached; "+
+			"a rotated secret takes effect within this window (0 = re-read per enhancement)")
 	return cmd
 }
 
@@ -77,14 +85,22 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Assets:     ctxctrl.AssetConfigSource(mgr.GetClient(), namespace),
 		AWSTags:    ctxctrl.AWSTagsConfigSource(mgr.GetClient(), namespace),
 		AzureTags:  ctxctrl.AzureTagsConfigSource(mgr.GetClient(), namespace),
-		Generic:    ctxctrl.GenericEnhancerConfigSource(mgr.GetClient(), mgr.GetAPIReader(), namespace, log),
+		Generic: ctxctrl.CachedGenericSource(
+			ctxctrl.GenericEnhancerConfigSource(mgr.GetClient(), mgr.GetAPIReader(), namespace, log),
+			opts.Duration("enhancer-config-ttl"), nil),
+		MaxOutbound: opts.Int("enhance-max-outbound"),
 	})
 	if err != nil {
 		return err
 	}
 	defer closeChain()
 
-	fc := &ctxctrl.FindingReconciler{Client: mgr.GetClient(), Enhancers: chain, Log: log}
+	fc := &ctxctrl.FindingReconciler{
+		Client:      mgr.GetClient(),
+		Enhancers:   chain,
+		Concurrency: opts.Int("enhance-concurrency"),
+		Log:         log,
+	}
 	if err := fc.SetupWithManager(mgr); err != nil {
 		return err
 	}
@@ -111,6 +127,9 @@ type chainOptions struct {
 	AzureTags enhancers.AzureConfigSource
 	// Generic reads every enabled generic enhancer endpoint.
 	Generic enhancers.GenericConfigSource
+	// MaxOutbound bounds concurrent generic enhancer calls across all
+	// findings; 0 means unbounded.
+	MaxOutbound int
 }
 
 // buildChain assembles the enhancer chain. Order matters: the first enhancer
@@ -125,7 +144,11 @@ func buildChain(o chainOptions) ([]enhance.Enhancer, func(), error) {
 	gcp := &enhancers.DynamicGoogleCloud{Config: o.Assets}
 	aws := &enhancers.DynamicAWS{Config: o.AWSTags}
 	azure := &enhancers.DynamicAzure{Config: o.AzureTags}
-	chain := []enhance.Enhancer{gcp, aws, azure, &enhancers.DynamicGeneric{Configs: o.Generic}}
+	gen := &enhancers.DynamicGeneric{Configs: o.Generic}
+	if o.MaxOutbound > 0 {
+		gen.Limit = semaphore.NewWeighted(int64(o.MaxOutbound))
+	}
+	chain := []enhance.Enhancer{gcp, aws, azure, gen}
 	cleanup := func() {
 		_ = gcp.Close()
 		_ = aws.Close()

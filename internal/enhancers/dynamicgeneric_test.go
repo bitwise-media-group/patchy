@@ -10,7 +10,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 	pkggeneric "github.com/bitwise-media-group/patchy/pkg/generic"
@@ -18,9 +22,12 @@ import (
 )
 
 // genericHarness wires a DynamicGeneric to canned configs and a recording Do.
+// The fan-out runs endpoints concurrently, so the recording is mutexed and
+// assertions must not assume call order.
 type genericHarness struct {
 	cfgs    []GenericConfig
 	cfgErr  error
+	mu      sync.Mutex
 	calls   []pkggeneric.EnhanceRequest
 	respond func(cfg GenericConfig) (*pkggeneric.EnhanceResponse, error)
 }
@@ -29,10 +36,26 @@ func (h *genericHarness) enhancer() *DynamicGeneric {
 	return &DynamicGeneric{
 		Configs: func(context.Context) ([]GenericConfig, error) { return h.cfgs, h.cfgErr },
 		Do: func(_ context.Context, cfg GenericConfig, req pkggeneric.EnhanceRequest) (*pkggeneric.EnhanceResponse, error) {
+			h.mu.Lock()
 			h.calls = append(h.calls, req)
+			h.mu.Unlock()
 			return h.respond(cfg)
 		},
 	}
+}
+
+// callFor returns the recorded request for one integration.
+func (h *genericHarness) callFor(t *testing.T, name string) pkggeneric.EnhanceRequest {
+	t.Helper()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, req := range h.calls {
+		if req.Integration == name {
+			return req
+		}
+	}
+	t.Fatalf("no call recorded for %q (calls: %+v)", name, h.calls)
+	return pkggeneric.EnhanceRequest{}
 }
 
 func TestDynamicGenericFansOut(t *testing.T) {
@@ -63,7 +86,7 @@ func TestDynamicGenericFansOut(t *testing.T) {
 	if len(h.calls) != 2 {
 		t.Fatalf("endpoints called %d times, want 2", len(h.calls))
 	}
-	req := h.calls[0]
+	req := h.callFor(t, "cmdb")
 	if req.Version != pkggeneric.Version || req.Integration != "cmdb" {
 		t.Errorf("request = %+v, want version and integration stamped", req)
 	}
@@ -116,6 +139,82 @@ func TestDynamicGenericNothingToContribute(t *testing.T) {
 	if len(got) != 0 || err != nil {
 		t.Errorf("EnhanceAll() = (%+v, %v), want no enrichments and no error", got, err)
 	}
+}
+
+// The semaphore is the global outbound bound: with Limit=2 over eight
+// endpoints, no more than two calls may ever be in flight together.
+func TestDynamicGenericBoundsOutbound(t *testing.T) {
+	var inFlight, peak atomic.Int64
+	release := make(chan struct{})
+	h := &genericHarness{
+		respond: func(GenericConfig) (*pkggeneric.EnhanceResponse, error) {
+			cur := inFlight.Add(1)
+			for {
+				old := peak.Load()
+				if cur <= old || peak.CompareAndSwap(old, cur) {
+					break
+				}
+			}
+			<-release
+			inFlight.Add(-1)
+			return &pkggeneric.EnhanceResponse{CommentMarkdown: "ok"}, nil
+		},
+	}
+	for i := range 8 {
+		h.cfgs = append(h.cfgs, GenericConfig{Name: fmt.Sprintf("endpoint-%d", i)})
+	}
+	e := h.enhancer()
+	e.Limit = semaphore.NewWeighted(2)
+
+	done := make(chan struct{})
+	var got []AttributedEnrichment
+	var err error
+	go func() {
+		got, err = e.EnhanceAll(context.Background(), enhance.Issue{})
+		close(done)
+	}()
+	// Unblock the calls one at a time; the semaphore admits the next as each
+	// completes.
+	for range 8 {
+		release <- struct{}{}
+	}
+	<-done
+	if err != nil {
+		t.Fatalf("EnhanceAll() = %v, want nil", err)
+	}
+	if len(got) != 8 {
+		t.Fatalf("enrichments = %d, want all 8", len(got))
+	}
+	if p := peak.Load(); p > 2 {
+		t.Errorf("peak in-flight calls = %d, want <= the semaphore's 2", p)
+	}
+}
+
+// Results stay name-sorted however the concurrent calls complete.
+func TestDynamicGenericDeterministicOrder(t *testing.T) {
+	h := &genericHarness{
+		cfgs: []GenericConfig{{Name: "zeta"}, {Name: "alpha"}, {Name: "mid"}},
+		respond: func(cfg GenericConfig) (*pkggeneric.EnhanceResponse, error) {
+			return &pkggeneric.EnhanceResponse{CommentMarkdown: cfg.Name}, nil
+		},
+	}
+	for range 20 {
+		got, err := h.enhancer().EnhanceAll(t.Context(), enhance.Issue{})
+		if err != nil {
+			t.Fatalf("EnhanceAll() = %v, want nil", err)
+		}
+		if len(got) != 3 || got[0].ID != "alpha" || got[1].ID != "mid" || got[2].ID != "zeta" {
+			t.Fatalf("order = %v, want name-sorted regardless of completion order", ids(got))
+		}
+	}
+}
+
+func ids(enrs []AttributedEnrichment) []string {
+	out := make([]string, 0, len(enrs))
+	for _, e := range enrs {
+		out = append(out, e.ID)
+	}
+	return out
 }
 
 func TestDynamicGenericConfigError(t *testing.T) {

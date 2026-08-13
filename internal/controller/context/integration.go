@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -131,6 +134,54 @@ func webhookSecret(ctx context.Context, r client.Reader, integ *v1alpha1.Integra
 		return nil
 	}
 	return secret.Data[ghsecret.KeyWebhookSecret]
+}
+
+// CachedGenericSource caches src's answer for ttl. The generic source is the
+// one config source whose read is not free — every call re-Lists the
+// Integrations and re-reads each signing Secret through the API reader
+// (Secrets are never cached, the cluster-wide rule) — and it runs once per
+// enhanced finding, which a brownfield backlog turns into an API-server
+// hammer. The cloud config sources read only the informer cache and stay
+// uncached.
+//
+// A miss refreshes under the lock, so concurrent reconciles share one
+// upstream read (free singleflight). Errors are never cached — a failed read
+// is retried by the next caller. Secret rotation propagates within ttl;
+// ttl<=0 disables caching entirely. now is the clock seam; nil means
+// time.Now.
+func CachedGenericSource(
+	src enhancers.GenericConfigSource, ttl time.Duration, now func() time.Time,
+) enhancers.GenericConfigSource {
+	if ttl <= 0 {
+		return src
+	}
+	if now == nil {
+		now = time.Now
+	}
+	var (
+		mu      sync.Mutex
+		cached  []enhancers.GenericConfig
+		expires time.Time
+	)
+	return func(ctx context.Context) ([]enhancers.GenericConfig, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if cached != nil && now().Before(expires) {
+			// Cloned: the fan-out sorts its slice in place.
+			return slices.Clone(cached), nil
+		}
+		cfgs, err := src(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if cfgs == nil {
+			// A valid empty answer still caches; nil marks "never read".
+			cfgs = []enhancers.GenericConfig{}
+		}
+		cached = cfgs
+		expires = now().Add(ttl)
+		return slices.Clone(cached), nil
+	}
 }
 
 // AzureTagsConfigSource reads the resourceTags capability off the namespace's

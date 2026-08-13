@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
+
 	"github.com/bitwise-media-group/patchy/internal/generic"
 	"github.com/bitwise-media-group/patchy/pkg/enhance"
 	pkggeneric "github.com/bitwise-media-group/patchy/pkg/generic"
@@ -70,6 +73,12 @@ type GenericConfigSource func(ctx context.Context) ([]GenericConfig, error)
 type DynamicGeneric struct {
 	// Configs reads the enabled endpoints. Required.
 	Configs GenericConfigSource
+	// Limit bounds the outbound calls in flight at once. It is shared across
+	// every concurrent enhancement — the reconciler may run several findings
+	// in parallel, and each fans out to every endpoint, so the bound must be
+	// global rather than per-EnhanceAll (which is why this is a semaphore and
+	// not errgroup.SetLimit). Nil means unbounded.
+	Limit *semaphore.Weighted
 	// Do performs one enhancement call; nil means the internal/generic
 	// client. The seam exists for tests, which must not dial anything.
 	Do func(ctx context.Context, cfg GenericConfig, req pkggeneric.EnhanceRequest) (*pkggeneric.EnhanceResponse, error)
@@ -92,9 +101,11 @@ func (*DynamicGeneric) Enhance(context.Context, enhance.Issue) (*enhance.Enrichm
 }
 
 // EnhanceAll implements MultiEnhancer: one signed POST per enabled
-// integration, sorted by name so precedence (first repository wins, first
-// attribute wins) is deterministic rather than list-order luck. Per-endpoint
-// failures are joined and returned beside the successes.
+// integration, in parallel under Limit, results ordered by integration name
+// so precedence (first repository wins, first attribute wins) is
+// deterministic rather than list-order or completion-order luck.
+// Per-endpoint failures are joined and returned beside the successes — one
+// slow or broken endpoint must not discard the others' work, only bound it.
 func (d *DynamicGeneric) EnhanceAll(ctx context.Context, issue enhance.Issue) ([]AttributedEnrichment, error) {
 	cfgs, err := d.Configs(ctx)
 	if err != nil {
@@ -103,18 +114,38 @@ func (d *DynamicGeneric) EnhanceAll(ctx context.Context, issue enhance.Issue) ([
 	slices.SortFunc(cfgs, func(a, b GenericConfig) int {
 		return strings.Compare(a.Name, b.Name)
 	})
+	// Indexed slices, not appends: the goroutines complete in any order, and
+	// the name-sorted result order must survive that.
+	resps := make([]*pkggeneric.EnhanceResponse, len(cfgs))
+	errs := make([]error, len(cfgs))
+	g, gctx := errgroup.WithContext(ctx)
+	for i, cfg := range cfgs {
+		g.Go(func() error {
+			if d.Limit != nil {
+				if err := d.Limit.Acquire(gctx, 1); err != nil {
+					errs[i] = fmt.Errorf("generic %s: %w", cfg.Name, err)
+					return nil
+				}
+				defer d.Limit.Release(1)
+			}
+			resp, err := d.call(gctx, cfg, issue)
+			if err != nil {
+				// Recorded, never returned: an errgroup error would cancel
+				// the siblings and partial results are meaningful.
+				errs[i] = fmt.Errorf("generic %s: %w", cfg.Name, err)
+				return nil
+			}
+			resps[i] = resp
+			return nil
+		})
+	}
+	_ = g.Wait() // goroutines never return errors; Wait is the barrier
 	var out []AttributedEnrichment
-	var errs []error
-	for _, cfg := range cfgs {
-		resp, err := d.call(ctx, cfg, issue)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("generic %s: %w", cfg.Name, err))
-			continue
-		}
+	for i, resp := range resps {
 		if resp == nil {
-			continue // nothing to contribute
+			continue // failed, or nothing to contribute
 		}
-		out = append(out, AttributedEnrichment{ID: cfg.Name, Enrichment: toEnrichment(resp)})
+		out = append(out, AttributedEnrichment{ID: cfgs[i].Name, Enrichment: toEnrichment(resp)})
 	}
 	return out, errors.Join(errs...)
 }

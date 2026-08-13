@@ -18,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -46,6 +47,11 @@ type FindingReconciler struct {
 	client.Client
 	// Enhancers run in order; each contributes at most one enrichment.
 	Enhancers []enhance.Enhancer
+	// Concurrency is the number of findings enhanced in parallel (each still
+	// runs its own chain serially); <=1 means serial. The chain's enhancers
+	// are concurrency-safe: the cloud wrappers memoize their clients under a
+	// mutex, and the generic fan-out builds a fresh signed request per call.
+	Concurrency int
 	// RetryAfter paces retries of a cloud finding's repository lookup; zero
 	// means defaultRetryAfter.
 	RetryAfter time.Duration
@@ -361,6 +367,7 @@ func openedOnly() predicate.Predicate {
 func (r *FindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Finding{}, builder.WithPredicates(openedOnly())).
+		WithOptions(controller.Options{MaxConcurrentReconciles: max(1, r.Concurrency)}).
 		Named("finding-enhance").
 		Complete(r)
 }

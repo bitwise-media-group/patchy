@@ -26,7 +26,7 @@ require (
 	github.com/sigstore/cosign/v3 v3.1.1
 	github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8
 	github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.8
-	github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.10.8
+	github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.10.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
@@ -67,7 +67,7 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.11.0 // indirect
-	cloud.google.com/go/kms v1.31.0 // indirect
+	cloud.google.com/go/kms v1.33.0 // indirect
 	cloud.google.com/go/longrunning v1.2.0 // indirect
 	cloud.google.com/go/orgpolicy v1.20.0 // indirect
 	cloud.google.com/go/osconfig v1.21.0 // indirect
@@ -274,7 +274,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.8.3 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20230811132847-661be99b8267 // indirect
-	github.com/jellydator/ttlcache/v3 v3.4.0 // indirect
+	github.com/jellydator/ttlcache/v3 v3.4.1 // indirect
 	github.com/jmoiron/sqlx v1.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect

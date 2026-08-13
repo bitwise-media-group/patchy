@@ -34,6 +34,9 @@ data:
     # DESIGN.md requirement 2: alerts of one advisory type accumulate into a
     # single finding for an hour.
     PATCHY_ACCUMULATION_WINDOW: 1h
+    # Findings projected to tracking issues in parallel; conservative because
+    # every projection may spend GitHub API requests.
+    PATCHY_PROJECTION_CONCURRENCY: "2"
 
     # ---- source-controller --------------------------------------------------
     # The artifact server: SHA-pinned repository tarballs the agent pods fetch
@@ -53,10 +56,20 @@ data:
     # ---- context-controller -------------------------------------------------
     # PATCHY_STATIC_CONTEXT_FILE: unset in base -> the Noop enhancer (the CMDB
     # placeholder). The dev overlay points it at a mounted YAML file.
+    # Findings enhanced in parallel (each finding's chain still runs serially).
+    PATCHY_ENHANCE_CONCURRENCY: "4"
+    # Concurrent outbound generic enhancer calls across ALL findings ("0"
+    # means unbounded).
+    PATCHY_ENHANCE_MAX_OUTBOUND: "8"
+    # How long the generic enhancer endpoint list and signing secrets are
+    # cached; a rotated webhook secret takes effect within this window.
+    PATCHY_ENHANCER_CONFIG_TTL: 10s
 
     # ---- investigation-controller -------------------------------------------
     # DESIGN.md requirement 5: only findings older than an hour are picked up.
     PATCHY_FINDING_MIN_AGE: 1h
+    # Findings admitted through the investigation gate in parallel.
+    PATCHY_GATE_CONCURRENCY: "4"
     PATCHY_MAX_ATTEMPTS: "2"
     PATCHY_MAX_CONCURRENT_INVESTIGATIONS: "3"
     # DESIGN.md requirement 6: below this, remediation waits for approval.

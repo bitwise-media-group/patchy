@@ -139,9 +139,19 @@ integrationController:
         # DESIGN.md requirement 2: alerts of one advisory type accumulate
         # into a single finding for an hour.
         accumulationWindow: 1h
+        # Findings projected to tracking issues in parallel. Conservative on
+        # purpose: every projection may spend GitHub API requests, and
+        # parallelism multiplies burst pressure on the installation's rate
+        # limit.
+        projectionConcurrency: 2
         # Extra PATCHY_* keys for this controller only (full variable name ->
         # value); wins over `config.extra` and anything the chart derives.
         extra: {}
+    # Size controller memory to the finding backlog: every controller holds
+    # the namespace's Findings in an informer cache (~1-2KiB per lean
+    # finding, more with large alert snippets), so a brownfield estate of
+    # hundreds of thousands of findings needs limits in the gigabytes. The
+    # defaults suit thousands, not millions — see docs/dev/benchmarks.md.
     resources:
         requests:
             cpu: 50m
@@ -233,6 +243,17 @@ sourceController:
 contextController:
     image: {}
     config:
+        # Findings enhanced in parallel (each finding's chain still runs
+        # serially).
+        enhanceConcurrency: 4
+        # Concurrent outbound generic enhancer calls across ALL findings —
+        # the global bound on pressure against external processes. 0 means
+        # unbounded.
+        enhanceMaxOutbound: 8
+        # How long the generic enhancer endpoint list and signing secrets
+        # are cached between API-server reads. A rotated webhook secret
+        # takes effect within this window; 0 re-reads per enhancement.
+        enhancerConfigTTL: 10s
         extra: {}
     resources:
         requests:
@@ -271,6 +292,10 @@ investigationController:
         # DESIGN.md requirement 6: below this, remediation waits for
         # approval.
         confidenceThreshold: "0.75"
+        # Findings admitted through the gate in parallel (the analysis
+        # scheduler itself stays serial — its slot arithmetic is a
+        # documented serialization contract).
+        gateConcurrency: 4
         extra: {}
     resources:
         requests:

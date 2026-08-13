@@ -418,7 +418,8 @@
                     "type": "object",
                     "additionalProperties": false,
                     "required": [
-                        "accumulationWindow"
+                        "accumulationWindow",
+                        "projectionConcurrency"
                     ],
                     "properties": {
                         "accumulationWindow": {
@@ -429,6 +430,10 @@
                         },
                         "extra": {
                             "$ref": "#/definitions/extraEnv"
+                        },
+                        "projectionConcurrency": {
+                            "type": "integer",
+                            "minimum": 1
                         }
                     }
                 },
@@ -537,13 +542,29 @@
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
+                        "enhanceConcurrency": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "enhanceMaxOutbound": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "enhancerConfigTTL": {
+                            "$ref": "#/definitions/duration"
+                        },
                         "logLevel": {
                             "$ref": "#/definitions/logLevel"
                         },
                         "extra": {
                             "$ref": "#/definitions/extraEnv"
                         }
-                    }
+                    },
+                    "required": [
+                        "enhanceConcurrency",
+                        "enhanceMaxOutbound",
+                        "enhancerConfigTTL"
+                    ]
                 },
                 "resources": {
                     "type": "object"
@@ -592,7 +613,8 @@
                     "required": [
                         "findingMinAge",
                         "maxConcurrentInvestigations",
-                        "confidenceThreshold"
+                        "confidenceThreshold",
+                        "gateConcurrency"
                     ],
                     "properties": {
                         "findingMinAge": {
@@ -624,6 +646,10 @@
                         },
                         "extra": {
                             "$ref": "#/definitions/extraEnv"
+                        },
+                        "gateConcurrency": {
+                            "type": "integer",
+                            "minimum": 1
                         }
                     }
                 },

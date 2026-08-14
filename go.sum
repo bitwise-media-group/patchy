@@ -240,8 +240,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.35 h1:BBEElKh4
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.35/go.mod h1:zaZk983w//8beSruBVec/mr4CmDwgZitW/qzGhAAX0g=
 github.com/aws/aws-sdk-go-v2/service/kms v1.53.4 h1:PEgVSsWtR8NNxsDxFL2Ywisi7R+1EFQARGsT4q3mWwI=
 github.com/aws/aws-sdk-go-v2/service/kms v1.53.4/go.mod h1:3EeKyDGPGSCEphG2OolwNGNF45RvQIfm27AYYpfEWrw=
-github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.3 h1:gbd/6pu5xEGryYgjIxSMeRc/7jA6GxmrgvV5FYkNlcI=
-github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.3/go.mod h1:Gaz2jIF1yPPosppBnM8b8Wwh89Ti4GxDnHVaQle3EG0=
+github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.4 h1:jApShEdKodDmaJ+HaiNfb+55NeftmqumFlhyPE3Mh3s=
+github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.4/go.mod h1:b0sYa6SAawiqkPl72+Y3W4F6FoH9jdFI7q7PxM+iGpU=
 github.com/aws/aws-sdk-go-v2/service/signin v1.5.4 h1:cOJELVNrq5Q3Udry2GLuHUM7MhwpeaQRdYaoa6GI/yI=
 github.com/aws/aws-sdk-go-v2/service/signin v1.5.4/go.mod h1:f4LxzKBtaTxD7xh3PiVg3CE1tchQemfmghaJr+NbK2c=
 github.com/aws/aws-sdk-go-v2/service/sso v1.33.4 h1:AMW7a7S8iQaHjBYZdU3PCq4GKRPijTPRAc7e6XtEThY=

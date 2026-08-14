@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
@@ -50,21 +51,24 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 		wantErrs []string          // substrings; non-empty means Runners must fail
 	}{
 		{
-			name:    "claude defaults to the api key",
-			args:    []string{"--claude-agent-image", "claude:1"},
-			wantEnv: map[string]string{"claude": "ANTHROPIC_API_KEY"},
+			// Claude is brokered: no credential channel at all, and the runner
+			// only configures with a broker URL.
+			name:    "claude is brokered with no secret env",
+			args:    []string{"--claude-agent-image", "claude:1", "--broker-url", "http://broker:8080"},
+			wantEnv: map[string]string{"claude": ""},
 		},
 		{
-			name: "claude accepts the oauth token",
-			args: []string{"--claude-agent-image", "claude:1",
-				"--claude-secret-env", "CLAUDE_CODE_OAUTH_TOKEN"},
-			wantEnv: map[string]string{"claude": "CLAUDE_CODE_OAUTH_TOKEN"},
+			name:     "claude without a broker url is not a configuration",
+			args:     []string{"--claude-agent-image", "claude:1"},
+			wantErrs: []string{"--broker-url"},
 		},
 		{
-			name: "claude accepts the auth token",
-			args: []string{"--claude-agent-image", "claude:1",
-				"--claude-secret-env", "ANTHROPIC_AUTH_TOKEN"},
-			wantEnv: map[string]string{"claude": "ANTHROPIC_AUTH_TOKEN"},
+			// A stale --claude-secret-env survives startup: the flag is ignored
+			// (with a migration notice), never validated against channels.
+			name: "claude tolerates a stale secret env",
+			args: []string{"--claude-agent-image", "claude:1", "--broker-url", "http://broker:8080",
+				"--claude-secret-env", "COPILOT_GITHUB_TOKEN"},
+			wantEnv: map[string]string{"claude": ""},
 		},
 		{
 			name:    "codex defaults to the api key",
@@ -107,22 +111,6 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 			args: []string{"--copilot-agent-image", "copilot:1",
 				"--copilot-secret-env", "ANTHROPIC_API_KEY"},
 			wantErrs: []string{"--copilot-secret-env", "ANTHROPIC_API_KEY", "COPILOT_GITHUB_TOKEN"},
-		},
-		{
-			// A GitHub token is copilot's channel and nobody else's; claude must
-			// not accept one just because it is a real credential variable.
-			name: "claude rejects a copilot channel",
-			args: []string{"--claude-agent-image", "claude:1",
-				"--claude-secret-env", "COPILOT_GITHUB_TOKEN"},
-			wantErrs: []string{"--claude-secret-env", "COPILOT_GITHUB_TOKEN", "ANTHROPIC_API_KEY"},
-		},
-		{
-			// A real credential variable, but the other vendor's: accepted
-			// nowhere but the harness that reads it.
-			name: "claude rejects a codex channel",
-			args: []string{"--claude-agent-image", "claude:1",
-				"--claude-secret-env", "CODEX_ACCESS_TOKEN"},
-			wantErrs: []string{"--claude-secret-env", "CODEX_ACCESS_TOKEN", "ANTHROPIC_API_KEY"},
 		},
 		{
 			name: "codex rejects a claude channel",
@@ -188,10 +176,12 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 }
 
 // TestRunnersCredentialWiring: the Secret name and key ride the same flags as
-// the env var, so a validated channel is only half the credential.
+// the env var, so a validated channel is only half the credential. Claude is
+// brokered — no Secret reference of any kind — while codex keeps its channel.
 func TestRunnersCredentialWiring(t *testing.T) {
 	runners, err := Runners(newOpts(t,
 		"--claude-agent-image", "claude:1",
+		"--broker-url", "http://broker:8080",
 		"--codex-agent-image", "codex:1",
 		"--codex-secret", "chatgpt-workspace",
 		"--codex-secret-key", "token",
@@ -201,10 +191,12 @@ func TestRunnersCredentialWiring(t *testing.T) {
 		t.Fatalf("Runners: %v", err)
 	}
 
-	// Defaults survive when only the codex side is overridden.
 	claude := runners["claude"]
-	if claude.Image != "claude:1" || claude.Secret != "patchy-anthropic" || claude.SecretKey != "api-key" {
-		t.Errorf("claude runner = %+v, want the defaulted anthropic credential", claude)
+	if !claude.Brokered || claude.Secret != "" || claude.SecretEnv != "" {
+		t.Errorf("claude runner = %+v, want brokered with no Secret channel", claude)
+	}
+	if got := claude.Env["ANTHROPIC_BASE_URL"]; got != "http://broker:8080/anthropic" {
+		t.Errorf("claude ANTHROPIC_BASE_URL = %q, want the broker's anthropic route", got)
 	}
 
 	codex := runners["codex"]
@@ -313,8 +305,48 @@ func TestRunnersCopilotCredentialDefaults(t *testing.T) {
 		SecretKey: "token",
 		SecretEnv: "COPILOT_GITHUB_TOKEN",
 	}
-	if copilot != want {
+	if copilot.Image != want.Image || copilot.Secret != want.Secret ||
+		copilot.SecretKey != want.SecretKey || copilot.SecretEnv != want.SecretEnv ||
+		copilot.Brokered || copilot.Env != nil {
 		t.Errorf("copilot runner = %+v, want %+v", copilot, want)
+	}
+}
+
+// TestResolveFoundryCoverage: foundry has no derivable model ids, so a model
+// the allowlist (or a stage default) lets claude run without a map entry must
+// fail at startup — the alternative is a mid-run failure with a deployment
+// name Foundry never heard of.
+func TestResolveFoundryCoverage(t *testing.T) {
+	args := []string{
+		"--claude-agent-image", "claude:1",
+		// An unroutable broker URL: the readiness probe must be non-fatal.
+		"--broker-url", "http://127.0.0.1:1",
+		"--claude-provider", "foundry",
+		"--claude-model-map", "anthropic/claude-sonnet-5=sonnet-deploy",
+	}
+	opts := newOpts(t, args...)
+	runners, err := Runners(opts)
+	if err != nil {
+		t.Fatalf("Runners: %v", err)
+	}
+
+	ctx := t.Context()
+	cs := fake.NewClientset()
+	_, err = Resolve(ctx, opts, cs, "patchy-agents", runners, nil,
+		[]string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-5"}, "anthropic/claude-sonnet-5")
+	if err == nil || !strings.Contains(err.Error(), "anthropic/claude-opus-5") {
+		t.Errorf("Resolve error = %v, want the uncovered model named", err)
+	}
+
+	enabled, err := Resolve(ctx, opts, cs, "patchy-agents", runners, nil,
+		[]string{"anthropic/claude-sonnet-5"}, "anthropic/claude-sonnet-5")
+	if err != nil {
+		t.Fatalf("Resolve with full coverage: %v", err)
+	}
+	// The brokered runner is enabled with no credential Secret in the agent
+	// namespace — enablement is configuration, the broker holds the key.
+	if !slices.Contains(enabled, "claude") {
+		t.Errorf("enabled = %v, want claude (brokered, no Secret probe)", enabled)
 	}
 }
 
@@ -336,8 +368,9 @@ func TestSecretEnvFlagsMatchAcceptedChannels(t *testing.T) {
 	f := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(f)
 
+	// claude-secret-env is absent on purpose: the claude runner is brokered,
+	// the flag is ignored, and its usage says so instead of naming channels.
 	for _, tt := range []struct{ flag, harness string }{
-		{"claude-secret-env", model.HarnessClaude},
 		{"codex-secret-env", model.HarnessCodex},
 	} {
 		t.Run(tt.flag, func(t *testing.T) {

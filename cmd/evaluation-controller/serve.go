@@ -95,6 +95,7 @@ func resolveFleet(ctx context.Context, opts *cli.Options, agentNS string,
 		Deadline:       opts.Duration("job-deadline"),
 		TTL:            opts.Duration("job-ttl"),
 		Runners:        runners,
+		BrokerAudience: opts.String("broker-token-audience"),
 	}, log)
 	return runner, enabled, nil
 }

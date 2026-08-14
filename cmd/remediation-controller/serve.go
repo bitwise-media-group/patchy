@@ -138,7 +138,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	agentNS := opts.String("agent-namespace")
 	remediateModel := opts.String("remediate-model")
 	allowlist := runnercfg.SplitList(opts.String("model-allowlist"))
-	enabled, err := runnercfg.Resolve(ctx, cs, agentNS, runners, runnercfg.Restrict(opts), allowlist, remediateModel)
+	enabled, err := runnercfg.Resolve(ctx, opts, cs, agentNS, runners, runnercfg.Restrict(opts), allowlist, remediateModel)
 	if err != nil {
 		return err
 	}
@@ -152,6 +152,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		TTL:            opts.Duration("job-ttl"),
 		Runners:        runners,
 		Env:            agentEnv(opts),
+		BrokerAudience: opts.String("broker-token-audience"),
 	}, log)
 
 	forges := forge.NewStore(mgr.GetAPIReader())

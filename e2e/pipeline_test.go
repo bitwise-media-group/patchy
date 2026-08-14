@@ -58,11 +58,14 @@ const (
 	agentsNS      = "patchy-agents"
 )
 
-// runnerArgs configures both per-harness runner images on a job controller; the
-// credential Secrets created in newCluster enable both harnesses.
+// runnerArgs configures both per-harness runner images on a job controller.
+// The codex credential Secret created in newCluster enables that harness; the
+// claude runner is brokered — enabled by configuration, requiring only the
+// broker URL (nothing dials it here: no Job ever runs under envtest).
 var runnerArgs = []string{
 	"--claude-agent-image", "patchy/claude-agent-runner:e2e",
 	"--codex-agent-image", "patchy/codex-agent-runner:e2e",
+	"--broker-url", "http://patchy-egress-broker.patchy.svc.cluster.local:8080",
 }
 
 // ---- binaries --------------------------------------------------------------

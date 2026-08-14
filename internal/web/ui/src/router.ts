@@ -4,19 +4,24 @@
 //   #/                    findings list
 //   #/finding/{name}      finding detail (optional /{tab})
 //   #/rollups             rollups, optional /{scope}
+//   #/config              configuration, optional /{section}
 
 import { useEffect, useState } from "preact/hooks";
 import type { ScopeType } from "./types";
 
 export type TabId = "overview" | "alerts" | "timeline" | "investigation" | "remediation";
 
+export type ConfigSection = "forges" | "integrations" | "enhancers";
+
 export type Route =
   | { view: "list" }
   | { view: "detail"; name: string; tab: TabId }
-  | { view: "rollups"; scope: ScopeType };
+  | { view: "rollups"; scope: ScopeType }
+  | { view: "config"; section: ConfigSection };
 
 const TABS: TabId[] = ["overview", "alerts", "timeline", "investigation", "remediation"];
 const SCOPES: ScopeType[] = ["total", "repository", "harness", "model"];
+const SECTIONS: ConfigSection[] = ["forges", "integrations", "enhancers"];
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
@@ -27,6 +32,12 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "rollups") {
     const scope = SCOPES.includes(parts[1] as ScopeType) ? (parts[1] as ScopeType) : "total";
     return { view: "rollups", scope };
+  }
+  if (parts[0] === "config") {
+    const section = SECTIONS.includes(parts[1] as ConfigSection)
+      ? (parts[1] as ConfigSection)
+      : "integrations";
+    return { view: "config", section };
   }
   return { view: "list" };
 }
@@ -42,6 +53,10 @@ export function hrefForFinding(name: string, tab?: TabId): string {
 
 export function hrefForRollups(scope?: ScopeType): string {
   return scope && scope !== "total" ? `#/rollups/${scope}` : "#/rollups";
+}
+
+export function hrefForConfig(section?: ConfigSection): string {
+  return section && section !== "integrations" ? `#/config/${section}` : "#/config";
 }
 
 export function navigate(href: string): void {

@@ -111,6 +111,47 @@ func (a *App) Installations(ctx context.Context) ([]*Client, error) {
 	}
 }
 
+// InstallationAccount is one account the App is installed on, with a
+// client authenticated as that installation.
+type InstallationAccount struct {
+	// Client is authenticated as the installation.
+	Client *Client
+	// Account is the org or user login the App is installed on.
+	Account string
+	// Org reports an organization account; false is a user account, which
+	// has no org-wide listings.
+	Org bool
+}
+
+// InstallationAccounts returns one entry per installation of the App —
+// the account-shaped fan-out for cross-estate walks like the alert
+// backfill.
+func (a *App) InstallationAccounts(ctx context.Context) ([]InstallationAccount, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	var out []InstallationAccount
+	for {
+		page, resp, err := a.gh.Apps.ListInstallations(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("ghclient: list installations: %w", err)
+		}
+		for _, inst := range page {
+			c, err := a.clientFor(inst.GetID())
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, InstallationAccount{
+				Client:  c,
+				Account: inst.GetAccount().GetLogin(),
+				Org:     inst.GetTargetType() == "Organization",
+			})
+		}
+		if resp.NextPage == 0 {
+			return out, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 // TokenPerms is the permission set for a scoped token; string values are
 // "read"/"write" per the GitHub API; empty means not requested.
 type TokenPerms struct {

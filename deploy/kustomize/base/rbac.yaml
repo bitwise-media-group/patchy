@@ -358,11 +358,16 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write seam for the replay action (spec.replay); the cached
-    # client's informer needs list/watch.
+    # Spec-only write seam for the replay and backfill actions (spec.replay,
+    # spec.backfill); the cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
+    # Read-only: the configuration view projects the Forges alongside the
+    # Integrations.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges]
+      verbs: [get, list, watch]
     # The persisted agent transcripts, read one at a time when a human opens a
     # finding. Get only: they go through the uncached API reader, so no
     # informer and no list/watch — caching every ConfigMap in the namespace to

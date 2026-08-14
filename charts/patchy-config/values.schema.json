@@ -162,6 +162,33 @@
                     "type": "object",
                     "additionalProperties": false
                 },
+                "backfill": {
+                    "description": "Backfill requests one bounded list-alerts walk of the provider's open\nalerts, ingesting the ones that predate webhook coverage — alerts\nraised before the App was installed on (or associated with) their\nrepository, which no replay of the delivery log can ever surface.\nIngestion is idempotent, so re-listing alerts that already have\nfindings is safe. Freshness against status.backfill.backfilledAt\ndecides whether the request is still actionable — the controller\nnever clears spec.",
+                    "properties": {
+                        "at": {
+                            "description": "At is when the request was received.",
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        "by": {
+                            "description": "By is the requesting login.",
+                            "type": "string"
+                        },
+                        "repositories": {
+                            "description": "Repositories narrows the walk to repositories matching any entry: an\nexact \"owner/name\", or an \"owner/\" prefix covering the whole owner.\nEmpty means the credential's full scope. A truncated backfill re-runs\nwith a narrower prefix rather than paging on.",
+                            "items": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                            },
+                            "maxItems": 50,
+                            "type": "array"
+                        }
+                    },
+                    "required": ["at", "by"],
+                    "type": "object",
+                    "additionalProperties": false
+                },
                 "generic": {
                     "description": "Generic is the generic provider block.",
                     "properties": {

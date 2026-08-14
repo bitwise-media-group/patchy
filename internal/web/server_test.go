@@ -43,9 +43,11 @@ var operator = &auth.Identity{Username: "op@acme.test", DisplayName: "Op", Sessi
 
 func allGrants() authz.Grants {
 	return authz.Grants{
-		View:  true,
-		Verbs: append([]string(nil), authz.ActionVerbs...),
-		Admin: append([]string(nil), authz.AdminVerbs...),
+		View:        true,
+		Config:      true,
+		Verbs:       append([]string(nil), authz.ActionVerbs...),
+		Integration: append([]string(nil), authz.IntegrationVerbs...),
+		Admin:       append([]string(nil), authz.AdminVerbs...),
 	}
 }
 

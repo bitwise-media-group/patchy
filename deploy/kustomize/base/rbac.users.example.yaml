@@ -34,12 +34,25 @@
 #                          finding to the state it failed from; expedite skips
 #                          the waiting stages (accumulation window, minimum
 #                          age, queue position).
+#   * the configuration view — native `get` on integrations shows the
+#                          Forges/Integrations/enhancers configuration page.
+#   * the backfill trigger — the CUSTOM verb backfill on
+#                          integrations.patchy.bitwisemedia.uk stamps
+#                          spec.backfill: a one-shot list-alerts walk that
+#                          ingests alerts predating webhook coverage.
 #   * the user menu's demo tooling — the CUSTOM verbs replay / reset on
-#                          findings.patchy.bitwisemedia.uk. replay asks the
-#                          integration-controller to redeliver the webhook
-#                          delivery log; reset deletes every pipeline
-#                          resource in the namespace (findings, runs,
-#                          repositories, rollups). Grant sparingly.
+#                          integrations.patchy.bitwisemedia.uk. replay asks
+#                          the integration-controller to redeliver the
+#                          webhook delivery log; reset deletes every
+#                          pipeline resource in the namespace (findings,
+#                          runs, repositories, rollups). Grant sparingly.
+#
+# MIGRATION (pre-1.0 breaking change): replay and reset used to be verbs on
+# findings.patchy.bitwisemedia.uk. They moved to integrations — the resource
+# they actually act on, and the one the integrations admission policy's
+# authorizer checks — so existing bindings that grant `replay, reset` on
+# findings must move those verbs to an integrations rule (with the native
+# update/patch to write the stamp), as patchy-findings-admin below does.
 #
 # Rollup statistics are public by design and need no grant on the status page.
 # The CLI reads them through the API server like anything else, so `patchy get
@@ -94,8 +107,9 @@ rules:
       resources: [findings]
       verbs: [update, patch, approve, retry, expedite, suspend, resume]
 ---
-# Operator + the user menu's demo tooling: replay the webhook delivery log,
-# reset (delete) all pipeline state. For demo/dev environments.
+# Operator + the configuration view, the backfill trigger, and the user
+# menu's demo tooling: replay the webhook delivery log, reset (delete) all
+# pipeline state. Grant replay/reset sparingly — demo/dev environments.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -108,7 +122,13 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [update, patch, approve, retry, expedite, suspend, resume, replay, reset]
+      verbs: [update, patch, approve, retry, expedite, suspend, resume]
+    # get/list shows the configuration view (and `patchy get integrations`);
+    # update/patch is the native verb the stamp write needs; the custom
+    # verbs are what the admission policy and the access reviews check.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [get, list, update, patch, backfill, replay, reset]
 ---
 # Example bindings: an SSO group of operators, one individual approver.
 apiVersion: rbac.authorization.k8s.io/v1

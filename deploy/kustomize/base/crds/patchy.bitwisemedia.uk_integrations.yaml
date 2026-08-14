@@ -184,6 +184,40 @@ spec:
                     - enabled
                     type: object
                 type: object
+              backfill:
+                description: |-
+                  Backfill requests one bounded list-alerts walk of the provider's open
+                  alerts, ingesting the ones that predate webhook coverage — alerts
+                  raised before the App was installed on (or associated with) their
+                  repository, which no replay of the delivery log can ever surface.
+                  Ingestion is idempotent, so re-listing alerts that already have
+                  findings is safe. Freshness against status.backfill.backfilledAt
+                  decides whether the request is still actionable — the controller
+                  never clears spec.
+                properties:
+                  at:
+                    description: At is when the request was received.
+                    format: date-time
+                    type: string
+                  by:
+                    description: By is the requesting login.
+                    type: string
+                  repositories:
+                    description: |-
+                      Repositories narrows the walk to repositories matching any entry: an
+                      exact "owner/name", or an "owner/" prefix covering the whole owner.
+                      Empty means the credential's full scope. A truncated backfill re-runs
+                      with a narrower prefix rather than paging on.
+                    items:
+                      maxLength: 200
+                      minLength: 1
+                      type: string
+                    maxItems: 50
+                    type: array
+                required:
+                - at
+                - by
+                type: object
               generic:
                 description: Generic is the generic provider block.
                 properties:
@@ -558,6 +592,50 @@ spec:
           status:
             description: IntegrationStatus is the integration's observed state.
             properties:
+              backfill:
+                description: Backfill reports the last manual alert backfill.
+                properties:
+                  attemptedAt:
+                    description: |-
+                      AttemptedAt echoes spec.backfill.at once the controller has attempted
+                      that request, whether or not the walk succeeded. Unlike backfilledAt it
+                      never gates a retry — it lets observers distinguish a request the
+                      controller has not seen yet from one that failed and is being retried.
+                    format: date-time
+                    type: string
+                  backfilledAt:
+                    description: |-
+                      BackfilledAt echoes spec.backfill.at once that backfill has run; a
+                      spec.backfill newer than this triggers another walk.
+                    format: date-time
+                    type: string
+                  error:
+                    description: |-
+                      Error carries the last backfill failure; empty when the walk
+                      succeeded.
+                    type: string
+                  ingested:
+                    description: |-
+                      Ingested counts the alerts folded into findings; the rest were
+                      filtered out by the repository prefixes or failed individually (see
+                      error).
+                    format: int32
+                    type: integer
+                  lastRunAt:
+                    description: LastRunAt is when the last backfill walk ran.
+                    format: date-time
+                    type: string
+                  listed:
+                    description: Listed counts the open alerts the last walk saw.
+                    format: int32
+                    type: integer
+                  truncated:
+                    description: |-
+                      Truncated marks a walk that hit the page budget before exhausting the
+                      estate; re-request with a narrower repository prefix to cover the
+                      rest.
+                    type: boolean
+                type: object
               conditions:
                 description: |-
                   Conditions of the integration (Ready: credential valid, system

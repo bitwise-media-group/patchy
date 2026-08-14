@@ -219,7 +219,7 @@ func BenchmarkSSEFanout(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				br.publish()
+				br.publish(eventFindingsChanged)
 			}
 		})
 	}

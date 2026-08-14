@@ -263,3 +263,36 @@ func get(t *testing.T, c client.Client, name string) *v1alpha1.Finding {
 	}
 	return &f
 }
+
+// A finding in its creation window (no phase yet — the Opened status write
+// races the next alert, routinely so during a backfill burst) still accepts
+// folds; treating it as closed would splinter the family into one
+// generation per alert.
+func TestIngestFoldsIntoPhaselessFinding(t *testing.T) {
+	in, c := newIngestor(t)
+	if err := in.Ingest(t.Context(), testIntegration(), testSourceFinding(42)); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	// Strip the phase, simulating the window before (or a failure of) the
+	// creation-time status write.
+	items := listFindings(t, c)
+	if len(items) != 1 {
+		t.Fatalf("findings = %d, want 1", len(items))
+	}
+	cur := items[0]
+	cur.Status = v1alpha1.FindingStatus{}
+	if err := c.Status().Update(t.Context(), &cur); err != nil {
+		t.Fatalf("clear status: %v", err)
+	}
+
+	if err := in.Ingest(t.Context(), testIntegration(), testSourceFinding(43)); err != nil {
+		t.Fatalf("Ingest second alert: %v", err)
+	}
+	items = listFindings(t, c)
+	if len(items) != 1 {
+		t.Fatalf("findings = %d, want the second alert folded, not a new generation", len(items))
+	}
+	if got := len(items[0].Spec.Alerts); got != 2 {
+		t.Errorf("alerts = %d, want 2", got)
+	}
+}

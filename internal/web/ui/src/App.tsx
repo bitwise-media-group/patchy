@@ -4,18 +4,22 @@ import {
   AuthRequiredError,
   ForbiddenError,
   dataMode,
+  fetchConfig,
   fetchFinding,
   fetchFindings,
   fetchRollups,
   postAction,
   postAdmin,
+  postBackfill,
   subscribe,
+  subscribeConfig,
 } from "./api";
 import { consumeLogoutMarker, readAuthError, readProvider, signInURL, signOut } from "./auth";
-import type { ActionVerb, AdminVerb, Dataset, Finding, Phase } from "./types";
+import type { ActionVerb, AdminVerb, ConfigDataset, Dataset, Finding, Phase } from "./types";
 import { emptySelection, filterFindings, repoOptions, sortFindings, type Selection } from "./filters";
 import { useRoute } from "./router";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
+import { ConfigView } from "./components/ConfigView";
 import { FilterBar } from "./components/FilterBar";
 import { FindingDetail, MissingFinding } from "./components/FindingDetail";
 import { FindingsTable } from "./components/FindingsTable";
@@ -107,6 +111,52 @@ export function App() {
     if (detailName) void loadDetail(detailName, persona);
   }, [detailName, loadDetail, persona]);
 
+  // The configuration view lazily fetches its own dataset and refetches on
+  // config-changed signals — but only while the view is active, so idle
+  // sessions cost nothing.
+  const configActive = route.view === "config";
+  const [config, setConfig] = useState<ConfigDataset | null>(null);
+  const loadConfig = useCallback(async () => {
+    try {
+      setConfig(await fetchConfig());
+    } catch (e) {
+      if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
+        setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    }
+  }, []);
+  useEffect(() => {
+    if (!configActive) return;
+    void loadConfig();
+    return subscribeConfig(() => void loadConfig());
+  }, [configActive, loadConfig]);
+
+  const [backfillBusy, setBackfillBusy] = useState<string | null>(null);
+  const onBackfill = useCallback(
+    async (integration: string, repos: string[]) => {
+      setBackfillBusy(integration);
+      try {
+        await postBackfill(integration, repos, persona);
+        pushToast(
+          `Backfill requested on ${integration} — the controller lists open alerts on its next reconcile.`,
+          "green",
+        );
+        await loadConfig();
+      } catch (e) {
+        if (e instanceof AuthRequiredError) {
+          setFindingsBlocked("unauthenticated");
+        } else {
+          pushToast(e instanceof Error ? e.message : String(e), "red");
+        }
+      } finally {
+        setBackfillBusy(null);
+      }
+    },
+    [loadConfig, persona, pushToast],
+  );
+
   // autoLogin: bounce straight to the provider when the server asks for it,
   // unless sign-in just failed or the user just signed out.
   useEffect(() => {
@@ -193,6 +243,12 @@ export function App() {
     });
   }, []);
 
+  // Live mode takes the server-resolved grants; demo mode previews the
+  // persona's. The nav link and the trigger render only when granted.
+  const configView = mode === "demo" ? persona.configView : Boolean(dataset?.user?.configView);
+  const integrationActions =
+    mode === "demo" ? persona.integrationActions : (dataset?.user?.integrationActions ?? []);
+
   const findings = dataset?.findings ?? [];
   const visible = useMemo(
     () => sortFindings(filterFindings(findings, selection)),
@@ -257,6 +313,16 @@ export function App() {
     body = <div class="px-5 py-11 text-center text-muted">Loading…</div>;
   } else if (route.view === "rollups") {
     body = <RollupsView rollups={dataset.rollups ?? []} scope={route.scope} />;
+  } else if (route.view === "config") {
+    body = (
+      <ConfigView
+        config={config}
+        section={route.section}
+        canBackfill={integrationActions.includes("backfill")}
+        backfillBusy={backfillBusy}
+        onBackfill={(name, repos) => void onBackfill(name, repos)}
+      />
+    );
   } else if (route.view === "detail") {
     if (detailMissing) {
       body = <MissingFinding name={route.name} />;
@@ -292,6 +358,7 @@ export function App() {
         dataset={dataset}
         mode={mode}
         route={route}
+        configView={configView}
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
         persona={persona}

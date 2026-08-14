@@ -116,7 +116,16 @@ The base ships a ClusterIP Service and no Ingress: put your Ingress or Gateway i
 GitHub never retries a failed delivery on its own; enable `spec.github.redelivery` on the Integration and the controller
 sweeps the App's delivery log every reconcile interval, redelivering anything that missed (App credentials required —
 the delivery log is invisible to a PAT). The status page's user menu adds a full replay on demand (`spec.replay`, RBAC
-verb `replay`).
+verb `replay`), and alerts that predate webhook coverage entirely — nothing in the delivery log to replay — are reached
+by the manual backfill (`spec.backfill`, verb `backfill`), a bounded list-alerts walk triggered from the status page's
+configuration view or `patchy backfill`.
+
+The integration-scoped actions are custom RBAC verbs on `integrations.patchy.bitwisemedia.uk` — `backfill`, `replay`,
+`reset` — enforced field-by-field by the `patchy-integration-actions` admission policy exactly as the finding verbs are
+by `patchy-finding-actions` (`base/admission-policy.yaml`). **Migration note (pre-1.0 breaking change):** `replay` and
+`reset` used to be verbs on `findings`; they moved to `integrations`, the resource they actually stamp and the one the
+admission policy's authorizer checks. Role bindings that grant them on findings must move those verbs to an
+`integrations` rule — `base/rbac.users.example.yaml` shows the shape.
 
 Pipeline progress is **not** webhook-driven — the gates ("accumulation closed", "older than an hour", "a free
 remediation slot") are conditions no event can announce. The controllers' watch-driven reconcile loops carry the

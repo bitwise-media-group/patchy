@@ -10,9 +10,14 @@ import (
 	"time"
 )
 
-// eventFindingsChanged is the SSE event name the status page listens for;
-// receiving it triggers a dataset refetch.
-const eventFindingsChanged = "findings-changed"
+// SSE event names the status page listens for; each triggers a refetch of
+// its own dataset.
+const (
+	// eventFindingsChanged: the findings/rollups projection changed.
+	eventFindingsChanged = "findings-changed"
+	// eventConfigChanged: the Forge/Integration configuration changed.
+	eventConfigChanged = "config-changed"
+)
 
 // broker fans a notification out to every connected SSE client. Sends are
 // non-blocking: a client whose buffer is full simply misses an intermediate
@@ -46,15 +51,16 @@ func (b *broker) unsubscribe(ch chan string) {
 	b.mu.Unlock()
 }
 
-// publish delivers a findings-changed notification to every subscriber,
-// dropping it for any client whose buffer is full rather than blocking the
-// watcher.
-func (b *broker) publish() {
+// publish delivers one named notification to every subscriber, dropping it
+// for any client whose buffer is full rather than blocking the watcher —
+// harmless, because every notification of one name carries the same
+// meaning ("refetch") and the next one catches the client up.
+func (b *broker) publish(event string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for ch := range b.clients {
 		select {
-		case ch <- eventFindingsChanged:
+		case ch <- event:
 		default:
 		}
 	}

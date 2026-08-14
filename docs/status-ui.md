@@ -34,6 +34,12 @@ deliberately suspended, hence the `suspended` pill on each row.
 
   ![The rollup statistics](assets/images/status-rollups.jpg)
 
+- **Config** — the namespace's configured Integrations, Forges, and derived context enhancers: provider, capabilities,
+  credential Secret names (names only, never contents), readiness, the failed-delivery sweep's last outcome, and the
+  [manual backfill](integrations/sources/github.md#the-manual-backfill) trigger with its last run's report. The nav link
+  renders only for users granted `get` on `integrations` — unlike rollups this view is **never public**, and it is
+  read-only apart from the backfill trigger: the resources themselves are managed in the cluster.
+
 ## Agent conversations
 
 Each run's investigation and remediation tab carries the agent's turn-by-turn conversation: its messages, its reasoning,
@@ -75,6 +81,12 @@ The action bar renders only the verbs the signed-in user is granted _and_ the fi
 | **Suspend**  | any non-terminal phase            | `spec.suspend: true`                                            |
 | **Resume**   | a suspended finding               | `spec.suspend: false`                                           |
 
+One action lives on Integrations rather than findings — the configuration view's backfill trigger:
+
+| Action       | Available when                                       | What the server writes             |
+| ------------ | ---------------------------------------------------- | ---------------------------------- |
+| **Backfill** | a github Integration with code scanning, unsuspended | `spec.backfill` on the Integration |
+
 The status server never moves a phase. Approving records the approval; the remediation-controller's spawner then drives
 `AwaitingApproval → Queued` (or revives `HandedOff → Queued` when the approval is newer than the finding's completion)
 exactly as it does for a `/approve` issue comment — the state machine's one-writer-per-edge rule holds no matter which
@@ -92,10 +104,10 @@ minimum-age wait, and both schedulers rank the finding's runs ahead of all non-e
 
 ## The user menu
 
-The signed-in name in the top bar drops a menu holding sign-out and two namespace-wide demo actions — **Replay
-deliveries** (RBAC verb `replay`) and **Reset all data** (verb `reset`) — each hidden without its grant. Together they
-re-run the entire pipeline from ingestion; what they write and when to grant them is covered in
-[Demo tooling](deployment/dev-fake.md#the-demo-loop-replay-and-reset).
+The signed-in name in the top bar drops a menu holding sign-out and two demo actions — **Replay deliveries** (RBAC verb
+`replay`) and **Reset all data** (verb `reset`), both custom verbs on `integrations.patchy.bitwisemedia.uk` — each
+hidden without its grant. Together they re-run the entire pipeline from ingestion; what they write and when to grant
+them is covered in [Demo tooling](deployment/dev-fake.md#the-demo-loop-replay-and-reset).
 
 ## Access model
 
@@ -106,9 +118,11 @@ Two tiers, on purpose:
 2. **Findings require sign-in + RBAC.** Without an [auth configuration](configuration/status-server.md), the findings
    views show "sign-in is not configured" and nothing else leaves the cluster. With one, a signed-in user sees findings
    only if RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` /
-   `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). Agent conversations are finding
-   content and ride the same `get findings` gate; the change-notification stream (`/events`) stays public precisely
-   because it carries no content at all, only the fact that something changed:
+   `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The configuration view has its own
+   gate — native `get` on `integrations` — and its backfill trigger its own verb (`backfill` on
+   `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent conversations are finding content and ride
+   the same `get findings` gate; the change-notification stream (`/events`) stays public precisely because it carries no
+   content at all, only the fact that something changed:
 
 ```yaml
 rules:

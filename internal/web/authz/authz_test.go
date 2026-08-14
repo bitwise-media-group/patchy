@@ -19,8 +19,8 @@ import (
 )
 
 // sarClient fabricates SubjectAccessReview responses: allow decides per
-// (user, verb) and calls counts reviews.
-func sarClient(t *testing.T, calls *int, allow func(user, verb string) bool) client.Client {
+// (user, resource, verb) and calls counts reviews.
+func sarClient(t *testing.T, calls *int, allow func(user, resource, verb string) bool) client.Client {
 	t.Helper()
 	return fake.NewClientBuilder().
 		WithScheme(kube.Scheme()).
@@ -31,10 +31,11 @@ func sarClient(t *testing.T, calls *int, allow func(user, verb string) bool) cli
 					t.Fatalf("unexpected create of %T", obj)
 				}
 				*calls++
-				if sar.Spec.ResourceAttributes.Resource != "findings" {
-					t.Errorf("review resource = %q, want findings", sar.Spec.ResourceAttributes.Resource)
+				if res := sar.Spec.ResourceAttributes.Resource; res != "findings" && res != "integrations" {
+					t.Errorf("review resource = %q, want findings or integrations", res)
 				}
-				sar.Status.Allowed = allow(sar.Spec.User, sar.Spec.ResourceAttributes.Verb)
+				sar.Status.Allowed = allow(sar.Spec.User, sar.Spec.ResourceAttributes.Resource,
+					sar.Spec.ResourceAttributes.Verb)
 				return nil
 			},
 		}).
@@ -43,38 +44,62 @@ func sarClient(t *testing.T, calls *int, allow func(user, verb string) bool) cli
 
 func TestReviewerGrants(t *testing.T) {
 	cases := []struct {
-		name      string
-		allow     func(user, verb string) bool
-		wantView  bool
-		wantVerbs []string
+		name            string
+		allow           func(user, resource, verb string) bool
+		wantView        bool
+		wantConfig      bool
+		wantVerbs       []string
+		wantIntegration []string
+		wantAdmin       []string
 	}{
 		{
 			name:     "viewer only",
-			allow:    func(_, verb string) bool { return verb == "get" },
+			allow:    func(_, resource, verb string) bool { return resource == "findings" && verb == "get" },
 			wantView: true,
 		},
 		{
-			name:      "approver",
-			allow:     func(_, verb string) bool { return verb == "get" || verb == VerbApprove },
+			name: "approver",
+			allow: func(_, resource, verb string) bool {
+				return resource == "findings" && (verb == "get" || verb == VerbApprove)
+			},
 			wantView:  true,
 			wantVerbs: []string{VerbApprove},
 		},
 		{
-			name:      "operator",
-			allow:     func(string, string) bool { return true },
-			wantView:  true,
-			wantVerbs: []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume},
+			name:            "operator",
+			allow:           func(string, string, string) bool { return true },
+			wantView:        true,
+			wantConfig:      true,
+			wantVerbs:       []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume},
+			wantIntegration: []string{VerbBackfill, VerbReplay, VerbReset},
+			wantAdmin:       []string{VerbReplay, VerbReset},
 		},
 		{
 			name:  "nothing",
-			allow: func(string, string) bool { return false },
+			allow: func(string, string, string) bool { return false },
 		},
 		{
 			// A verb grant without view still surfaces: the view gate and
 			// the action gate are independent reviews.
 			name:      "actions without view",
-			allow:     func(_, verb string) bool { return verb == VerbSuspend },
+			allow:     func(_, resource, verb string) bool { return resource == "findings" && verb == VerbSuspend },
 			wantVerbs: []string{VerbSuspend},
+		},
+		{
+			// The integration-scoped verbs resolve on integrations, never
+			// on findings: a findings-only grant of "backfill" is inert.
+			name: "integration verbs need the integrations resource",
+			allow: func(_, resource, verb string) bool {
+				return resource == "findings" && verb == VerbBackfill
+			},
+		},
+		{
+			name: "config view plus backfill only",
+			allow: func(_, resource, verb string) bool {
+				return resource == "integrations" && (verb == "get" || verb == VerbBackfill)
+			},
+			wantConfig:      true,
+			wantIntegration: []string{VerbBackfill},
 		},
 	}
 	for _, tc := range cases {
@@ -85,11 +110,17 @@ func TestReviewerGrants(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Grants: %v", err)
 			}
-			if g.View != tc.wantView {
-				t.Errorf("View = %v, want %v", g.View, tc.wantView)
+			if g.View != tc.wantView || g.Config != tc.wantConfig {
+				t.Errorf("View/Config = %v/%v, want %v/%v", g.View, g.Config, tc.wantView, tc.wantConfig)
 			}
 			if !slices.Equal(g.Verbs, tc.wantVerbs) {
 				t.Errorf("Verbs = %v, want %v", g.Verbs, tc.wantVerbs)
+			}
+			if !slices.Equal(g.Integration, tc.wantIntegration) {
+				t.Errorf("Integration = %v, want %v", g.Integration, tc.wantIntegration)
+			}
+			if !slices.Equal(g.Admin, tc.wantAdmin) {
+				t.Errorf("Admin = %v, want %v", g.Admin, tc.wantAdmin)
 			}
 		})
 	}
@@ -97,7 +128,7 @@ func TestReviewerGrants(t *testing.T) {
 
 func TestReviewerCache(t *testing.T) {
 	calls := 0
-	r := NewReviewer(sarClient(t, &calls, func(string, string) bool { return true }), "patchy", time.Minute)
+	r := NewReviewer(sarClient(t, &calls, func(string, string, string) bool { return true }), "patchy", time.Minute)
 	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	r.now = func() time.Time { return now }
 
@@ -105,24 +136,24 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 8 {
-		t.Fatalf("first resolve made %d reviews, want 8", calls)
+	if calls != 10 {
+		t.Fatalf("first resolve made %d reviews, want 10", calls)
 	}
 
 	// Same identity with reordered groups hits the cache.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "u", Groups: []string{"a", "b"}}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 8 {
-		t.Errorf("cached resolve made %d extra reviews", calls-8)
+	if calls != 10 {
+		t.Errorf("cached resolve made %d extra reviews", calls-10)
 	}
 
 	// A different identity misses.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "v"}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 16 {
-		t.Errorf("distinct identity made %d reviews total, want 16", calls)
+	if calls != 20 {
+		t.Errorf("distinct identity made %d reviews total, want 20", calls)
 	}
 
 	// Expiry re-resolves.
@@ -130,8 +161,8 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 24 {
-		t.Errorf("expired resolve made %d reviews total, want 24", calls)
+	if calls != 30 {
+		t.Errorf("expired resolve made %d reviews total, want 30", calls)
 	}
 }
 
@@ -140,12 +171,18 @@ func TestFullGrantsEverything(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if !g.View || !slices.Equal(g.Verbs, ActionVerbs) {
-		t.Errorf("Full grants = %+v, want view + all verbs", g)
+	if !g.View || !g.Config || !slices.Equal(g.Verbs, ActionVerbs) ||
+		!slices.Equal(g.Integration, IntegrationVerbs) || !slices.Equal(g.Admin, AdminVerbs) {
+		t.Errorf("Full grants = %+v, want everything", g)
 	}
 	for _, verb := range ActionVerbs {
 		if !g.Allows(verb) {
 			t.Errorf("Allows(%s) = false", verb)
+		}
+	}
+	for _, verb := range IntegrationVerbs {
+		if !g.AllowsIntegration(verb) {
+			t.Errorf("AllowsIntegration(%s) = false", verb)
 		}
 	}
 }

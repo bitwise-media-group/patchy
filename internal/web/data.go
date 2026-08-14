@@ -36,9 +36,15 @@ type Dataset struct {
 type User struct {
 	Name     string `json:"name"`
 	LoggedIn bool   `json:"loggedIn"`
-	// AdminActions are the granted namespace-wide verbs (replay, reset) the
+	// AdminActions are the granted demo-tooling verbs (replay, reset) the
 	// user menu renders. Absent means none.
 	AdminActions []string `json:"adminActions,omitempty"`
+	// ConfigView reports native get on integrations — whether the
+	// configuration view is reachable for this user.
+	ConfigView bool `json:"configView,omitempty"`
+	// IntegrationActions are the granted integration-scoped verbs
+	// (backfill, replay, reset) the configuration view's triggers check.
+	IntegrationActions []string `json:"integrationActions,omitempty"`
 }
 
 // FindingSummary is the trimmed per-finding projection the list payload

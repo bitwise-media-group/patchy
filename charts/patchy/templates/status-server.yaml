@@ -118,11 +118,16 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write seam for the replay action (spec.replay); the cached
-    # client's informer needs list/watch.
+    # Spec-only write seam for the replay and backfill actions (spec.replay,
+    # spec.backfill); the cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
+    # Read-only: the configuration view projects the Forges alongside the
+    # Integrations.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges]
+      verbs: [get, list, watch]
     # The persisted agent transcripts, read one at a time when a human opens a
     # finding. Get only: they are read through the uncached API reader, so no
     # informer and no list/watch — caching every ConfigMap in the namespace to
@@ -256,8 +261,12 @@ rules:
       resources: [findings]
       verbs: [approve, retry, expedite, suspend, resume]
 ---
-# Operator + the user menu's demo tooling: replay the webhook delivery log,
-# reset (delete) all pipeline state. Grant sparingly.
+# Operator + the configuration view (native get on integrations), the
+# backfill trigger, and the user menu's demo tooling: replay the webhook
+# delivery log, reset (delete) all pipeline state. Grant replay/reset
+# sparingly. Migration note: replay/reset moved from findings to
+# integrations — the resource they act on and the one the integrations
+# admission policy checks.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -270,7 +279,10 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      verbs: [approve, retry, expedite, suspend, resume, replay, reset]
+      verbs: [approve, retry, expedite, suspend, resume]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [get, list, backfill, replay, reset]
 {{- end }}
 ---
 apiVersion: apps/v1

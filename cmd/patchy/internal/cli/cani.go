@@ -21,17 +21,20 @@ func newCanICmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "can-i [verb]",
 		Short: "Show which actions your RBAC allows",
-		Long: "Show what you may do to findings in this namespace.\n\n" +
+		Long: "Show what you may do in this namespace.\n\n" +
 			"Each action is a custom RBAC verb, granted independently — holding 'approve'\n" +
-			"says nothing about 'suspend'. With no argument this prints the whole matrix,\n" +
-			"which is the fastest answer to \"why was that refused?\".",
-		Example: "  patchy can-i\n  patchy can-i approve\n  patchy can-i approve -n patchy",
+			"says nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,\n" +
+			"suspend, resume) live on findings; the integration-scoped verbs (backfill,\n" +
+			"replay, reset) live on integrations. With no argument this prints the whole\n" +
+			"matrix, which is the fastest answer to \"why was that refused?\".",
+		Example: "  patchy can-i\n  patchy can-i approve\n  patchy can-i backfill\n  patchy can-i approve -n patchy",
 		Args:    cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if len(args) > 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return action.ActionVerbs, cobra.ShellCompDirectiveNoFileComp
+			return append(append([]string{}, action.ActionVerbs...), action.IntegrationVerbs...),
+				cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verb := ""
@@ -42,6 +45,20 @@ func newCanICmd(opts *Options) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// verbResource resolves which resource a verb is checked on: the per-finding
+// verbs on findings, the integration-scoped ones (backfill, replay, reset)
+// on integrations — the same resource the admission policy's authorizer
+// names. get/list mean the findings read gate.
+func verbResource(verb string) (string, bool) {
+	switch {
+	case containsFold(action.ActionVerbs, verb), strings.EqualFold(verb, "get"), strings.EqualFold(verb, "list"):
+		return "findings", true
+	case containsFold(action.IntegrationVerbs, verb):
+		return "integrations", true
+	}
+	return "", false
 }
 
 func runCanI(ctx context.Context, opts *Options, verb string) error {
@@ -56,17 +73,18 @@ func runCanI(ctx context.Context, opts *Options, verb string) error {
 	// A single verb answers yes/no and says so in the exit code, so it can
 	// drive a shell conditional.
 	if verb != "" {
-		if !containsFold(action.ActionVerbs, verb) && verb != "get" && verb != "list" {
-			return errUsage(fmt.Errorf("unknown verb %q; want one of: %s, get, list",
-				verb, strings.Join(action.ActionVerbs, ", ")))
+		resource, ok := verbResource(verb)
+		if !ok {
+			return errUsage(fmt.Errorf("unknown verb %q; want one of: %s, %s, get, list",
+				verb, strings.Join(action.ActionVerbs, ", "), strings.Join(action.IntegrationVerbs, ", ")))
 		}
-		allowed, err := opts.access(ctx, env, verb)
+		allowed, err := opts.access(ctx, env, resource, verb)
 		if err != nil {
 			return err
 		}
 		if !allowed {
 			notef(opts.Out, "no\n")
-			return fmt.Errorf("%w: you may not %s findings in namespace %s", errDenied, verb, env.Namespace)
+			return fmt.Errorf("%w: you may not %s %s in namespace %s", errDenied, verb, resource, env.Namespace)
 		}
 		notef(opts.Out, "yes\n")
 		return nil
@@ -81,7 +99,16 @@ func runCanI(ctx context.Context, opts *Options, verb string) error {
 		Field("Identity", opts.identity(ctx, env))
 
 	for _, v := range append([]string{"get", "list"}, action.ActionVerbs...) {
-		allowed, err := opts.access(ctx, env, v)
+		allowed, err := opts.access(ctx, env, "findings", v)
+		if err != nil {
+			return err
+		}
+		d.Field(v, yesNo(allowed))
+	}
+
+	d.Section("Integrations")
+	for _, v := range append([]string{"get", "list"}, action.IntegrationVerbs...) {
+		allowed, err := opts.access(ctx, env, "integrations", v)
 		if err != nil {
 			return err
 		}
@@ -111,12 +138,12 @@ func whoami(ctx context.Context, opts *Options, env *kubecfg.Env) string {
 	return "unknown"
 }
 
-// canI runs a SelfSubjectAccessReview for one verb on findings.
+// canI runs a SelfSubjectAccessReview for one verb on one resource.
 //
 // Self- rather than plain SubjectAccessReview matters: asking about yourself
 // needs no grant, whereas asking about another user is privileged and the CLI
 // has no business doing it.
-func canI(ctx context.Context, opts *Options, env *kubecfg.Env, verb string) (bool, error) {
+func canI(ctx context.Context, opts *Options, env *kubecfg.Env, resource, verb string) (bool, error) {
 	callCtx, cancel := opts.Timeout(ctx)
 	defer cancel()
 
@@ -125,7 +152,7 @@ func canI(ctx context.Context, opts *Options, env *kubecfg.Env, verb string) (bo
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
 				Namespace: env.Namespace,
 				Group:     v1alpha1.GroupVersion.Group,
-				Resource:  "findings",
+				Resource:  resource,
 				Verb:      verb,
 			},
 		},
@@ -133,7 +160,7 @@ func canI(ctx context.Context, opts *Options, env *kubecfg.Env, verb string) (bo
 	if err := env.Client.Create(callCtx, review); err != nil {
 		return false, fmt.Errorf("access review for %s: %w", verb, err)
 	}
-	opts.debugf("access review: %s = %t (%s)", verb, review.Status.Allowed, review.Status.Reason)
+	opts.debugf("access review: %s %s = %t (%s)", verb, resource, review.Status.Allowed, review.Status.Reason)
 	return review.Status.Allowed, nil
 }
 

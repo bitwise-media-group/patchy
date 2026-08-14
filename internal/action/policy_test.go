@@ -88,6 +88,56 @@ func TestAdmissionPolicyCoversEveryFindingSpecField(t *testing.T) {
 	}
 }
 
+// integrationVerbGatedFields maps each request field of IntegrationSpec to
+// the custom verb that gates it in the integrations admission policy.
+var integrationVerbGatedFields = map[string]string{
+	"backfill": "backfill",
+	"replay":   "replay",
+	"reset":    "reset",
+}
+
+// TestIntegrationPolicyCoversEveryRequestField mirrors the findings check
+// for the integrations policy: every request-shaped field of
+// IntegrationSpec (an *ActionRequest or *BackfillRequest) must be gated by
+// its own verb in both policy renderings. Unlike findings there is no
+// frozen-fields rule — IntegrationSpec is operator configuration — so only
+// the request fields are asserted.
+func TestIntegrationPolicyCoversEveryRequestField(t *testing.T) {
+	specType := reflect.TypeOf(v1alpha1.IntegrationSpec{})
+	for rendering, path := range policyFiles {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s policy: %v", rendering, err)
+		}
+		policy := string(raw)
+
+		for i := range specType.NumField() {
+			field := specType.Field(i)
+			ft := field.Type
+			if ft.Kind() != reflect.Pointer {
+				continue
+			}
+			elem := ft.Elem().Name()
+			if elem != "ActionRequest" && elem != "BackfillRequest" {
+				continue
+			}
+			name := jsonName(field.Tag.Get("json"))
+
+			t.Run(rendering+"/"+name, func(t *testing.T) {
+				verb := integrationVerbGatedFields[name]
+				if verb == "" {
+					t.Fatalf("IntegrationSpec.%s is a request field with no entry in "+
+						"integrationVerbGatedFields; add it and gate it in both policy renderings", name)
+				}
+				if !strings.Contains(policy, "spec.?"+name) || !strings.Contains(policy, "check('"+verb+"')") {
+					t.Errorf("spec.%s is a request field but %s does not gate it behind the %q verb; "+
+						"anyone holding update on integrations can now fire it", name, path, verb)
+				}
+			})
+		}
+	}
+}
+
 // TestAdmissionPolicyExemptsEveryController guards the other direction: a new
 // controller that writes Finding spec must be added to the exemption, or the
 // pipeline stalls the first time it tries.

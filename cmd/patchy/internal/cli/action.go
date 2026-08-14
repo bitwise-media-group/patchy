@@ -105,7 +105,7 @@ func runAction(ctx context.Context, opts *Options, f *actionFlags, verb, noun st
 	// Ask before writing. The admission policy is what actually enforces this,
 	// but a local check turns "the server rejected your update" into a sentence
 	// that names the verb you are missing.
-	allowed, err := opts.access(ctx, env, verb)
+	allowed, err := opts.access(ctx, env, "findings", verb)
 	if err != nil {
 		return err
 	}

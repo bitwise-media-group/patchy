@@ -3,7 +3,7 @@ import type { AdminVerb, Dataset } from "../types";
 import type { DataMode } from "../api";
 import { readProvider, signOut } from "../auth";
 import { PERSONAS, type Persona } from "../mock/personas";
-import { hrefForList, hrefForRollups, type Route } from "../router";
+import { hrefForConfig, hrefForList, hrefForRollups, type Route } from "../router";
 import { Icon } from "./icons";
 import { PatchMark } from "./PatchMark";
 import { ThemeToggle, type ThemeMode } from "./ThemeToggle";
@@ -147,6 +147,7 @@ export function TopBar({
   dataset,
   mode,
   route,
+  configView,
   themeMode,
   onToggleTheme,
   persona,
@@ -157,6 +158,9 @@ export function TopBar({
   dataset: Dataset | null;
   mode: DataMode;
   route: Route;
+  // Whether the configuration view is reachable for this user; the nav
+  // link renders only when true.
+  configView: boolean;
   themeMode: ThemeMode;
   onToggleTheme: () => void;
   persona: Persona;
@@ -176,12 +180,17 @@ export function TopBar({
           </span>
         </a>
         <nav class="flex gap-1 rounded-[9px] border border-line bg-surface p-[3px]" aria-label="Views">
-          <a href={hrefForList()} class={navClass(route.view !== "rollups")}>
+          <a href={hrefForList()} class={navClass(route.view !== "rollups" && route.view !== "config")}>
             Findings
           </a>
           <a href={hrefForRollups()} class={navClass(route.view === "rollups")}>
             Rollups
           </a>
+          {configView ? (
+            <a href={hrefForConfig()} class={navClass(route.view === "config")}>
+              Config
+            </a>
+          ) : null}
         </nav>
         <div class="flex items-center gap-3 font-mono text-[10.5px] text-muted max-sm:hidden">
           {mode === "live" ? (

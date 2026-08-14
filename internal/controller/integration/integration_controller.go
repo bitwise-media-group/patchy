@@ -16,6 +16,7 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
+	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
 // defaultRevalidate paces credential revalidation when spec.interval is
@@ -40,6 +41,13 @@ type IntegrationReconciler struct {
 	// ClientFor overrides forge-client construction in tests; nil means
 	// Creds.Client.
 	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (resetClient, error)
+	// Ingest folds backfilled alerts into Findings; required when
+	// spec.backfill is to be consumed.
+	Ingest *Ingestor
+	// ListerFor overrides backfill-lister construction in tests; nil means
+	// the ghas lister built from the Integration's credential. ok=false
+	// reports a provider with no listing capability.
+	ListerFor func(ctx context.Context, integ *v1alpha1.Integration) (lister source.Lister, ok bool, err error)
 }
 
 // Reconcile implements the Integration control loop.
@@ -95,6 +103,14 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				st.ReplayedAt = prev.ReplayedAt
 			}
 			integ.Status.Redelivery = st
+		}
+		if req := pendingBackfill(&integ); req != nil {
+			st, ran := r.runBackfill(ctx, &integ, req, r.now())
+			st.AttemptedAt = &req.At
+			if ran {
+				st.BackfilledAt = &req.At
+			}
+			integ.Status.Backfill = st
 		}
 	}
 	if err := r.Status().Update(ctx, &integ); err != nil {

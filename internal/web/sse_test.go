@@ -29,7 +29,7 @@ func TestBrokerPublish(t *testing.T) {
 	b := newBroker()
 	ch := b.subscribe()
 	defer b.unsubscribe(ch)
-	b.publish()
+	b.publish(eventFindingsChanged)
 	select {
 	case got := <-ch:
 		if got != eventFindingsChanged {
@@ -48,7 +48,7 @@ func TestBrokerPublishDoesNotBlock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for range 20 {
-			b.publish()
+			b.publish(eventFindingsChanged)
 		}
 		close(done)
 	}()
@@ -67,7 +67,7 @@ func TestBrokerUnsubscribeIdempotentish(t *testing.T) {
 		t.Errorf("count = %d, want 0", got)
 	}
 	// A publish after unsubscribe must not panic on the closed channel.
-	b.publish()
+	b.publish(eventFindingsChanged)
 }
 
 func TestHandleEventsStream(t *testing.T) {
@@ -85,7 +85,7 @@ func TestHandleEventsStream(t *testing.T) {
 	}
 
 	waitFor(t, func() bool { return s.broker.count() == 1 })
-	s.broker.publish()
+	s.broker.publish(eventFindingsChanged)
 
 	scanner := bufio.NewScanner(res.Body)
 	deadline := time.AfterFunc(2*time.Second, func() { _ = res.Body.Close() })

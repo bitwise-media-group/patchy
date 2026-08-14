@@ -24,7 +24,7 @@ func TestDebounceCoalesces(t *testing.T) {
 	signal := make(chan struct{}, 1)
 	done := make(chan struct{})
 	go func() {
-		s.debounceLoop(ctx, signal)
+		s.debounceLoop(ctx, signal, eventFindingsChanged)
 		close(done)
 	}()
 

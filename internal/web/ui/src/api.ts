@@ -8,12 +8,14 @@
 import type {
   ActionVerb,
   AdminVerb,
+  ConfigDataset,
   Dataset,
   Finding,
   OfflineDataset,
   TranscriptTurn,
 } from "./types";
 import { availableActions, retryTarget } from "./actions";
+import { mockConfig } from "./mock/config";
 import { mockDataset, mockTranscript } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
 
@@ -185,6 +187,77 @@ export async function postAdmin(verb: AdminVerb): Promise<void> {
     return;
   }
   await request<unknown>(`/api/admin/${verb}`, { method: "POST" });
+}
+
+// ---- configuration view --------------------------------------------------
+
+let demoConfig: ConfigDataset | null = null;
+
+function demoConfigDataset(): ConfigDataset {
+  if (!demoConfig) demoConfig = mockConfig();
+  return demoConfig;
+}
+
+// fetchConfig loads the configuration dataset (Forges, Integrations,
+// enhancers). Live mode requires get on integrations server-side; demo and
+// snapshot modes answer from the mock kit.
+export async function fetchConfig(): Promise<ConfigDataset> {
+  if (dataMode() !== "live") return demoConfigDataset();
+  return request<ConfigDataset>("/api/config");
+}
+
+// postBackfill requests a list-alerts backfill on one integration; the
+// optional repositories entries are "owner/" prefixes or exact "owner/name".
+export async function postBackfill(
+  name: string,
+  repositories: string[],
+  persona: Persona = DEFAULT_PERSONA,
+): Promise<void> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    if (!persona.integrationActions.includes("backfill")) {
+      throw new ForbiddenError(
+        `Permission denied. User "${persona.label}" may not backfill integrations in this namespace.`,
+      );
+    }
+    const integ = demoConfigDataset().integrations.find((i) => i.name === name);
+    if (!integ) throw new Error(`integration ${name} not found`);
+    const now = new Date().toISOString();
+    integ.backfill = {
+      ...(integ.backfill ?? {}),
+      requestedBy: persona.label,
+      requestedAt: now,
+      pending: true,
+    };
+    // The demo "controller" consumes the request shortly after.
+    setTimeout(() => {
+      integ.backfill = {
+        lastRunAt: new Date().toISOString(),
+        listed: 37,
+        ingested: 37,
+        requestedBy: persona.label,
+        requestedAt: now,
+      };
+    }, 1500);
+    return;
+  }
+  await request<unknown>(`/api/integrations/${encodeURIComponent(name)}/actions/backfill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(repositories.length ? { repositories } : {}),
+  });
+}
+
+// subscribeConfig opens the SSE stream for config-changed signals — a
+// separate subscription so the refetch only happens while the
+// configuration view is mounted.
+export function subscribeConfig(onChange: () => void): () => void {
+  if (dataMode() !== "live") return () => {};
+  const es = new EventSource("/events");
+  es.addEventListener("config-changed", onChange);
+  return () => es.close();
 }
 
 // subscribe opens the SSE stream and calls onChange whenever findings change

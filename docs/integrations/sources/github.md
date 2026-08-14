@@ -132,6 +132,42 @@ spec:
 On each reconcile interval the controller lists recent deliveries and asks GitHub to redeliver those that never got a
 2xx. **App credentials are required** — the delivery log is App-scoped, so a PAT integration cannot sweep.
 
+## The manual backfill
+
+The sweep can only re-send deliveries that happened. Alerts raised _before_ the App was installed on (or associated
+with) a repository never produced a delivery, so no replay finds them. The backfill does: a one-shot walk of the
+provider's **open** alerts through the list API, ingesting each one exactly as a webhook delivery would (idempotent —
+alerts that already have findings fold in).
+
+Request it by stamping `spec.backfill` — from the status page's configuration view, with
+`patchy backfill <integration>`, or directly. The RBAC verb is `backfill` on `integrations` (enforced by the
+[admission policy](../../deployment/kustomize.md) for every client). The controller consumes the request once, echoes it
+on `status.backfill.backfilledAt`, and reports the walk (`listed`, `ingested`, `truncated`, `error`) beside it.
+
+```yaml
+spec:
+  backfill:
+    by: op@example.com
+    at: "2026-08-14T12:00:00Z"
+    repositories: ["acme/", "acme-labs/tool"] # optional; empty = full scope
+```
+
+The semantics, in brief:
+
+- **Filter entries are prefixes** of `owner/name`: `acme/` covers an owner, `acme/service-` a name prefix, `acme/shop`
+  one repository (and any name extending it). Matching is case-insensitive. Empty means everything the credential can
+  see.
+- **App credentials** fan out across the App's installations: organization accounts through the org-wide alert listing,
+  user accounts (and any account whose filter entries all name repositories) by enumerating the installation's
+  repository inventory and walking only matching repositories.
+- **PAT credentials** cannot discover repositories, so every filter entry must be an exact `owner/name`; a bare prefix
+  is reported as an error on `status.backfill.error`.
+- **The walk is bounded** (~10K alerts per pass, plus a repository-inventory cap). A pass that exceeds it sets
+  `status.backfill.truncated`; re-request with a narrower prefix to cover the rest — there is no cursor.
+- **Only open alerts** are listed; dismissed and fixed alerts are not backfilled.
+- The list API omits the rule-help markdown a webhook-driven ingest fetches per alert, so backfilled findings fall back
+  to the rule description. Everything else — accumulation, labels, tracking issues — behaves identically.
+
 ## GitHub Enterprise Server
 
 Point the resource at your instance and everything else is identical (the

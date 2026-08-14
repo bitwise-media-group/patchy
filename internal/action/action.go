@@ -12,9 +12,11 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
-// Verbs the human-action surface understands. They are custom RBAC verbs on
-// findings.patchy.bitwisemedia.uk: plain strings as far as the API server is
-// concerned, so granting one confers exactly one action.
+// Verbs the human-action surface understands. They are custom RBAC verbs —
+// the per-finding ones on findings.patchy.bitwisemedia.uk, the
+// integration-scoped ones on integrations.patchy.bitwisemedia.uk: plain
+// strings as far as the API server is concerned, so granting one confers
+// exactly one action.
 const (
 	// VerbApprove releases the breaking-change hold and revives handed-off
 	// findings.
@@ -28,20 +30,30 @@ const (
 	VerbSuspend = "suspend"
 	// VerbResume lifts a suspension.
 	VerbResume = "resume"
-	// VerbReplay redelivers the webhook delivery log (namespace-wide demo
-	// tooling).
+	// VerbBackfill lists an integration's pre-existing open alerts into
+	// findings — the ones that predate webhook coverage (integration-scoped).
+	VerbBackfill = "backfill"
+	// VerbReplay redelivers the webhook delivery log (integration-scoped
+	// demo tooling).
 	VerbReplay = "replay"
 	// VerbReset deletes every pipeline resource in the namespace
-	// (namespace-wide demo tooling).
+	// (integration-scoped demo tooling).
 	VerbReset = "reset"
 )
 
 // ActionVerbs lists the per-finding verbs in the order clients present them.
 var ActionVerbs = []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume}
 
-// AdminVerbs lists the namespace-wide verbs, resolved the same way but
-// surfaced on the namespace rather than on a finding.
+// AdminVerbs lists the demo-tooling verbs the status page's user menu
+// surfaces, resolved on integrations.
 var AdminVerbs = []string{VerbReplay, VerbReset}
+
+// IntegrationVerbs lists every integration-scoped verb, in the order
+// clients present them. All are checked on
+// integrations.patchy.bitwisemedia.uk — the same resource the admission
+// policy's authorizer names, which is what keeps the CLI/status-server
+// SubjectAccessReviews and the server-side enforcement in agreement.
+var IntegrationVerbs = []string{VerbBackfill, VerbReplay, VerbReset}
 
 // Errors Apply returns. Callers map them onto their own vocabulary: the status
 // server turns ErrUnavailable into a 403 and ErrUnknownVerb into a 404; the CLI

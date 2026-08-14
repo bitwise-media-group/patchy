@@ -62,6 +62,10 @@ type Server struct {
 	comments      map[int][]comment
 	nextCommentID int64
 	dismissed     map[int]string
+	// alerts are the seeded code-scanning alerts the list endpoints serve —
+	// the pre-existing estate a backfill walks. The get/update endpoints
+	// keep fabricating alerts on the fly for webhook-driven flows.
+	alerts []seededAlert
 	pulls         map[int]*pull
 	git           gitData
 	next          int
@@ -167,6 +171,8 @@ func (s *Server) Age(d time.Duration) {
 func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/code-scanning/alerts/{number}", s.getAlert)
 	mux.HandleFunc("PATCH /repos/{owner}/{repo}/code-scanning/alerts/{number}", s.updateAlert)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/code-scanning/alerts", s.listRepoAlerts)
+	mux.HandleFunc("GET /orgs/{org}/code-scanning/alerts", s.listOrgAlerts)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues", s.listIssues)
 	mux.HandleFunc("POST /repos/{owner}/{repo}/issues", s.createIssue)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/issues/{number}", s.getIssue)
@@ -200,10 +206,30 @@ func (s *Server) getAlert(w http.ResponseWriter, r *http.Request) {
 	if isDismissed {
 		state = "dismissed"
 	}
-	writeJSON(w, map[string]any{
+	writeJSON(w, alertBody(r.PathValue("owner"), r.PathValue("repo"), number, state, false))
+}
+
+// seededAlert is one pre-existing code-scanning alert the list endpoints
+// serve.
+type seededAlert struct {
+	owner, repo string
+	number      int
+}
+
+// SeedAlert records a pre-existing open code-scanning alert, so a backfill
+// list walk can find alerts no webhook ever delivered.
+func (s *Server) SeedAlert(owner, repo string, number int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.alerts = append(s.alerts, seededAlert{owner: owner, repo: repo, number: number})
+}
+
+// alertBody is the JSON shape both the get and list alert endpoints serve.
+func alertBody(owner, repo string, number int, state string, embedRepo bool) map[string]any {
+	body := map[string]any{
 		"number":   number,
 		"state":    state,
-		"html_url": fmt.Sprintf("https://github.com/acme/shop/security/code-scanning/%d", number),
+		"html_url": fmt.Sprintf("https://github.com/%s/%s/security/code-scanning/%d", owner, repo, number),
 		"rule": map[string]any{
 			"id":                      "js/reflected-xss",
 			"name":                    "js/reflected-xss",
@@ -220,7 +246,53 @@ func (s *Server) getAlert(w http.ResponseWriter, r *http.Request) {
 				"path": "src/render.js", "start_line": 42, "end_line": 44,
 			},
 		},
-	})
+	}
+	if embedRepo {
+		body["repository"] = map[string]any{
+			"name":  repo,
+			"owner": map[string]any{"login": owner},
+		}
+	}
+	return body
+}
+
+// listAlerts serves the seeded alerts matching keep, honouring the state
+// filter (default open; a dismissed alert leaves the open listing). One
+// page — the fake never sets a Link header, so clients stop after it.
+func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, keep func(seededAlert) bool, embedRepo bool) {
+	wantState := r.URL.Query().Get("state")
+	if wantState == "" {
+		wantState = "open"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []map[string]any{}
+	for _, a := range s.alerts {
+		if !keep(a) {
+			continue
+		}
+		state := "open"
+		if _, isDismissed := s.dismissed[a.number]; isDismissed {
+			state = "dismissed"
+		}
+		if state != wantState {
+			continue
+		}
+		out = append(out, alertBody(a.owner, a.repo, a.number, state, embedRepo))
+	}
+	writeJSON(w, out)
+}
+
+func (s *Server) listRepoAlerts(w http.ResponseWriter, r *http.Request) {
+	owner, repo := r.PathValue("owner"), r.PathValue("repo")
+	s.listAlerts(w, r, func(a seededAlert) bool {
+		return a.owner == owner && a.repo == repo
+	}, false)
+}
+
+func (s *Server) listOrgAlerts(w http.ResponseWriter, r *http.Request) {
+	org := r.PathValue("org")
+	s.listAlerts(w, r, func(a seededAlert) bool { return a.owner == org }, true)
 }
 
 func (s *Server) updateAlert(w http.ResponseWriter, r *http.Request) {

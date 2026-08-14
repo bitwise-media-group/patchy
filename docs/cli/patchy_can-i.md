@@ -4,11 +4,13 @@ Show which actions your RBAC allows
 
 ### Synopsis
 
-Show what you may do to findings in this namespace.
+Show what you may do in this namespace.
 
 Each action is a custom RBAC verb, granted independently — holding 'approve'
-says nothing about 'suspend'. With no argument this prints the whole matrix,
-which is the fastest answer to "why was that refused?".
+says nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,
+suspend, resume) live on findings; the integration-scoped verbs (backfill,
+replay, reset) live on integrations. With no argument this prints the whole
+matrix, which is the fastest answer to "why was that refused?".
 
 ```
 patchy can-i [verb] [flags]
@@ -19,6 +21,7 @@ patchy can-i [verb] [flags]
 ```
   patchy can-i
   patchy can-i approve
+  patchy can-i backfill
   patchy can-i approve -n patchy
 ```
 

@@ -106,7 +106,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 
 	ic := &integration.IntegrationReconciler{
 		Client: mgr.GetClient(), Creds: creds, Log: log,
-		ResetDedup: srv.ResetDedup,
+		ResetDedup: srv.ResetDedup, Ingest: ingestor,
 	}
 	if err := ic.SetupWithManager(mgr); err != nil {
 		return err

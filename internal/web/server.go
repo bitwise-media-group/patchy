@@ -96,6 +96,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
 	mux.HandleFunc("POST /api/findings/{name}/actions/{verb}", s.handleAction)
 	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
+	mux.HandleFunc("GET /api/config", s.handleConfig)
+	mux.HandleFunc("POST /api/integrations/{name}/actions/backfill", s.handleBackfill)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/transcript", s.handleTranscript)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	s.auth.Register(mux)
@@ -170,7 +172,10 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, grants := v.id, v.grants
-	user := &User{Name: id.Display(), LoggedIn: id.Session, AdminActions: grants.Admin}
+	user := &User{
+		Name: id.Display(), LoggedIn: id.Session, AdminActions: grants.Admin,
+		ConfigView: grants.Config, IntegrationActions: grants.Integration,
+	}
 	ds, err := s.buildDataset(r.Context(), true, grants.Verbs, user)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build dataset", slog.Any("error", err))

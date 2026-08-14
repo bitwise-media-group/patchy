@@ -35,10 +35,14 @@ const (
 	VerbSuspend = action.VerbSuspend
 	// VerbResume is the custom RBAC verb behind the resume action.
 	VerbResume = action.VerbResume
-	// VerbReplay is the custom RBAC verb behind the namespace-wide replay
-	// action (redeliver the webhook delivery log — demo tooling).
+	// VerbBackfill is the custom RBAC verb (on integrations) behind the
+	// backfill action: list an integration's pre-existing open alerts into
+	// findings.
+	VerbBackfill = action.VerbBackfill
+	// VerbReplay is the custom RBAC verb (on integrations) behind the
+	// replay action (redeliver the webhook delivery log — demo tooling).
 	VerbReplay = action.VerbReplay
-	// VerbReset is the custom RBAC verb behind the namespace-wide reset
+	// VerbReset is the custom RBAC verb (on integrations) behind the reset
 	// action (delete every pipeline resource — demo tooling).
 	VerbReset = action.VerbReset
 )
@@ -47,12 +51,16 @@ const (
 // receives them.
 var ActionVerbs = action.ActionVerbs
 
-// AdminVerbs lists the namespace-wide custom verbs, resolved the same way
-// but surfaced on the dataset's user rather than per finding.
+// AdminVerbs lists the demo-tooling custom verbs the user menu renders,
+// resolved on integrations like every integration-scoped verb.
 var AdminVerbs = action.AdminVerbs
 
-// findingsGroup is the API group carrying the custom verbs.
-const findingsGroup = "patchy.bitwisemedia.uk"
+// IntegrationVerbs lists the integration-scoped custom verbs in the order
+// the UI receives them.
+var IntegrationVerbs = action.IntegrationVerbs
+
+// group is the API group carrying the custom verbs.
+const group = "patchy.bitwisemedia.uk"
 
 // defaultTTL bounds how stale a cached grant may be. Short on purpose: a
 // revoked approver should lose the buttons within seconds, and four SARs
@@ -68,9 +76,17 @@ const cacheLimit = 1024
 type Grants struct {
 	// View reports native get on findings — the dashboard read gate.
 	View bool
+	// Config reports native get on integrations — the configuration-view
+	// read gate.
+	Config bool
 	// Verbs are the granted custom action verbs, in ActionVerbs order.
 	Verbs []string
-	// Admin are the granted namespace-wide verbs, in AdminVerbs order.
+	// Integration are the granted integration-scoped verbs, in
+	// IntegrationVerbs order.
+	Integration []string
+	// Admin are the granted demo-tooling verbs (the AdminVerbs subset of
+	// Integration), kept separate so the user menu and the adminActions
+	// wire field stay stable.
 	Admin []string
 }
 
@@ -79,9 +95,14 @@ func (g Grants) Allows(verb string) bool {
 	return slices.Contains(g.Verbs, verb)
 }
 
-// AllowsAdmin reports whether the namespace-wide verb is granted.
+// AllowsAdmin reports whether the demo-tooling verb is granted.
 func (g Grants) AllowsAdmin(verb string) bool {
 	return slices.Contains(g.Admin, verb)
+}
+
+// AllowsIntegration reports whether the integration-scoped verb is granted.
+func (g Grants) AllowsIntegration(verb string) bool {
+	return slices.Contains(g.Integration, verb)
 }
 
 // Full is the bypass granter for auth mode none: everything, for everyone.
@@ -90,9 +111,11 @@ type Full struct{}
 // Grants returns every grant.
 func (Full) Grants(context.Context, auth.Identity) (Grants, error) {
 	return Grants{
-		View:  true,
-		Verbs: append([]string(nil), ActionVerbs...),
-		Admin: append([]string(nil), AdminVerbs...),
+		View:        true,
+		Config:      true,
+		Verbs:       append([]string(nil), ActionVerbs...),
+		Integration: append([]string(nil), IntegrationVerbs...),
+		Admin:       append([]string(nil), AdminVerbs...),
 	}, nil
 }
 
@@ -128,8 +151,9 @@ func NewReviewer(c client.Client, namespace string, ttl time.Duration) *Reviewer
 	}
 }
 
-// Grants resolves the identity's grants: native get on findings for View,
-// then one review per custom verb.
+// Grants resolves the identity's grants: native get on findings for View
+// and on integrations for Config, then one review per custom verb on its
+// own resource (~10 SARs per identity per TTL window).
 func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error) {
 	key := cacheKey(id)
 	r.mu.Lock()
@@ -140,13 +164,13 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 	r.mu.Unlock()
 
 	var g Grants
-	view, err := r.review(ctx, id, "get")
+	view, err := r.review(ctx, id, "findings", "get")
 	if err != nil {
 		return Grants{}, err
 	}
 	g.View = view
 	for _, verb := range ActionVerbs {
-		allowed, err := r.review(ctx, id, verb)
+		allowed, err := r.review(ctx, id, "findings", verb)
 		if err != nil {
 			return Grants{}, err
 		}
@@ -154,13 +178,21 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 			g.Verbs = append(g.Verbs, verb)
 		}
 	}
-	for _, verb := range AdminVerbs {
-		allowed, err := r.review(ctx, id, verb)
+	config, err := r.review(ctx, id, "integrations", "get")
+	if err != nil {
+		return Grants{}, err
+	}
+	g.Config = config
+	for _, verb := range IntegrationVerbs {
+		allowed, err := r.review(ctx, id, "integrations", verb)
 		if err != nil {
 			return Grants{}, err
 		}
 		if allowed {
-			g.Admin = append(g.Admin, verb)
+			g.Integration = append(g.Integration, verb)
+			if slices.Contains(AdminVerbs, verb) {
+				g.Admin = append(g.Admin, verb)
+			}
 		}
 	}
 
@@ -173,22 +205,22 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 	return g, nil
 }
 
-// review runs one SubjectAccessReview for verb on findings.
-func (r *Reviewer) review(ctx context.Context, id auth.Identity, verb string) (bool, error) {
+// review runs one SubjectAccessReview for verb on the given resource.
+func (r *Reviewer) review(ctx context.Context, id auth.Identity, resource, verb string) (bool, error) {
 	sar := &authorizationv1.SubjectAccessReview{
 		Spec: authorizationv1.SubjectAccessReviewSpec{
 			User:   id.Username,
 			Groups: id.Groups,
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
 				Namespace: r.namespace,
-				Group:     findingsGroup,
-				Resource:  "findings",
+				Group:     group,
+				Resource:  resource,
 				Verb:      verb,
 			},
 		},
 	}
 	if err := r.client.Create(ctx, sar); err != nil {
-		return false, fmt.Errorf("access review %s findings for %s: %w", verb, id.Username, err)
+		return false, fmt.Errorf("access review %s %s for %s: %w", verb, resource, id.Username, err)
 	}
 	return sar.Status.Allowed, nil
 }

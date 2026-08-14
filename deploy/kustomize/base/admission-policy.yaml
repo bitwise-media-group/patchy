@@ -183,3 +183,103 @@ spec:
         namespaceSelector:
             matchLabels:
                 kubernetes.io/metadata.name: patchy
+---
+# Field-level authorization for the request stamps on Integrations: the
+# backfill, replay and reset triggers each need their own custom verb on
+# integrations.patchy.bitwisemedia.uk, so `update` on integrations (the
+# operator's configuration grant) does not quietly include the ability to
+# fire pipeline actions.
+#
+# Two DELIBERATE divergences from the findings policy above:
+#   * No frozen-fields rule. IntegrationSpec is operator configuration —
+#     provider blocks, secretRef, interval, suspend — and plain `update`
+#     must keep working for the GitOps flow. Only the three request fields
+#     are verb-gated.
+#   * Clearing a request field needs no verb. A GitOps apply pruning a
+#     stamped spec.replay must not be denied; cancelling a pending request
+#     carries no authority of its own.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+    name: patchy-integration-actions
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    # Fail closed: a policy that cannot compile or evaluate must not become an
+    # open door.
+    failurePolicy: Fail
+    matchConstraints:
+        resourceRules:
+            # CREATE is matched alongside UPDATE for the same laundering
+            # reason as findings: recreating an Integration with a request
+            # field preset must not smuggle the action past the verb.
+            - apiGroups: [patchy.bitwisemedia.uk]
+              apiVersions: [v1alpha1]
+              operations: [CREATE, UPDATE]
+              resources: [integrations]
+    matchConditions:
+        # Same exemption as the findings policy: the status server does its
+        # own SubjectAccessReview before stamping a request, and the
+        # controllers never write Integration spec at all — exempting them
+        # is belt-and-braces against a future one that must.
+        - name: not-a-patchy-controller
+          expression: >-
+              !(request.userInfo.username in [
+                'system:serviceaccount:patchy:patchy-integration-controller',
+                'system:serviceaccount:patchy:patchy-source-controller',
+                'system:serviceaccount:patchy:patchy-context-controller',
+                'system:serviceaccount:patchy:patchy-investigation-controller',
+                'system:serviceaccount:patchy:patchy-remediation-controller',
+                'system:serviceaccount:patchy:patchy-status-server'
+              ])
+    variables:
+        - name: auth
+          expression: >-
+              authorizer.group('patchy.bitwisemedia.uk').resource('integrations')
+                .namespace(request.namespace)
+        # oldObject is null on CREATE, so each rule reads "absent, OR
+        # unchanged from old, OR authorized": presetting a request on a
+        # fresh object counts as setting it, while omitting it stays free.
+        - name: old
+          expression: "oldObject"
+    validations:
+        - expression: >-
+              !has(object.spec.backfill)
+              || (variables.old != null && variables.old.spec.?backfill == object.spec.?backfill)
+              || variables.auth.check('backfill').allowed()
+          messageExpression: >-
+              "setting spec.backfill on integration " + object.metadata.name +
+              " requires the 'backfill' verb on integrations.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              !has(object.spec.replay)
+              || (variables.old != null && variables.old.spec.?replay == object.spec.?replay)
+              || variables.auth.check('replay').allowed()
+          messageExpression: >-
+              "setting spec.replay on integration " + object.metadata.name +
+              " requires the 'replay' verb on integrations.patchy.bitwisemedia.uk"
+          reason: Forbidden
+
+        - expression: >-
+              !has(object.spec.reset)
+              || (variables.old != null && variables.old.spec.?reset == object.spec.?reset)
+              || variables.auth.check('reset').allowed()
+          messageExpression: >-
+              "setting spec.reset on integration " + object.metadata.name +
+              " requires the 'reset' verb on integrations.patchy.bitwisemedia.uk"
+          reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+    name: patchy-integration-actions
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    policyName: patchy-integration-actions
+    validationActions: [Deny]
+    matchResources:
+        namespaceSelector:
+            matchLabels:
+                kubernetes.io/metadata.name: patchy

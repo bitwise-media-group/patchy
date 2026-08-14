@@ -163,3 +163,22 @@ type Resolver interface {
 	// the pipeline calls it once per phase entry, but retries are possible.
 	Resolve(ctx context.Context, alerts []AlertRef, v Verdict) error
 }
+
+// Lister is the optional backfill capability of a source: enumerating the
+// currently open findings the tool already knows about, for alerts that
+// predate webhook coverage and so would otherwise never be delivered.
+//
+// It is deliberately separate from Handler, like Resolver: a source that
+// only receives deliveries is a complete source — the pipeline
+// type-asserts for Lister and reports backfill unsupported when it is
+// absent, rather than forcing every handler to carry a no-op method.
+type Lister interface {
+	// List enumerates the source's open findings, calling yield for each
+	// until yield returns false or the walk is exhausted. repos narrows the
+	// walk to repositories matching any entry — an exact "owner/name" or an
+	// "owner/" prefix (a slash-less entry is treated as an owner prefix);
+	// empty means the source's full scope. complete is false when the walk
+	// ended early — the caller stopped it, or the source's page budget ran
+	// out before the estate was covered.
+	List(ctx context.Context, repos []string, yield func(Finding) bool) (complete bool, err error)
+}

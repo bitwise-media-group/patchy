@@ -19,45 +19,57 @@ import (
 // scan delivering hundreds of alerts) into one refetch signal.
 const defaultDebounce = 500 * time.Millisecond
 
-// StartWatch registers change handlers on the Finding and FindingRollup
-// informers and publishes a debounced findings-changed notification to the
-// SSE broker. It blocks until ctx is cancelled, so it slots straight into a
-// manager runnable — running after the cache has synced and stopping with
-// the manager.
+// StartWatch registers change handlers on the Finding/FindingRollup and
+// Integration/Forge informers and publishes debounced findings-changed /
+// config-changed notifications to the SSE broker. It blocks until ctx is
+// cancelled, so it slots straight into a manager runnable — running after
+// the cache has synced and stopping with the manager.
 func (s *Server) StartWatch(ctx context.Context, c cache.Cache) error {
-	signal := make(chan struct{}, 1)
-	notify := func() {
-		select {
-		case signal <- struct{}{}:
-		default:
+	watch := func(signal chan<- struct{}, objs ...client.Object) error {
+		notify := func() {
+			select {
+			case signal <- struct{}{}:
+			default:
+			}
 		}
+		for _, obj := range objs {
+			informer, err := c.GetInformer(ctx, obj)
+			if err != nil {
+				return fmt.Errorf("watch %T: %w", obj, err)
+			}
+			_, err = informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+				AddFunc: func(any) { notify() },
+				UpdateFunc: func(oldObj, newObj any) {
+					if resourceChanged(oldObj, newObj) {
+						notify()
+					}
+				},
+				DeleteFunc: func(any) { notify() },
+			})
+			if err != nil {
+				return fmt.Errorf("watch %T: %w", obj, err)
+			}
+		}
+		return nil
 	}
-	for _, obj := range []client.Object{&v1alpha1.Finding{}, &v1alpha1.FindingRollup{}} {
-		informer, err := c.GetInformer(ctx, obj)
-		if err != nil {
-			return fmt.Errorf("watch %T: %w", obj, err)
-		}
-		_, err = informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
-			AddFunc: func(any) { notify() },
-			UpdateFunc: func(oldObj, newObj any) {
-				if resourceChanged(oldObj, newObj) {
-					notify()
-				}
-			},
-			DeleteFunc: func(any) { notify() },
-		})
-		if err != nil {
-			return fmt.Errorf("watch %T: %w", obj, err)
-		}
+
+	findings := make(chan struct{}, 1)
+	if err := watch(findings, &v1alpha1.Finding{}, &v1alpha1.FindingRollup{}); err != nil {
+		return err
 	}
-	s.debounceLoop(ctx, signal)
+	config := make(chan struct{}, 1)
+	if err := watch(config, &v1alpha1.Integration{}, &v1alpha1.Forge{}); err != nil {
+		return err
+	}
+	go s.debounceLoop(ctx, config, eventConfigChanged)
+	s.debounceLoop(ctx, findings, eventFindingsChanged)
 	return nil
 }
 
-// debounceLoop publishes at most one notification per debounce window: the
-// first signal arms the timer, further signals are absorbed into the pending
-// publish.
-func (s *Server) debounceLoop(ctx context.Context, signal <-chan struct{}) {
+// debounceLoop publishes at most one notification of event per debounce
+// window: the first signal arms the timer, further signals are absorbed
+// into the pending publish.
+func (s *Server) debounceLoop(ctx context.Context, signal <-chan struct{}, event string) {
 	debounce := s.debounce
 	if debounce <= 0 {
 		debounce = defaultDebounce
@@ -78,7 +90,7 @@ func (s *Server) debounceLoop(ctx context.Context, signal <-chan struct{}) {
 		case <-timer.C:
 			if pending {
 				pending = false
-				s.broker.publish()
+				s.broker.publish(event)
 			}
 		}
 	}

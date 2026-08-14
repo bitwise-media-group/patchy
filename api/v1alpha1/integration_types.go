@@ -451,6 +451,16 @@ type IntegrationSpec struct {
 	// request is still actionable — the controller never clears spec.
 	// +optional
 	Reset *ActionRequest `json:"reset,omitempty"`
+	// Backfill requests one bounded list-alerts walk of the provider's open
+	// alerts, ingesting the ones that predate webhook coverage — alerts
+	// raised before the App was installed on (or associated with) their
+	// repository, which no replay of the delivery log can ever surface.
+	// Ingestion is idempotent, so re-listing alerts that already have
+	// findings is safe. Freshness against status.backfill.backfilledAt
+	// decides whether the request is still actionable — the controller
+	// never clears spec.
+	// +optional
+	Backfill *BackfillRequest `json:"backfill,omitempty"`
 	// GitHub is the github provider block.
 	// +optional
 	GitHub *GitHubIntegration `json:"github,omitempty"`
@@ -469,6 +479,26 @@ type IntegrationSpec struct {
 	// Generic is the generic provider block.
 	// +optional
 	Generic *GenericIntegration `json:"generic,omitempty"`
+}
+
+// BackfillRequest records who requested a manual alert backfill, when, and
+// over which repositories. Freshness against status.backfill.backfilledAt
+// decides whether the request is still actionable — the consuming controller
+// never clears spec.
+type BackfillRequest struct {
+	// By is the requesting login.
+	By string `json:"by"`
+	// At is when the request was received.
+	At metav1.Time `json:"at"`
+	// Repositories narrows the walk to repositories matching any entry: an
+	// exact "owner/name", or an "owner/" prefix covering the whole owner.
+	// Empty means the credential's full scope. A truncated backfill re-runs
+	// with a narrower prefix rather than paging on.
+	// +optional
+	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=200
+	Repositories []string `json:"repositories,omitempty"`
 }
 
 // InstallationSummary counts one GitHub App installation — counts and
@@ -516,6 +546,40 @@ type RedeliveryStatus struct {
 	ReplayedAt *metav1.Time `json:"replayedAt,omitempty"`
 }
 
+// BackfillStatus reports the last manual alert backfill.
+type BackfillStatus struct {
+	// LastRunAt is when the last backfill walk ran.
+	// +optional
+	LastRunAt *metav1.Time `json:"lastRunAt,omitempty"`
+	// Listed counts the open alerts the last walk saw.
+	// +optional
+	Listed int32 `json:"listed,omitempty"`
+	// Ingested counts the alerts folded into findings; the rest were
+	// filtered out by the repository prefixes or failed individually (see
+	// error).
+	// +optional
+	Ingested int32 `json:"ingested,omitempty"`
+	// Truncated marks a walk that hit the page budget before exhausting the
+	// estate; re-request with a narrower repository prefix to cover the
+	// rest.
+	// +optional
+	Truncated bool `json:"truncated,omitempty"`
+	// Error carries the last backfill failure; empty when the walk
+	// succeeded.
+	// +optional
+	Error string `json:"error,omitempty"`
+	// BackfilledAt echoes spec.backfill.at once that backfill has run; a
+	// spec.backfill newer than this triggers another walk.
+	// +optional
+	BackfilledAt *metav1.Time `json:"backfilledAt,omitempty"`
+	// AttemptedAt echoes spec.backfill.at once the controller has attempted
+	// that request, whether or not the walk succeeded. Unlike backfilledAt it
+	// never gates a retry — it lets observers distinguish a request the
+	// controller has not seen yet from one that failed and is being retried.
+	// +optional
+	AttemptedAt *metav1.Time `json:"attemptedAt,omitempty"`
+}
+
 // IntegrationStatus is the integration's observed state.
 type IntegrationStatus struct {
 	// Conditions of the integration (Ready: credential valid, system
@@ -541,6 +605,9 @@ type IntegrationStatus struct {
 	// Redelivery reports the last failed-delivery sweep.
 	// +optional
 	Redelivery *RedeliveryStatus `json:"redelivery,omitempty"`
+	// Backfill reports the last manual alert backfill.
+	// +optional
+	Backfill *BackfillStatus `json:"backfill,omitempty"`
 	// ResetAt echoes spec.reset.at once the receiver's dedup window has
 	// been dropped; a spec.reset newer than this triggers another drop.
 	// +optional

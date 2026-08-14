@@ -62,14 +62,14 @@ func newHarness(t *testing.T, objs ...client.Object) *harness {
 		RequestTimeout: 5 * time.Second,
 	}
 	h.opts.WithEnv(&kubecfg.Env{Client: c, Namespace: testNamespace})
-	h.opts.WithAccess(func(context.Context, *kubecfg.Env, string) (bool, error) { return true, nil })
+	h.opts.WithAccess(func(context.Context, *kubecfg.Env, string, string) (bool, error) { return true, nil })
 	h.opts.WithIdentity(func() string { return "op@acme.test" })
 	return h
 }
 
 // deny makes every access review answer no.
 func (h *harness) deny() {
-	h.opts.WithAccess(func(context.Context, *kubecfg.Env, string) (bool, error) { return false, nil })
+	h.opts.WithAccess(func(context.Context, *kubecfg.Env, string, string) (bool, error) { return false, nil })
 }
 
 // finding returns the named finding's current state.

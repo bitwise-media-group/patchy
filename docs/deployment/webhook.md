@@ -54,8 +54,13 @@ the lookback window, including deliveries that already succeeded — paired with
 re-runs the whole pipeline from ingestion, which is exactly what a demo wants. The button writes `spec.replay` on the
 Integration; the controller performs the redelivery on its next reconcile.
 
-Deliveries that never happened — alerts predating the App installation — are invisible to the sweep; only a list-alerts
-backfill could find those, and patchy does not do that today.
+Deliveries that never happened — alerts predating the App installation — are invisible to the sweep: there is nothing in
+the delivery log to redeliver. Those are what the **manual backfill** exists for: a one-shot list-alerts walk that
+ingests the provider's open alerts directly. Trigger it from the status page's configuration view, with
+`patchy backfill <integration> [--repo owner/ ...]`, or by stamping `spec.backfill` on the Integration directly (RBAC
+verb `backfill` on integrations). The walk honours an optional repository prefix filter, is bounded by a page budget
+(`status.backfill.truncated` says when to re-run with a narrower prefix), and is idempotent — alerts that already have
+findings simply fold in. See [the GitHub source](../integrations/sources/github.md) for the full semantics.
 
 ## Expose it
 

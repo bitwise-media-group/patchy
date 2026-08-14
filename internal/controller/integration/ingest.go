@@ -181,9 +181,12 @@ var errRaced = fmt.Errorf("finding advanced past accumulation")
 
 // foldable phases still accept new alerts: the accumulation window overlaps
 // enhancement, and an aged window only closes via the AccumulationComplete
-// condition, not the phase.
+// condition, not the phase. An empty phase is the creation window — the
+// status write that stamps Opened races the next alert of the family (a
+// backfill ingests them back to back), and treating it as closed would
+// splinter the family into one generation per alert.
 func foldable(p v1alpha1.Phase) bool {
-	return p == v1alpha1.PhaseOpened || p == v1alpha1.PhaseEnhanced
+	return p == "" || p == v1alpha1.PhaseOpened || p == v1alpha1.PhaseEnhanced
 }
 
 // generationOf parses the trailing generation ordinal of a Finding name.
@@ -212,10 +215,14 @@ func prevName(items []v1alpha1.Finding, maxGen int) string {
 }
 
 // fold appends the finding's alert to an existing Finding, idempotent on
-// alert ID, under conflict retry.
+// alert ID, under conflict retry. NotFound retries too, on the slower
+// backoff: the fold target may be a finding another ingest created moments
+// ago that the cached client has not observed yet — losing the alert to
+// informer lag would silently thin a backfill.
 func (in *Ingestor) fold(ctx context.Context, name string, f source.Finding) error {
 	alert := toAlert(f)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	retriable := func(err error) bool { return kerrors.IsConflict(err) || kerrors.IsNotFound(err) }
+	return retry.OnError(retry.DefaultBackoff, retriable, func() error {
 		var cur v1alpha1.Finding
 		if err := in.Get(ctx, types.NamespacedName{Namespace: in.Namespace, Name: name}, &cur); err != nil {
 			return err

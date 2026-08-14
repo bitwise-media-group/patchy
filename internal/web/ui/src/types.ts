@@ -51,6 +51,12 @@ export type ActionVerb = "approve" | "retry" | "expedite" | "suspend" | "resume"
 // state. Granted verbs arrive as DatasetUser.adminActions.
 export type AdminVerb = "replay" | "reset";
 
+// IntegrationVerb is an integration-scoped action (RBAC verbs on
+// integrations): backfill lists pre-existing open alerts into findings;
+// replay/reset are the demo tooling. Granted verbs arrive as
+// DatasetUser.integrationActions.
+export type IntegrationVerb = "backfill" | "replay" | "reset";
+
 export interface Location {
   path: string;
   startLine?: number;
@@ -373,6 +379,12 @@ export interface DatasetUser {
   loggedIn: boolean;
   // Granted namespace-wide verbs the user menu renders; absent means none.
   adminActions?: AdminVerb[];
+  // Whether the configuration view is reachable (native get on
+  // integrations); the nav link renders only when true.
+  configView?: boolean;
+  // Granted integration-scoped verbs the configuration view's triggers
+  // check; absent means none.
+  integrationActions?: IntegrationVerb[];
 }
 
 // Dataset is the payload behind GET /api/findings (trimmed summaries) and
@@ -393,4 +405,88 @@ export interface Dataset {
 // fetch from.
 export interface OfflineDataset extends Dataset {
   findings: Finding[];
+}
+
+// ---- Configuration view (internal/web/config.go) ----
+//
+// ConfigDataset is the payload behind GET /api/config: the configured
+// Forges, Integrations and enhancers. Never public — the route requires a
+// signed-in identity holding native get on integrations.
+
+// ForgeConfig is one Forge's configuration surface.
+export interface ForgeConfig {
+  name: string;
+  provider: string;
+  baseURL?: string;
+  orgs?: string[];
+  repositories?: string[];
+  secretRef?: string;
+  interval?: string;
+  suspend?: boolean;
+  // Ready condition status ("True" | "False" | "Unknown"); absent until
+  // the controller reports.
+  ready?: string;
+  readyMessage?: string;
+}
+
+// RedeliveryStatus mirrors an Integration's status.redelivery.
+export interface RedeliveryStatus {
+  lastSweepAt?: string;
+  scanned?: number;
+  redelivered?: number;
+  truncated?: boolean;
+  error?: string;
+}
+
+// BackfillStatus mirrors an Integration's status.backfill plus the pending
+// spec.backfill echo the trigger renders.
+export interface BackfillStatus {
+  lastRunAt?: string;
+  listed?: number;
+  ingested?: number;
+  truncated?: boolean;
+  error?: string;
+  requestedBy?: string;
+  requestedAt?: string;
+  // A request the controller has not consumed yet.
+  pending?: boolean;
+}
+
+// IntegrationConfig is one Integration's configuration surface, including
+// the backfill trigger's state.
+export interface IntegrationConfig {
+  name: string;
+  provider: string;
+  webhookPath?: string;
+  secretRef?: string;
+  interval?: string;
+  suspend?: boolean;
+  ready?: string;
+  readyMessage?: string;
+  capabilities?: string[];
+  redelivery?: RedeliveryStatus;
+  backfill?: BackfillStatus;
+  // Whether the backfill trigger can do anything here (github provider
+  // with code scanning enabled).
+  backfillSupported?: boolean;
+}
+
+// EnhancerConfig is one context-enhancer instance derived from the
+// Integrations (the static-context enhancer is a controller flag, invisible
+// here).
+export interface EnhancerConfig {
+  id: string;
+  integration?: string;
+  enabled: boolean;
+  // A singleton capability enabled by more than one Integration — a
+  // configuration error the view surfaces rather than resolving.
+  ambiguous?: boolean;
+}
+
+export interface ConfigDataset {
+  generatedAt: string;
+  namespace?: string;
+  forges: ForgeConfig[];
+  integrations: IntegrationConfig[];
+  enhancers: EnhancerConfig[];
 }

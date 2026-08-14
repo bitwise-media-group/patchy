@@ -111,8 +111,9 @@ func applyPolicy(t *testing.T, admin client.Client) {
 		}
 		objs = append(objs, u)
 	}
-	if len(objs) != 2 {
-		t.Fatalf("expected a policy and a binding in %s, decoded %d documents", policyRelPath, len(objs))
+	if len(objs) != 4 {
+		t.Fatalf("expected the findings and integrations policy+binding pairs in %s, decoded %d documents",
+			policyRelPath, len(objs))
 	}
 	for _, u := range objs {
 		if err := admin.Create(t.Context(), u); err != nil && !apierrors.IsAlreadyExists(err) {

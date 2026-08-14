@@ -274,13 +274,20 @@ func TestStatusServer(t *testing.T) {
 		t.Error("suspend action did not set spec.suspend")
 	}
 
-	select {
-	case ev := <-events:
-		if ev != "findings-changed" {
-			t.Errorf("SSE event = %q, want findings-changed", ev)
+	// The stream interleaves config-changed (the Integration/Forge informers
+	// also fire at startup); the finding writes above must surface as a
+	// findings-changed among them.
+	deadline := time.After(10 * time.Second)
+	for waiting := true; waiting; {
+		select {
+		case ev := <-events:
+			if ev == "findings-changed" {
+				waiting = false
+			}
+		case <-deadline:
+			t.Error("no findings-changed SSE event after changes")
+			waiting = false
 		}
-	case <-time.After(10 * time.Second):
-		t.Error("no SSE event after changes")
 	}
 
 	// The agent transcript: a completed run replays its stored conversation.

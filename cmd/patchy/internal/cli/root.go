@@ -45,27 +45,29 @@ type Options struct {
 	// accessFn and identityFn stand in for the two API calls that ask the
 	// server about the caller. A fake client answers neither (it has no
 	// authorizer and no authenticated identity), so tests supply them.
-	accessFn   func(context.Context, *kubecfg.Env, string) (bool, error)
+	accessFn   func(context.Context, *kubecfg.Env, string, string) (bool, error)
 	identityFn func() string
 }
 
 // WithEnv pins a pre-built environment, bypassing kubeconfig resolution.
 func (o *Options) WithEnv(env *kubecfg.Env) { o.env = env }
 
-// WithAccess pins the access-review answer.
-func (o *Options) WithAccess(fn func(context.Context, *kubecfg.Env, string) (bool, error)) {
+// WithAccess pins the access-review answer; the fn receives (resource, verb).
+func (o *Options) WithAccess(fn func(context.Context, *kubecfg.Env, string, string) (bool, error)) {
 	o.accessFn = fn
 }
 
 // WithIdentity pins the identity actions are recorded under.
 func (o *Options) WithIdentity(fn func() string) { o.identityFn = fn }
 
-// access reports whether the caller holds verb on findings.
-func (o *Options) access(ctx context.Context, env *kubecfg.Env, verb string) (bool, error) {
+// access reports whether the caller holds verb on the given resource
+// (findings for the per-finding actions, integrations for backfill/replay/
+// reset).
+func (o *Options) access(ctx context.Context, env *kubecfg.Env, res, verb string) (bool, error) {
 	if o.accessFn != nil {
-		return o.accessFn(ctx, env, verb)
+		return o.accessFn(ctx, env, res, verb)
 	}
-	return canI(ctx, o, env, verb)
+	return canI(ctx, o, env, res, verb)
 }
 
 // identity is who the cluster says the caller is.
@@ -149,6 +151,7 @@ func NewRoot(opts *Options) *cobra.Command {
 		newGetCmd(opts),
 		newDescribeCmd(opts),
 		newReviewCmd(opts),
+		newBackfillCmd(opts),
 		newBrowseCmd(opts),
 		newCanICmd(opts),
 		newDevCmd(opts),

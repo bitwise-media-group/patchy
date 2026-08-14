@@ -41,14 +41,17 @@ type AlertDismisser interface {
 	DismissAlert(ctx context.Context, repo ghclient.Repo, number int, reason, comment string) error
 }
 
-// Handler is the GHAS source plugin. It serves both directions: ingest, built
-// with New, and the verdict write-back, built with NewResolver. The two are
-// separate constructors because the repository is per-delivery on the way in
-// (it comes from the payload) but per-finding on the way out.
+// Handler is the GHAS source plugin. It serves three directions: ingest,
+// built with New; the verdict write-back, built with NewResolver; and the
+// backfill listing, built with NewLister. They are separate constructors
+// because the repository is per-delivery on the way in (it comes from the
+// payload), per-finding on the way out, and the credential's whole scope
+// for a backfill.
 type Handler struct {
 	alerts  AlertGetter
 	dismiss AlertDismisser
 	repo    ghclient.Repo
+	enum    AlertEnumerator
 }
 
 // The handler serves both halves of the seam.
@@ -138,6 +141,13 @@ func (h *Handler) Findings(ctx context.Context, event string, payload []byte) ([
 		return nil, fmt.Errorf("ghas: fetch alert %s#%d: %w", repo, d.Alert.Number, err)
 	}
 
+	return []source.Finding{FindingFromAlert(repo, alert)}, nil
+}
+
+// FindingFromAlert normalizes one code-scanning alert into the
+// source-agnostic finding shape — the single mapping both the webhook path
+// and the backfill lister go through.
+func FindingFromAlert(repo ghclient.Repo, alert *ghclient.Alert) source.Finding {
 	f := source.Finding{
 		Source:      ID,
 		Repo:        source.Repo{Owner: repo.Owner, Name: repo.Name},
@@ -157,7 +167,7 @@ func (h *Handler) Findings(ctx context.Context, event string, payload []byte) ([
 			Snippet:   alert.Snippet,
 		}}
 	}
-	return []source.Finding{f}, nil
+	return f
 }
 
 // advisories extracts the categorization IDs, most authoritative first:

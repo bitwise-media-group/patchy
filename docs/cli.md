@@ -199,6 +199,22 @@ patchy suspend finding -l patchy.bitwisemedia.uk/severity=critical -y    # bulk,
 Bulk operations prompt above one finding unless you pass `-y`, report each finding individually, and exit non-zero if
 any failed — one unavailable finding never stops the rest.
 
+## Backfilling an integration
+
+One action acts on an Integration rather than a finding: the
+[manual backfill](integrations/sources/github.md#the-manual-backfill), which lists the provider's open alerts and
+ingests the ones that predate webhook coverage.
+
+```sh
+patchy backfill gh                                      # the credential's full scope
+patchy backfill gh --repo acme/                         # one owner
+patchy backfill gh --repo acme/shop --repo acme/billing # exact repositories (required with a PAT)
+```
+
+Like every action it writes spec only (`spec.backfill`); the integration-controller runs the walk on its next reconcile
+and reports on `status.backfill` — watch for `truncated`, which means the page budget ran out and a narrower `--repo`
+prefix is needed to reach the rest.
+
 ## Testing a generic integration
 
 The `dev` commands are the one part of the CLI that never touches a cluster: a local test harness for authors of
@@ -243,12 +259,14 @@ block); `-C` points at a store checkout from anywhere.
 
 ## Permissions
 
-Each action is a **custom RBAC verb** on `findings.patchy.bitwisemedia.uk`, granted independently: holding `approve`
-says nothing about `suspend`. To see yours:
+Each action is a **custom RBAC verb**, granted independently: holding `approve` says nothing about `suspend`. The
+per-finding verbs (`approve`, `retry`, `expedite`, `suspend`, `resume`) live on `findings.patchy.bitwisemedia.uk`; the
+integration-scoped ones (`backfill`, `replay`, `reset`) on `integrations.patchy.bitwisemedia.uk`. To see yours:
 
 ```sh
-patchy can-i                # the whole matrix
+patchy can-i                # the whole matrix, findings and integrations
 patchy can-i approve        # one verb; exit code answers, for shell conditionals
+patchy can-i backfill       # integration-scoped verbs resolve on integrations
 ```
 
 Two things enforce those verbs, and only one of them matters:
@@ -258,7 +276,8 @@ Two things enforce those verbs, and only one of them matters:
   using the CLI.
 - A **`ValidatingAdmissionPolicy`** in the cluster binds each spec field to its verb. This runs inside the API server's
   admission chain, so it applies identically to `patchy`, `kubectl edit`, `kubectl patch`, server-side apply and raw
-  `curl`. This is the actual enforcement.
+  `curl`. This is the actual enforcement. There are two policies: one on findings, one on integrations (gating
+  `spec.backfill`/`spec.replay`/`spec.reset` while leaving the operator's configuration surface freely updatable).
 
 That second piece exists because Kubernetes RBAC has no notion of a field: `update` on findings grants the whole object.
 Without the policy, letting a developer suspend a finding would also let them rewrite its severity or forge an approval.

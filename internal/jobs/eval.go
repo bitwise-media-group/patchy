@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/provider"
 )
 
 // KindEvaluation is the LabelRunKind value on evaluation Jobs. It is a plain
@@ -152,6 +153,18 @@ func (c *Client) buildEvalJob(name string, spec EvalSpec) (*batchv1.Job, error) 
 	}
 	lbls := evalLabels(spec)
 
+	deadline := c.cfg.Deadline
+	if spec.Deadline > 0 {
+		deadline = spec.Deadline
+	}
+	// The eval pod captures its caller token once at start (the /bin/sh
+	// export wrapper), so the projection must outlive the whole run; the API
+	// server caps requested expirations at 24h.
+	tokenTTL := int64((deadline + time.Hour).Seconds())
+	if runner.Brokered && tokenTTL >= int64((24*time.Hour).Seconds()) {
+		return nil, fmt.Errorf("jobs: eval deadline %s needs a broker token TTL past the 24h projection cap", deadline)
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -172,16 +185,12 @@ func (c *Client) buildEvalJob(name string, spec EvalSpec) (*batchv1.Job, error) 
 						FSGroup:        new(int64(runAsUser)),
 						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 					},
-					Volumes:        volumes(name),
+					Volumes:        c.podVolumes(name, runner, tokenTTL),
 					InitContainers: []corev1.Container{c.evalPrepareContainer(runner, spec, res)},
 					Containers:     []corev1.Container{c.evalAgentContainer(runner, res)},
 				},
 			},
 		},
-	}
-	deadline := c.cfg.Deadline
-	if spec.Deadline > 0 {
-		deadline = spec.Deadline
 	}
 	if deadline > 0 {
 		job.Spec.ActiveDeadlineSeconds = new(int64(deadline.Seconds()))
@@ -214,16 +223,40 @@ func (c *Client) evalPrepareContainer(runner Runner, spec EvalSpec, res corev1.R
 	}
 }
 
+// evalBrokeredCommand wraps evolve exec-unit so the caller token reaches the
+// CLI: eval pods run no patchy binary that could set the header per-request,
+// so the wrapper captures the projected token into ANTHROPIC_CUSTOM_HEADERS
+// once at start (the token TTL is sized past the deadline for exactly this).
+// /bin/sh is already an image requirement — the prepare script runs it.
+var evalBrokeredCommand = []string{"/bin/sh", "-c",
+	`export ANTHROPIC_CUSTOM_HEADERS="` + provider.BrokerTokenHeader + `: $(cat ` + brokerTokenPath +
+		`)"; exec evolve exec-unit`}
+
 // evalAgentContainer runs the in-pod evolve client. The pod IS the sandbox:
-// the only credential is the model key, injected through the same Secret
-// channel as the finding runners.
+// a non-brokered runner's only credential is the model key, injected through
+// the same Secret channel as the finding runners; a brokered runner gets no
+// credential at all — the gateway env plus the projected caller token.
 func (c *Client) evalAgentContainer(runner Runner, res corev1.ResourceRequirements) corev1.Container {
 	env := []corev1.EnvVar{
 		{Name: "HOME", Value: workspaceDir},
 		{Name: "EVOLVE_UNIT_FILE", Value: evalUnitFilePath},
 		{Name: "EVOLVE_BUNDLE_DIR", Value: evalBundleDir},
 	}
-	if runner.Secret != "" {
+	for _, k := range slices.Sorted(maps.Keys(runner.Env)) {
+		if !credentialChannelEnv[k] {
+			env = append(env, corev1.EnvVar{Name: k, Value: runner.Env[k]})
+		}
+	}
+	command := []string{"evolve", "exec-unit"}
+	mounts := []corev1.VolumeMount{
+		{Name: volWorkspace, MountPath: workspaceDir},
+		{Name: volTmp, MountPath: "/tmp"},
+	}
+	switch {
+	case runner.Brokered:
+		command = evalBrokeredCommand
+		mounts = append(mounts, corev1.VolumeMount{Name: volBrokerToken, MountPath: brokerTokenDir, ReadOnly: true})
+	case runner.Secret != "":
 		env = append(env, corev1.EnvVar{
 			Name: runner.SecretEnv,
 			ValueFrom: &corev1.EnvVarSource{
@@ -235,14 +268,11 @@ func (c *Client) evalAgentContainer(runner Runner, res corev1.ResourceRequiremen
 		})
 	}
 	return corev1.Container{
-		Name:    agentContainerName,
-		Image:   runner.Image,
-		Command: []string{"evolve", "exec-unit"},
-		Env:     env,
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: volWorkspace, MountPath: workspaceDir},
-			{Name: volTmp, MountPath: "/tmp"},
-		},
+		Name:            agentContainerName,
+		Image:           runner.Image,
+		Command:         command,
+		Env:             env,
+		VolumeMounts:    mounts,
 		SecurityContext: containerSecurity(),
 		Resources:       res,
 	}

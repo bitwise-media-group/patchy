@@ -70,6 +70,12 @@ func ResolveRunners(ctx context.Context, cs kubernetes.Interface, namespace stri
 // absence disables the harness or fails startup); a Secret present but missing
 // its key is always an error — a positive misconfiguration.
 func credentialPresent(ctx context.Context, cs kubernetes.Interface, namespace string, r Runner) (bool, error) {
+	if r.Brokered {
+		// A brokered runner is enabled by configuration: no credential exists
+		// in the agent namespace to probe. A missing broker-side credential
+		// surfaces at the broker's /readyz and as failed runs, not here.
+		return true, nil
+	}
 	if r.Secret == "" {
 		return true, nil // fake runner
 	}

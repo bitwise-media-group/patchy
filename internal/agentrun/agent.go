@@ -17,6 +17,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/harness"
 	"github.com/bitwise-media-group/patchy/internal/model"
+	"github.com/bitwise-media-group/patchy/internal/provider"
 	"github.com/bitwise-media-group/patchy/internal/report"
 	"github.com/bitwise-media-group/patchy/internal/runner"
 	"github.com/bitwise-media-group/patchy/internal/templates"
@@ -36,6 +37,10 @@ type Agent struct {
 	exec Executor
 	// newSessionID is replaceable for tests.
 	newSessionID func() string
+	// scrub is literal secret values registered for transcript redaction
+	// beyond what the environment heuristic finds — the broker caller token,
+	// whose env var name (ANTHROPIC_CUSTOM_HEADERS) is not credential-shaped.
+	scrub []string
 }
 
 // New builds an Agent.
@@ -112,6 +117,12 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		ev.Detail = fmt.Sprintf("unknown harness %q", a.cfg.RemediateHarness)
 		return ev
 	}
+	env, err := a.brokerEnv()
+	if err != nil {
+		ev.Outcome = envelope.OutcomeRuntimeError
+		ev.Detail = err.Error()
+		return ev
+	}
 	if err := ensureIdentity(ctx, a.cfg.repoDir()); err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
 		ev.Detail = err.Error()
@@ -146,11 +157,12 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 	onLine, _ := a.observe(h, params.budget)
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:    prompt,
-		Model:     cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
+		Model:     a.cliModel(a.cfg.RemediateModel, a.cfg.RemediateHarness),
 		MaxTurns:  params.maxTurns,
 		Sandbox:   harness.SandboxWorkspaceWrite,
 		SessionID: a.newSessionID(),
 		AddDirs:   []string{a.cfg.Workspace},
+		Env:       env,
 	}), a.cfg.RemediateTimeout, onLine)
 	a.fillStage(&ev.Stage, h, res)
 
@@ -235,25 +247,53 @@ func (a *Agent) recorder(h harness.Harness) *transcript.Recorder {
 		a.cfg.Log.Info("harness cannot transcribe; no transcript for this run", "harness", h.ID())
 		return nil
 	}
-	return transcript.NewRecorder(a.cfg.transcriptLimits(), credentialValues(h), a.emitTurn)
+	return transcript.NewRecorder(a.cfg.transcriptLimits(), credentialValues(h, a.scrub...), a.emitTurn)
+}
+
+// brokerEnv builds the extra child environment of a brokered run: the
+// ANTHROPIC_CUSTOM_HEADERS entry carrying the projected caller token to the
+// egress broker. The token file is read fresh each stage — the kubelet
+// rotates the projection, and a long remediation must not present a token
+// captured at pod start. The raw token is registered for transcript
+// scrubbing before any stage output can echo it. Nil on non-brokered runs.
+func (a *Agent) brokerEnv() ([]string, error) {
+	if a.cfg.BrokerTokenFile == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(a.cfg.BrokerTokenFile)
+	if err != nil {
+		return nil, fmt.Errorf("broker token: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return nil, fmt.Errorf("broker token file %s is empty", a.cfg.BrokerTokenFile)
+	}
+	a.scrub = append(a.scrub, token)
+	return []string{"ANTHROPIC_CUSTOM_HEADERS=" + provider.BrokerTokenHeader + ": " + token}, nil
 }
 
 // credentialValues returns the literal secret values to scrub from a
 // transcript: the harness's own credential variables, plus anything else in
-// the environment named like a credential. The pod carries the model API key,
-// and a tool result that dumps the environment would otherwise put it in a
-// ConfigMap the status page serves.
+// the environment named like a credential, plus any explicitly registered
+// values (extra) whose env var names the heuristic cannot flag — the broker
+// caller token rides ANTHROPIC_CUSTOM_HEADERS. A tool result that dumps the
+// environment would otherwise put them in a ConfigMap the status page serves.
 //
 // The harness keys are the authoritative half — runnercfg validates the
 // injected credential's variable against exactly that set at startup, so the
 // model key is always covered. The name heuristic is defence in depth for
 // whatever else an operator forwards.
-func credentialValues(h harness.Harness) []string {
+func credentialValues(h harness.Harness, extra ...string) []string {
 	wanted := make(map[string]bool, len(h.EnvKeys()))
 	for _, k := range h.EnvKeys() {
 		wanted[k] = true
 	}
 	var out []string
+	for _, v := range extra {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
 	for _, kv := range os.Environ() {
 		name, value, ok := strings.Cut(kv, "=")
 		if !ok || value == "" {
@@ -338,15 +378,22 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		ev.Detail = err.Error()
 		return ev
 	}
+	env, err := a.brokerEnv()
+	if err != nil {
+		ev.Outcome = envelope.OutcomeRuntimeError
+		ev.Detail = err.Error()
+		return ev
+	}
 
 	onLine, _ := a.observe(h, a.cfg.InvestigateTokenBudget)
 	res, runErr := a.exec.Run(ctx, h.PromptSpec(a.cfg.repoDir(), harness.PromptRequest{
 		Prompt:    prompt,
-		Model:     cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
+		Model:     a.cliModel(a.cfg.InvestigateModel, a.cfg.InvestigateHarness),
 		MaxTurns:  a.cfg.InvestigateMaxTurns,
 		Sandbox:   harness.SandboxReadOnly,
 		SessionID: a.newSessionID(),
 		AddDirs:   []string{a.cfg.Workspace},
+		Env:       env,
 	}), a.cfg.InvestigateTimeout, onLine)
 	a.fillStage(&ev.Stage, h, res)
 
@@ -480,11 +527,17 @@ func (a *Agent) grant() (maxTurns, budget int) {
 }
 
 // cliModel translates a canonical model id into the CLI model-id the given
-// harness's --model flag expects. The controller validated the model against
-// the registry before launching, so this defends against an unknown id by
-// falling back to the bare (provider-stripped) id — which is also what the
-// fake harness receives and ignores.
-func cliModel(canonical, harnessID string) string {
+// harness's --model flag expects. The controller-rendered model map wins —
+// behind a brokered provider the CLI needs the provider's ids (Bedrock
+// inference profiles, Foundry deployment names), not the registry's
+// first-party ones. The controller validated the model against the registry
+// before launching, so the final fallback to the bare (provider-stripped) id
+// only defends against an unknown id — which is also what the fake harness
+// receives and ignores.
+func (a *Agent) cliModel(canonical, harnessID string) string {
+	if id, ok := a.cfg.ModelMap[canonical]; ok {
+		return id
+	}
 	if m, ok := model.ModelByID(model.Builtins(), canonical); ok {
 		if id, ok := m.CLIModelID(harnessID); ok {
 			return id

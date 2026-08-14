@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitwise-media-group/patchy/internal/provider"
 	"github.com/bitwise-media-group/patchy/internal/templates"
 	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
@@ -55,6 +56,14 @@ type Config struct {
 	// ModelAllowlist is the canonical model ids the investigation may suggest
 	// for remediation; rendered into the analysis prompt.
 	ModelAllowlist []string
+	// BrokerTokenFile is the projected ServiceAccount token file the pod
+	// authenticates to the egress broker with; empty on a non-brokered run.
+	// It is read fresh per stage — the kubelet rotates the projection.
+	BrokerTokenFile string
+	// ModelMap translates canonical model ids to the provider-specific CLI
+	// ids a brokered provider expects (Bedrock inference profiles, Foundry
+	// deployment names); consulted before the registry in cliModel.
+	ModelMap map[string]string
 
 	// The investigation stage's limits are absolute: it runs on exactly
 	// these.
@@ -164,8 +173,18 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			}
 		}
 	}
+	cfg.BrokerTokenFile = get("BROKER_TOKEN_FILE", "")
 
 	var errs []string
+	if raw := get("MODEL_MAP", ""); raw != "" {
+		mm, err := provider.ParseModelMap(raw)
+		if err != nil {
+			// A silently dropped translation would send canonical ids to a
+			// provider that cannot resolve them; fail loud instead.
+			errs = append(errs, fmt.Sprintf("PATCHY_MODEL_MAP: %v", err))
+		}
+		cfg.ModelMap = mm
+	}
 	number := func(key, def string) int {
 		v := get(key, def)
 		n, err := strconv.Atoi(v)

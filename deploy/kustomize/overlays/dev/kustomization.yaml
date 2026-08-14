@@ -55,6 +55,9 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newName: patchy/status-server
       newTag: dev
+    - name: ghcr.io/bitwise-media-group/patchy/egress-broker
+      newName: patchy/egress-broker
+      newTag: dev
 
 patches:
     - path: configmap-patch.yaml

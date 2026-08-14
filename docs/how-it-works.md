@@ -31,8 +31,9 @@ flowchart LR
 ```
 
 Two namespaces, and the split is the security boundary: the five controllers run in `patchy` (single replicas, leader
-election as rollout insurance), and the ephemeral agent Jobs run in `patchy-agents`, which holds exactly one secret —
-the model API key. See the [isolation model](deployment/isolation.md).
+election as rollout insurance) alongside the egress credential broker, and the ephemeral agent Jobs run in
+`patchy-agents`, which holds no model credential for the default claude runner at all — its model traffic authenticates
+at the broker. See the [isolation model](deployment/isolation.md).
 
 ## 1. Findings arrive and accumulate
 

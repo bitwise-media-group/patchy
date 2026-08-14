@@ -130,24 +130,26 @@ Everything else a binary binds (see the [configuration reference](../configurati
 
 ### Agent sandbox
 
-| Key                                      | Default                                               | Purpose                                                                                |
-| ---------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `agent.namespace`                        | `patchy-agents`                                       | Created by the chart with the `restricted` PSS labels                                  |
-| `agent.createNamespace`                  | `true`                                                | Set `false` when the namespace is managed elsewhere                                    |
-| `agent.serviceAccount`                   | `patchy-agent`                                        | The Job identity: no Role, token not mounted                                           |
-| `agent.jobDeadline` / `agent.jobTTL`     | `1h` / `1h`                                           | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                    |
-| `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-5`   | Canonical model ids the investigation may request for remediation                      |
-| `agent.investigate.*`                    | `anthropic/claude-sonnet-5` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)     |
-| `agent.remediate.*`                      | `anthropic/claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to |
-| `agent.runners.<harness>`                | claude enabled; codex, copilot disabled               | Per-harness `enabled`/`image`/`secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`   |
-| `agent.networkPolicy.create`             | `true`                                                | Default-deny both directions + DNS + artifact + TCP-443-only egress                    |
-| `agent.networkPolicy.clusterCIDRs`       | RFC-1918 + link-local                                 | Cluster-internal ranges excluded from agent egress                                     |
-| `agent.runners.<harness>.hosts`          | claude: `api.anthropic.com`                           | Per-runner egress allowlist — deliberately **no** forge hosts                          |
-| `agent.networkPolicy.clusterDNSPatterns` | `*.svc.cluster.local`                                 | Cilium only: cluster-local names every runner may resolve (for the artifact fetch)     |
-| `agent.networkPolicy.mode`               | `auto`                                                | Hostname-egress dialect: `auto`/`none`/`cilium`/`gke`/`istio` — one policy per runner  |
-| `agent.networkPolicy.broadEgress`        | `auto`                                                | Keep the base "443 to anywhere" rule: `auto`/`always`/`never` — see the warning below  |
-| `agent.networkPolicy.cilium.enabled`     | `false`                                               | Deprecated alias for `mode: cilium`, honoured only while `mode` is `auto`              |
-| `agent.networkPolicy.istio.enabled`      | `false`                                               | Deprecated alias for `mode: istio`, honoured only while `mode` is `auto`               |
+| Key                                      | Default                                               | Purpose                                                                                                                                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.namespace`                        | `patchy-agents`                                       | Created by the chart with the `restricted` PSS labels                                                                                                                                                                 |
+| `agent.createNamespace`                  | `true`                                                | Set `false` when the namespace is managed elsewhere                                                                                                                                                                   |
+| `agent.serviceAccount`                   | `patchy-agent`                                        | The Job identity: no Role, token not mounted                                                                                                                                                                          |
+| `agent.jobDeadline` / `agent.jobTTL`     | `1h` / `1h`                                           | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                                                                                                                                                   |
+| `agent.modelAllowlist`                   | `anthropic/claude-sonnet-5,anthropic/claude-opus-5`   | Canonical model ids the investigation may request for remediation                                                                                                                                                     |
+| `agent.investigate.*`                    | `anthropic/claude-sonnet-5` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)                                                                                                                                    |
+| `agent.remediate.*`                      | `anthropic/claude-sonnet-5` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to                                                                                                                                |
+| `agent.runners.<harness>`                | claude enabled; codex, copilot disabled               | Per-harness `enabled`/`image`; codex/copilot add `secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`, claude a `provider` block instead (brokered)                                                                 |
+| `agent.runners.claude.provider`          | `name: anthropic`                                     | Which model API the egress broker fronts: `anthropic`/`bedrock`/`vertex`/`foundry` + `region`/`regionPrefix`/`projectID`/`resource`/`modelMap`/`env`                                                                  |
+| `egressBroker.*`                         | deploys when a claude runner is enabled               | The [egress credential broker](../configuration/egress-broker.md): `anthropicSecret`, `anthropicAuth` (`key`/`token`), `foundrySecret`, `serviceAccount.annotations` (workload identity), `networkPolicy.extraEgress` |
+| `agent.networkPolicy.create`             | `true`                                                | Default-deny both directions + DNS + artifact + broker + TCP-443-only egress                                                                                                                                          |
+| `agent.networkPolicy.clusterCIDRs`       | RFC-1918 + link-local                                 | Cluster-internal ranges excluded from agent egress                                                                                                                                                                    |
+| `agent.runners.<harness>.hosts`          | codex: `api.openai.com`; claude: none (brokered)      | Per-runner egress allowlist — deliberately **no** forge hosts                                                                                                                                                         |
+| `agent.networkPolicy.clusterDNSPatterns` | `*.svc.cluster.local`                                 | Cilium only: cluster-local names every runner may resolve (for the artifact fetch)                                                                                                                                    |
+| `agent.networkPolicy.mode`               | `auto`                                                | Hostname-egress dialect: `auto`/`none`/`cilium`/`gke`/`istio` — one policy per runner                                                                                                                                 |
+| `agent.networkPolicy.broadEgress`        | `auto`                                                | Keep the base "443 to anywhere" rule: `auto`/`always`/`never` — see the warning below                                                                                                                                 |
+| `agent.networkPolicy.cilium.enabled`     | `false`                                               | Deprecated alias for `mode: cilium`, honoured only while `mode` is `auto`                                                                                                                                             |
+| `agent.networkPolicy.istio.enabled`      | `false`                                               | Deprecated alias for `mode: istio`, honoured only while `mode` is `auto`                                                                                                                                              |
 
 `mode: auto` reads the cluster's API surface on every render against a live cluster — including every helm-controller
 reconcile — and picks `gke` (GKE's `FQDNNetworkPolicy`, needs a cluster with `--enable-fqdn-network-policy`), `cilium`
@@ -159,6 +161,69 @@ Because network policies are **additive**, an FQDN allowlist alongside the base 
 constrains nothing; `broadEgress: auto` therefore drops that rule whenever a hostname mode is enforcing. See the
 [isolation model](isolation.md#network-egress-the-floor-and-the-fence) for what each layer requires and what it doesn't
 cover.
+
+### Model providers (brokered claude)
+
+All claude model traffic goes through the [egress credential broker](../configuration/egress-broker.md), which deploys
+automatically whenever a claude runner is enabled. `agent.runners.claude.provider` picks the API it fronts:
+
+```yaml
+# First-party Anthropic (the default): the API key lives with the broker in
+# the RELEASE namespace. anthropicAuth: token sends a `claude setup-token`
+# OAuth token as a bearer instead.
+egressBroker:
+  anthropicSecret: patchy-anthropic # key: api-key
+
+# Amazon Bedrock: SigV4-signed with the broker's AWS identity (IRSA here).
+agent:
+  runners:
+    claude:
+      provider:
+        name: bedrock
+        region: us-east-1 # model ids derive as us.anthropic.<model>
+egressBroker:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/patchy-broker
+
+# GCP Vertex AI: OAuth via GKE Workload Identity.
+agent:
+  runners:
+    claude:
+      provider:
+        name: vertex
+        region: europe-west1
+        projectID: my-project
+egressBroker:
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: patchy-broker@my-project.iam.gserviceaccount.com
+
+# Microsoft Foundry: deployment names cannot be derived, so the model map is
+# mandatory and validated at controller startup against the allowlist.
+agent:
+  runners:
+    claude:
+      provider:
+        name: foundry
+        resource: my-foundry
+        modelMap:
+          anthropic/claude-sonnet-5: my-sonnet-deployment
+          anthropic/claude-opus-5: my-opus-deployment
+egressBroker:
+  foundrySecret: patchy-foundry # omit for Entra via Azure Workload Identity
+```
+
+Scope the cloud role to Invoke only: `bedrock:InvokeModel*`, `aiplatform.endpoints.predict`, Cognitive Services User.
+
+!!! note "Migrating from a pre-broker release"
+
+    The claude model credential moves: it used to be `patchy-anthropic` in the **agent** namespace, wired into the pod;
+    now the broker is its only consumer and it lives in the **release** namespace. Create the Secret in the release
+    namespace, upgrade the chart (the broker lands), then delete the old Secret from the agent namespace. The
+    `agent.runners.claude.secret*` values are ignored (a NOTES warning fires if they are still set); if the old
+    `secretEnv` was `CLAUDE_CODE_OAUTH_TOKEN`, set `egressBroker.anthropicAuth: token` so the broker sends the OAuth
+    token as a bearer. Codex and copilot are unaffected.
 
 ## Operational notes
 

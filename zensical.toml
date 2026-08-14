@@ -56,6 +56,7 @@ nav = [
     { "remediation-controller" = "configuration/remediation-controller.md" },
     { "evaluation-controller" = "configuration/evaluation-controller.md" },
     { "agent-runner" = "configuration/agent-runner.md" },
+    { "egress-broker" = "configuration/egress-broker.md" },
     { "status-server" = "configuration/status-server.md" },
   ] },
   { "Deployment" = [

@@ -221,9 +221,9 @@ Not on camera · run through before the room
     **investigation-controller** admits it: pin the repository SHA once, create an immutable `Investigation`,
     schedule a sandboxed agent Job.
 
-    Isolation in one sentence: the agent pod has **no forge credential**, no Kubernetes API access, and no arbitrary
-    internet — only a digest-verified tarball of the repo and a model API key. Investigation and remediation see the
-    **same pinned tree**.
+    Isolation in one sentence: the agent pod has **no credential of any kind**, no Kubernetes API access, and no
+    arbitrary internet — only a digest-verified tarball of the repo, with model traffic authenticated at the egress
+    broker. Investigation and remediation see the **same pinned tree**.
 
     Investigation does not care whether the finding arrived from CodeQL or another handler: the agent gets a
     templated finding handoff and a SHA-pinned tree. Ratings, recommendation, and confidence are the same contract

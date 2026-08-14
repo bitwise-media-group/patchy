@@ -32,14 +32,15 @@ The four weights combine the investigation's ratings into the 0–100 scheduling
 
 The same per-harness runner flags as the [investigation-controller](investigation-controller.md#agent-job-flags):
 `--claude-agent-image` / `--codex-agent-image` / `--copilot-agent-image` / `--fake-agent-image`, `--harnesses`, the
-per-harness credential triples (`--claude-secret{,-key,-env}`, `--codex-secret{,-key,-env}`,
+broker/provider flags for the brokered claude runner (`--broker-url`, `--claude-provider*`, `--claude-model-map`),
+per-harness credential triples for the non-brokered runners (`--codex-secret{,-key,-env}`,
 `--copilot-secret{,-key,-env}`), `--agent-namespace`, `--agent-service-account`, `--job-deadline`, `--job-ttl`. Each
-`--<harness>-secret-env` is validated against the credential env vars that harness accepts (claude: `ANTHROPIC_API_KEY`
-/ `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_AUTH_TOKEN`; codex: `OPENAI_API_KEY` / `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN`;
-copilot: `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`) and the controller refuses to start on a mismatch, on a
-missing credential for an enabled harness, or on an allowlisted model no enabled harness can run. The flag's own
-`--help` enumerates the accepted set, rendered from the harness definition, so it cannot drift from what the validation
-allows.
+non-brokered `--<harness>-secret-env` is validated against the credential env vars that harness accepts (codex:
+`OPENAI_API_KEY` / `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN`; copilot: `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` /
+`GITHUB_TOKEN`) and the controller refuses to start on a mismatch, on a missing credential for an enabled non-brokered
+harness, on a claude runner without `--broker-url`, on a foundry model map that misses a claude-resolving allowlisted
+model, or on an allowlisted model no enabled harness can run. The flag's own `--help` enumerates the accepted set,
+rendered from the harness definition, so it cannot drift from what the validation allows.
 
 ## Stage flags
 

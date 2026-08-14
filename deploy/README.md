@@ -37,10 +37,10 @@ the image of the harness resolved for its model.
 
 Two namespaces, and the split between them is the security boundary.
 
-| Namespace       | Workload                                                                                                                                                                                                                                                                            | Credentials it holds                                             |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `patchy`        | `integration-controller` (the only internet-facing workload), `source-controller`, `context-controller`, `investigation-controller`, `remediation-controller`, `evaluation-controller` (optional; the evolve-facing evaluation API — front its Service with your ingress when used) | reads the GitHub Secret referenced by your Integration/Forge CRs |
-| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the three job-launching controllers                                                                                                                                                                                                   | the model API key — and nothing else                             |
+| Namespace       | Workload                                                                                                                                                                                                                                                                                                                                                       | Credentials it holds                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patchy`        | `integration-controller` (the only internet-facing workload), `source-controller`, `context-controller`, `investigation-controller`, `remediation-controller`, `evaluation-controller` (optional; the evolve-facing evaluation API — front its Service with your ingress when used), `egress-broker` (the reverse proxy all claude model traffic goes through) | reads the GitHub Secret referenced by your Integration/Forge CRs; the broker holds the claude model credential (or cloud workload identity) |
+| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the three job-launching controllers                                                                                                                                                                                                                                                                              | nothing for claude Jobs (an identity token only); a non-brokered codex/copilot Job carries its one model key                                |
 
 The **evaluation controller** is optional: it executes remote skill evaluations submitted by
 [evolve](https://github.com/bitwise-media-group/evolve) through the same agent-Job machinery (see
@@ -66,7 +66,7 @@ pods, pods/log, secrets). The agent Job pods have **no RBAC at all** and run wit
 
 ## Images
 
-All six images are built and published by GoReleaser (`dockers_v2` in `.goreleaser.yaml`) as part of every release:
+All the images are built and published by GoReleaser (`dockers_v2` in `.goreleaser.yaml`) as part of every release:
 multi-arch (`linux/amd64` + `linux/arm64`) manifests pushed to `ghcr.io/bitwise-media-group/patchy/<name>` and tagged
 `vX.Y.Z` + `latest`. GoReleaser compiles the binaries once and hands them to `docker buildx`; the repo-root
 `Dockerfile.*` only assemble the runtime layer (`COPY $TARGETPLATFORM/<binary>`), so they cannot be `docker build`
@@ -75,12 +75,12 @@ directly from the repo. To build images locally, run `make snapshot` (needs dock
 also uploads `digests.txt` and attests every image digest in it; verify with
 `gh attestation verify --owner bitwise-media-group oci://ghcr.io/bitwise-media-group/patchy/<name>:vX.Y.Z`.
 
-One Dockerfile builds all five controllers on the same `distroless/static` base; the per-image `build_args` in
-`.goreleaser.yaml` set `TARGET` to pick the binary. Every controller is pure Go with no subprocesses — source-controller
-downloads repository archives over the GitHub API and remediation-controller pushes the agent's changeset through the
-Git Data API (`internal/ghpush`), so no controller image carries a `git` binary. Everything runs as uid 65532 with a
-read-only root filesystem; `/tmp` is an `emptyDir` in every pod, which is what keeps the Go runtime's temp-file users
-working.
+One Dockerfile builds every controller-shaped binary — the controllers, the status server, the egress broker — on the
+same `distroless/static` base; the per-image `build_args` in `.goreleaser.yaml` set `TARGET` to pick the binary. Every
+controller is pure Go with no subprocesses — source-controller downloads repository archives over the GitHub API and
+remediation-controller pushes the agent's changeset through the Git Data API (`internal/ghpush`), so no controller image
+carries a `git` binary. Everything runs as uid 65532 with a read-only root filesystem; `/tmp` is an `emptyDir` in every
+pod, which is what keeps the Go runtime's temp-file users working.
 
 The agent image is `debian:trixie-slim` carrying the `claude` CLI as Anthropic's self-contained native binary
 (downloaded at build time from the official release bucket, sha256-verified against its manifest, pinned by
@@ -133,16 +133,23 @@ kubectl -n patchy create secret generic patchy-github \
   --from-file=privateKey=./patchy.private-key.pem \
   --from-literal=webhookSecret="$(openssl rand -hex 32)"
 
-# NOTE the namespace: the model key belongs to the AGENTS, not the controllers.
-kubectl -n patchy-agents create secret generic patchy-anthropic \
+# NOTE the namespace: the claude credential belongs to the egress BROKER in
+# the patchy namespace — it never enters an agent pod. (Releases before the
+# broker kept it in patchy-agents: create it here, upgrade, delete the old
+# copy.)
+kubectl -n patchy create secret generic patchy-anthropic \
   --from-literal=api-key="$ANTHROPIC_API_KEY"
 ```
 
-`patchy-anthropic` is the claude runner's credential; `internal/jobs` wires it into a claude Job's agent container from
-it, and the controllers refuse to start if an enabled harness's credential is missing. Enable the codex runner and it
-needs `patchy-openai` (an OpenAI key) the same way; the copilot runner needs `patchy-copilot`, which holds a **GitHub
-token** rather than a model API key — the one credential class no other agent pod carries, so enable that runner
-deliberately and scope the token to Copilot alone. A fake-harness run (dev) needs no model credential at all.
+`patchy-anthropic` is the claude runner's Anthropic credential, consumed only by the egress broker — the reverse proxy
+all claude model traffic goes through (`deployment-egress-broker.yaml`); its readiness probe fails while the credential
+is unusable. `PATCHY_ANTHROPIC_AUTH=token` sends a `claude setup-token` OAuth token as a bearer instead of an API key,
+and the bedrock/vertex/foundry providers need no Secret at all — the broker signs with its cloud workload identity
+(annotate the `patchy-egress-broker` ServiceAccount). Enable the codex runner and it needs `patchy-openai` (an OpenAI
+key) in **patchy-agents**, wired into the pod by `internal/jobs`, and the controllers refuse to start if an enabled
+non-brokered harness's credential is missing; the copilot runner needs `patchy-copilot`, which holds a **GitHub token**
+rather than a model API key — the one credential class no other agent pod carries, so enable that runner deliberately
+and scope the token to Copilot alone. A fake-harness run (dev) needs no model credential at all.
 
 The pipeline is then switched on with two custom resources referencing that Secret — an `Integration` (webhook
 validation, alert ingestion, issue projection) and a `Forge` (repository read for the artifact, write for the push +
@@ -164,27 +171,31 @@ pins a runner image must patch both the `images:` entry and the matching `PATCHY
 
 ## The isolation model — what it actually is
 
-DESIGN.md requires the coding agent to run with "no internet access / no access to github APIs". Taken literally that is
-unachievable: `claude -p` **is** a network client of `api.anthropic.com`. What is actually delivered:
+DESIGN.md requires the coding agent to run with "no internet access / no access to github APIs". For the default
+(claude) runner both now hold: its model traffic goes through the in-cluster egress credential broker, so the pod dials
+no external host at all. What is delivered:
 
-**1. Credential absence — the real control.** The agent pod holds **no forge credential at all**, in any container. The
+**1. Credential absence — the real control.** The agent pod holds **no credential at all**, in any container. The
 repository arrives as a tarball from source-controller's in-cluster artifact server: the URL carries an unguessable
 128-bit id, the Job pins the sha256 digest, and the init container verifies it before extracting and synthesizing the
-local git base. The per-Job Secret carries only handoff markdown; `internal/jobs` lists `GITHUB_TOKEN` in `reservedEnv`
-so no configuration can smuggle a credential in. All GitHub side effects — issue projection, alert dismissal, branch
-push, PRs — are performed controller-side with short-lived, per-repository scoped tokens. An agent that reaches
-`github.com` reaches it as an anonymous member of the public.
+local git base. A claude pod holds no model key either — the broker injects or signs the credential outbound, and the
+pod authenticates to it with an audience-bound projected ServiceAccount token, an identity document rather than a
+capability. The per-Job Secret carries only handoff markdown; `internal/jobs` lists `GITHUB_TOKEN` (and every credential
+channel) in `reservedEnv` so no configuration can smuggle a credential in. All GitHub side effects — issue projection,
+alert dismissal, branch push, PRs — are performed controller-side with short-lived, per-repository scoped tokens. An
+agent that reaches `github.com` reaches it as an anonymous member of the public.
 
 **2. NetworkPolicy — the floor.** `patchy-agents` is default-deny in both directions. Egress is re-permitted for DNS,
-the artifact port (9790) to source-controller only, and TCP 443 with the cluster's own ranges and the cloud metadata
-endpoint (169.254.169.254) excluded. **A plain NetworkPolicy is L3/L4 and cannot match a hostname**, so "TCP 443" means
-every HTTPS host on the internet, not just Anthropic's. Adjust the `except:` CIDRs in `base/networkpolicy.yaml` to your
-cluster's pod/service/node CIDRs.
+the artifact port (9790) to source-controller, the broker port (8080) to the egress broker — the whole of a claude pod's
+egress, all cluster-local — and TCP 443 (the non-brokered codex/copilot runners' model APIs) with the cluster's own
+ranges and the cloud metadata endpoint (169.254.169.254) excluded. **A plain NetworkPolicy is L3/L4 and cannot match a
+hostname**, so "TCP 443" means every HTTPS host on the internet, not just the model vendor's. Adjust the `except:` CIDRs
+in `base/networkpolicy.yaml` to your cluster's pod/service/node CIDRs.
 
 **3. Hostname policy — defence in depth, where the infrastructure supports it.** Add exactly one component; each narrows
-that egress to `api.anthropic.com` and nothing else external. No GitHub hosts appear in the agent's allowlist at all,
-because the pod never talks to a forge. Do not mistake the FQDN policy for the boundary; the missing credential is the
-boundary.
+that egress to the non-brokered runners' model hosts and nothing else external (brokered claude needs no entry — it has
+no external hosts). No GitHub hosts appear in the agent's allowlist at all, because the pod never talks to a forge. Do
+not mistake the FQDN policy for the boundary; the missing credential is the boundary.
 
 - `components/cilium` (enabled by the prod overlay) — a `CiliumNetworkPolicy` with `toFQDNs`, plus a DNS rule bounding
   what names the pod may resolve at all. Requires Cilium with the DNS proxy.
@@ -192,12 +203,12 @@ boundary.
   underneath but has not honoured the `CiliumNetworkPolicy` CRD since 1.21.5-gke.1300 and rejects every L7 rule; the
   cilium component is inert there. Requires the cluster to carry `--enable-fqdn-network-policy`. It cannot express DNS
   or a ClusterIP destination, so both stay with the base policy — and DNS exfiltration stays open.
-- `components/istio` — a `Sidecar` with `REGISTRY_ONLY` (exposing only the `api.anthropic.com` ServiceEntry and the
-  `patchy` namespace's artifact Service), matched by SNI. Requires native sidecars (Kubernetes ≥ 1.29, istiod with
-  `ENABLE_NATIVE_SIDECARS=true` — a classic sidecar hangs the Job) and the Istio CNI node agent (`patchy-agents`
-  enforces the `restricted` Pod Security Standard, which rejects `istio-init`). Two differences from Cilium: the proxy
-  does not constrain what names the pod may resolve, so DNS exfiltration stays open; and enforcement lives inside the
-  pod rather than on the node.
+- `components/istio` — a `Sidecar` with `REGISTRY_ONLY` (exposing only that runner's model ServiceEntry — none for
+  brokered claude — and the `patchy` namespace's Services, covering the artifact server and the broker), matched by SNI.
+  Requires native sidecars (Kubernetes ≥ 1.29, istiod with `ENABLE_NATIVE_SIDECARS=true` — a classic sidecar hangs the
+  Job) and the Istio CNI node agent (`patchy-agents` enforces the `restricted` Pod Security Standard, which rejects
+  `istio-init`). Two differences from Cilium: the proxy does not constrain what names the pod may resolve, so DNS
+  exfiltration stays open; and enforcement lives inside the pod rather than on the node.
 
 The cilium and gke-fqdn components also patch the base policy — deleting `patchy-agents-egress` and removing its broad
 443 rule respectively. That is load-bearing, not tidiness: network policies are **additive**, so an FQDN allowlist

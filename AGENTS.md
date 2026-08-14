@@ -14,7 +14,7 @@ hour, get context-enhanced, then a sandboxed `claude -p` run investigates each o
 remediated in priority order into pull requests, everything else routes to humans. Completed findings expire on a
 TTL; `FindingRollup` resources keep the all-time statistics.
 
-Nine binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Ten binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
 
 - `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
   provider webhooks (`/github/webhooks` HMAC, `/google-cloud/webhooks` Pub/Sub OIDC, `/wiz/webhooks` bearer
@@ -39,7 +39,15 @@ Nine binaries, one module. "Not monolithic" means separate binaries/deployments 
   Jobs, changeset push + PR via the forge write seam (the only write credential), and hosts the rollup/TTL loop.
 - `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
-  Kubernetes API; no credentials beyond the model key.
+  Kubernetes API; a claude pod holds no credential at all (model traffic goes through the egress broker,
+  authenticated by a projected SA token read fresh per stage), a codex/copilot pod only its model key.
+- `cmd/egress-broker` — the egress credential broker (NOT a controller: no reconcilers, no leases): the reverse
+  proxy all claude model traffic goes through, one route per provider (anthropic — key or `claude setup-token`
+  bearer via `--anthropic-auth` — plus bedrock SigV4, vertex OAuth, foundry key/entra). Validates caller
+  tokens via TokenReview (its only Kubernetes access), strips them, injects/signs the model credential
+  outbound, streams SSE with idle keep-alive pings, audits one slog line per request. Engine in
+  `internal/broker`; deployed by the chart exactly when a claude runner is enabled (claude ⇒ broker;
+  proxy-only, no in-pod credential mode).
 - `cmd/evaluation-controller` — OPTIONAL (default-off in the chart): remote skill-evaluation execution for
   evolve. Hosts the bearer-authenticated HTTP API (`pkg/evaluation` wire contract: workspace upload streamed to
   source-controller's `:9791` blob endpoint, submission, snapshot, SSE monitoring, cancel; OIDC verify + SAR on
@@ -152,10 +160,20 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   token-budget kill switch), harness parses stdout. Keep that separation.
 - `agentrun` — the in-pod stage flow (`investigate` | `remediate`); `report`/`envelope` are its contracts
   (frontmatter schemas in, JSONL events out); `agentresult` converts envelope results onto CR status.
-- `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here: no credential of any kind in
-  the pod; the init container fetches the digest-verified artifact tarball. `eval.go` is the evaluation Job
-  flavour (same posture; `evolve exec-unit` instead of `agent-runner`, no git init, unit.json handoff);
-  `ResultLines` is the envelope-agnostic log reader the evaluation collector decodes its own events from.
+- `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here, and it STRENGTHENED with the
+  broker: a brokered (claude) pod holds no credential of any kind — its projected SA token (audience-bound,
+  agent container only, never the init) is an identity document, not a capability — while non-brokered runners
+  keep the one SecretKeyRef; the init container fetches the digest-verified artifact tarball, identity-free.
+  `reservedEnv` covers every credential channel plus the provider gateway names; `Runner.Env` is the per-runner
+  gateway env (wins over `Config.Env`, can never name a credential). `eval.go` is the evaluation Job flavour
+  (same posture; `evolve exec-unit` instead of `agent-runner` — wrapped in a capture-once token export when
+  brokered — no git init, unit.json handoff); `ResultLines` is the envelope-agnostic log reader the evaluation
+  collector decodes its own events from.
+- `broker`, `provider` — the egress-broker engine (TokenReview auth + verdict cache, per-route credential
+  strategies, SSE-safe reverse proxy, audit) and the pure logic of brokered claude runners (gateway env,
+  canonical→provider model-id maps with per-provider derived defaults, the `PATCHY_MODEL_MAP` codec both the
+  controllers and agentrun share). `provider.BrokerTokenHeader` is the one definition of the caller-token
+  header.
 - `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from, plus the
   content-addressed workspace-blob side: sha256-named bundles (64-hex files beside the 32-hex repo tarballs),
   index rebuilt from disk on restart, last-access retention sweep, the `:9791` internal upload handler, and

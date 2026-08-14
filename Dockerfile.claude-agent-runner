@@ -33,16 +33,18 @@ FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3
 
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl jq \
-    && rm -rf /var/lib/apt/lists/*
+  && apt-get install --no-install-recommends -y ca-certificates curl jq \
+  && rm -rf /var/lib/apt/lists/*
 
 # Pinned claude CLI version. Dependabot/renovate should bump this ARG: the
 # native binaries are released in lockstep with the npm package
 # (@anthropic-ai/claude-code) under the same version numbers, so the npm
 # datasource stays the source of truth; pin it so an agent image is
 # reproducible and a harness regression is attributable to a known version.
+# 2.1.203 is the floor for CLAUDE_CODE_SKIP_FOUNDRY_AUTH (the egress-broker
+# gateway mode); the bedrock/vertex gateway vars also want a modern CLI.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_VERSION=2.0.14
+ARG CLAUDE_VERSION=2.1.232
 
 # Fetch the native binary for the target platform from the official release
 # bucket (what https://claude.ai/install.sh resolves to) and verify it
@@ -52,17 +54,17 @@ ARG CLAUDE_VERSION=2.0.14
 ARG TARGETARCH
 # hadolint ignore=DL4006
 RUN case "${TARGETARCH}" in \
-        amd64) platform=linux-x64 ;; \
-        arm64) platform=linux-arm64 ;; \
-        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac \
-    && base="https://downloads.claude.ai/claude-code-releases" \
-    && curl -fsSL -o /tmp/manifest.json "${base}/${CLAUDE_VERSION}/manifest.json" \
-    && checksum="$(jq -er ".platforms[\"${platform}\"].checksum" /tmp/manifest.json)" \
-    && echo "${checksum}" | grep -qE '^[0-9a-f]{64}$' \
-    && curl -fsSL -o /claude "${base}/${CLAUDE_VERSION}/${platform}/claude" \
-    && echo "${checksum}  /claude" | sha256sum -c - \
-    && chmod 0755 /claude
+  amd64) platform=linux-x64 ;; \
+  arm64) platform=linux-arm64 ;; \
+  *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+  esac \
+  && base="https://downloads.claude.ai/claude-code-releases" \
+  && curl -fsSL -o /tmp/manifest.json "${base}/${CLAUDE_VERSION}/manifest.json" \
+  && checksum="$(jq -er ".platforms[\"${platform}\"].checksum" /tmp/manifest.json)" \
+  && echo "${checksum}" | grep -qE '^[0-9a-f]{64}$' \
+  && curl -fsSL -o /claude "${base}/${CLAUDE_VERSION}/${platform}/claude" \
+  && echo "${checksum}  /claude" | sha256sum -c - \
+  && chmod 0755 /claude
 
 FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
 
@@ -71,8 +73,8 @@ FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3
 # commit/diff flow.
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+  && apt-get install --no-install-recommends -y ca-certificates curl git \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=fetch /claude /usr/local/bin/claude
 
@@ -82,7 +84,7 @@ COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 # uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
 # convention). create it: a bare debian image has no non-root user.
 RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+  && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
 
 # The native claude binary self-updates by default; an image pins a version
 # and runs on a read-only rootfs, so updating must never be attempted.

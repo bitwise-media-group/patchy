@@ -10,7 +10,7 @@
 #   docker build -t patchy/fake-agent:dev hack/fake-agent
 #
 # `make dev-colima` builds it automatically when PATCHY_OVERLAY=dev-fake.
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache curl git
 COPY agent-runner /usr/local/bin/agent-runner
 RUN chmod 0755 /usr/local/bin/agent-runner

@@ -43,7 +43,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -59,7 +58,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -75,7 +73,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -91,7 +88,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -107,7 +103,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -123,7 +118,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -139,7 +133,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -155,7 +148,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -174,7 +166,6 @@ builds:
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
       goarch:
           - amd64
           - arm64
@@ -225,8 +216,10 @@ builds:
 # the workstation CLI in the other. The split is what keeps the Homebrew cask
 # below honest — `brew install patchy` puts the CLI (and its kubectl-plugin
 # alias) on a laptop without also unpacking seven binaries that only ever run
-# in a pod — and the CLI archive is the only one carrying windows, since the
-# controllers do not build for it.
+# in a pod — and the CLI archive is the only one carrying darwin and windows:
+# the cluster binaries build linux-only, since they only ever run in a pod
+# (they are pure API clients and would run anywhere, but nobody deploys a
+# released server binary on a workstation — local dev builds from source).
 archives:
     - id: patchy
       ids:

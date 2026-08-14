@@ -238,8 +238,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.16 h1:iE4NGb
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.16/go.mod h1:VsjEgrP+ibcou8TlWA4tYaB+0OojuhirsmCe+U60hTA=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.36 h1:fx2ujmozWn+C/GtfXfz5k6Ckzza40ElOpIW7d92fLWQ=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.36/go.mod h1:QT2ufGVJ+xTRxtXPHTQ1kHkAdWIKPCmD+BqYAXWv8/4=
-github.com/aws/aws-sdk-go-v2/service/kms v1.53.4 h1:PEgVSsWtR8NNxsDxFL2Ywisi7R+1EFQARGsT4q3mWwI=
-github.com/aws/aws-sdk-go-v2/service/kms v1.53.4/go.mod h1:3EeKyDGPGSCEphG2OolwNGNF45RvQIfm27AYYpfEWrw=
+github.com/aws/aws-sdk-go-v2/service/kms v1.54.0 h1:XOfYhrscVxDr0fLbgA4lE5UbQh5w9t+eva8bZu4q6wY=
+github.com/aws/aws-sdk-go-v2/service/kms v1.54.0/go.mod h1:0RXNc6Yf3AvSMldGD6Lcch96Ojlw2TtGnHsqfD/L4u8=
 github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.6 h1:EIv+S7tmcBh1PkPcp8eKNUM//rM/HwCXKJBnZWKwNXk=
 github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.27.6/go.mod h1:91VReCdQDpFHHOvQ6KgrQlSU1eFwSmosqkUD7ptZc4Q=
 github.com/aws/aws-sdk-go-v2/service/signin v1.5.5 h1:0VTFBfOgPJrUSpGMgzoi8qLcXF5dbmiBuxpo14eBWUw=
@@ -1011,8 +1011,8 @@ github.com/sigstore/sigstore v1.10.8 h1:1Mgkxvkw4AXMfIP1DOjc6kw0GkUgA8pGVpveN/Ef
 github.com/sigstore/sigstore v1.10.8/go.mod h1:f9+B/4iaYimvUkySyb2mvc73n3RLqNn24grHZM/ET8M=
 github.com/sigstore/sigstore-go v1.2.2 h1:xAJ8hxaoecC0HKBYVbrwUjkeAI+GJYu6vLqbxDlD2Q0=
 github.com/sigstore/sigstore-go v1.2.2/go.mod h1:MIFwBxAHJD+/lKgZzt9n/4Zhq/3T2+EuGX8iGrIsZgU=
-github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8 h1:tofVQ+UWJgad/69I5zbqxdFCN5gpIn9tRQP7iBzIpBw=
-github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8/go.mod h1:73AfJE8H6w5KGCFPBu4x/OG+i1Yxgmh0L/FtV7prd88=
+github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.9 h1:2NWAU/utJRwzy1OrQurlY3wlDSynyH1rNJS5GgFchrg=
+github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.9/go.mod h1:2shgYiPHTzeb5NNEu6okco+LOojMS5n9p/5Wdp0jhGI=
 github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.9 h1:zcg/EG6JW/8RSx9T2g5j6zqxplaE4dymmhiFflDE6ks=
 github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.9/go.mod h1:e7QngtHib0McuP1C/+Dt9f/7a8ic8FXvPB75OQzWgU4=
 github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.10.9 h1:DG8R4orWDs3l9trp70fLRTgazedEDoAIo/cHEN7Qo0k=

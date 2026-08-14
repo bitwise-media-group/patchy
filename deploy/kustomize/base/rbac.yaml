@@ -606,3 +606,36 @@ subjects:
     - kind: ServiceAccount
       name: patchy-evaluation-controller
       namespace: patchy
+---
+# ---- egress-broker ----------------------------------------------------------
+# TokenReview is a cluster-scoped, create-only API, so a namespaced Role
+# cannot grant it. The broker uses it to validate each caller's projected
+# ServiceAccount token before any byte is proxied. Review-only, and the
+# broker's ONLY Kubernetes access of any kind — no Secret reads, no writes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-egress-broker-authn
+    labels:
+        app.kubernetes.io/name: egress-broker
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [authentication.k8s.io]
+      resources: [tokenreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: patchy-egress-broker-authn
+    labels:
+        app.kubernetes.io/name: egress-broker
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: patchy-egress-broker-authn
+subjects:
+    - kind: ServiceAccount
+      name: patchy-egress-broker
+      namespace: patchy

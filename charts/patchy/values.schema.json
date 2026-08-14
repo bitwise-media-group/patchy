@@ -7,7 +7,7 @@
         "duration": {
             "type": "string",
             "description": "Go duration, e.g. 60s, 2m, 1h30m",
-            "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+$"
+            "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
         },
         "logLevel": {
             "type": "string",
@@ -160,6 +160,52 @@
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "provider": {
+                    "type": "object",
+                    "description": "Brokered-claude model provider: which API the egress broker fronts and how canonical model ids map onto it. Ignored for non-claude runners.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "enum": [
+                                "anthropic",
+                                "bedrock",
+                                "vertex",
+                                "foundry"
+                            ]
+                        },
+                        "region": {
+                            "type": "string",
+                            "description": "Provider region; required for bedrock and vertex"
+                        },
+                        "regionPrefix": {
+                            "type": "string",
+                            "description": "Bedrock inference-profile prefix override (us/eu/apac) when it cannot be derived from the region"
+                        },
+                        "projectID": {
+                            "type": "string",
+                            "description": "GCP project id; required for vertex"
+                        },
+                        "resource": {
+                            "type": "string",
+                            "description": "Microsoft Foundry resource name; required for foundry"
+                        },
+                        "modelMap": {
+                            "type": "object",
+                            "description": "Canonical model id -> provider-specific id overrides; required for foundry (deployment names)",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "env": {
+                            "type": "object",
+                            "description": "Extra agent-pod env for the provider; credential names are rejected at controller startup",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
@@ -1088,6 +1134,79 @@
                             "type": "boolean"
                         }
                     }
+                },
+                "resources": {
+                    "type": "object"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "tolerations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "affinity": {
+                    "type": "object"
+                },
+                "serviceAccount": {
+                    "$ref": "#/definitions/serviceAccount"
+                },
+                "service": {
+                    "$ref": "#/definitions/service"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/controllerNetworkPolicy"
+                }
+            }
+        },
+        "egressBroker": {
+            "type": "object",
+            "description": "The egress credential broker all claude model traffic goes through; deploys exactly when a claude runner is enabled",
+            "additionalProperties": false,
+            "required": [
+                "serviceAccount",
+                "service",
+                "networkPolicy"
+            ],
+            "properties": {
+                "image": {
+                    "$ref": "#/definitions/imageOverride"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "extra": {
+                            "$ref": "#/definitions/extraEnv"
+                        }
+                    }
+                },
+                "ssePingInterval": {
+                    "$ref": "#/definitions/duration"
+                },
+                "anthropicSecret": {
+                    "type": "string",
+                    "description": "Secret (release namespace) holding the Anthropic API key under api-key; the broker is its only consumer"
+                },
+                "anthropicAuth": {
+                    "type": "string",
+                    "description": "How the Anthropic credential authenticates: key (x-api-key) or token (Authorization bearer, a claude setup-token OAuth token)",
+                    "enum": [
+                        "key",
+                        "token"
+                    ]
+                },
+                "foundrySecret": {
+                    "type": "string",
+                    "description": "Secret (release namespace) holding the Foundry API key under api-key; empty selects Entra via the broker's workload identity"
                 },
                 "resources": {
                     "type": "object"

@@ -98,11 +98,27 @@ data:
     # (the `images:` block does not rewrite these ConfigMap values).
     PATCHY_HARNESSES: claude
     PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:latest
-    PATCHY_CLAUDE_SECRET: patchy-anthropic
-    PATCHY_CLAUDE_SECRET_KEY: api-key
-    # Env var the credential is injected as: ANTHROPIC_API_KEY for an API
-    # key, or CLAUDE_CODE_OAUTH_TOKEN for a `claude setup-token` OAuth token.
-    PATCHY_CLAUDE_SECRET_ENV: ANTHROPIC_API_KEY
+    # The claude runner is BROKERED: all of its model traffic goes through
+    # the egress credential broker (deployment-egress-broker.yaml), and no
+    # credential of any kind enters a claude agent pod — the Anthropic key
+    # lives with the broker in the patchy namespace (see
+    # secrets.example.yaml), never in patchy-agents. There are therefore no
+    # PATCHY_CLAUDE_SECRET* keys anymore; the broker URL and provider
+    # selection replace them. Provider one of anthropic|bedrock|vertex|
+    # foundry; bedrock needs PATCHY_CLAUDE_PROVIDER_REGION, vertex that plus
+    # PATCHY_CLAUDE_PROVIDER_PROJECT_ID, foundry a PATCHY_CLAUDE_MODEL_MAP of
+    # canonical-id=deployment-name pairs.
+    PATCHY_BROKER_URL: http://patchy-egress-broker.patchy.svc.cluster.local:8080
+    PATCHY_CLAUDE_PROVIDER: anthropic
+    # Read only by egress-broker: the mounted Anthropic credential file
+    # (matches the Secret volume in deployment-egress-broker.yaml) and how it
+    # authenticates — `key` injects x-api-key (an API key); `token` sends an
+    # Authorization bearer, for a `claude setup-token` OAuth token. A
+    # bedrock/vertex/foundry overlay replaces these with the broker's own
+    # PATCHY_BEDROCK_REGION / PATCHY_VERTEX_REGION / PATCHY_FOUNDRY_RESOURCE
+    # (+ PATCHY_FOUNDRY_AUTH / PATCHY_FOUNDRY_API_KEY_FILE) keys.
+    PATCHY_ANTHROPIC_API_KEY_FILE: /etc/patchy/anthropic/api-key
+    PATCHY_ANTHROPIC_AUTH: key
     # Enable the codex runner by adding `codex` to PATCHY_HARNESSES and
     # supplying the OpenAI credential Secret (patchy-openai):
     PATCHY_CODEX_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/codex-agent-runner:latest

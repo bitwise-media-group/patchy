@@ -536,12 +536,88 @@ statusServer:
     networkPolicy:
         create: true
 
+# ---- egress-broker ----------------------------------------------------------
+# The egress credential broker (templates/egress-broker.yaml): the reverse
+# proxy all claude model traffic goes through. Agent pods authenticate to it
+# with an audience-bound projected ServiceAccount token (validated via
+# TokenReview); the broker injects or signs the model credential outbound —
+# the Anthropic API key, Bedrock SigV4, a Vertex OAuth token, or the Foundry
+# key/Entra bearer. It is what makes claude agent pods fully credential-less.
+#
+# Deploys exactly when a claude runner is enabled (agent.runners.claude or
+# evaluationController.runners.claude) — there is no separate enabled knob,
+# because brokered is the only mode claude has. Which provider it fronts is
+# agent.runners.claude.provider.
+#
+# WORKLOAD IDENTITY: for bedrock/vertex/entra the broker's ServiceAccount is
+# the attachment point, same recipe as the context-controller enhancers —
+# IRSA: annotate with eks.amazonaws.com/role-arn (or associate EKS Pod
+# Identity and add its link-local rule to networkPolicy.extraEgress); GKE:
+# annotate with iam.gke.io/gcp-service-account; Azure: annotate with
+# azure.workload.identity/client-id and label the pod
+# azure.workload.identity/use: "true" via podLabels. Scope the cloud role to
+# Invoke only: bedrock:InvokeModel* / aiplatform.endpoints.predict /
+# Cognitive Services User.
+egressBroker:
+    image: {}
+    config:
+        # Extra PATCHY_* keys for the broker only (e.g. PATCHY_BEDROCK_BASE_URL,
+        # PATCHY_FOUNDRY_BASE_URL, PATCHY_MAX_REQUEST_BYTES).
+        extra: {}
+    # Idle keep-alive period for streamed model responses; long thinking
+    # pauses otherwise let intermediaries close the connection.
+    ssePingInterval: 30s
+    # Secret (RELEASE namespace — the broker is its only consumer) holding
+    # the Anthropic credential under the `api-key` key. Used when the
+    # provider is anthropic. NOTE the migration: this Secret previously
+    # lived in the agent namespace as agent.runners.claude.secret.
+    anthropicSecret: patchy-anthropic
+    # How that credential authenticates: `key` injects it as x-api-key (an
+    # Anthropic API key); `token` sends it as an Authorization bearer — for
+    # a long-lived OAuth token minted with `claude setup-token` (the
+    # brokered replacement for the old secretEnv: CLAUDE_CODE_OAUTH_TOKEN).
+    anthropicAuth: key
+    # Secret (release namespace) holding the Foundry API key under `api-key`.
+    # Set when provider foundry authenticates by key; leave empty for Entra
+    # (the broker's Azure workload identity).
+    foundrySecret: ""
+    resources:
+        requests:
+            cpu: 50m
+            memory: 64Mi
+        limits:
+            cpu: 500m
+            memory: 256Mi
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    serviceAccount:
+        create: true
+        name: ""
+        # The workload-identity attachment point (see the header comment).
+        annotations: {}
+    service:
+        type: ClusterIP
+        port: 8080
+        annotations: {}
+    # Ingress: 8080 from the agent namespace only (plus probes). Egress: DNS
+    # + TCP 443 (the model APIs) + the Kubernetes API for TokenReview.
+    # extraEgress appends verbatim rules — the EKS Pod Identity agent
+    # (169.254.170.23:80) or GKE metadata (169.254.169.254:80), say.
+    networkPolicy:
+        create: true
+        extraEgress: []
+
 # The agent sandbox: the namespace and identity the two job controllers
 # create their ephemeral Jobs in, and the two agent stages' limits. Nothing
 # in this namespace holds a forge credential — the repository arrives as a
-# digest-verified tarball from source-controller's artifact server, and the
-# only Secrets in an agent pod are the model credential and the per-Job
-# handoff markdown.
+# digest-verified tarball from source-controller's artifact server. A claude
+# pod holds NO credential of any kind (its model traffic authenticates
+# broker-side; the pod carries only an identity token); the non-brokered
+# runners (codex/copilot) still mount their model credential Secret plus the
+# per-Job handoff markdown.
 agent:
     namespace: patchy-agents
     # Set false if the namespace is managed elsewhere; the chart then still
@@ -603,19 +679,44 @@ agent:
             # Override of <prefix>/claude-agent-runner; same shape as
             # <controller>.image (repository / tag / digest).
             image: {}
-            # Secret (agent namespace) holding the Anthropic credential.
-            secret: patchy-anthropic
-            secretKey: api-key
-            # ANTHROPIC_API_KEY for an API key, or CLAUDE_CODE_OAUTH_TOKEN for
-            # a `claude setup-token` OAuth token.
-            secretEnv: ANTHROPIC_API_KEY
-            # The model API this runner's pods may reach (SNI/FQDN allowlist)
-            # and, for Cilium, the DNS names they may resolve. No forge host
-            # ever appears — the pod never talks to GitHub.
-            hosts:
-                - api.anthropic.com
-            dnsPatterns:
-                - "*.anthropic.com"
+            # Claude is BROKERED: all its model traffic goes through the
+            # egress credential broker (`egressBroker` below deploys exactly
+            # when this runner is enabled), and NO credential of any kind
+            # enters the agent pod — not even the Anthropic API key. There
+            # are therefore no secret/secretKey/secretEnv keys here (setting
+            # them is ignored with a NOTES warning; the Anthropic key moved
+            # to `egressBroker.anthropicSecret` in the RELEASE namespace) and
+            # no hosts/dnsPatterns either — a claude pod's only egress is
+            # DNS, the artifact server, and the broker.
+            #
+            # `provider` selects which model API the broker fronts:
+            #
+            #   anthropic  first-party api.anthropic.com; the broker injects
+            #              the key from egressBroker.anthropicSecret.
+            #   bedrock    Amazon Bedrock; requires `region`, and the broker
+            #              SigV4-signs with its ambient AWS identity (IRSA /
+            #              Pod Identity via egressBroker.serviceAccount).
+            #   vertex     GCP Vertex AI; requires `region` + `projectID`,
+            #              and the broker attaches an OAuth token from ADC
+            #              (GKE Workload Identity via the broker SA).
+            #   foundry    Microsoft Foundry; requires `resource` (or a full
+            #              base URL via egressBroker.config.extra) and a
+            #              `modelMap` naming your deployment per canonical
+            #              model id — deployment names cannot be derived.
+            #              Credential: egressBroker.foundrySecret (API key)
+            #              or Entra via the broker's workload identity.
+            #
+            # `modelMap` overrides the derived provider model ids
+            # (canonical id -> provider id); `env` is extra agent-pod env for
+            # the provider (credential names rejected at startup).
+            provider:
+                name: anthropic
+                region: ""
+                regionPrefix: ""
+                projectID: ""
+                resource: ""
+                modelMap: {}
+                env: {}
         codex:
             # Off by default; enable it and supply the OpenAI credential to let
             # the investigation choose OpenAI models for remediation.

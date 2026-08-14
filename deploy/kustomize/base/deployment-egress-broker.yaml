@@ -1,0 +1,114 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+---
+# The egress credential broker: the reverse proxy ALL claude model traffic
+# goes through. Agent pods authenticate with an audience-bound projected
+# ServiceAccount token; the broker validates it via TokenReview and injects
+# or signs the model credential outbound (Anthropic API key, Bedrock SigV4,
+# Vertex OAuth, Foundry key/Entra). The model credential therefore lives
+# HERE, in the patchy namespace, and a claude agent pod holds no credential
+# of any kind. Not a controller: no reconcilers, no leases.
+#
+# The base configures the anthropic provider (PATCHY_ANTHROPIC_API_KEY_FILE
+# in configmap.yaml + the patchy-anthropic Secret volume below). For
+# bedrock/vertex/foundry, overlay the PATCHY_* provider keys and annotate
+# patchy-egress-broker's ServiceAccount with the cloud workload identity.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: patchy-egress-broker
+    namespace: patchy
+    labels:
+        app: egress-broker
+        app.kubernetes.io/name: egress-broker
+        app.kubernetes.io/part-of: patchy
+        # Deliberately `broker`: it runs no reconcilers and serves no humans
+        # — it fronts model APIs for the agent sandbox.
+        app.kubernetes.io/component: broker
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app.kubernetes.io/name: egress-broker
+            app.kubernetes.io/part-of: patchy
+    template:
+        metadata:
+            labels:
+                app: egress-broker
+                app.kubernetes.io/name: egress-broker
+                app.kubernetes.io/part-of: patchy
+                app.kubernetes.io/component: broker
+        spec:
+            serviceAccountName: patchy-egress-broker
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: broker
+                  # Built from Dockerfile.controller (repo root)
+                  # (TARGET=egress-broker in .goreleaser.yaml).
+                  image: ghcr.io/bitwise-media-group/patchy/egress-broker:latest
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: patchy-config
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                      - name: health
+                        containerPort: 8081
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: health
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  # readyz fails while a configured route's credential source
+                  # is unusable — this replaced the job controllers' claude
+                  # Secret probing as "is the model credential present".
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: health
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  resources:
+                      requests:
+                          cpu: 50m
+                          memory: 64Mi
+                      limits:
+                          cpu: 500m
+                          memory: 256Mi
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: tmp
+                        mountPath: /tmp
+                      - name: anthropic
+                        mountPath: /etc/patchy/anthropic
+                        readOnly: true
+            volumes:
+                - name: tmp
+                  emptyDir: {}
+                # The Anthropic API key, mounted as a file so a rotated
+                # Secret propagates without a restart (the broker reads it
+                # per request). Optional: a bedrock/vertex/foundry-entra
+                # overlay runs without it, and readyz reports an anthropic
+                # route whose key is actually missing.
+                - name: anthropic
+                  secret:
+                      secretName: patchy-anthropic
+                      optional: true

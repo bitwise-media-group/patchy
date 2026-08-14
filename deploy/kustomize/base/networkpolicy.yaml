@@ -201,6 +201,59 @@ spec:
               - protocol: TCP
                 port: 6443
 ---
+# ---- patchy namespace: the egress credential broker -------------------------
+# Selected separately (component: broker): the reverse proxy all claude model
+# traffic goes through, and the one place the model credentials live.
+#
+# Ingress: 8080 from the agent namespace (the brokered pods) and the patchy
+# namespace (the job controllers' advisory /readyz startup probe), plus 8081
+# kubelet probes. Egress: DNS, then TCP 443/6443 — the model APIs
+# (api.anthropic.com / Bedrock / Vertex / Foundry) and the Kubernetes API
+# server (TokenReview). Cloud-identity side channels (EKS Pod Identity
+# 169.254.170.23:80, GKE metadata 169.254.169.254:80) need an extra rule in
+# your overlay when the provider uses workload identity.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: patchy-egress-broker
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    podSelector:
+        matchLabels:
+            app.kubernetes.io/name: egress-broker
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - from:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: patchy-agents
+              - podSelector: {}
+          ports:
+              - protocol: TCP
+                port: 8080
+        - ports:
+              - protocol: TCP
+                port: 8081
+    egress:
+        # DNS.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        # The model APIs and the Kubernetes API server (TokenReview).
+        - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+---
 # ---- patchy-agents namespace: default deny --------------------------------
 # Applies to every pod in the namespace (empty podSelector), both directions.
 # Nothing may reach an agent pod, and an agent pod may reach nothing, except
@@ -244,7 +297,7 @@ spec:
               - protocol: TCP
                 port: 53
         # The artifact server: the init container's credential-less tarball
-        # fetch. This is the ONLY in-cluster destination an agent may dial.
+        # fetch.
         - to:
               - namespaceSelector:
                     matchLabels:
@@ -255,8 +308,21 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
-        # TCP 443, and nothing else: the agent container's `claude -p` ->
-        # api.anthropic.com. Explicitly excluded: the cluster-internal
+        # The egress credential broker: ALL of a brokered (claude) pod's
+        # model traffic. A claude pod needs no other egress at all — not
+        # even api.anthropic.com.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: patchy
+                podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: egress-broker
+          ports:
+              - protocol: TCP
+                port: 8080
+        # TCP 443, and nothing else: the non-brokered runners' model APIs
+        # (codex/copilot). Explicitly excluded: the cluster-internal
         # ranges, so an agent cannot reach the API server, kubelet, or
         # another workload. Adjust the except: blocks to your cluster's
         # pod/service/node CIDRs.

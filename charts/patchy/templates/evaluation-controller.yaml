@@ -80,11 +80,19 @@ exercises it.
 {{- if $r.enabled }}
 {{- $enabled = append $enabled $id }}
 {{- $_ := set $data (printf "PATCHY_EVOLVE_%s_IMAGE" (upper $id)) $r.image }}
+{{- if eq $id "claude" }}
+{{/*
+The claude evolve runner is brokered like its finding sibling: the shared
+broker/provider stamps replace the PATCHY_CLAUDE_SECRET* keys.
+*/}}
+{{- $_ := include "patchy.claudeProviderData" (dict "root" $ "data" $data) }}
+{{- else }}
 {{- $agentRunner := index $.Values.agent.runners $id }}
 {{- if and $agentRunner $agentRunner.secret }}
 {{- $_ := set $data (printf "PATCHY_%s_SECRET" (upper $id)) $agentRunner.secret }}
 {{- $_ := set $data (printf "PATCHY_%s_SECRET_KEY" (upper $id)) $agentRunner.secretKey }}
 {{- $_ := set $data (printf "PATCHY_%s_SECRET_ENV" (upper $id)) $agentRunner.secretEnv }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

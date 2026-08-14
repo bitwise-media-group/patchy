@@ -82,6 +82,21 @@ spec:
                     - port: "9790"
                       protocol: TCP
 
+        {{- if eq $id "claude" }}
+        # Brokered claude: the agent container's ONLY destination is the
+        # egress credential broker — a cluster-local endpoint, so this policy
+        # carries no toFQDNs at all. The DNS rule above resolves only the
+        # cluster-local names (clusterDNSPatterns); no external name resolves
+        # from a claude pod, period.
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: {{ $root.Release.Namespace }}
+                    app.kubernetes.io/name: egress-broker
+          toPorts:
+              - ports:
+                    - port: "8080"
+                      protocol: TCP
+        {{- else }}
         # The agent container: this runner's model API and nothing else.
         - toFQDNs:
               {{- range $r.hosts | default list }}
@@ -91,6 +106,7 @@ spec:
               - ports:
                     - port: "443"
                       protocol: TCP
+        {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

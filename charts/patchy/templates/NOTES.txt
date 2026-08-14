@@ -15,15 +15,30 @@ The pipeline idles until two things exist:
        * the forge/provider credential (keys: appID + privateKey, or token,
          plus webhookSecret on Integration secrets) in namespace
          {{ .Release.Namespace }}, named by each CR's spec.secretRef.
-       * a model credential per enabled harness in namespace
-         {{ .Values.agent.namespace }} — one Secret for each enabled
-         agent.runners.<harness> (default:
-         {{- range $id, $r := .Values.agent.runners }}{{ if $r.enabled }} {{ $r.secret }} (key {{ $r.secretKey }}, as {{ $r.secretEnv }}){{ end }}{{- end }}).
-         A harness is enabled only when its runner is enabled AND its
-         credential exists; every allowlisted model needs one enabled harness
-         that supports it, or the controllers refuse to start.
+       * the model credentials. Claude's lives with the egress broker in
+         namespace {{ .Release.Namespace }} ({{ .Values.egressBroker.anthropicSecret }}, key api-key, when the
+         provider is anthropic; for bedrock/vertex/foundry-entra the broker
+         uses its workload identity instead — annotate
+         egressBroker.serviceAccount). The non-brokered runners each need a
+         Secret in namespace {{ .Values.agent.namespace }}
+         ({{- range $id, $r := .Values.agent.runners }}{{ if and $r.enabled $r.secret }} {{ $r.secret }} (key {{ $r.secretKey }}, as {{ $r.secretEnv }}){{ end }}{{- end }} — none needed when only claude is enabled).
+         A non-brokered harness is enabled only when its runner is enabled
+         AND its credential exists; claude is enabled by configuration, with
+         a missing broker credential surfacing at the broker's /readyz.
+         Every allowlisted model needs one enabled harness that supports it,
+         or the controllers refuse to start.
      See deploy/kustomize/base/secrets.example.yaml in the patchy repository
      for the exact shapes and kubectl one-liners.
+{{- if or (index .Values.agent.runners.claude "secret") (index .Values.agent.runners.claude "secretKey") (index .Values.agent.runners.claude "secretEnv") }}
+
+WARNING: agent.runners.claude.secret / secretKey / secretEnv are set but
+IGNORED — claude runs proxy-only through the egress broker and its pods hold
+no credential. Move the Anthropic credential to a Secret named
+`{{ .Values.egressBroker.anthropicSecret }}` (key api-key) in namespace {{ .Release.Namespace }}, delete the old
+Secret from {{ .Values.agent.namespace }}, and drop these values. If the old
+secretEnv was CLAUDE_CODE_OAUTH_TOKEN (a `claude setup-token` token), also
+set egressBroker.anthropicAuth=token so the broker sends it as a bearer.
+{{- end }}
 {{- if not (and .Values.integrations .Values.forges) }}
 
 NOTE: {{ if not .Values.integrations }}`integrations` is empty{{ if not .Values.forges }} and {{ end }}{{ end }}{{ if not .Values.forges }}`forges` is empty{{ end }} — no findings will be

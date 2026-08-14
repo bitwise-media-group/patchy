@@ -21,6 +21,7 @@
 {{- $root := . }}
 {{- range $id, $r := .Values.agent.runners }}
 {{- if $r.enabled }}
+{{- if $r.hosts }}
 ---
 # One runner's model API. exportTo: "." keeps the entry private to the agent
 # namespace. There is deliberately NO forge (GitHub) entry: the repository
@@ -50,12 +51,15 @@ spec:
         - number: 443
           name: tls
           protocol: TLS
+{{- end }}
 ---
 # Drop anything not in this harness's registry slice. Visible to it: this
-# runner's model ServiceEntry above (by explicit host) and the release
+# runner's model ServiceEntry above (by explicit host; brokered claude has
+# none — its egress set is empty of external hosts entirely) and the release
 # namespace's Services — which is how the init container reaches source-
-# controller's artifact server. The workloadSelector scopes the Sidecar to
-# this harness's pods, so the other runner's ServiceEntry is not reachable.
+# controller's artifact server and how a brokered claude pod reaches the
+# egress broker. The workloadSelector scopes the Sidecar to this harness's
+# pods, so the other runner's ServiceEntry is not reachable.
 apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:

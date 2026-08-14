@@ -176,5 +176,67 @@
             }
         ],
         "posturePolicies": [{ "controlID": "C-0263" }]
+    },
+    {
+        "name": "egress-broker-needs-the-kubernetes-api",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["alertOnly"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "name": ".*patchy-egress-broker.*" }
+            }
+        ],
+        "posturePolicies": [
+            { "controlID": "C-0190" },
+            { "controlID": "C-0034" },
+            { "controlID": "C-0053" },
+            { "controlID": "C-0261" }
+        ]
+    },
+    {
+        "name": "egress-broker-rbac-is-tokenreview-only",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["alertOnly"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "name": ".*patchy-egress-broker.*" }
+            }
+        ],
+        "posturePolicies": [
+            { "controlID": "C-0007" },
+            { "controlID": "C-0015" },
+            { "controlID": "C-0037" },
+            { "controlID": "C-0186" },
+            { "controlID": "C-0267" }
+        ]
+    },
+    {
+        "name": "egress-broker-c0211-selinux-options-are-host-specific",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["alertOnly"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "kind": "Deployment", "name": ".*patchy-egress-broker" }
+            }
+        ],
+        "posturePolicies": [{ "controlID": "C-0211" }]
+    },
+    {
+        "name": "egress-broker-c0255-c0258-mounts-the-model-credential",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["alertOnly"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "kind": "Deployment", "name": ".*patchy-egress-broker" }
+            }
+        ],
+        "posturePolicies": [
+            { "controlID": "C-0255" },
+            { "controlID": "C-0258" }
+        ]
     }
 ]

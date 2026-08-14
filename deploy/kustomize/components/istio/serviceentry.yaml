@@ -13,27 +13,10 @@
 # There is deliberately no GitHub entry for the claude or codex harnesses: the
 # repository arrives as a tarball from source-controller's in-cluster artifact
 # server (a mesh-registry Service the Sidecar already exposes), and those pods
-# hold no forge credential. The copilot entry below is the sole exception, and
-# only for authentication — see it for why.
----
-# The claude harness's model API.
-apiVersion: networking.istio.io/v1
-kind: ServiceEntry
-metadata:
-    name: patchy-agent-anthropic
-    namespace: patchy-agents
-    labels:
-        app.kubernetes.io/part-of: patchy
-spec:
-    exportTo: ["."]
-    hosts:
-        - api.anthropic.com
-    location: MESH_EXTERNAL
-    resolution: DNS
-    ports:
-        - number: 443
-          name: tls
-          protocol: TLS
+# hold no forge credential. And there is no claude entry AT ALL: claude is
+# brokered — its model traffic goes to the in-cluster egress broker (a
+# mesh-registry Service too), so it has no external host to allow. The
+# copilot GitHub host below is the sole auth exception — see it for why.
 ---
 # The codex harness's model API (inert until the codex runner is enabled).
 apiVersion: networking.istio.io/v1

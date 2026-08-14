@@ -1,0 +1,313 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+#
+# The egress credential broker, in one file (modeled on status-server.yaml):
+# the reverse proxy all claude model traffic goes through. Deploys exactly
+# when a claude runner is enabled — brokered is the only mode claude has, so
+# claude ⇒ broker and fake-only dev/e2e renders none of this. Agent pods
+# authenticate with an audience-bound projected ServiceAccount token; the
+# broker validates it via TokenReview (its ONLY Kubernetes access — no Secret
+# API reads, no leases, no reconcilers) and injects or signs the model
+# credential outbound. The model credentials therefore live HERE, in the
+# release namespace, not in the agent sandbox.
+{{- if include "patchy.brokerEnabled" . }}
+{{- $vals := .Values.egressBroker }}
+{{- $name := "egress-broker" }}
+{{- $provider := .Values.agent.runners.claude.provider | default dict }}
+{{- $providerName := $provider.name | default "anthropic" }}
+{{- if not (has $providerName (list "anthropic" "bedrock" "vertex" "foundry")) }}
+{{- fail (printf "agent.runners.claude.provider.name: %q is not one of anthropic, bedrock, vertex, foundry" $providerName) }}
+{{- end }}
+{{- if $vals.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+    name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.serviceAccount.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+{{- end }}
+---
+{{- $data := dict
+    "PATCHY_HEALTH_ADDR" ":8081"
+    "PATCHY_LISTEN_ADDR" ":8080"
+    "PATCHY_LOG_LEVEL" .Values.config.logLevel
+    "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
+    "PATCHY_AGENT_SERVICE_ACCOUNT" .Values.agent.serviceAccount
+    "PATCHY_TOKEN_AUDIENCE" "patchy-egress-broker"
+    "PATCHY_SSE_PING_INTERVAL" $vals.ssePingInterval
+}}
+{{- if eq $providerName "anthropic" }}
+{{- if not (has $vals.anthropicAuth (list "key" "token")) }}
+{{- fail (printf "egressBroker.anthropicAuth: %q is not key or token" $vals.anthropicAuth) }}
+{{- end }}
+{{- $_ := set $data "PATCHY_ANTHROPIC_API_KEY_FILE" "/etc/patchy/anthropic/api-key" }}
+{{- $_ := set $data "PATCHY_ANTHROPIC_AUTH" $vals.anthropicAuth }}
+{{- else if eq $providerName "bedrock" }}
+{{- $_ := set $data "PATCHY_BEDROCK_REGION" (required "agent.runners.claude.provider.region is required for bedrock" $provider.region) }}
+{{- else if eq $providerName "vertex" }}
+{{- $_ := set $data "PATCHY_VERTEX_REGION" (required "agent.runners.claude.provider.region is required for vertex" $provider.region) }}
+{{- else if eq $providerName "foundry" }}
+{{- $_ := set $data "PATCHY_FOUNDRY_RESOURCE" (required "agent.runners.claude.provider.resource is required for foundry" $provider.resource) }}
+{{- if $vals.foundrySecret }}
+{{- $_ := set $data "PATCHY_FOUNDRY_AUTH" "key" }}
+{{- $_ := set $data "PATCHY_FOUNDRY_API_KEY_FILE" "/etc/patchy/foundry/api-key" }}
+{{- else }}
+{{- $_ := set $data "PATCHY_FOUNDRY_AUTH" "entra" }}
+{{- end }}
+{{- end }}
+{{- range $k, $v := .Values.config.extra }}
+{{- $_ := set $data $k $v }}
+{{- end }}
+{{- range $k, $v := $vals.config.extra }}
+{{- $_ := set $data $k $v }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ include "patchy.configMapName" (dict "root" . "name" $name) }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+data:
+    {{- range $k, $v := $data }}
+    {{ $k }}: {{ $v | toString | quote }}
+    {{- end }}
+---
+# TokenReview is cluster-scoped, so the one grant needs a ClusterRole.
+# Review-only: the power to ask "whose token is this?", nothing else — no
+# Secret access, no writes, no other resource of any kind.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authn
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [authentication.k8s.io]
+      resources: [tokenreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authn
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-authn
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+      namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name "component" "broker") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}
+    template:
+        metadata:
+            labels:
+                {{- include "patchy.labels" (dict "root" . "name" $name "component" "broker") | nindent 16 }}
+                {{- with $vals.podLabels }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+            {{- with include "patchy.annotations" (dict "root" . "extra" $vals.podAnnotations) }}
+            annotations:
+                {{- . | nindent 16 }}
+            {{- end }}
+        spec:
+            serviceAccountName: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
+            {{- with .Values.image.pullSecrets }}
+            imagePullSecrets:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                fsGroup: 65532
+                fsGroupChangePolicy: Always
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: broker
+                  image: {{ include "patchy.image" (dict "root" . "binary" $name "image" $vals.image) }}
+                  imagePullPolicy: {{ .Values.image.pullPolicy }}
+                  args: ["serve"]
+                  envFrom:
+                      - configMapRef:
+                            name: {{ include "patchy.configMapName" (dict "root" . "name" $name) }}
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                      - name: health
+                        containerPort: 8081
+                        protocol: TCP
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: health
+                      initialDelaySeconds: 5
+                      periodSeconds: 20
+                  # readyz fails while a configured route's credential source
+                  # is unusable — this is what replaced the job controllers'
+                  # claude-Secret probing.
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: health
+                      initialDelaySeconds: 2
+                      periodSeconds: 10
+                  {{- with $vals.resources }}
+                  resources:
+                      {{- toYaml . | nindent 22 }}
+                  {{- end }}
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop: ["ALL"]
+                      seccompProfile:
+                          type: RuntimeDefault
+                  volumeMounts:
+                      - name: tmp
+                        mountPath: /tmp
+                      {{- if eq $providerName "anthropic" }}
+                      - name: anthropic
+                        mountPath: /etc/patchy/anthropic
+                        readOnly: true
+                      {{- end }}
+                      {{- if and (eq $providerName "foundry") $vals.foundrySecret }}
+                      - name: foundry
+                        mountPath: /etc/patchy/foundry
+                        readOnly: true
+                      {{- end }}
+            {{- with $vals.nodeSelector }}
+            nodeSelector:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $vals.tolerations }}
+            tolerations:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with $vals.affinity }}
+            affinity:
+                {{- toYaml . | nindent 16 }}
+            {{- end }}
+            volumes:
+                - name: tmp
+                  emptyDir: {}
+                # The model credentials, mounted as files so a rotated Secret
+                # propagates without a restart (the broker reads per request).
+                {{- if eq $providerName "anthropic" }}
+                - name: anthropic
+                  secret:
+                      secretName: {{ $vals.anthropicSecret }}
+                {{- end }}
+                {{- if and (eq $providerName "foundry") $vals.foundrySecret }}
+                - name: foundry
+                  secret:
+                      secretName: {{ $vals.foundrySecret }}
+                {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" . "extra" $vals.service.annotations) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    type: {{ $vals.service.type }}
+    selector:
+        {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 8 }}
+    ports:
+        - name: http
+          port: {{ $vals.service.port }}
+          targetPort: http
+          protocol: TCP
+{{- if $vals.networkPolicy.create }}
+---
+# Ingress: the proxy port from the agent namespace only — the broker answers
+# to agent pods and nobody else (the job controllers' advisory startup probe
+# uses the unauthenticated /readyz on the same port, so they are granted it
+# too) — plus 8081 probes from anywhere (kubelet probes arrive from the node
+# IP). Egress: DNS, then TCP 443/6443 — the model APIs and the Kubernetes API
+# server (TokenReview). extraEgress covers the cloud-identity side channels
+# (EKS Pod Identity 169.254.170.23:80, GKE metadata 169.254.169.254:80).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+spec:
+    podSelector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}
+    policyTypes: [Ingress, Egress]
+    ingress:
+        - from:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: {{ .Values.agent.namespace }}
+              - podSelector: {}
+          ports:
+              - protocol: TCP
+                port: 8080
+        - ports:
+              - protocol: TCP
+                port: 8081
+    egress:
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+          ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+        - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+        {{- with $vals.networkPolicy.extraEgress }}
+        # Operator-supplied additions (egressBroker.networkPolicy.extraEgress).
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

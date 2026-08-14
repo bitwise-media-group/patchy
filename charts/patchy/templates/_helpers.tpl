@@ -108,6 +108,66 @@ app.kubernetes.io/managed-by: patchy
 {{- end }}
 
 {{/*
+Whether the egress credential broker deploys: exactly when a claude runner is
+enabled anywhere (findings or evaluations). There is deliberately no separate
+enabled knob — claude runs proxy-only, so claude ⇒ broker, and a fake-only
+dev/e2e values file renders none of it. Returns a non-empty string for yes.
+*/}}
+{{- define "patchy.brokerEnabled" -}}
+{{- if or .Values.agent.runners.claude.enabled (and .Values.evaluationController.enabled .Values.evaluationController.runners.claude.enabled) -}}
+yes
+{{- end -}}
+{{- end }}
+
+{{/*
+The egress broker's in-cluster base URL — what PATCHY_BROKER_URL is stamped
+with and what the agent pods' gateway env points at.
+*/}}
+{{- define "patchy.brokerURL" -}}
+http://{{ include "patchy.fullname" . }}-egress-broker.{{ .Release.Namespace }}.svc.cluster.local:8080
+{{- end }}
+
+{{/*
+Stamp the brokered-claude configuration into a controller's ConfigMap data
+dict: the broker URL and the PATCHY_CLAUDE_PROVIDER* keys the runnercfg flags
+bind. Context: dict "root" $ "data" <dict>. The PATCHY_CLAUDE_SECRET* keys
+are deliberately NOT stamped anymore — the claude model credential lives in
+the broker, not the agent namespace.
+*/}}
+{{- define "patchy.claudeProviderData" -}}
+{{- $p := .root.Values.agent.runners.claude.provider | default dict -}}
+{{- $_ := set .data "PATCHY_BROKER_URL" (include "patchy.brokerURL" .root) -}}
+{{- $_ := set .data "PATCHY_CLAUDE_PROVIDER" ($p.name | default "anthropic") -}}
+{{- with $p.region -}}
+{{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_REGION" . -}}
+{{- end -}}
+{{- with $p.regionPrefix -}}
+{{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_REGION_PREFIX" . -}}
+{{- end -}}
+{{- with $p.projectID -}}
+{{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_PROJECT_ID" . -}}
+{{- end -}}
+{{- with $p.modelMap -}}
+{{- $_ := set $.data "PATCHY_CLAUDE_MODEL_MAP" (include "patchy.kvList" .) -}}
+{{- end -}}
+{{- with $p.env -}}
+{{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_ENV" (include "patchy.kvList" .) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Render a map as the comma-joined key=value wire form the runnercfg flags
+parse (--claude-model-map, --claude-provider-env). Keys sort deterministically.
+*/}}
+{{- define "patchy.kvList" -}}
+{{- $pairs := list -}}
+{{- range $k, $v := . -}}
+{{- $pairs = append $pairs (printf "%s=%s" $k $v) -}}
+{{- end -}}
+{{- join "," $pairs -}}
+{{- end }}
+
+{{/*
 The resolved hostname-enforcement mode for the agent sandbox — one of
 `none`, `cilium`, `gke` or `istio`. Every egress template keys off this, so
 there is exactly one place that decides which CNI dialect a cluster gets.

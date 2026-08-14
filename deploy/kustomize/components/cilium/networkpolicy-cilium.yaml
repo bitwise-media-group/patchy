@@ -10,9 +10,11 @@
 # prompt-injected agent is talked into — is dropped.
 #
 # One policy per harness, each selecting that harness's pods by their
-# patchy.bitwisemedia.uk/harness label, so a claude pod may reach only
-# api.anthropic.com and a codex pod only api.openai.com. Each pod needs exactly
-# two destinations:
+# patchy.bitwisemedia.uk/harness label, so a codex pod may reach only
+# api.openai.com — and a claude pod nothing external at all: claude is
+# brokered, so its policy is cluster-only (DNS, the artifact server, the
+# egress broker) with no toFQDNs and no external names resolvable. The
+# non-brokered pods need exactly two destinations:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
 #     container's credential-less, digest-verified tarball fetch. No forge
@@ -38,9 +40,8 @@ spec:
             app.kubernetes.io/managed-by: patchy
             patchy.bitwisemedia.uk/harness: claude
     egress:
-        # DNS, via Cilium's proxy — this is what makes toFQDNs work at all:
-        # the proxy watches the answers and programs the resolved IPs into the
-        # policy. Only the names below may be resolved.
+        # DNS, via Cilium's proxy. Brokered claude resolves only
+        # cluster-local names — no external name resolves from its pods.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: kube-system
@@ -51,7 +52,6 @@ spec:
                       protocol: ANY
                 rules:
                     dns:
-                        - matchPattern: "*.anthropic.com"
                         - matchPattern: "*.patchy.svc.cluster.local"
                         - matchPattern: "*.svc.cluster.local"
 
@@ -66,12 +66,15 @@ spec:
                     - port: "9790"
                       protocol: TCP
 
-        # The agent container: the claude harness's model API and nothing else.
-        - toFQDNs:
-              - matchName: api.anthropic.com
+        # The agent container: the egress credential broker, which fronts
+        # whichever model API is configured, and nothing else. No toFQDNs.
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: patchy
+                    app.kubernetes.io/name: egress-broker
           toPorts:
               - ports:
-                    - port: "443"
+                    - port: "8080"
                       protocol: TCP
 ---
 apiVersion: cilium.io/v2

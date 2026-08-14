@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Four Services, because only four things are dialled by anything:
+# Five Services, because only five things are dialled by anything:
 #
 #   * patchy-integration-controller:8080 — the machine-facing entry point
 #     (the provider webhook receivers, e.g. POST /github/webhooks).
@@ -17,6 +17,9 @@
 #   * patchy-evaluation-controller:8080 — the evolve-facing evaluation API.
 #     Front it with your Ingress / Gateway (bearer-authenticated; its own
 #     hostname keeps it apart from the human surfaces).
+#   * patchy-egress-broker:8080 — the egress credential broker all claude
+#     model traffic goes through (in-cluster only; caller tokens validated
+#     via TokenReview, ingress restricted to the patchy-agents namespace).
 #
 # The other controllers serve nothing but kubelet probes on :8081, which hit
 # the pod directly — no Service needed.
@@ -94,6 +97,25 @@ spec:
     type: ClusterIP
     selector:
         app.kubernetes.io/name: status-server
+        app.kubernetes.io/part-of: patchy
+    ports:
+        - name: http
+          port: 8080
+          targetPort: http
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: patchy-egress-broker
+    namespace: patchy
+    labels:
+        app.kubernetes.io/name: egress-broker
+        app.kubernetes.io/part-of: patchy
+spec:
+    type: ClusterIP
+    selector:
+        app.kubernetes.io/name: egress-broker
         app.kubernetes.io/part-of: patchy
     ports:
         - name: http

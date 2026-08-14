@@ -28,6 +28,7 @@ resources:
     - deployment-remediation-controller.yaml
     - deployment-evaluation-controller.yaml
     - deployment-status-server.yaml
+    - deployment-egress-broker.yaml
     - service.yaml
     - networkpolicy.yaml
     # Field-level authorization for human actions (see the file header).
@@ -69,4 +70,6 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
       newTag: latest
     - name: ghcr.io/bitwise-media-group/patchy/status-server
+      newTag: latest
+    - name: ghcr.io/bitwise-media-group/patchy/egress-broker
       newTag: latest

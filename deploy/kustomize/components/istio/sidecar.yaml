@@ -55,11 +55,11 @@ spec:
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
-        # This harness's model host (the api.anthropic.com ServiceEntry,
-        # exportTo: ".") and the patchy namespace's Services — which is how the
-        # init container reaches source-controller's artifact server.
+        # Brokered claude has NO external host: only the patchy namespace's
+        # Services — which is how the init container reaches
+        # source-controller's artifact server and the agent container the
+        # egress broker.
         - hosts:
-              - ./api.anthropic.com
               - patchy/*
 ---
 apiVersion: networking.istio.io/v1

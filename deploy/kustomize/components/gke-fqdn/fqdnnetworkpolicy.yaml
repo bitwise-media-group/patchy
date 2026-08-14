@@ -20,11 +20,13 @@
 #
 # What this covers, and what it does NOT:
 #
-#   * The agent container's own model API on 443 — one policy per harness,
-#     selecting that harness's pods by their patchy.bitwisemedia.uk/harness
-#     label, so a claude pod reaches only api.anthropic.com and a codex pod
-#     only api.openai.com. No forge host appears; the pod never talks to
-#     GitHub.
+#   * The agent container's own model API on 443 — one policy per
+#     NON-BROKERED harness, selecting that harness's pods by their
+#     patchy.bitwisemedia.uk/harness label, so a codex pod reaches only
+#     api.openai.com. No forge host appears; the pod never talks to GitHub.
+#     There is NO claude policy: claude is brokered and has no external
+#     hosts at all — its whole egress (DNS, the artifact server, the egress
+#     broker) comes from base/networkpolicy.yaml.
 #   * NOT DNS and NOT the artifact server. FQDN policies are egress-only and
 #     cannot name a resolver or select a ClusterIP Service, so both still come
 #     from base/networkpolicy.yaml — which kustomization.yaml keeps, minus its
@@ -32,27 +34,6 @@
 #
 # The codex and copilot policies are inert until those runners are enabled (no
 # pod carries the label otherwise).
----
-apiVersion: networking.gke.io/v1alpha1
-kind: FQDNNetworkPolicy
-metadata:
-    name: patchy-agent-egress-claude
-    namespace: patchy-agents
-    labels:
-        app.kubernetes.io/part-of: patchy
-spec:
-    podSelector:
-        matchLabels:
-            app.kubernetes.io/name: patchy-agent
-            app.kubernetes.io/managed-by: patchy
-            patchy.bitwisemedia.uk/harness: claude
-    egress:
-        # The agent container: the claude harness's model API and nothing else.
-        - matches:
-              - name: api.anthropic.com
-          ports:
-              - protocol: TCP
-                port: 443
 ---
 apiVersion: networking.gke.io/v1alpha1
 kind: FQDNNetworkPolicy

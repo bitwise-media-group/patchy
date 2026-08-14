@@ -204,6 +204,21 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
+        {{- if include "patchy.brokerEnabled" . }}
+        # The egress credential broker: ALL of a claude pod's model traffic.
+        # With claude brokered its pods need no other egress at all — not
+        # even api.anthropic.com.
+        - to:
+              - namespaceSelector:
+                    matchLabels:
+                        kubernetes.io/metadata.name: {{ .Release.Namespace }}
+                podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: egress-broker
+          ports:
+              - protocol: TCP
+                port: 8080
+        {{- end }}
         {{- if $broadEgress }}
         # TCP 443 out, cluster-internal ranges excluded.
         - to:

@@ -22,7 +22,7 @@ require (
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/go-github/v89 v89.0.0
 	github.com/google/osv-scanner/v2 v2.5.0
-	github.com/ossf/osv-schema/bindings/go v0.0.0-20260730052020-9509daabeece
+	github.com/ossf/osv-schema/bindings/go v0.0.0-20260806060209-f3f826310aec
 	github.com/sigstore/cosign/v3 v3.1.3
 	github.com/sigstore/sigstore/pkg/signature/kms/aws v1.10.8
 	github.com/sigstore/sigstore/pkg/signature/kms/azure v1.10.9

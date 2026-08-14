@@ -127,6 +127,22 @@ builds:
       goarch:
           - amd64
           - arm64
+    - id: egress-broker
+      main: ./cmd/egress-broker
+      binary: egress-broker
+      flags:
+          - -trimpath
+      ldflags:
+          - -s -w
+          - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
+          - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
+      goos:
+          - linux
+          - darwin
+      goarch:
+          - amd64
+          - arm64
     - id: agent-runner
       main: ./cmd/agent-runner
       binary: agent-runner
@@ -220,6 +236,7 @@ archives:
           - evaluation-controller
           - integration-controller
           - investigation-controller
+          - egress-broker
           - agent-runner
           - status-server
       formats: [tar.gz]
@@ -357,6 +374,24 @@ dockers_v2:
           - linux/arm64
       build_args:
           TARGET: investigation-controller
+      labels:
+          org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.revision: "{{ .FullCommit }}"
+          org.opencontainers.image.version: "{{ .Version }}"
+    - id: egress-broker
+      ids: [egress-broker]
+      dockerfile: Dockerfile.controller
+      images:
+          - ghcr.io/bitwise-media-group/patchy/egress-broker
+      tags:
+          - v{{ .Version }}
+          - latest
+      platforms:
+          - linux/amd64
+          - linux/arm64
+      build_args:
+          TARGET: egress-broker
       labels:
           org.opencontainers.image.source: https://github.com/bitwise-media-group/patchy
           org.opencontainers.image.licenses: MIT

@@ -85,6 +85,7 @@ nav = [
 name = "material"
 custom_dir = "overrides"
 favicon = "assets/images/favicon.svg"
+logo = "assets/images/logo.svg"
 features = [
   "navigation.instant",
   "navigation.tracking",

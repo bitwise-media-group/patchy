@@ -1,6 +1,6 @@
 {#- overrides/partials/nav.html — primary drawer nav. Drops the stock logo from the drawer title and renders the site
-name as the same patch-mark + "patchy" wordmark as the header (overrides/partials/header.html). Styling lives in
-docs/stylesheets/extra.css (.pt-headmark, .pt-mark). -#} {% import "partials/nav-item.html" as item with context %} {%
+name as the same SVG patch mark + "patchy" wordmark as the header (overrides/partials/header.html). Styling lives in
+docs/stylesheets/extra.css (.pt-headmark). -#} {% import "partials/nav-item.html" as item with context %} {%
 set class = "md-nav md-nav--primary" %} {% if "navigation.tabs" in features %} {% set class = class ~ " md-nav--lifted" %} {% endif %} {% if "toc.integrate" in features %} {% set class = class ~ " md-nav--integrated" %} {% endif %}
 <nav class="{{ class }}"
      aria-label="{{ lang.t("nav") }}"
@@ -10,9 +10,12 @@ set class = "md-nav md-nav--primary" %} {% if "navigation.tabs" in features %} {
            title="{{ config.site_name | e }}"
            class="pt-headmark"
            aria-label="{{ config.site_name }}">
-            <span class="pt-mark" aria-hidden="true">
-                <span class="pt-mark__hole"></span><span class="pt-mark__turf"></span><span class="pt-mark__blade pt-mark__blade--one"></span><span class="pt-mark__blade pt-mark__blade--two"></span>
-            </span>
+            <img src="{{ config.theme.logo | url }}"
+                 alt=""
+                 class="pt-headmark__logo"
+                 width="26"
+                 height="26"
+                 aria-hidden="true">
             <span class="pt-headmark__name">patchy</span>
         </a>
     </label>

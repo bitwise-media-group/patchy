@@ -1,0 +1,47 @@
+<!-- Copyright 2026 Bitwise Media Group Ltd. -->
+<!-- SPDX-License-Identifier: MIT -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Patchy</title>
+  <desc id="desc">A square of new turf sliding over a soil hole, filling the gap.</desc>
+  <defs>
+    <linearGradient id="pt-logo-lawn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eef5ea"/>
+      <stop offset="100%" stop-color="#dce8d6"/>
+    </linearGradient>
+    <radialGradient id="pt-logo-hole" cx="46%" cy="32%" r="74%">
+      <stop offset="0%" stop-color="#5c4030"/>
+      <stop offset="55%" stop-color="#77583e"/>
+      <stop offset="100%" stop-color="#4a3426"/>
+    </radialGradient>
+    <linearGradient id="pt-logo-turf" x1="0.18" y1="0" x2="0.82" y2="1">
+      <stop offset="0%" stop-color="#3d9144"/>
+      <stop offset="55%" stop-color="#2f7d36"/>
+      <stop offset="100%" stop-color="#25682c"/>
+    </linearGradient>
+    <linearGradient id="pt-logo-sod" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8b6847"/>
+      <stop offset="100%" stop-color="#5c4030"/>
+    </linearGradient>
+    <clipPath id="pt-logo-tile">
+      <rect x="5" y="5" width="118" height="118" rx="26"/>
+    </clipPath>
+  </defs>
+
+  <rect x="5" y="5" width="118" height="118" rx="26" fill="url(#pt-logo-lawn)" stroke="#afc2b0" stroke-width="2"/>
+
+  <g clip-path="url(#pt-logo-tile)">
+    <ellipse cx="48" cy="88" rx="33.5" ry="16.2" fill="#8a6847"/>
+    <ellipse cx="48" cy="88.4" rx="30.5" ry="13.8" fill="url(#pt-logo-hole)"/>
+    <ellipse cx="48" cy="86.6" rx="20" ry="7.4" fill="#3d2a1e" opacity="0.4"/>
+    <path d="M22 88.8c5.6 7.2 15.8 11.6 26 11.6s20.4-4.4 26-11.6" fill="none" stroke="#c4b09a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+
+    <g transform="rotate(-8 83 76)">
+      <rect x="62" y="73" width="50" height="32" rx="5" fill="#172219" opacity="0.16"/>
+      <rect x="58" y="69" width="50" height="32" rx="5" fill="url(#pt-logo-sod)"/>
+      <rect x="58" y="62" width="50" height="32" rx="5" fill="url(#pt-logo-turf)" stroke="#172219" stroke-width="2.1"/>
+      <path d="M71 66C69.6 57.5 68.2 51 70.8 44.2c.9 1.8 1.8 5.4 2.3 9.4.5 4.8.8 8.6.9 12.4z" fill="#1e5c24"/>
+      <path d="M76.2 65.5C75 53.5 74.2 45 77.8 35.8c1.1 2.4 2.3 7.4 2.9 13.2.6 6.6 1 11.6 1.1 16.5z" fill="#25672c"/>
+      <path d="M82.4 65C85 54 88.6 46.2 94.6 38.4c-.6 2-1.5 6.2-2.2 10.8-.9 6.2-1.6 11-2 15.8z" fill="#1e5c24"/>
+    </g>
+  </g>
+</svg>

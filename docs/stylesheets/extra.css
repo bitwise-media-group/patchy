@@ -150,10 +150,10 @@
     letter-spacing: 0.5px;
 }
 
-/* Header wordmark: the CSS patch mark + lowercase mono "patchy"
-   (overrides/partials/header.html, nav.html). The mark is the design
-   system's logo — a square of new turf sliding over a small soil hole,
-   two grass blades sprouting behind it. */
+/* Header wordmark: the SVG patch mark + lowercase mono "patchy"
+   (overrides/partials/header.html, nav.html). The mark is
+   docs/assets/images/logo.svg — a square of new turf sliding over
+   a soil hole. */
 .pt-headmark {
     display: inline-flex;
     align-items: center;
@@ -170,55 +170,11 @@
     letter-spacing: -0.03em;
     text-transform: lowercase;
 }
-.pt-mark {
-    position: relative;
-    display: inline-block;
+.pt-headmark__logo {
+    display: block;
     flex: 0 0 auto;
     width: 26px;
     height: 26px;
-    border-radius: 7px;
-    background: var(--pt-alt-2);
-    border: 1px solid var(--pt-line-2);
-    overflow: hidden;
-}
-.pt-mark__hole {
-    position: absolute;
-    width: 48%;
-    height: 30%;
-    left: 18%;
-    bottom: 17%;
-    border-radius: 50%;
-    background: var(--pt-soil);
-    box-shadow: inset 0 3px 0 color-mix(in oklab, var(--pt-code) 35%, transparent);
-}
-.pt-mark__turf {
-    position: absolute;
-    width: 49%;
-    height: 29%;
-    right: 12%;
-    bottom: 27%;
-    border-radius: 2px;
-    background: var(--pt-green);
-    border: 1px solid color-mix(in oklab, var(--pt-green) 70%, var(--pt-fg));
-    transform: rotate(-7deg);
-}
-.pt-mark__blade {
-    position: absolute;
-    width: 2px;
-    height: 22%;
-    border-radius: 2px;
-    background: var(--pt-green-2);
-    transform-origin: bottom;
-}
-.pt-mark__blade--one {
-    right: 32%;
-    bottom: 54%;
-    transform: rotate(-15deg);
-}
-.pt-mark__blade--two {
-    right: 23%;
-    bottom: 52%;
-    transform: rotate(15deg);
 }
 [dir="ltr"] .md-search__input {
     border-radius: 8px;

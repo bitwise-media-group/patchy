@@ -21,7 +21,6 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/go-github/v89 v89.0.0
-	github.com/google/go-github/v90 v90.0.0
 	github.com/google/osv-scanner/v2 v2.5.0
 	github.com/ossf/osv-schema/bindings/go v0.0.0-20260806060209-f3f826310aec
 	github.com/sigstore/cosign/v3 v3.1.3
@@ -51,7 +50,7 @@ require (
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	helm.sh/helm/v4 v4.2.3
+	helm.sh/helm/v4 v4.2.4
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
 	k8s.io/client-go v0.36.3

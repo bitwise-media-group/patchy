@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // ErrDeleteUnauthorized reports the credential cannot delete issues:

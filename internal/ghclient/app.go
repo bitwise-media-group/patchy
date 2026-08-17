@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // AppConfig configures GitHub App authentication.
@@ -168,7 +168,7 @@ func (a *App) ScopedToken(ctx context.Context, repo Repo, perms TokenPerms) (str
 	}
 	opts := &github.InstallationTokenOptions{Repositories: []string{repo.Name}}
 	if perms.Contents != "" {
-		opts.Permissions = &github.InstallationPermissions{Contents: github.Ptr(perms.Contents)}
+		opts.Permissions = &github.InstallationPermissions{Contents: new(perms.Contents)}
 	}
 	tok, _, err := a.gh.Apps.CreateInstallationToken(ctx, id, opts)
 	if err != nil {

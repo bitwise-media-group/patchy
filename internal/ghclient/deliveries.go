@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // deliveryPageCap bounds one Deliveries scan (100 entries per page). A
@@ -36,7 +36,7 @@ type Delivery struct {
 // exhausted. complete is false when the page cap ended the walk instead.
 func (a *App) Deliveries(ctx context.Context, visit func(Delivery) bool) (complete bool, err error) {
 	opts := &github.ListCursorOptions{PerPage: 100}
-	for page := 0; page < deliveryPageCap; page++ {
+	for range deliveryPageCap {
 		ds, resp, err := a.gh.Apps.ListHookDeliveries(ctx, opts)
 		if err != nil {
 			return false, fmt.Errorf("ghclient: list hook deliveries: %w", err)

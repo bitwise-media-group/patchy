@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // Tarball streams the repository's tarball archive at ref (a SHA, branch, or

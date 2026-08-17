@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.10.0](https://github.com/bitwise-media-group/patchy/compare/v0.9.3...v0.10.0) (2026-08-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* the replay and reset RBAC verbs moved from findings.patchy.bitwisemedia.uk to integrations.patchy.bitwisemedia.uk, the resource they actually stamp and the one the admission policy's authorizer checks. Move existing role bindings accordingly (deploy/kustomize/base/rbac.users.example.yaml shows the shape).
+
+### Features
+
+* **agentrun:** broker caller token injection and PATCHY_MODEL_MAP translation ([74b96b3](https://github.com/bitwise-media-group/patchy/commit/74b96b396a3cd4011f76d2b5e82efb7d41251566)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **broker:** add cmd/egress-broker binary and release wiring ([042d395](https://github.com/bitwise-media-group/patchy/commit/042d3955e107bc567cfb05f82e45ce2e67f3830d)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **broker:** add internal/broker — token-review auth, credential strategies, SSE-safe reverse proxy ([5a12006](https://github.com/bitwise-media-group/patchy/commit/5a1200649a7b410797d50809974869032b479e3d)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **chart:** egress-broker deployment, agent netpol collapse, provider values; kustomize parity ([d3047ae](https://github.com/bitwise-media-group/patchy/commit/d3047ae35c7a0a92d9da33efd5cd454b0d0c848c)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **deploy:** expose the scale knobs in the chart and kustomize config ([a18b2f5](https://github.com/bitwise-media-group/patchy/commit/a18b2f5a4b70ef4457cb96e803a94d37c4518075))
+* **jobs:** projected broker-token volume, brokered runner enablement, per-runner env ([ae67a53](https://github.com/bitwise-media-group/patchy/commit/ae67a5363da78879d7d59d7af8a2277319266f2b)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* manual per-source alert backfill and the configuration view ([#154](https://github.com/bitwise-media-group/patchy/issues/154)) ([fcf7f53](https://github.com/bitwise-media-group/patchy/commit/fcf7f53c385466263c92aca1345255ac8eb542c9))
+* **mirror:** track bare-tag values pins with a derived constraint ([8213def](https://github.com/bitwise-media-group/patchy/commit/8213def039bb76759f5cbc96e2bcf3822415fb8d))
+* **provider:** gateway env expansion and model-id mapping for brokered claude runners ([cd4a272](https://github.com/bitwise-media-group/patchy/commit/cd4a2727bcd4693c7e5ca758ace87e9640e5899c)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **runnercfg:** broker and provider flags across the three job controllers ([740668d](https://github.com/bitwise-media-group/patchy/commit/740668d5d101733c1a7fd27b85bd39261177a549)), closes [#152](https://github.com/bitwise-media-group/patchy/issues/152)
+* **web:** split the status API into a trimmed list and per-finding detail ([cc35c93](https://github.com/bitwise-media-group/patchy/commit/cc35c93b1d5526e4e2d384e011b02aa46e07f3f4)), closes [#58](https://github.com/bitwise-media-group/patchy/issues/58)
+
+
+### Bug Fixes
+
+* **deploy:** wire the egress broker into the dev overlay and dev-colima ([de13bee](https://github.com/bitwise-media-group/patchy/commit/de13beef4d2e5cd9e673282ccc9420c152370477))
+* **deps:** update aws-sdk-go-v2 monorepo ([#190](https://github.com/bitwise-media-group/patchy/issues/190)) ([1409991](https://github.com/bitwise-media-group/patchy/commit/1409991e8bb7f17288e137c816606a895a094aca))
+* **deps:** update bitwise-media-group/github-workflows action to v6.1.1 ([#191](https://github.com/bitwise-media-group/patchy/issues/191)) ([e8902de](https://github.com/bitwise-media-group/patchy/commit/e8902def00ca7d503adf998e2c520713dc0875e9))
+* **deps:** update bitwise-media-group/github-workflows action to v6.2.0 ([#207](https://github.com/bitwise-media-group/patchy/issues/207)) ([df77704](https://github.com/bitwise-media-group/patchy/commit/df77704189e3a384de993d6ab83b513c20c47091))
+* **deps:** update github.com/ossf/osv-schema/bindings/go digest to f3f8263 ([#187](https://github.com/bitwise-media-group/patchy/issues/187)) ([7678a3c](https://github.com/bitwise-media-group/patchy/commit/7678a3cfb9919f2f1c0711c36cea3f6a12443789))
+* **deps:** update module charm.land/lipgloss/v2 to v2.0.6 ([#199](https://github.com/bitwise-media-group/patchy/issues/199)) ([4b24b2b](https://github.com/bitwise-media-group/patchy/commit/4b24b2b8d1f460bbc4b5b5f917b3e40f9ba6291d))
+* **deps:** update module github.com/azure/azure-sdk-for-go/sdk/azcore to v1.23.0 ([#201](https://github.com/bitwise-media-group/patchy/issues/201)) ([86d66ce](https://github.com/bitwise-media-group/patchy/commit/86d66ce0696b23eb1ca5fcb44964196db547e96f))
+* **deps:** update module github.com/google/go-github/v89 to v90 ([#203](https://github.com/bitwise-media-group/patchy/issues/203)) ([0351241](https://github.com/bitwise-media-group/patchy/commit/0351241dfd0669d908c0dedb4079fd712a85ce89))
+* **deps:** update module github.com/google/go-github/v89 to v90 ([#208](https://github.com/bitwise-media-group/patchy/issues/208)) ([31ac51f](https://github.com/bitwise-media-group/patchy/commit/31ac51f0abde50400ce5f29143f22a85f4a14217))
+* **deps:** update module github.com/sigstore/sigstore/pkg/signature/kms/aws to v1.10.9 ([#193](https://github.com/bitwise-media-group/patchy/issues/193)) ([41755f6](https://github.com/bitwise-media-group/patchy/commit/41755f68e4983e8cbc3dd95e1ba714cbfa874ff1))
+* **deps:** update module google.golang.org/api to v0.293.0 ([#202](https://github.com/bitwise-media-group/patchy/issues/202)) ([a58401d](https://github.com/bitwise-media-group/patchy/commit/a58401dd8756fd4888414f99372234126330de7d))
+* **deps:** update module google.golang.org/protobuf to v1.36.12 ([#194](https://github.com/bitwise-media-group/patchy/issues/194)) ([46d52bd](https://github.com/bitwise-media-group/patchy/commit/46d52bdd6d0a7f5ff56e856e9b4c7bb00f8ff89d))
+* **deps:** update module helm.sh/helm/v4 to v4.2.4 ([#211](https://github.com/bitwise-media-group/patchy/issues/211)) ([e6f251b](https://github.com/bitwise-media-group/patchy/commit/e6f251b51afb908358ccaa15697135902791291b))
+* **mirror:** ignore sibling trees when deriving distribution images ([d1cd9dc](https://github.com/bitwise-media-group/patchy/commit/d1cd9dcf4d922e1d471ccd046473c53ec273bc75))
+
+
+### Performance Improvements
+
+* **context,enhancers:** parallelize, bound, and cache the enhancer chain ([1998f90](https://github.com/bitwise-media-group/patchy/commit/1998f9017942bca9edbc4512290afb6ba684b17a))
+* **integration:** index finding families and parallelize projection ([3f1abca](https://github.com/bitwise-media-group/patchy/commit/3f1abcaf97b561260142491555eef082835037e4))
+* **investigation,source:** concurrent gate, phase index, spec-only Forge watches ([54b999b](https://github.com/bitwise-media-group/patchy/commit/54b999b80031ebf69d72c1cfeccd00dd5ae96623))
+* **kube:** strip managedFields and stop client-side API throttling ([8d85008](https://github.com/bitwise-media-group/patchy/commit/8d8500824a283606ee05cfb5dd74b63dfff9a8c4))
+* **rollup:** skip finding events that cannot change the rollup ([6fa06ec](https://github.com/bitwise-media-group/patchy/commit/6fa06ec22c36abaea68b6577abe4e4e081aa2d77))
+
 ## [0.9.3](https://github.com/bitwise-media-group/patchy/compare/v0.9.2...v0.9.3) (2026-08-12)
 
 

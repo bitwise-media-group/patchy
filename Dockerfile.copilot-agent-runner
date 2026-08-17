@@ -55,11 +55,11 @@ RUN apt-get update \
 # valid semver to Renovate, so no versioning override is needed (codex's
 # rust-v prefix is why it carries one).
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_AMD64_RELEASE=v1.0.79
-ARG COPILOT_AMD64_SHA256=1bb00f0b8fdce2d254e3028905d50f91da80b8064de8b28436b1f8bcd8970698
+ARG COPILOT_AMD64_RELEASE=v1.0.80
+ARG COPILOT_AMD64_SHA256=dacea360c823dd58f710d7a81c36bbe9f6773df4589087aa25cb66ba637c8228
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_ARM64_RELEASE=v1.0.79
-ARG COPILOT_ARM64_SHA256=0148f7834cfc4de2b7216a67bfcc75e350ec3760c2912844de959ebc04dc5bc4
+ARG COPILOT_ARM64_RELEASE=v1.0.80
+ARG COPILOT_ARM64_SHA256=4d88134b9213f81f5e31eb5cee7a191f916f56ff66e3fb3d121eec76ca62809e
 
 # Fetch the package tarball for the target platform from the GitHub release and
 # verify it against the pinned sha256 before it leaves this stage. The tarball

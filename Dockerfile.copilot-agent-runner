@@ -13,22 +13,20 @@
 #     execs `copilot -p ...` (internal/harness) and `git` (changeset diffing).
 #
 # So the image must carry: the agent-runner binary, git, /bin/sh, and the
-# copilot CLI. Unlike claude and codex, copilot is not a single self-contained
-# file: the CLI is a native (glibc) executable that loads sidecar assets — its
-# bundled ripgrep/tgrep binaries, builtin skills, agent definitions — from the
-# package directory beside it. The whole package therefore installs to
-# /opt/copilot and only the entrypoint is symlinked onto PATH; extracting the
-# executable alone yields a CLI that starts and then fails to search.
+# copilot CLI. Like claude and codex, copilot is a single self-contained file:
+# the github/copilot-cli release ships a pre-built standalone executable per
+# platform (copilot-linux-<arch>.tar.gz, one `copilot` member, glibc build —
+# matching the debian runtime base) plus a SHA256SUMS.txt manifest. This is the
+# same asset upstream's install.sh and the Homebrew cask install. The release
+# also carries the npm package tarballs (github-copilot-<version>-<os>-<arch>.tgz),
+# but those are the @github/copilot loader package tree whose `copilot` bin is a
+# Node script — useless without node, which this image deliberately lacks.
 #
-# The CLI ships as a native per-platform npm package (@github/copilot-<os>-<arch>;
-# the top-level @github/copilot package is a loader that selects one at install
-# time), and the github/copilot-cli GitHub release carries those same package
-# tarballs as assets (github-copilot-<version>-linux-<arch>.tgz) plus a
-# SHA256SUMS.txt manifest. The fetch stage below downloads the tarball for the
-# target arch from the release — not the npm registry: Renovate's npm datasource
-# has no digest support, so registry pins strand their checksums on version
-# bumps — and refuses anything whose sha256 does not match the per-arch pin, so
-# no node or npm is needed at build time or at runtime.
+# The fetch stage below downloads the standalone binary from the release — not
+# the npm registry: Renovate's npm datasource has no digest support, so registry
+# pins strand their checksums on version bumps — and refuses anything whose
+# sha256 does not match the per-arch pin, so no node or npm is needed at build
+# time or at runtime.
 #
 # Built by GoReleaser (`dockers_v2` in .goreleaser.yaml): the agent-runner
 # binary is compiled by GoReleaser and arrives in the build context at
@@ -54,18 +52,24 @@ RUN apt-get update \
 # Renovate resolves the asset digest by release tag; the plain `v` prefix is
 # valid semver to Renovate, so no versioning override is needed (codex's
 # rust-v prefix is why it carries one).
+#
+# The sha256 is also what SELECTS the asset: Renovate finds which asset of the
+# current release carries the pinned digest, then follows the same-named asset
+# into the new release. The pin must therefore always be the digest of
+# copilot-linux-<arch>.tar.gz — pinning some other asset's digest would silently
+# retarget every future bump (how the loader-package tarball got pinned once).
+# The unversioned asset name keeps that same-name mapping exact across releases.
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
 ARG COPILOT_AMD64_RELEASE=v1.0.80
-ARG COPILOT_AMD64_SHA256=dacea360c823dd58f710d7a81c36bbe9f6773df4589087aa25cb66ba637c8228
+ARG COPILOT_AMD64_SHA256=039933c9247686131c4406abb1d439bdbf68103edc1ff585bd70d5b0dc940f72
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
 ARG COPILOT_ARM64_RELEASE=v1.0.80
-ARG COPILOT_ARM64_SHA256=4d88134b9213f81f5e31eb5cee7a191f916f56ff66e3fb3d121eec76ca62809e
+ARG COPILOT_ARM64_SHA256=3ed85e711955e13be523bf492bc6c93b40b69925bcb7f817c9d08abf4839cf89
 
-# Fetch the package tarball for the target platform from the GitHub release and
-# verify it against the pinned sha256 before it leaves this stage. The tarball
-# unpacks to package/, whose `copilot` executable expects its siblings to stay
-# beside it; the glibc `linux` (not `linuxmusl`) build matches the debian
-# runtime base.
+# Fetch the standalone binary tarball for the target platform from the GitHub
+# release and verify it against the pinned sha256 before it leaves this stage.
+# The tarball holds a single `copilot` executable; the glibc `linux` (not
+# `linuxmusl`) build matches the debian runtime base.
 ARG TARGETARCH
 # hadolint ignore=DL4006
 RUN case "${TARGETARCH}" in \
@@ -74,12 +78,12 @@ RUN case "${TARGETARCH}" in \
         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && base="https://github.com/github/copilot-cli/releases/download/${tag}" \
-    && curl -fsSL -o /tmp/copilot.tgz "${base}/github-copilot-${tag#v}-linux-${arch}.tgz" \
-    && echo "${sha}  /tmp/copilot.tgz" | sha256sum -c - \
-    && mkdir -p /opt/copilot \
-    && tar -xzf /tmp/copilot.tgz -C /opt/copilot --strip-components=1 \
-    && rm -f /tmp/copilot.tgz \
-    && chmod 0755 /opt/copilot/copilot
+    && curl -fsSL -o /tmp/copilot.tar.gz "${base}/copilot-linux-${arch}.tar.gz" \
+    && echo "${sha}  /tmp/copilot.tar.gz" | sha256sum -c - \
+    && mkdir -p /out \
+    && tar -xzf /tmp/copilot.tar.gz -C /out copilot \
+    && rm -f /tmp/copilot.tar.gz \
+    && chmod 0755 /out/copilot
 
 FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
 
@@ -91,8 +95,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=fetch /opt/copilot /opt/copilot
-RUN ln -s /opt/copilot/copilot /usr/local/bin/copilot
+COPY --from=fetch /out/copilot /usr/local/bin/copilot
 
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner

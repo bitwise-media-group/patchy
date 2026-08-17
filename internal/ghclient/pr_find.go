@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // FindPRByHead returns the open pull request whose head is branch, or nil —

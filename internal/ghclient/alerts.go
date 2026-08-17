@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // GetAlert fetches one code-scanning alert.
@@ -24,8 +24,8 @@ func (c *Client) GetAlert(ctx context.Context, repo Repo, number int) (*Alert, e
 func (c *Client) DismissAlert(ctx context.Context, repo Repo, number int, reason, comment string) error {
 	state := &github.CodeScanningAlertState{
 		State:            "dismissed",
-		DismissedReason:  github.Ptr(reason),
-		DismissedComment: github.Ptr(comment),
+		DismissedReason:  new(reason),
+		DismissedComment: new(comment),
 	}
 	if _, _, err := c.gh.CodeScanning.UpdateAlert(ctx, repo.Owner, repo.Name, int64(number), state); err != nil {
 		return fmt.Errorf("ghclient: dismiss alert %s#%d: %w", repo, number, err)

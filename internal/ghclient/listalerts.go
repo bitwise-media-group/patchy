@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // DefaultMaxAlerts bounds one backfill enumeration (100 alerts per page,
@@ -176,7 +176,7 @@ func listMatchingRepoAlerts(
 // cap ended the walk before the inventory was exhausted.
 func (c *Client) InstallationRepos(ctx context.Context) (repos []Repo, complete bool, err error) {
 	opts := &github.ListOptions{PerPage: listPageSize}
-	for page := 0; page < repoPageCap; page++ {
+	for range repoPageCap {
 		list, resp, err := c.gh.Apps.ListRepos(ctx, opts)
 		if err != nil {
 			return nil, false, fmt.Errorf("ghclient: list installation repositories: %w", err)
@@ -211,7 +211,8 @@ func (e *PATAlertEnumerator) Enumerate(
 ) (complete bool, err error) {
 	if len(repos) == 0 {
 		return false, errors.New(
-			"ghclient: a PAT backfill cannot discover repositories; list exact owner/name entries")
+			"ghclient: a PAT backfill cannot discover repositories; list exact owner/name entries",
+		)
 	}
 	budget := e.MaxAlerts
 	if budget <= 0 {
@@ -221,7 +222,8 @@ func (e *PATAlertEnumerator) Enumerate(
 		owner, name, ok := strings.Cut(entry, "/")
 		if !ok || owner == "" || name == "" {
 			return false, fmt.Errorf(
-				"ghclient: a PAT backfill cannot expand prefix %q; list exact owner/name entries", entry)
+				"ghclient: a PAT backfill cannot expand prefix %q; list exact owner/name entries", entry,
+			)
 		}
 		repo := Repo{Owner: owner, Name: name}
 		c, err := e.Client.ListRepoAlerts(ctx, repo, func(a *Alert) bool {
@@ -270,8 +272,8 @@ func entriesForOwner(repos []string, account string) []string {
 	var out []string
 	for _, entry := range repos {
 		owner := entry
-		if i := strings.IndexByte(entry, '/'); i >= 0 {
-			owner = entry[:i]
+		if before, _, ok := strings.Cut(entry, "/"); ok {
+			owner = before
 		}
 		if strings.EqualFold(owner, account) {
 			out = append(out, entry)

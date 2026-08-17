@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // listPageSize is the per-page size for paginated list calls.
@@ -49,12 +49,12 @@ func (c *Client) ListOpen(ctx context.Context, repo Repo, labels []string) ([]*I
 
 // Create opens a new issue.
 func (c *Client) Create(ctx context.Context, repo Repo, req IssueRequest) (*Issue, error) {
-	body := &github.IssueRequest{
-		Title: github.Ptr(req.Title),
-		Body:  github.Ptr(req.Body),
+	body := github.CreateIssueRequest{
+		Title: req.Title,
+		Body:  new(req.Body),
 	}
 	if len(req.Labels) > 0 {
-		body.Labels = &req.Labels
+		body.Labels = req.Labels
 	}
 	is, _, err := c.gh.Issues.Create(ctx, repo.Owner, repo.Name, body)
 	if err != nil {
@@ -65,7 +65,7 @@ func (c *Client) Create(ctx context.Context, repo Repo, req IssueRequest) (*Issu
 
 // Comment adds a comment to the issue.
 func (c *Client) Comment(ctx context.Context, repo Repo, number int, body string) error {
-	comment := &github.IssueComment{Body: github.Ptr(body)}
+	comment := &github.IssueComment{Body: new(body)}
 	if _, _, err := c.gh.Issues.CreateComment(ctx, repo.Owner, repo.Name, number, comment); err != nil {
 		return fmt.Errorf("ghclient: comment on %s#%d: %w", repo, number, err)
 	}
@@ -74,7 +74,7 @@ func (c *Client) Comment(ctx context.Context, repo Repo, number int, body string
 
 // EditComment replaces the body of an existing issue comment.
 func (c *Client) EditComment(ctx context.Context, repo Repo, commentID int64, body string) error {
-	comment := &github.IssueComment{Body: github.Ptr(body)}
+	comment := &github.IssueComment{Body: new(body)}
 	if _, _, err := c.gh.Issues.EditComment(ctx, repo.Owner, repo.Name, commentID, comment); err != nil {
 		return fmt.Errorf("ghclient: edit comment %d on %s: %w", commentID, repo, err)
 	}
@@ -107,8 +107,8 @@ func (c *Client) ListComments(ctx context.Context, repo Repo, number int) ([]*Co
 
 // EditBody replaces the issue body.
 func (c *Client) EditBody(ctx context.Context, repo Repo, number int, body string) error {
-	req := &github.IssueRequest{Body: github.Ptr(body)}
-	if _, _, err := c.gh.Issues.Edit(ctx, repo.Owner, repo.Name, number, req); err != nil {
+	req := github.UpdateIssueRequest{Body: new(body)}
+	if _, _, err := c.gh.Issues.Update(ctx, repo.Owner, repo.Name, number, req); err != nil {
 		return fmt.Errorf("ghclient: edit body of %s#%d: %w", repo, number, err)
 	}
 	return nil
@@ -151,8 +151,8 @@ func (c *Client) Assign(ctx context.Context, repo Repo, number int, logins []str
 
 // Close closes the issue.
 func (c *Client) Close(ctx context.Context, repo Repo, number int) error {
-	req := &github.IssueRequest{State: github.Ptr("closed")}
-	if _, _, err := c.gh.Issues.Edit(ctx, repo.Owner, repo.Name, number, req); err != nil {
+	req := github.UpdateIssueRequest{State: new("closed")}
+	if _, _, err := c.gh.Issues.Update(ctx, repo.Owner, repo.Name, number, req); err != nil {
 		return fmt.Errorf("ghclient: close %s#%d: %w", repo, number, err)
 	}
 	return nil

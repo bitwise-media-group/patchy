@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // DefaultBranch returns the repository's default branch name.
@@ -30,10 +30,10 @@ func (c *Client) HeadSHA(ctx context.Context, repo Repo, branch string) (string,
 
 // CreatePR opens a pull request.
 func (c *Client) CreatePR(ctx context.Context, repo Repo, req PRRequest) (*PR, error) {
-	pr, _, err := c.gh.PullRequests.Create(ctx, repo.Owner, repo.Name, &github.NewPullRequest{
+	pr, _, err := c.gh.PullRequests.Create(ctx, repo.Owner, repo.Name, github.CreatePullRequest{
 		Title: new(req.Title),
-		Head:  new(req.Head),
-		Base:  new(req.Base),
+		Head:  req.Head,
+		Base:  req.Base,
 		Body:  new(req.Body),
 	})
 	if err != nil {

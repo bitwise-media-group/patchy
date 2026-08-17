@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/bitwise-media-group/patchy/compare/v0.10.0...v0.10.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **docker:** fetch the standalone copilot binary from the CLI release ([ca595ff](https://github.com/bitwise-media-group/patchy/commit/ca595ffa55fca9875a1687b4b57cca2532ba34a1))
+
 ## [0.10.0](https://github.com/bitwise-media-group/patchy/compare/v0.9.3...v0.10.0) (2026-08-17)
 
 

@@ -5,6 +5,7 @@ package kubecfg_test
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -220,10 +221,5 @@ func TestConnectRejectsBadKubeconfig(t *testing.T) {
 }
 
 func contains(haystack []string, needle string) bool {
-	for _, h := range haystack {
-		if h == needle {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(haystack, needle)
 }

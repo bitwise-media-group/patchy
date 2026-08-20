@@ -51,7 +51,7 @@ type ResultSummary struct {
 	// it at 256 entries).
 	Cases []CaseStatus `json:"cases,omitempty"`
 	// TokenUsage summed over the unit's agent runs.
-	TokenUsage TokenUsage `json:"tokenUsage,omitempty"`
+	TokenUsage TokenUsage `json:"tokenUsage"`
 	// ElapsedMS is the unit's wall-clock duration.
 	ElapsedMS int64 `json:"elapsedMS,omitempty"`
 	// Outcome is "ok" for a completed unit (graded failures included) or a

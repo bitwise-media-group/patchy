@@ -18,7 +18,7 @@ import (
 func turns(t *testing.T, out string) []transcript.Turn {
 	t.Helper()
 	var got []transcript.Turn
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if turn, ok := transcript.Decode([]byte(line)); ok {
 			got = append(got, turn)
 		}

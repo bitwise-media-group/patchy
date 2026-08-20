@@ -44,7 +44,7 @@ var policyFiles = map[string]string{
 }
 
 func TestAdmissionPolicyCoversEveryFindingSpecField(t *testing.T) {
-	specType := reflect.TypeOf(v1alpha1.FindingSpec{})
+	specType := reflect.TypeFor[v1alpha1.FindingSpec]()
 	for rendering, path := range policyFiles {
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -52,8 +52,8 @@ func TestAdmissionPolicyCoversEveryFindingSpecField(t *testing.T) {
 		}
 		policy := string(raw)
 
-		for i := range specType.NumField() {
-			field := specType.Field(i)
+		for field := range specType.Fields() {
+
 			name := jsonName(field.Tag.Get("json"))
 			if name == "" || name == "-" {
 				continue
@@ -103,7 +103,7 @@ var integrationVerbGatedFields = map[string]string{
 // frozen-fields rule — IntegrationSpec is operator configuration — so only
 // the request fields are asserted.
 func TestIntegrationPolicyCoversEveryRequestField(t *testing.T) {
-	specType := reflect.TypeOf(v1alpha1.IntegrationSpec{})
+	specType := reflect.TypeFor[v1alpha1.IntegrationSpec]()
 	for rendering, path := range policyFiles {
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -111,8 +111,8 @@ func TestIntegrationPolicyCoversEveryRequestField(t *testing.T) {
 		}
 		policy := string(raw)
 
-		for i := range specType.NumField() {
-			field := specType.Field(i)
+		for field := range specType.Fields() {
+
 			ft := field.Type
 			if ft.Kind() != reflect.Pointer {
 				continue
@@ -157,7 +157,7 @@ func TestAdmissionPolicyExemptsEveryController(t *testing.T) {
 		t.Fatalf("read serviceaccounts: %v", err)
 	}
 
-	for _, line := range strings.Split(string(accounts), "\n") {
+	for line := range strings.SplitSeq(string(accounts), "\n") {
 		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "name:"))
 		// The agent SA runs in the agents namespace and never touches the API.
 		// The evaluation controller owns the Evaluation/EvaluationUnit kinds

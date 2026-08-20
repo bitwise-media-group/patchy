@@ -182,14 +182,14 @@ func mirrorTable(opts *Options, header []string, rows [][]string) error {
 
 // tabJoin joins cells for the tabwriter.
 func tabJoin(cells []string) string {
-	out := ""
+	var out strings.Builder
 	for i, c := range cells {
 		if i > 0 {
-			out += "\t"
+			out.WriteString("\t")
 		}
-		out += c
+		out.WriteString(c)
 	}
-	return out
+	return out.String()
 }
 
 // markdownBuilder assembles the -o markdown summaries: H3 sections per

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -265,9 +266,7 @@ func (c *Client) explorerTags(ctx context.Context, arn string) (*Tags, error) {
 			if err := json.Unmarshal(raw, &v); err != nil {
 				return nil, fmt.Errorf("awsinv: lookup %s: decode tags: %w", arn, err)
 			}
-			for k, val := range normalizeTags(v) {
-				tags[k] = val
-			}
+			maps.Copy(tags, normalizeTags(v))
 		}
 		return &Tags{Name: arn, Tags: tags}, nil
 	}

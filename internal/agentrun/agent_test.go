@@ -195,7 +195,7 @@ func newConfig(t *testing.T, ws string, out io.Writer) Config {
 func events(t *testing.T, out string) []envelope.Event {
 	t.Helper()
 	var evs []envelope.Event
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if e, ok := envelope.Decode([]byte(line)); ok {
 			evs = append(evs, e)
 		}

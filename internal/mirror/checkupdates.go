@@ -200,8 +200,8 @@ func (e *Engine) versionCandidates(ctx context.Context, entry spec.Entry) ([]str
 		return e.reg.Tags(ctx, e.rewrite(entry.Artifact.Artifact.Ref))
 	}
 	repo := entry.Chart.Chart.Repo
-	if strings.HasPrefix(repo, "oci://") {
-		path := strings.TrimPrefix(repo, "oci://") + "/" + entry.Chart.Chart.Name
+	if after, ok := strings.CutPrefix(repo, "oci://"); ok {
+		path := after + "/" + entry.Chart.Chart.Name
 		return e.reg.Tags(ctx, e.rewrite(path))
 	}
 	return e.puller.Versions(ctx, repo, entry.Chart.Chart.Name)

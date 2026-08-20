@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -91,9 +92,7 @@ func (fi *fakeIssuer) mintLocked(t *testing.T, claims map[string]any, expIn time
 		"iat": time.Now().Add(-time.Minute).Unix(),
 		"exp": time.Now().Add(expIn).Unix(),
 	}
-	for k, v := range claims {
-		all[k] = v
-	}
+	maps.Copy(all, claims)
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.RS256, Key: fi.key},
 		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test"))

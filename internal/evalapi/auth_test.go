@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -247,9 +248,7 @@ func (fi *fakeIssuer) mint(t *testing.T, claims map[string]any, expIn time.Durat
 		"iat": time.Now().Add(-time.Minute).Unix(),
 		"exp": time.Now().Add(expIn).Unix(),
 	}
-	for k, v := range claims {
-		all[k] = v
-	}
+	maps.Copy(all, claims)
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.RS256, Key: fi.key},
 		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test"))

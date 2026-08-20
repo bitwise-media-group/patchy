@@ -14,7 +14,7 @@ import (
 // line observer does.
 func scanAll(s TurnScanner, stream string) []transcript.Turn {
 	var got []transcript.Turn
-	for _, line := range strings.Split(stream, "\n") {
+	for line := range strings.SplitSeq(stream, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}

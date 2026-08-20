@@ -269,7 +269,7 @@ func Restrict(opts *cli.Options) []string { return SplitList(opts.String("harnes
 // SplitList splits a comma-separated flag value, trimming blanks.
 func SplitList(s string) []string {
 	var out []string
-	for _, tok := range strings.Split(s, ",") {
+	for tok := range strings.SplitSeq(s, ",") {
 		if tok = strings.TrimSpace(tok); tok != "" {
 			out = append(out, tok)
 		}

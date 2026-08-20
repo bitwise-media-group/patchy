@@ -120,9 +120,9 @@ func sseTurns(t *testing.T, body string) ([]Turn, bool) {
 	t.Helper()
 	var turns []Turn
 	ended := false
-	for _, block := range strings.Split(body, "\n\n") {
+	for block := range strings.SplitSeq(body, "\n\n") {
 		var event, data string
-		for _, line := range strings.Split(block, "\n") {
+		for line := range strings.SplitSeq(block, "\n") {
 			switch {
 			case strings.HasPrefix(line, "event: "):
 				event = strings.TrimPrefix(line, "event: ")

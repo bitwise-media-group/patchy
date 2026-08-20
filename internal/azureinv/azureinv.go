@@ -125,13 +125,13 @@ func (c *Client) TagsFor(ctx context.Context, id string) (*Tags, error) {
 // configured.
 func (c *Client) run(ctx context.Context, kql string) (armresourcegraph.QueryResponse, error) {
 	req := armresourcegraph.QueryRequest{
-		Query: to.Ptr(kql),
+		Query: new(kql),
 		Options: &armresourcegraph.QueryRequestOptions{
 			ResultFormat: to.Ptr(armresourcegraph.ResultFormatObjectArray),
 		},
 	}
 	if c.managementGroup != "" {
-		req.ManagementGroups = []*string{to.Ptr(c.managementGroup)}
+		req.ManagementGroups = []*string{new(c.managementGroup)}
 	}
 	out, err := c.graph.Resources(ctx, req, nil)
 	return out.QueryResponse, err

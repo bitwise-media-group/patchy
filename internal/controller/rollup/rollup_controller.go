@@ -207,7 +207,7 @@ func countedMarker(phase string, seq int, rec string) string {
 
 // parseCounted decodes a counted marker; zero seq means never counted.
 func parseCounted(msg string) (phase string, seq int, rec string) {
-	for _, part := range strings.Split(msg, ";") {
+	for part := range strings.SplitSeq(msg, ";") {
 		if v, ok := strings.CutPrefix(part, "phase="); ok {
 			phase = v
 		}

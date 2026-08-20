@@ -211,8 +211,8 @@ func TestCooldownPick(t *testing.T) {
 	})
 
 	t.Run("candidate cap", func(t *testing.T) {
-		var tags []string
-		for i := 0; i < 40; i++ {
+		tags := make([]string, 0, 40)
+		for i := range 40 {
 			tags = append(tags, fmt.Sprintf("1.%d.0", i))
 		}
 		fresh := func(string) (time.Time, bool, error) { return now, true, nil }

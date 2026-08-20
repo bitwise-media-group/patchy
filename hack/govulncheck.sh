@@ -15,7 +15,14 @@ set -euo pipefail
 # cosign, not exercised by patchy — the mirror signs keylessly or via KMS
 # and verifies cosign signatures only). Every cosign v3 consumer carries
 # this advisory; drop it from this list when cosign sheds the dependency.
-accepted="GO-2026-5932"
+# GO-2026-6225: docker-credential-acr-env leaks the Azure AD token to any
+# host merely containing an azurecr suffix (unanchored regex), with no fixed
+# version — the repo is unmaintained. It reaches the module through cosign's
+# cli/options keychain wiring, but cosign only puts the helper into the
+# active keychain when RegistryOptions.KubernetesKeychain is set, and
+# internal/mirror/sign leaves that zero-valued, so the vulnerable path is
+# never invoked. Drop when cosign sheds or replaces the dependency.
+accepted="GO-2026-5932 GO-2026-6225"
 
 out="$(mktemp "${TMPDIR:-/tmp}/govulncheck.XXXXXX")"
 trap 'rm -f "$out"' EXIT

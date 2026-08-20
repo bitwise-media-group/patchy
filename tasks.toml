@@ -5,9 +5,9 @@
 
 # Overrides the archetype's go-lint: same golangci-lint pass, but
 # govulncheck runs through hack/govulncheck.sh, which carries the reviewed
-# acceptance for advisories with no fix (currently GO-2026-5932, the
-# unmaintained x/crypto/openpgp cosign drags in — see the script for the
-# rationale and the re-review trigger).
+# acceptance for advisories with no fix (currently GO-2026-5932 and
+# GO-2026-6225, both unmaintained dependencies cosign drags in — see the
+# script for the rationale and the re-review trigger).
 [go-lint]
 hide = true
 dir = "{{cwd}}"

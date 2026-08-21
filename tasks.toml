@@ -4,10 +4,9 @@
 # ---- repo-local tasks (the long tail the library intentionally omits) -------
 
 # Overrides the archetype's go-lint: same golangci-lint pass, but
-# govulncheck runs through hack/govulncheck.sh, which carries the reviewed
-# acceptance for advisories with no fix (currently GO-2026-5932 and
-# GO-2026-6225, both unmaintained dependencies cosign drags in — see the
-# script for the rationale and the re-review trigger).
+# govulncheck runs through hack/govulncheck.sh, which can carry a reviewed
+# acceptance list for advisories with no fix (currently empty — see the
+# script for how to accept one with a rationale and a re-review trigger).
 [go-lint]
 hide = true
 dir = "{{cwd}}"
@@ -157,6 +156,17 @@ run = [
   "go run ./cmd/patchy completion fish > completions/patchy.fish",
 ]
 
+# Size report: the bin/ binaries the build task produced, plus the top-10
+# symbols and packages per binary from an unstripped link's symbol table
+# (hack/size.sh — it never rebuilds the stripped binaries, it reads bin/
+# and fails with a hint when build has not run). Part of the pr gate,
+# after build, so dependency-graph growth stays visible per run — the CLI
+# reached 135 MB before anyone re-measured.
+[size]
+description = "report binary sizes with top symbols/packages per binary"
+dir = "{{cwd}}"
+run = "./hack/size.sh"
+
 # Redefined gates: the archetype's ci/pr plus the zensical docs build, so a
 # broken site fails CI instead of surfacing at release time (the reusable
 # release workflow's docs job publishes the site, keyed off zensical.toml).
@@ -179,5 +189,6 @@ run = [
   { task = "build" },
   { task = "docs" },
   { task = "docs-build" },
+  { task = "size" },
   { task = "commit" },
 ]

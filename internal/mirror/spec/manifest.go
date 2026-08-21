@@ -6,6 +6,7 @@ package spec
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ChartManifest is a charts/<name>/manifest.yaml: the reviewed intent for
@@ -21,9 +22,7 @@ type ChartManifest struct {
 	Images    Images        `yaml:"images"`
 	OCIRefs   OCIRefs       `yaml:"ociRefs"`
 	Scan      *ScanOverride `yaml:"scan"`
-	// Signing, when set, replaces the global signing block wholesale.
-	Signing *Signing     `yaml:"signing"`
-	Publish ChartPublish `yaml:"publish"`
+	Publish   ChartPublish  `yaml:"publish"`
 }
 
 // ChartSpec pins the upstream chart.
@@ -225,8 +224,8 @@ type AllowlistPolicy struct {
 
 // ChartPublish names the publish destination.
 type ChartPublish struct {
-	// ChartRepo is the repository path under the registry URL (default
-	// <chartNamespace>/<name>).
+	// ChartRepo is the repository path applied under every registry URL
+	// (default <chartNamespace>/<name>).
 	ChartRepo string `yaml:"chartRepo"`
 }
 
@@ -258,12 +257,10 @@ type ArtifactManifest struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
 	// Name must match the entry's directory name.
-	Name     string       `yaml:"name"`
-	Artifact ArtifactSpec `yaml:"artifact"`
-	Scan     ArtifactScan `yaml:"scan"`
-	// Signing, when set, replaces the global signing block wholesale.
-	Signing *Signing        `yaml:"signing"`
-	Publish ArtifactPublish `yaml:"publish"`
+	Name     string          `yaml:"name"`
+	Artifact ArtifactSpec    `yaml:"artifact"`
+	Scan     ArtifactScan    `yaml:"scan"`
+	Publish  ArtifactPublish `yaml:"publish"`
 }
 
 // ArtifactSpec pins the upstream artifact.
@@ -300,9 +297,19 @@ func (s ArtifactScan) EffectiveEnabled() string {
 
 // ArtifactPublish names the publish destination.
 type ArtifactPublish struct {
-	// Repo is the repository path under the registry URL (default
-	// <artifactNamespace>/<canonical source path>).
+	// Repo is the repository path applied under every registry URL
+	// (default <artifactNamespace>/<canonical source path>).
 	Repo string `yaml:"repo"`
+}
+
+// legacySigningHint annotates a strict-decode failure over the removed
+// per-entry `signing` block with the way out.
+func legacySigningHint(err error) error {
+	if strings.Contains(err.Error(), "field signing not found") {
+		return fmt.Errorf("%w (per-entry signing was replaced by per-registry "+
+			"signing blocks in mirror.yaml; move the override there)", err)
+	}
+	return err
 }
 
 // LoadChartManifest reads and validates a chart manifest.
@@ -313,7 +320,7 @@ func LoadChartManifest(path string) (*ChartManifest, error) {
 	}
 	var m ChartManifest
 	if err := decodeStrict(raw, &m); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, legacySigningHint(err))
 	}
 	if err := checkHeader(m.APIVersion, m.Kind, KindChart); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -329,7 +336,7 @@ func LoadArtifactManifest(path string) (*ArtifactManifest, error) {
 	}
 	var m ArtifactManifest
 	if err := decodeStrict(raw, &m); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, legacySigningHint(err))
 	}
 	if err := checkHeader(m.APIVersion, m.Kind, KindArtifact); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)

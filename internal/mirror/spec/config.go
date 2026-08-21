@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -31,22 +33,27 @@ const ConfigFile = "mirror.yaml"
 // Config is mirror.yaml: pipeline-wide defaults. Per-entry intent lives in
 // each entry's manifest.yaml, never here.
 type Config struct {
-	APIVersion string   `yaml:"apiVersion"`
-	Kind       string   `yaml:"kind"`
-	Registry   Registry `yaml:"registry"`
-	Signing    Signing  `yaml:"signing"`
-	Update     Update   `yaml:"update"`
-	Scan       Scan     `yaml:"scan"`
+	APIVersion string     `yaml:"apiVersion"`
+	Kind       string     `yaml:"kind"`
+	Registries []Registry `yaml:"registries"`
+	Signing    Signing    `yaml:"signing"`
+	Update     Update     `yaml:"update"`
+	Scan       Scan       `yaml:"scan"`
 	// SourceRegistryRewrites reroutes pulls from an upstream registry host
 	// (e.g. a pull-through cache in front of docker.io). Recorded sources
 	// and publish targets keep the canonical path.
 	SourceRegistryRewrites map[string]string `yaml:"sourceRegistryRewrites"`
 }
 
-// Registry locates the mirror: one registry URL with path namespaces for
-// charts, images and artifacts beneath it.
+// Registry locates one mirror destination: a registry URL with path
+// namespaces for charts, images and artifacts beneath it. Every entry
+// publishes to every configured registry.
 type Registry struct {
-	URL string `yaml:"url"`
+	// Name is the registry's identity: the lock files' targets key and
+	// the value `sync --registry` selects by. Lowercase alphanumerics and
+	// hyphens.
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
 	// ChartNamespace prefixes published charts (default "charts").
 	ChartNamespace string `yaml:"chartNamespace"`
 	// ImageNamespace prefixes mirrored images by their canonical source
@@ -54,11 +61,59 @@ type Registry struct {
 	ImageNamespace string `yaml:"imageNamespace"`
 	// ArtifactNamespace prefixes mirrored OCI artifacts (default "artifacts").
 	ArtifactNamespace string `yaml:"artifactNamespace"`
+	// Signing, when set, replaces the global signing block wholesale for
+	// pushes to this registry (never merged field-by-field).
+	Signing *Signing `yaml:"signing"`
+}
+
+// EffectiveSigning resolves the signing config for pushes to this registry:
+// its own block when set, else the global default.
+func (r Registry) EffectiveSigning(global *Signing) *Signing {
+	if r.Signing != nil {
+		return r.Signing
+	}
+	return global
+}
+
+// SelectRegistries resolves a set of registry names against the config, in
+// declaration order. A nil or empty selection means every registry; an
+// unknown name is an error.
+func (c *Config) SelectRegistries(names []string) ([]Registry, error) {
+	if len(names) == 0 {
+		return c.Registries, nil
+	}
+	byName := make(map[string]Registry, len(c.Registries))
+	for _, r := range c.Registries {
+		byName[r.Name] = r
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		if _, ok := byName[n]; !ok {
+			return nil, fmt.Errorf("unknown registry %q (configured: %s)", n, registryNames(c.Registries))
+		}
+		want[n] = true
+	}
+	var out []Registry
+	for _, r := range c.Registries {
+		if want[r.Name] {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// registryNames joins the configured registry names for error messages.
+func registryNames(regs []Registry) string {
+	names := make([]string, len(regs))
+	for i, r := range regs {
+		names[i] = r.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // Signing configures how published OCI artifacts are signed: keyless
 // (ambient OIDC, Fulcio certificate, transparency log) or a KMS key. The
-// top-level block is the default; a per-entry signing block replaces it
+// top-level block is the default; a per-registry signing block replaces it
 // wholesale — the two are never merged field-by-field.
 type Signing struct {
 	// Provider is "keyless" or "kms".
@@ -226,17 +281,37 @@ func LoadConfig(path string) (*Config, error) {
 	if err := checkHeader(c.APIVersion, c.Kind, KindMirrorConfig); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if c.Registry.URL == "" {
-		return nil, fmt.Errorf("%s: registry.url is required", path)
+	if len(c.Registries) == 0 {
+		return nil, fmt.Errorf("%s: registries must list at least one registry", path)
 	}
-	if c.Registry.ChartNamespace == "" {
-		c.Registry.ChartNamespace = "charts"
-	}
-	if c.Registry.ImageNamespace == "" {
-		c.Registry.ImageNamespace = "images"
-	}
-	if c.Registry.ArtifactNamespace == "" {
-		c.Registry.ArtifactNamespace = "artifacts"
+	seen := make(map[string]bool, len(c.Registries))
+	for i := range c.Registries {
+		r := &c.Registries[i]
+		if !registryNameRe.MatchString(r.Name) {
+			return nil, fmt.Errorf("%s: registries[%d]: name %q must match %s "+
+				"(it keys lock targets and --registry)", path, i, r.Name, registryNameRe)
+		}
+		if seen[r.Name] {
+			return nil, fmt.Errorf("%s: registries[%d]: duplicate name %q", path, i, r.Name)
+		}
+		seen[r.Name] = true
+		if r.URL == "" {
+			return nil, fmt.Errorf("%s: registries[%d] (%s): url is required", path, i, r.Name)
+		}
+		if r.ChartNamespace == "" {
+			r.ChartNamespace = "charts"
+		}
+		if r.ImageNamespace == "" {
+			r.ImageNamespace = "images"
+		}
+		if r.ArtifactNamespace == "" {
+			r.ArtifactNamespace = "artifacts"
+		}
+		if r.Signing != nil {
+			if err := validateSigning(r.Signing); err != nil {
+				return nil, fmt.Errorf("%s: registries[%d] (%s): signing: %w", path, i, r.Name, err)
+			}
+		}
 	}
 	if c.Signing.Provider == "" {
 		c.Signing.Provider = "keyless"
@@ -251,7 +326,11 @@ func LoadConfig(path string) (*Config, error) {
 	return &c, nil
 }
 
-// validateSigning checks one signing block (global or per-entry override).
+// registryNameRe bounds registry names: they become lock-file map keys and
+// --registry flag values, so no whitespace, colons or leading hyphens.
+var registryNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// validateSigning checks one signing block (global or per-registry override).
 func validateSigning(s *Signing) error {
 	switch s.Provider {
 	case "keyless":

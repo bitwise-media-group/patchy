@@ -5,6 +5,8 @@ package mirror
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -87,7 +89,7 @@ func TestEngineSync(t *testing.T) {
 	}
 
 	t.Run("dry run plans the work", func(t *testing.T) {
-		res, err := eng.Sync(ctx, entry, true)
+		res, err := eng.Sync(ctx, entry, SyncOptions{DryRun: true})
 		if err != nil {
 			t.Fatalf("Sync dry-run: %v", err)
 		}
@@ -106,7 +108,7 @@ func TestEngineSync(t *testing.T) {
 	})
 
 	t.Run("first sync publishes and signs", func(t *testing.T) {
-		res, err := eng.Sync(ctx, entry, false)
+		res, err := eng.Sync(ctx, entry, SyncOptions{})
 		if err != nil {
 			t.Fatalf("Sync: %v", err)
 		}
@@ -114,7 +116,7 @@ func TestEngineSync(t *testing.T) {
 	})
 
 	t.Run("second sync is a clean skip", func(t *testing.T) {
-		res, err := eng.Sync(ctx, entry, false)
+		res, err := eng.Sync(ctx, entry, SyncOptions{})
 		if err != nil {
 			t.Fatalf("Sync: %v", err)
 		}
@@ -130,7 +132,7 @@ func TestEngineSync(t *testing.T) {
 		// Upstream re-releases 1.0.0 with different bytes.
 		f.pushChart(f.host+"/upstream", "demo", "1.0.0",
 			f.chartTgz("demo", "1.0.0", "mutated", app+":1.0.0"))
-		_, err := eng.Sync(ctx, entry, false)
+		_, err := eng.Sync(ctx, entry, SyncOptions{})
 		if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
 			t.Errorf("want tripwire error, got %v", err)
 		}
@@ -161,12 +163,12 @@ func TestEngineSyncGuarantees(t *testing.T) {
 	if _, err := eng.Upgrade(ctx, entry, ""); err != nil {
 		t.Fatalf("Upgrade: %v", err)
 	}
-	if _, err := eng.Sync(ctx, entry, false); err != nil {
+	if _, err := eng.Sync(ctx, entry, SyncOptions{}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
 	t.Run("dry run over a published tag stays read-only", func(t *testing.T) {
-		res, err := eng.Sync(ctx, entry, true)
+		res, err := eng.Sync(ctx, entry, SyncOptions{DryRun: true})
 		if err != nil {
 			t.Fatalf("Sync dry-run: %v", err)
 		}
@@ -181,29 +183,161 @@ func TestEngineSyncGuarantees(t *testing.T) {
 		// Upstream still serves the locked bytes; the committed vendor
 		// copy — what the PR review actually approved — was edited.
 		f.write("charts/demo/vendor/demo/values.yaml", "image: attacker.example.test/app:1.0.0\n")
-		_, err := eng.Sync(ctx, entry, false)
+		_, err := eng.Sync(ctx, entry, SyncOptions{})
 		if err == nil || !strings.Contains(err.Error(), "vendor tree differs") {
 			t.Errorf("want vendor tripwire error, got %v", err)
 		}
 	})
 }
 
-// TestEngineSyncSigningOverride pins the per-entry signing seam: an entry
-// carrying its own signing block must be signed (and self-verified) with
-// that identity, never the global default.
-func TestEngineSyncSigningOverride(t *testing.T) {
+// fakeSigner records the refs it signed.
+type fakeSigner struct{ signed []string }
+
+func (s *fakeSigner) Sign(_ context.Context, ref string, _ bool) error {
+	s.signed = append(s.signed, ref)
+	return nil
+}
+
+// twoRegistryEngine rebuilds the fixture over mirror-a/mirror-b path
+// prefixes of the same in-memory registry (b carrying a kms signing
+// override) with fake sign/verify seams: Verify always reports unsigned,
+// so every converged ref gets a signer built for its registry's effective
+// signing config.
+func twoRegistryEngine(f *fixture) (*Engine, *[]*spec.Signing) {
+	f.t.Helper()
+	f.setRegistries(fmt.Sprintf(`  - name: a
+    url: %[1]s/mirror-a
+  - name: b
+    url: %[1]s/mirror-b
+    signing:
+      provider: kms
+      kms:
+        key: awskms://alias/registry-override
+`, f.host))
+	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var resolved []*spec.Signing
+	signer := &fakeSigner{}
+	eng := New(Config{
+		Root:   f.root,
+		Global: global,
+		Now:    func() time.Time { return testNow },
+		Verify: func(context.Context, verify.Subject) error {
+			return errors.New("no mirror signature")
+		},
+		NewSigner: func(s *spec.Signing) (ArtifactSigner, error) {
+			resolved = append(resolved, s)
+			return signer, nil
+		},
+	})
+	f.eng = eng
+	return eng, &resolved
+}
+
+// TestEngineSyncPerRegistrySigning pins the per-registry signing seam: a
+// registry carrying its own signing block must have its pushes signed with
+// that config, while the others use the global default — one record per
+// (artifact, registry).
+func TestEngineSyncPerRegistrySigning(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	keyPath, pubPath, password := keyPair(t)
+	f.pushImage(f.host+"/bundles/bundle:1.0.0", testNow.AddDate(0, -1, 0))
+	f.artifactManifest("example.test/bundles/bundle", "")
+	eng, resolved := twoRegistryEngine(f)
+
+	entry, err := eng.Entry("bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Upgrade(ctx, entry, ""); err != nil {
+		t.Fatalf("Upgrade: %v", err)
+	}
+	res, err := eng.Sync(ctx, entry, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(res.Records) != 2 || res.Records[0].Registry != "a" || res.Records[1].Registry != "b" {
+		t.Fatalf("records = %+v", res.Records)
+	}
+	for _, rec := range res.Records {
+		if rec.Action != ActionPushed || !rec.Signed {
+			t.Errorf("record = %+v", rec)
+		}
+	}
+	if len(*resolved) != 2 {
+		t.Fatalf("NewSigner called %d time(s), want one per registry", len(*resolved))
+	}
+	if s := (*resolved)[0]; s.Provider != "keyless" {
+		t.Errorf("registry a signer built with %+v, want the global keyless default", s)
+	}
+	if s := (*resolved)[1]; s.Provider != "kms" || s.KMS == nil || s.KMS.Key != "awskms://alias/registry-override" {
+		t.Errorf("registry b signer built with %+v, want its own kms override", s)
+	}
+}
+
+// TestEngineSyncRegistryFilter pins --registry: a filtered sync converges
+// only the named registries and an unknown name is refused before any work.
+func TestEngineSyncRegistryFilter(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	f.pushImage(f.host+"/bundles/bundle:1.0.0", testNow.AddDate(0, -1, 0))
+	f.artifactManifest("example.test/bundles/bundle", "")
+	eng, _ := twoRegistryEngine(f)
+
+	entry, err := eng.Entry("bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Upgrade(ctx, entry, ""); err != nil {
+		t.Fatalf("Upgrade: %v", err)
+	}
+	if _, err := eng.Sync(ctx, entry, SyncOptions{Registries: []string{"nope"}}); err == nil ||
+		!strings.Contains(err.Error(), `unknown registry "nope"`) {
+		t.Errorf("unknown registry error = %v", err)
+	}
+	res, err := eng.Sync(ctx, entry, SyncOptions{Registries: []string{"b"}})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(res.Records) != 1 || res.Records[0].Registry != "b" ||
+		!strings.HasPrefix(res.Records[0].Ref, f.host+"/mirror-b/") {
+		t.Fatalf("records = %+v", res.Records)
+	}
+	// The excluded registry must be untouched.
+	if _, exists, _ := eng.reg.Exists(ctx, f.host+"/mirror-a/artifacts/example.test/bundles/bundle:1.0.0"); exists {
+		t.Error("filtered sync wrote to registry a")
+	}
+	if _, exists, _ := eng.reg.Exists(ctx, f.host+"/mirror-b/artifacts/example.test/bundles/bundle:1.0.0"); !exists {
+		t.Error("filtered sync did not write to registry b")
+	}
+}
+
+// TestEngineSyncTwoRegistryKeys is the real-cosign variant: two registries
+// signed with two different keypairs, each self-verifying with its own key,
+// and a second sync skipping per registry.
+func TestEngineSyncTwoRegistryKeys(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	keyA, pubA, passA := keyPair(t)
+	keyB, pubB, passB := keyPair(t)
 
 	f.pushImage(f.host+"/bundles/bundle:1.0.0", testNow.AddDate(0, -1, 0))
-	f.artifactManifest("bundle", "example.test/bundles/bundle", `signing:
-  provider: kms
-  kms:
-    key: awskms://alias/entry-override
-`)
+	f.artifactManifest("example.test/bundles/bundle", "")
+	f.setRegistries(fmt.Sprintf(`  - name: a
+    url: %[1]s/mirror-a
+  - name: b
+    url: %[1]s/mirror-b
+    signing:
+      provider: kms
+      kms:
+        key: awskms://alias/registry-override
+`, f.host))
 
-	var resolved []*spec.Signing
+	// Key selection follows the resolved signing config: the kms override
+	// (registry b) signs and verifies with keypair B, the global default
+	// with keypair A — a cross-signed ref must NOT verify.
 	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -213,13 +347,19 @@ func TestEngineSyncSigningOverride(t *testing.T) {
 		Global: global,
 		Now:    func() time.Time { return testNow },
 		Verify: func(ctx context.Context, s verify.Subject) error {
+			pub := pubA
+			if strings.Contains(s.Ref, "/mirror-b/") {
+				pub = pubB
+			}
 			return verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
-				Ref: s.Ref, KeyRef: pubPath, IgnoreTlog: true, AllowHTTPRegistry: true,
+				Ref: s.Ref, KeyRef: pub, IgnoreTlog: true, AllowHTTPRegistry: true,
 			})
 		},
 		NewSigner: func(s *spec.Signing) (ArtifactSigner, error) {
-			resolved = append(resolved, s)
-			return sign.NewWithKeyFile(keyPath, password, scan.ExecRunner{}), nil
+			if s.Provider == "kms" {
+				return sign.NewWithKeyFile(keyB, passB, scan.ExecRunner{}), nil
+			}
+			return sign.NewWithKeyFile(keyA, passA, scan.ExecRunner{}), nil
 		},
 	})
 	f.eng = eng
@@ -230,15 +370,40 @@ func TestEngineSyncSigningOverride(t *testing.T) {
 	if _, err := eng.Upgrade(ctx, entry, ""); err != nil {
 		t.Fatalf("Upgrade: %v", err)
 	}
-	if _, err := eng.Sync(ctx, entry, false); err != nil {
+	res, err := eng.Sync(ctx, entry, SyncOptions{})
+	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if len(resolved) == 0 {
-		t.Fatal("NewSigner never called")
+	if len(res.Records) != 2 || !res.Records[0].Signed || !res.Records[1].Signed {
+		t.Fatalf("records = %+v", res.Records)
 	}
-	for _, s := range resolved {
-		if s.Provider != "kms" || s.KMS == nil || s.KMS.Key != "awskms://alias/entry-override" {
-			t.Errorf("signer built with %+v, want the entry override", s)
+	// Each registry's copy verifies with its own key and no other.
+	refA := repoOf(res.Records[0].Ref) + "@" + res.Records[0].Digest
+	refB := repoOf(res.Records[1].Ref) + "@" + res.Records[1].Digest
+	if err := verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+		Ref: refA, KeyRef: pubA, IgnoreTlog: true, AllowHTTPRegistry: true,
+	}); err != nil {
+		t.Errorf("registry a signature does not verify with key A: %v", err)
+	}
+	if err := verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+		Ref: refB, KeyRef: pubB, IgnoreTlog: true, AllowHTTPRegistry: true,
+	}); err != nil {
+		t.Errorf("registry b signature does not verify with key B: %v", err)
+	}
+	if err := verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+		Ref: refB, KeyRef: pubA, IgnoreTlog: true, AllowHTTPRegistry: true,
+	}); err == nil {
+		t.Error("registry b signature verifies with key A — the override did not bind")
+	}
+
+	// Second sync: both registries current and signed, one skip each.
+	res, err = eng.Sync(ctx, entry, SyncOptions{})
+	if err != nil {
+		t.Fatalf("second Sync: %v", err)
+	}
+	for _, rec := range res.Records {
+		if rec.Action != ActionSkippedCurrent || rec.Signed {
+			t.Errorf("second sync record = %+v", rec)
 		}
 	}
 }

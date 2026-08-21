@@ -47,15 +47,6 @@ func (e Entry) VersionConstraint() string {
 	return e.Artifact.Artifact.VersionConstraint
 }
 
-// Signing returns the entry's signing override, nil when it uses the global
-// default.
-func (e Entry) Signing() *Signing {
-	if e.Chart != nil {
-		return e.Chart.Signing
-	}
-	return e.Artifact.Signing
-}
-
 // ManifestPath is the entry's manifest.yaml path.
 func (e Entry) ManifestPath() string { return filepath.Join(e.Dir, "manifest.yaml") }
 

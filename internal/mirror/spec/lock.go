@@ -6,6 +6,7 @@ package spec
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -25,14 +26,15 @@ type LockChart struct {
 	UpstreamTgzSha256 string `yaml:"upstreamTgzSha256"`
 }
 
-// LockImage is one image pinned by digest, with its mirror target.
+// LockImage is one image pinned by digest, with its mirror targets.
 type LockImage struct {
 	// Source is the canonical upstream reference (normalized, tagged).
 	Source string `yaml:"source"`
 	// Digest is the manifest digest Source resolved to.
 	Digest string `yaml:"digest"`
-	// Target is the mirror reference the image publishes to.
-	Target string `yaml:"target"`
+	// Targets maps each configured registry's name to the mirror reference
+	// the image publishes to there.
+	Targets map[string]string `yaml:"targets"`
 	// Platforms lists os/arch pairs of a manifest list (empty for
 	// single-platform images).
 	Platforms []string `yaml:"platforms"`
@@ -51,8 +53,9 @@ type LockArtifact struct {
 	Version string `yaml:"version"`
 	// Digest is the manifest digest Ref:Version resolved to.
 	Digest string `yaml:"digest"`
-	// Target is the mirror reference the artifact publishes to.
-	Target string `yaml:"target"`
+	// Targets maps each configured registry's name to the mirror reference
+	// the artifact publishes to there.
+	Targets map[string]string `yaml:"targets"`
 	// Platforms lists os/arch pairs of a manifest list.
 	Platforms []string `yaml:"platforms"`
 }
@@ -65,7 +68,7 @@ func LoadImagesLock(path string) (*ImagesLock, error) {
 	}
 	var l ImagesLock
 	if err := decodeStrict(raw, &l); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, legacyLockHint(err))
 	}
 	return &l, nil
 }
@@ -78,9 +81,19 @@ func LoadArtifactLock(path string) (*ArtifactLock, error) {
 	}
 	var l ArtifactLock
 	if err := decodeStrict(raw, &l); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, legacyLockHint(err))
 	}
 	return &l, nil
+}
+
+// legacyLockHint annotates a strict-decode failure over the pre-registries
+// singular `target` field with the way out.
+func legacyLockHint(err error) error {
+	if strings.Contains(err.Error(), "field target not found") {
+		return fmt.Errorf("%w (lock predates the multi-registry schema; "+
+			"run 'patchy mirror upgrade' to regenerate it)", err)
+	}
+	return err
 }
 
 // Encode renders the lock in its canonical byte form. The shape is fixed,
@@ -100,7 +113,10 @@ func (l *ImagesLock) Encode() []byte {
 	for _, img := range l.Images {
 		fmt.Fprintf(&b, "  - source: %s\n", img.Source)
 		fmt.Fprintf(&b, "    digest: %s\n", img.Digest)
-		fmt.Fprintf(&b, "    target: %s\n", img.Target)
+		b.WriteString("    targets:\n")
+		for _, name := range sortedKeys(img.Targets) {
+			fmt.Fprintf(&b, "      %s: %s\n", name, img.Targets[name])
+		}
 		fmt.Fprintf(&b, "    platforms: %s\n", flowList(img.Platforms))
 	}
 	return []byte(b.String())
@@ -113,9 +129,23 @@ func (l *ArtifactLock) Encode() []byte {
 	fmt.Fprintf(&b, "  ref: %s\n", l.Artifact.Ref)
 	fmt.Fprintf(&b, "  version: %s\n", l.Artifact.Version)
 	fmt.Fprintf(&b, "  digest: %s\n", l.Artifact.Digest)
-	fmt.Fprintf(&b, "  target: %s\n", l.Artifact.Target)
+	b.WriteString("  targets:\n")
+	for _, name := range sortedKeys(l.Artifact.Targets) {
+		fmt.Fprintf(&b, "    %s: %s\n", name, l.Artifact.Targets[name])
+	}
 	fmt.Fprintf(&b, "  platforms: %s\n", flowList(l.Artifact.Platforms))
 	return []byte(b.String())
+}
+
+// sortedKeys orders a targets map by registry name so the emitted bytes are
+// insensitive to mirror.yaml reordering.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // flowList renders a string list in flow style with double-quoted items:

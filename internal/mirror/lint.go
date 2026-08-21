@@ -150,9 +150,8 @@ func (e *Engine) lintOCIRefs(entry spec.Entry, fail func(string, ...any)) {
 			fail("ociRefs.allow[%d] missing reason (why may this bypass the mirror?)", i)
 		}
 	}
-	mirrorPrefix := "oci://" + e.global.Registry.URL
 	for _, ref := range ociRefsIn(raw) {
-		if strings.HasPrefix(ref, mirrorPrefix) {
+		if e.insideMirror(ref) {
 			continue
 		}
 		allowed := false
@@ -167,6 +166,17 @@ func (e *Engine) lintOCIRefs(entry spec.Entry, fail func(string, ...any)) {
 				"(allow via ociRefs.allow with a reason, or fix the values)", ref)
 		}
 	}
+}
+
+// insideMirror reports whether an oci:// ref lives under any configured
+// registry.
+func (e *Engine) insideMirror(ref string) bool {
+	for _, reg := range e.global.Registries {
+		if strings.HasPrefix(ref, "oci://"+reg.URL) {
+			return true
+		}
+	}
+	return false
 }
 
 // ociRefsIn collects whole string scalars starting with oci:// across all

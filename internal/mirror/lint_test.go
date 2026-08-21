@@ -259,6 +259,51 @@ data:
 	}
 }
 
+// TestLintOCIRefsMultiRegistry pins the mirror boundary over several
+// registries: a rendered oci:// ref under ANY configured registry is inside
+// the mirror; one outside all of them is an escape.
+func TestLintOCIRefsMultiRegistry(t *testing.T) {
+	f := newFixture(t)
+	f.setRegistries(fmt.Sprintf("  - name: a\n    url: %[1]s/mirror-a\n"+
+		"  - name: b\n    url: %[1]s/mirror-b\n", f.host))
+	f.write("charts/demo/manifest.yaml", `apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
+kind: Chart
+name: demo
+chart:
+  repo: oci://reg.example.test/upstream
+  name: demo
+  version: "1.0.0"
+images:
+  verifyUpstream:
+    - match: "*"
+      provider: none
+`)
+	f.write("charts/demo/rendered/manifests.yaml", fmt.Sprintf(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: x
+data:
+  second: oci://%[1]s/mirror-b/charts/other:1.0.0
+  escaped: oci://elsewhere.example.test/bundle:1.0.0
+`, f.host))
+	eng := f.engine()
+	entry, err := eng.Entry("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issues, err := eng.Lint(entry)
+	if err != nil {
+		t.Fatalf("Lint: %v", err)
+	}
+	joined := strings.Join(issues, "\n")
+	if strings.Contains(joined, "mirror-b/charts/other") {
+		t.Errorf("second-registry ref flagged as an escape:\n%s", joined)
+	}
+	if !strings.Contains(joined, `"oci://elsewhere.example.test/bundle:1.0.0" outside the mirror`) {
+		t.Errorf("outside-both ref not flagged:\n%s", joined)
+	}
+}
+
 // TestLintAllowlistShape pins the per-entry allowlist requirements the
 // expiry tests do not cover.
 func TestLintAllowlistShape(t *testing.T) {

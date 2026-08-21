@@ -43,7 +43,7 @@ Flags also resolve from PATCHY_MIRROR_* environment variables and an optional
 
 * [patchy](patchy.md)	 - Work with patchy security findings from the terminal
 * [patchy mirror add](patchy_mirror_add.md)	 - Scaffold a new chart or artifact entry
-* [patchy mirror sync](patchy_mirror_sync.md)	 - Publish committed charts and images to the mirror registry
+* [patchy mirror sync](patchy_mirror_sync.md)	 - Publish committed charts and images to the mirror registries
 * [patchy mirror upgrade](patchy_mirror_upgrade.md)	 - Move pins to newer upstream versions and regenerate derived state
 * [patchy mirror validate](patchy_mirror_validate.md)	 - Prove the committed store is current, verified and clean
 

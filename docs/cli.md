@@ -238,14 +238,16 @@ Uniquely in the CLI, every `dev` flag also resolves from `PATCHY_DEV_*` environm
 
 The `mirror` commands are the other cluster-free group: they maintain a vendored mirror store — a git repository where
 `mirror.yaml` holds global defaults and every `charts/<name>/` or `artifacts/<name>/` directory pins one upstream helm
-chart or OCI artifact, vendored for PR review, digest-locked, provenance-verified, scanned, and published signed to a
-platform registry.
+chart or OCI artifact, vendored for PR review, digest-locked, provenance-verified, scanned, and published signed to one
+or more platform registries. `mirror.yaml` lists the registries; every entry publishes to all of them, each signed with
+that registry's own `signing` block when it has one (a KMS key, say) and the global default otherwise.
 
 ```sh
 patchy mirror upgrade --check -o json   # what would move, as data
 patchy mirror upgrade --all             # move pins, regenerate everything derived
 patchy mirror validate --all            # the CI gate: current, verified, clean
-patchy mirror sync --all                # converge the registry, idempotently
+patchy mirror sync --all                # converge every registry, idempotently
+patchy mirror sync --all --registry ghcr   # just the named registry
 ```
 
 Signing, verification, and image scanning shell out to external binaries rather than linking them: `sync` and `validate`

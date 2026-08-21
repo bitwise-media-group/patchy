@@ -141,9 +141,16 @@ func (e *Engine) rewrite(ref string) string {
 	return imageref.Rewrite(ref, e.global.SourceRegistryRewrites)
 }
 
-// imageTarget computes the mirror target for a canonical source reference:
-// <registry>/<imageNamespace>/<source repo path>:<tag>.
-func (e *Engine) imageTarget(source string) (string, error) {
+// SelectRegistries resolves registry names against the config: nil means
+// every configured registry, an unknown name is an error. The CLI validates
+// and completes --registry through this.
+func (e *Engine) SelectRegistries(names []string) ([]spec.Registry, error) {
+	return e.global.SelectRegistries(names)
+}
+
+// imageTarget computes one registry's mirror target for a canonical source
+// reference: <registry>/<imageNamespace>/<source repo path>:<tag>.
+func imageTarget(reg spec.Registry, source string) (string, error) {
 	ref, err := imageref.Parse(source)
 	if err != nil {
 		return "", err
@@ -152,25 +159,25 @@ func (e *Engine) imageTarget(source string) (string, error) {
 	if tag == "" {
 		tag = "latest"
 	}
-	return fmt.Sprintf("%s/%s/%s:%s", e.global.Registry.URL, e.global.Registry.ImageNamespace, ref.Repository, tag), nil
+	return fmt.Sprintf("%s/%s/%s:%s", reg.URL, reg.ImageNamespace, ref.Repository, tag), nil
 }
 
-// chartRepo resolves a chart entry's publish repository path under the
-// registry URL.
-func (e *Engine) chartRepo(entry spec.Entry) string {
+// chartRepo resolves a chart entry's publish repository path under one
+// registry's URL.
+func chartRepo(reg spec.Registry, entry spec.Entry) string {
 	if entry.Chart.Publish.ChartRepo != "" {
 		return entry.Chart.Publish.ChartRepo
 	}
-	return e.global.Registry.ChartNamespace + "/" + entry.Name
+	return reg.ChartNamespace + "/" + entry.Name
 }
 
 // artifactRepo resolves an artifact entry's publish repository path under
-// the registry URL.
-func (e *Engine) artifactRepo(entry spec.Entry) string {
+// one registry's URL.
+func artifactRepo(reg spec.Registry, entry spec.Entry) string {
 	if entry.Artifact.Publish.Repo != "" {
 		return entry.Artifact.Publish.Repo
 	}
-	return e.global.Registry.ArtifactNamespace + "/" + entry.Artifact.Artifact.Ref
+	return reg.ArtifactNamespace + "/" + entry.Artifact.Artifact.Ref
 }
 
 // vendorDir is a chart entry's vendor tree root.

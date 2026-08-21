@@ -52,9 +52,5 @@ scan:
     generate: true
     preamble: |
       Whole-file context for reviewers.
-signing:
-  provider: kms
-  kms:
-    key: gcpkms://projects/p/locations/l/keyRings/r/cryptoKeys/k
 publish:
   chartRepo: charts/demo

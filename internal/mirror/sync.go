@@ -28,8 +28,10 @@ const (
 	ActionSkippedCurrent = "skipped-current"
 )
 
-// SyncRecord is one published artifact's outcome.
+// SyncRecord is one published artifact's outcome at one registry.
 type SyncRecord struct {
+	// Registry is the configured registry name the record converged.
+	Registry string `json:"registry"`
 	// Ref is the mirror reference operated on.
 	Ref string `json:"ref"`
 	// Digest is the manifest digest at Ref after the sync.
@@ -41,6 +43,14 @@ type SyncRecord struct {
 	Signed bool `json:"signed"`
 }
 
+// SyncOptions tunes one Sync call.
+type SyncOptions struct {
+	// DryRun computes every action without writing to the registry.
+	DryRun bool
+	// Registries restricts publishing to the named registries (nil: all).
+	Registries []string
+}
+
 // SyncResult is one entry's sync outcome.
 type SyncResult struct {
 	Name    string       `json:"name"`
@@ -50,94 +60,127 @@ type SyncResult struct {
 	Err string `json:"error,omitempty"`
 }
 
-// Sync converges the registry onto the entry's committed state. Read-only
-// on the working tree: every write goes to the registry. Idempotent per
-// tag — an existing chart tag is never replaced, a current-and-signed
-// image is skipped. dryRun computes every action without writing.
-func (e *Engine) Sync(ctx context.Context, entry spec.Entry, dryRun bool) (*SyncResult, error) {
-	result := &SyncResult{Name: entry.Name, Kind: entry.Kind}
-	signing := e.global.Signing
-	if override := entry.Signing(); override != nil {
-		signing = *override
+// Sync converges the registries onto the entry's committed state. Read-only
+// on the working tree: every write goes to a registry. Idempotent per
+// (registry, tag) — an existing chart tag is never replaced, a
+// current-and-signed image is skipped. Each registry's pushes are signed
+// with its effective signing config (its own block, else the global one).
+func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (*SyncResult, error) {
+	regs, err := e.global.SelectRegistries(opts.Registries)
+	if err != nil {
+		return nil, err
 	}
+	result := &SyncResult{Name: entry.Name, Kind: entry.Kind}
 	if entry.Kind == spec.KindArtifact {
 		lock, err := spec.LoadArtifactLock(entry.LockPath())
 		if err != nil {
 			return nil, fmt.Errorf("%s: no lock (run upgrade first): %w", entry.Name, err)
 		}
-		rec, err := e.syncImage(ctx, entry.Name, lock.Artifact.Ref+":"+lock.Artifact.Version,
-			lock.Artifact.Digest, lock.Artifact.Target, &signing, dryRun)
-		if err != nil {
-			return nil, err
+		source := lock.Artifact.Ref + ":" + lock.Artifact.Version
+		for _, reg := range regs {
+			target, ok := lock.Artifact.Targets[reg.Name]
+			if !ok {
+				return nil, fmt.Errorf("%s: lock is stale for registry %q; run upgrade", entry.Name, reg.Name)
+			}
+			rec, err := e.syncImage(ctx, entry.Name, source, lock.Artifact.Digest, target,
+				reg.EffectiveSigning(&e.global.Signing), opts.DryRun)
+			if err != nil {
+				return nil, err
+			}
+			rec.Registry = reg.Name
+			result.Records = append(result.Records, rec)
 		}
-		result.Records = append(result.Records, rec)
 		return result, nil
 	}
 
-	rec, err := e.syncChart(ctx, entry, &signing, dryRun)
+	recs, err := e.syncChart(ctx, entry, regs, opts.DryRun)
 	if err != nil {
 		return nil, err
 	}
-	result.Records = append(result.Records, rec)
+	result.Records = append(result.Records, recs...)
 
 	lock, err := spec.LoadImagesLock(entry.LockPath())
 	if err != nil {
 		return nil, fmt.Errorf("%s: no lock (run upgrade first): %w", entry.Name, err)
 	}
 	for _, img := range lock.Images {
-		rec, err := e.syncImage(ctx, entry.Name, img.Source, img.Digest, img.Target, &signing, dryRun)
-		if err != nil {
-			return nil, err
+		for _, reg := range regs {
+			target, ok := img.Targets[reg.Name]
+			if !ok {
+				return nil, fmt.Errorf("%s: lock is stale for registry %q; run upgrade", entry.Name, reg.Name)
+			}
+			rec, err := e.syncImage(ctx, entry.Name, img.Source, img.Digest, target,
+				reg.EffectiveSigning(&e.global.Signing), opts.DryRun)
+			if err != nil {
+				return nil, err
+			}
+			rec.Registry = reg.Name
+			result.Records = append(result.Records, rec)
 		}
-		result.Records = append(result.Records, rec)
 	}
 	return result, nil
 }
 
 // syncChart publishes the chart artifact: re-pull the upstream tgz into
 // memory, trip on any upstream mutation (digest vs lock, tree vs committed
-// vendor), push unless the tag exists, and ensure the mirror signature.
-func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, signing *spec.Signing,
-	dryRun bool) (SyncRecord, error) {
+// vendor) — once — then per registry push unless the tag exists and ensure
+// the mirror signature.
+func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Registry,
+	dryRun bool) ([]SyncRecord, error) {
 	m := entry.Chart
 	lock, err := spec.LoadImagesLock(entry.LockPath())
 	if err != nil {
-		return SyncRecord{}, fmt.Errorf("%s: no lock (run upgrade first): %w", entry.Name, err)
+		return nil, fmt.Errorf("%s: no lock (run upgrade first): %w", entry.Name, err)
 	}
 
 	// The published artifact must be exactly what the PR reviewed: the
 	// tripwire catches upstream mutating a released version in place.
 	tgz, sha, err := e.puller.Pull(ctx, m.Chart.Repo, m.Chart.Name, m.Chart.Version)
 	if err != nil {
-		return SyncRecord{}, fmt.Errorf("%s: %w", entry.Name, err)
+		return nil, fmt.Errorf("%s: %w", entry.Name, err)
 	}
 	if sha != lock.Chart.UpstreamTgzSha256 {
-		return SyncRecord{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"%s: upstream tgz digest mismatch: lock has %s, upstream now serves %s",
 			entry.Name, lock.Chart.UpstreamTgzSha256, sha)
 	}
 	scratch, err := os.MkdirTemp("", "patchy-mirror-sync-*")
 	if err != nil {
-		return SyncRecord{}, err
+		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
 	if err := helmchart.Extract(tgz, scratch); err != nil {
-		return SyncRecord{}, fmt.Errorf("%s: %w", entry.Name, err)
+		return nil, fmt.Errorf("%s: %w", entry.Name, err)
 	}
 	diffs, err := helmchart.TreeDiff(
 		filepath.Join(scratch, m.Chart.Name),
 		filepath.Join(vendorDir(entry), m.Chart.Name))
 	if err != nil {
-		return SyncRecord{}, fmt.Errorf("%s: %w", entry.Name, err)
+		return nil, fmt.Errorf("%s: %w", entry.Name, err)
 	}
 	if len(diffs) > 0 {
-		return SyncRecord{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"%s: committed vendor tree differs from the upstream chart (%s); re-run upgrade",
 			entry.Name, strings.Join(diffs, "; "))
 	}
 
-	target := fmt.Sprintf("%s/%s:%s", e.global.Registry.URL, e.chartRepo(entry), m.Chart.Version)
-	rec := SyncRecord{Ref: target}
+	var records []SyncRecord
+	for _, reg := range regs {
+		rec, err := e.syncChartToRegistry(ctx, entry, reg, tgz, dryRun)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+	return records, nil
+}
+
+// syncChartToRegistry converges the verified chart tgz at one registry.
+func (e *Engine) syncChartToRegistry(ctx context.Context, entry spec.Entry, reg spec.Registry,
+	tgz []byte, dryRun bool) (SyncRecord, error) {
+	m := entry.Chart
+	target := fmt.Sprintf("%s/%s:%s", reg.URL, chartRepo(reg, entry), m.Chart.Version)
+	rec := SyncRecord{Registry: reg.Name, Ref: target}
 	digest, exists, err := e.reg.Exists(ctx, target)
 	if err != nil {
 		return SyncRecord{}, fmt.Errorf("%s: %w", entry.Name, err)
@@ -163,7 +206,8 @@ func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, signing *spec.
 		rec.Digest = digest
 	}
 
-	signed, err := e.ensureSigned(ctx, entry.Name, repoOf(target)+"@"+rec.Digest, signing, false, dryRun)
+	signed, err := e.ensureSigned(ctx, entry.Name, repoOf(target)+"@"+rec.Digest,
+		reg.EffectiveSigning(&e.global.Signing), false, dryRun)
 	if err != nil {
 		return SyncRecord{}, err
 	}

@@ -13,20 +13,20 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
-// artifactManifest writes an artifact entry pinned at 1.0.0. extraBlocks
-// lands after the artifact block (scan:, signing:, publish:).
-func (f *fixture) artifactManifest(name, canonicalRef, extraBlocks string) {
+// artifactManifest writes the "bundle" artifact entry pinned at 1.0.0.
+// extraBlocks lands after the artifact block (scan:, publish:).
+func (f *fixture) artifactManifest(canonicalRef, extraBlocks string) {
 	manifest := fmt.Sprintf(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
 kind: Artifact
-name: %s
+name: bundle
 artifact:
   ref: %s
   version: "1.0.0"
   versionConstraint: ">=1.0.0 <2.0.0"
   verifyUpstream:
     provider: none
-%s`, name, canonicalRef, extraBlocks)
-	f.write(filepath.Join("artifacts", name, "manifest.yaml"), manifest)
+%s`, canonicalRef, extraBlocks)
+	f.write(filepath.Join("artifacts", "bundle", "manifest.yaml"), manifest)
 }
 
 // TestEngineArtifactLifecycle drives a kind: Artifact entry through
@@ -41,7 +41,7 @@ func TestEngineArtifactLifecycle(t *testing.T) {
 
 	canonical := "example.test/bundles/bundle"
 	digest := f.pushImage(f.host+"/bundles/bundle:1.0.0", testNow.AddDate(0, -1, 0))
-	f.artifactManifest("bundle", canonical, "")
+	f.artifactManifest(canonical, "")
 	eng := keyedEngine(f, keyPath, pubPath, password)
 
 	entry, err := eng.Entry("bundle")
@@ -81,8 +81,8 @@ func assertArtifactUpgrade(ctx context.Context, t *testing.T, eng *Engine, entry
 	}
 	// The publish target composes registry URL + artifactNamespace +
 	// canonical path; a mistake here misroutes every publish.
-	if lock.Artifact.Target != target {
-		t.Errorf("target = %q, want %q", lock.Artifact.Target, target)
+	if lock.Artifact.Targets["primary"] != target {
+		t.Errorf("target = %q, want %q", lock.Artifact.Targets["primary"], target)
 	}
 }
 
@@ -90,7 +90,7 @@ func assertArtifactUpgrade(ctx context.Context, t *testing.T, eng *Engine, entry
 func assertArtifactSync(ctx context.Context, t *testing.T, f *fixture, eng *Engine, entry spec.Entry,
 	digest, target string) {
 	t.Helper()
-	res, err := eng.Sync(ctx, entry, false)
+	res, err := eng.Sync(ctx, entry, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -102,7 +102,7 @@ func assertArtifactSync(ctx context.Context, t *testing.T, f *fixture, eng *Engi
 		t.Errorf("mirror digest = %s, %v", got, err)
 	}
 
-	res, err = eng.Sync(ctx, entry, false)
+	res, err = eng.Sync(ctx, entry, SyncOptions{})
 	if err != nil {
 		t.Fatalf("second Sync: %v", err)
 	}
@@ -118,7 +118,7 @@ func assertArtifactDrift(ctx context.Context, t *testing.T, f *fixture, eng *Eng
 	digest, target string) {
 	t.Helper()
 	f.pushImage(target, testNow)
-	res, err := eng.Sync(ctx, entry, false)
+	res, err := eng.Sync(ctx, entry, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync after drift: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestEngineArtifactScanPolicy(t *testing.T) {
 				f.pushChart(f.host+"/bundles", "bundle", "1.0.0",
 					f.chartTgz("bundle", "1.0.0", "1.0.0", "unused:1.0.0"))
 			}
-			f.artifactManifest("bundle", "example.test/bundles/bundle", tt.enabled)
+			f.artifactManifest("example.test/bundles/bundle", tt.enabled)
 			fake := &fakeScanner{name: "fake"}
 			eng := scanEngine(f, fake)
 			entry, err := eng.Entry("bundle")

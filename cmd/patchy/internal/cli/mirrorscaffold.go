@@ -14,18 +14,29 @@ func scaffoldMirrorConfig() []byte {
 	return []byte(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
 kind: MirrorConfig
 
-registry:
-  # Where everything publishes: one registry path serving arbitrary
-  # sub-paths beneath it.
-  url: registry.example.com/org/platform
-  # Path prefixes inside the registry, per artifact class.
-  chartNamespace: charts
-  imageNamespace: images          # target = images/<canonical source path>:<tag>
-  artifactNamespace: artifacts
+registries:
+  # Where everything publishes: every entry goes to every registry listed
+  # here. The name keys the lock files' targets and 'sync --registry'.
+  - name: primary
+    url: registry.example.com/org/platform
+    # Path prefixes inside the registry, per artifact class.
+    chartNamespace: charts
+    imageNamespace: images        # target = images/<canonical source path>:<tag>
+    artifactNamespace: artifacts
+    # signing:                    # replaces the global signing block wholesale
+    #   provider: kms             # for pushes to this registry (keyless identity
+    #   kms:                      # is the run's ambient OIDC identity — the same
+    #     key: gcpkms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>
+    #                             # for every registry — so per-registry
+    #                             # variation means KMS keys)
+  # - name: ghcr
+  #   url: ghcr.io/org/platform
 
 signing:
-  # How published OCI artifacts are signed. Default for every entry; a
-  # per-entry signing: block replaces this wholesale.
+  # How published OCI artifacts are signed: the default for registries
+  # without their own signing: block. Signatures are sigstore bundles
+  # attached via OCI referrers (older ECR private registries fall back to
+  # cosign's tag-based scheme).
   provider: keyless               # keyless | kms
   keyless:
     # The exact certificate identity the publish workflow's signatures
@@ -99,7 +110,8 @@ images:
     - match: "*"
       provider: none
 # publish:
-#   # Override the default publish path (<registry.chartNamespace>/<name>).
+#   # Override the default publish path (<chartNamespace>/<name>), applied
+#   # under every registry URL.
 #   chartRepo: charts/example
 `)
 	return []byte(b.String())
@@ -124,7 +136,8 @@ scan:
   # auto scans iff the artifact is a runnable image.
   enabled: auto
 # publish:
-#   # Override the default publish path (<registry.artifactNamespace>/<ref>).
+#   # Override the default publish path (<artifactNamespace>/<ref>), applied
+#   # under every registry URL.
 #   repo: artifacts/example.com/org/thing
 `)
 	return []byte(b.String())

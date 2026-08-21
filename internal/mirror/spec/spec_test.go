@@ -15,13 +15,7 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if c.Registry.URL != "registry.example.com/org/platform" {
-		t.Errorf("registry url = %q", c.Registry.URL)
-	}
-	// artifactNamespace is absent from the file; the default fills in.
-	if c.Registry.ArtifactNamespace != "artifacts" {
-		t.Errorf("artifactNamespace = %q, want default artifacts", c.Registry.ArtifactNamespace)
-	}
+	assertConfigRegistries(t, c)
 	if c.Signing.Provider != "keyless" || c.Signing.Keyless == nil {
 		t.Errorf("signing = %+v", c.Signing)
 	}
@@ -39,6 +33,37 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if c.SourceRegistryRewrites["docker.io"] != "mirror.example.com/dockerhub" {
 		t.Errorf("rewrites = %v", c.SourceRegistryRewrites)
+	}
+}
+
+// assertConfigRegistries checks the registries list decoded fully, with
+// per-element namespace defaults and per-registry effective signing.
+func assertConfigRegistries(t *testing.T, c *Config) {
+	t.Helper()
+	if len(c.Registries) != 2 {
+		t.Fatalf("registries = %+v", c.Registries)
+	}
+	primary, ghcr := c.Registries[0], c.Registries[1]
+	if primary.Name != "primary" || primary.URL != "registry.example.com/org/platform" {
+		t.Errorf("primary = %+v", primary)
+	}
+	// artifactNamespace is absent from the file; the default fills in —
+	// per element (ghcr declares no namespaces at all).
+	if primary.ArtifactNamespace != "artifacts" {
+		t.Errorf("artifactNamespace = %q, want default artifacts", primary.ArtifactNamespace)
+	}
+	if ghcr.Name != "ghcr" || ghcr.ChartNamespace != "charts" || ghcr.ImageNamespace != "images" ||
+		ghcr.ArtifactNamespace != "artifacts" {
+		t.Errorf("ghcr defaults = %+v", ghcr)
+	}
+	// Effective signing: a registry's own block wins wholesale, the rest
+	// fall back to the global default.
+	if s := primary.EffectiveSigning(&c.Signing); s != &c.Signing {
+		t.Errorf("primary effective signing = %+v, want the global block", s)
+	}
+	if s := ghcr.EffectiveSigning(&c.Signing); s.Provider != "kms" || s.KMS == nil ||
+		s.KMS.Key != "gcpkms://projects/p/locations/l/keyRings/r/cryptoKeys/k" {
+		t.Errorf("ghcr effective signing = %+v, want its own kms block", s)
 	}
 }
 
@@ -78,40 +103,77 @@ func TestLoadConfigRejects(t *testing.T) {
 		}
 		return path
 	}
+	registries := "registries: [{name: r, url: r.example.com/x}]\n"
 	tests := []struct {
 		name, content, wantErr string
 	}{
 		{
 			name:    "wrong kind",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: Chart\nregistry: {url: r.example.com/x}\n",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: Chart\n" + registries,
 			wantErr: "kind",
 		},
 		{
 			name:    "wrong apiVersion",
-			content: "apiVersion: flux-containers/v1alpha1\nkind: MirrorConfig\nregistry: {url: r.example.com/x}\n",
+			content: "apiVersion: flux-containers/v1alpha1\nkind: MirrorConfig\n" + registries,
 			wantErr: "apiVersion",
 		},
 		{
-			name:    "missing registry url",
+			name:    "no registries",
 			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n",
-			wantErr: "registry.url",
+			wantErr: "at least one registry",
+		},
+		{
+			name: "legacy singular registry block",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registry: {url: r.example.com/x}\n",
+			wantErr: "registry",
+		},
+		{
+			name: "missing registry name",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registries: [{url: r.example.com/x}]\n",
+			wantErr: "name",
+		},
+		{
+			name: "bad registry name charset",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registries: [{name: \"Prod Registry\", url: r.example.com/x}]\n",
+			wantErr: "name",
+		},
+		{
+			name: "missing registry url",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registries: [{name: r}]\n",
+			wantErr: "url is required",
+		},
+		{
+			name: "duplicate registry names",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registries: [{name: r, url: a.example.com/x}, {name: r, url: b.example.com/x}]\n",
+			wantErr: "duplicate name",
+		},
+		{
+			name: "invalid per-registry signing",
+			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
+				"registries: [{name: r, url: r.example.com/x, signing: {provider: kms}}]\n",
+			wantErr: "kms.key",
 		},
 		{
 			name: "unknown field",
 			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registry: {url: r.example.com/x}\nbogus: true\n",
+				registries + "bogus: true\n",
 			wantErr: "bogus",
 		},
 		{
 			name: "kms without key",
 			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registry: {url: r.example.com/x}\nsigning: {provider: kms}\n",
+				registries + "signing: {provider: kms}\n",
 			wantErr: "kms.key",
 		},
 		{
 			name: "newDays beyond maxDays",
 			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registry: {url: r.example.com/x}\nscan: {allowlistMaxDays: 30, allowlistNewDays: 60}\n",
+				registries + "scan: {allowlistMaxDays: 30, allowlistNewDays: 60}\n",
 			wantErr: "allowlistNewDays",
 		},
 	}
@@ -120,6 +182,49 @@ func TestLoadConfigRejects(t *testing.T) {
 			_, err := LoadConfig(write(t, tt.content))
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("want error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestSelectRegistries(t *testing.T) {
+	c, err := LoadConfig("testdata/store/mirror.yaml")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	names := func(regs []Registry) string {
+		out := make([]string, len(regs))
+		for i, r := range regs {
+			out[i] = r.Name
+		}
+		return strings.Join(out, ",")
+	}
+	tests := []struct {
+		name    string
+		sel     []string
+		want    string // comma-joined result; "" with wantErr set = error
+		wantErr string
+	}{
+		{name: "nil selects all", sel: nil, want: "primary,ghcr"},
+		{name: "empty selects all", sel: []string{}, want: "primary,ghcr"},
+		{name: "subset", sel: []string{"ghcr"}, want: "ghcr"},
+		{name: "declaration order regardless of selection order", sel: []string{"ghcr", "primary"}, want: "primary,ghcr"},
+		{name: "unknown name", sel: []string{"nope"}, wantErr: `unknown registry "nope"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := c.SelectRegistries(tt.sel)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("SelectRegistries: %v", err)
+			}
+			if names(got) != tt.want {
+				t.Errorf("selected = %q, want %q", names(got), tt.want)
 			}
 		})
 	}
@@ -167,9 +272,6 @@ func assertDemoChart(t *testing.T, demo Entry) {
 	}
 	if m.Chart.VerifyUpstream.EffectiveOidcIssuer() != defaultOidcIssuer {
 		t.Error("chart rule issuer default")
-	}
-	if demo.Signing() == nil || demo.Signing().Provider != "kms" {
-		t.Errorf("signing override = %+v", demo.Signing())
 	}
 	if m.Scan == nil || !m.Scan.Allowlist.Generate || !strings.Contains(m.Scan.Allowlist.Preamble, "Whole-file") {
 		t.Errorf("scan override = %+v", m.Scan)
@@ -272,13 +374,22 @@ func TestImagesLockEmpty(t *testing.T) {
 
 func TestArtifactLockRoundTrip(t *testing.T) {
 	l := &ArtifactLock{Artifact: LockArtifact{
-		Ref:       "ghcr.io/example/bundle",
-		Version:   "0.5.0",
-		Digest:    "sha256:abc",
-		Target:    "registry.example.com/org/platform/artifacts/ghcr.io/example/bundle:0.5.0",
+		Ref:     "ghcr.io/example/bundle",
+		Version: "0.5.0",
+		Digest:  "sha256:abc",
+		Targets: map[string]string{
+			// Two keys pin the sorted emission.
+			"primary": "registry.example.com/org/platform/artifacts/ghcr.io/example/bundle:0.5.0",
+			"ghcr":    "ghcr.io/org/platform/artifacts/ghcr.io/example/bundle:0.5.0",
+		},
 		Platforms: []string{"linux/amd64", "linux/arm64"},
 	}}
 	enc := l.Encode()
+	if !strings.Contains(string(enc), "  targets:\n    ghcr: ghcr.io/org/platform/artifacts/"+
+		"ghcr.io/example/bundle:0.5.0\n    primary: registry.example.com/org/platform/artifacts/"+
+		"ghcr.io/example/bundle:0.5.0\n") {
+		t.Errorf("targets not emitted sorted by name:\n%s", enc)
+	}
 	path := filepath.Join(t.TempDir(), "lock.yaml")
 	if err := os.WriteFile(path, enc, 0o644); err != nil {
 		t.Fatal(err)
@@ -287,11 +398,38 @@ func TestArtifactLockRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadArtifactLock: %v", err)
 	}
-	if got.Artifact.Ref != l.Artifact.Ref || len(got.Artifact.Platforms) != 2 {
+	if got.Artifact.Ref != l.Artifact.Ref || len(got.Artifact.Platforms) != 2 ||
+		len(got.Artifact.Targets) != 2 {
 		t.Errorf("round trip = %+v", got)
 	}
 	if string(got.Encode()) != string(enc) {
 		t.Error("re-encode differs")
+	}
+}
+
+// A pre-registries lock (singular target:) must fail strict decode with a
+// hint at the upgrade path, for both lock flavours.
+func TestLegacyLockHint(t *testing.T) {
+	dir := t.TempDir()
+	imagesLock := filepath.Join(dir, "images.lock.yaml")
+	if err := os.WriteFile(imagesLock, []byte("chart:\n  name: demo\n  version: 1.0.0\n"+
+		"  upstreamTgzSha256: abc\nimages:\n  - source: ghcr.io/x/y:1.0.0\n    digest: sha256:abc\n"+
+		"    target: registry.example.com/images/ghcr.io/x/y:1.0.0\n    platforms: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadImagesLock(imagesLock); err == nil ||
+		!strings.Contains(err.Error(), "predates the multi-registry schema") {
+		t.Errorf("images lock error = %v, want the upgrade hint", err)
+	}
+	artifactLock := filepath.Join(dir, "lock.yaml")
+	if err := os.WriteFile(artifactLock, []byte("artifact:\n  ref: ghcr.io/x/y\n  version: 1.0.0\n"+
+		"  digest: sha256:abc\n  target: registry.example.com/artifacts/ghcr.io/x/y:1.0.0\n"+
+		"  platforms: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadArtifactLock(artifactLock); err == nil ||
+		!strings.Contains(err.Error(), "predates the multi-registry schema") {
+		t.Errorf("artifact lock error = %v, want the upgrade hint", err)
 	}
 }
 

@@ -173,11 +173,15 @@ func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []
 			if err != nil {
 				return fmt.Errorf("%s: platforms of %s: %w", entryName, source, err)
 			}
-			target, err := e.imageTarget(source)
-			if err != nil {
-				return fmt.Errorf("%s: %w", entryName, err)
+			targets := make(map[string]string, len(e.global.Registries))
+			for _, reg := range e.global.Registries {
+				target, err := imageTarget(reg, source)
+				if err != nil {
+					return fmt.Errorf("%s: %w", entryName, err)
+				}
+				targets[reg.Name] = target
 			}
-			images[i] = spec.LockImage{Source: source, Digest: digest, Target: target, Platforms: platforms}
+			images[i] = spec.LockImage{Source: source, Digest: digest, Targets: targets, Platforms: platforms}
 			return nil
 		})
 	}
@@ -202,11 +206,15 @@ func (e *Engine) regenerateArtifact(ctx context.Context, entry spec.Entry) (*spe
 	if err != nil {
 		return nil, fmt.Errorf("%s: platforms of %s: %w", entry.Name, source, err)
 	}
+	targets := make(map[string]string, len(e.global.Registries))
+	for _, reg := range e.global.Registries {
+		targets[reg.Name] = fmt.Sprintf("%s/%s:%s", reg.URL, artifactRepo(reg, entry), a.Version)
+	}
 	return &spec.ArtifactLock{Artifact: spec.LockArtifact{
 		Ref:       a.Ref,
 		Version:   a.Version,
 		Digest:    digest,
-		Target:    fmt.Sprintf("%s/%s:%s", e.global.Registry.URL, e.artifactRepo(entry), a.Version),
+		Targets:   targets,
 		Platforms: platforms,
 	}}, nil
 }

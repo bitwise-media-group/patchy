@@ -55,11 +55,20 @@ func newFixture(t *testing.T) *fixture {
 	// Canonical image sources use a clean host name; the rewrite reroutes
 	// pulls to the in-memory registry — the same shape as a pull-through
 	// cache in production, and it keeps canonical paths port-free.
+	f.setRegistries(fmt.Sprintf("  - name: primary\n    url: %s/mirror\n", f.host))
+	return f
+}
+
+// setRegistries rewrites mirror.yaml with the given registries block (a
+// pre-indented YAML list), keeping the rest of the fixture config fixed.
+// Multi-registry tests point several names at path prefixes of the same
+// in-memory registry — no second server needed.
+func (f *fixture) setRegistries(registries string) {
+	f.t.Helper()
 	mirrorYAML := fmt.Sprintf(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
 kind: MirrorConfig
-registry:
-  url: %s/mirror
-signing:
+registries:
+%ssigning:
   provider: keyless
   keyless:
     certificateIdentity: https://example.test/.github/workflows/publish.yaml@refs/heads/main
@@ -68,9 +77,8 @@ update:
   cooldownDays: 3
 sourceRegistryRewrites:
   example.test: %s
-`, f.host, f.host)
+`, registries, f.host)
 	f.write("mirror.yaml", mirrorYAML)
-	return f
 }
 
 // appCanonical is the canonical source name of the test app image; the
@@ -271,8 +279,8 @@ func assertLifecycleRegenerate(ctx context.Context, t *testing.T, f *fixture, en
 		t.Errorf("lock images = %+v", lock.Images)
 	}
 	wantTarget := f.host + "/mirror/images/" + app + ":1.0.0"
-	if lock.Images[0].Target != wantTarget {
-		t.Errorf("target = %q, want %q", lock.Images[0].Target, wantTarget)
+	if lock.Images[0].Targets["primary"] != wantTarget {
+		t.Errorf("target = %q, want %q", lock.Images[0].Targets["primary"], wantTarget)
 	}
 	if !strings.Contains(f.read("charts/demo/rendered/manifests.yaml"), "image: "+app+":1.0.0") {
 		t.Error("rendered output missing the image")

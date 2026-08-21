@@ -19,8 +19,9 @@ func writeMirrorStore(t *testing.T) {
 	t.Helper()
 	if err := os.WriteFile("mirror.yaml", []byte(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
 kind: MirrorConfig
-registry:
-  url: registry.example.com/org/platform
+registries:
+  - name: primary
+    url: registry.example.com/org/platform
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +89,7 @@ func TestMirrorSelectionValidation(t *testing.T) {
 		{"unknown entry", []string{"mirror", "validate", "missing"}, "no entry"},
 		{"to with all", []string{"mirror", "upgrade", "--all", "--to", "2.0.0"}, "--to needs named entries"},
 		{"unknown stage", []string{"mirror", "validate", "--all", "--only", "bogus"}, "unknown stage"},
+		{"unknown registry", []string{"mirror", "sync", "--all", "--registry", "nope"}, `unknown registry "nope"`},
 		{"add without url", []string{"mirror", "add", "x"}, "--url is required"},
 	}
 	for _, tt := range tests {
@@ -206,8 +208,8 @@ func TestRenderSyncMarkdown(t *testing.T) {
 			Name: "demo",
 			Kind: "Chart",
 			Records: []mirror.SyncRecord{
-				{Ref: "reg.example.com/charts/demo:1.0.0", Action: mirror.ActionPushed, Signed: true},
-				{Ref: "reg.example.com/images/x:1.0.0", Action: mirror.ActionSkippedCurrent},
+				{Registry: "primary", Ref: "reg.example.com/charts/demo:1.0.0", Action: mirror.ActionPushed, Signed: true},
+				{Registry: "ghcr", Ref: "ghcr.io/org/images/x:1.0.0", Action: mirror.ActionSkippedCurrent},
 			},
 		},
 		{Name: "broken", Kind: "Artifact", Err: "digest mismatch"},
@@ -218,8 +220,8 @@ func TestRenderSyncMarkdown(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"### `demo`",
-		"- `pushed` reg.example.com/charts/demo:1.0.0 (signed)",
-		"- `skipped-current` reg.example.com/images/x:1.0.0",
+		"- `pushed` [primary] reg.example.com/charts/demo:1.0.0 (signed)",
+		"- `skipped-current` [ghcr] ghcr.io/org/images/x:1.0.0",
 		"### `broken`",
 		"**error:** digest mismatch",
 	} {

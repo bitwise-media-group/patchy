@@ -185,7 +185,9 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref); the
   only place a write credential is exercised. No git binary anywhere controller-side.
 - `mirror` — the engine behind `patchy mirror` (CLI-only; no controller consumes it): vendored mirroring of
-  upstream helm charts and OCI artifacts into a platform registry. One concern per subpackage: `spec` (the
+  upstream helm charts and OCI artifacts into one or more platform registries (mirror.yaml lists them; every
+  entry publishes to all, lock files record targets per registry name, and each registry may carry its own
+  wholesale `signing` override — `sync --registry` restricts a run). One concern per subpackage: `spec` (the
   mirror.yaml/manifest/lock schema + glob discovery — the tree is the registry of entries), `imageref`,
   `semverpick` (constraints + cooldown walks), `yamledit` (comment-preserving byte-splice edits, never
   re-encode), `helmchart` (pull/extract/tree-diff/push), `render` (byte-stable `helm template` equivalent —

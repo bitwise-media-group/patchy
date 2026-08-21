@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT
 apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
 kind: MirrorConfig
-registry:
-  url: registry.example.com/org/platform
-  chartNamespace: charts
-  imageNamespace: images
+registries:
+  - name: primary
+    url: registry.example.com/org/platform
+    chartNamespace: charts
+    imageNamespace: images
+  - name: ghcr
+    url: ghcr.io/org/platform
+    signing:
+      provider: kms
+      kms:
+        key: gcpkms://projects/p/locations/l/keyRings/r/cryptoKeys/k
 signing:
   provider: keyless
   keyless:

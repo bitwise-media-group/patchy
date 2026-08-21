@@ -8,7 +8,7 @@
 
 [settings]
 lockfile = true
-locked = false
+locked = true
 minimum_release_age = "7d"
 
 [vars]

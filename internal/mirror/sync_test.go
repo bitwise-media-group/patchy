@@ -5,37 +5,35 @@ package mirror
 
 import (
 	"context"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/sigstore/cosign/v3/pkg/cosign"
-
+	"github.com/bitwise-media-group/patchy/internal/mirror/scan"
 	"github.com/bitwise-media-group/patchy/internal/mirror/sign"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 	"github.com/bitwise-media-group/patchy/internal/mirror/verify"
 )
 
-// keyPair generates a cosign keypair on disk for offline sign/verify.
+// keyPair generates a cosign keypair on disk for offline sign/verify,
+// shelling out to the same binary sign/verify now exec — no committed
+// private-key fixture.
 func keyPair(t *testing.T) (keyPath, pubPath string, password []byte) {
 	t.Helper()
+	if _, err := exec.LookPath("cosign"); err != nil {
+		t.Skipf("cosign binary not on PATH (mise install): %v", err)
+	}
 	password = []byte("test-password")
-	keys, err := cosign.GenerateKeyPair(func(bool) ([]byte, error) { return password, nil })
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := t.TempDir()
-	keyPath = filepath.Join(dir, "cosign.key")
-	pubPath = filepath.Join(dir, "cosign.pub")
-	if err := os.WriteFile(keyPath, keys.PrivateBytes, 0o600); err != nil {
-		t.Fatal(err)
+	cmd := exec.Command("cosign", "generate-key-pair")
+	cmd.Dir = dir
+	cmd.Env = append(cmd.Environ(), "COSIGN_PASSWORD="+string(password))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cosign generate-key-pair: %v (%s)", err, out)
 	}
-	if err := os.WriteFile(pubPath, keys.PublicBytes, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return keyPath, pubPath, password
+	return filepath.Join(dir, "cosign.key"), filepath.Join(dir, "cosign.pub"), password
 }
 
 // keyedEngine rebuilds the fixture's engine with key-based sign/verify
@@ -52,14 +50,15 @@ func keyedEngine(f *fixture, keyPath, pubPath string, password []byte) *Engine {
 		Global: global,
 		Now:    func() time.Time { return testNow },
 		Verify: func(ctx context.Context, s verify.Subject) error {
-			return verify.Verify(ctx, verify.Subject{
-				Ref:        s.Ref,
-				KeyRef:     pubPath,
-				IgnoreTlog: true,
+			return verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+				Ref:               s.Ref,
+				KeyRef:            pubPath,
+				IgnoreTlog:        true,
+				AllowHTTPRegistry: true,
 			})
 		},
 		NewSigner: func(*spec.Signing) (ArtifactSigner, error) {
-			return sign.NewWithKeyFile(keyPath, password, nil), nil
+			return sign.NewWithKeyFile(keyPath, password, scan.ExecRunner{}), nil
 		},
 	})
 	f.eng = eng
@@ -214,11 +213,13 @@ func TestEngineSyncSigningOverride(t *testing.T) {
 		Global: global,
 		Now:    func() time.Time { return testNow },
 		Verify: func(ctx context.Context, s verify.Subject) error {
-			return verify.Verify(ctx, verify.Subject{Ref: s.Ref, KeyRef: pubPath, IgnoreTlog: true})
+			return verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+				Ref: s.Ref, KeyRef: pubPath, IgnoreTlog: true, AllowHTTPRegistry: true,
+			})
 		},
 		NewSigner: func(s *spec.Signing) (ArtifactSigner, error) {
 			resolved = append(resolved, s)
-			return sign.NewWithKeyFile(keyPath, password, nil), nil
+			return sign.NewWithKeyFile(keyPath, password, scan.ExecRunner{}), nil
 		},
 	})
 	f.eng = eng
@@ -265,10 +266,11 @@ func assertFirstSync(ctx context.Context, t *testing.T, f *fixture, res *SyncRes
 	if err != nil || got != image.Digest {
 		t.Errorf("mirror digest = %s, %v", got, err)
 	}
-	err = verify.Verify(ctx, verify.Subject{
-		Ref:        repoOf(image.Ref) + "@" + image.Digest,
-		KeyRef:     pubPath,
-		IgnoreTlog: true,
+	err = verify.Verify(ctx, scan.ExecRunner{}, verify.Subject{
+		Ref:               repoOf(image.Ref) + "@" + image.Digest,
+		KeyRef:            pubPath,
+		IgnoreTlog:        true,
+		AllowHTTPRegistry: true,
 	})
 	if err != nil {
 		t.Errorf("mirror signature does not verify: %v", err)
@@ -329,7 +331,7 @@ publish:
 		if err != nil {
 			t.Fatal(err)
 		}
-		signer := sign.NewWithKeyFile(keyPath, password, nil)
+		signer := sign.NewWithKeyFile(keyPath, password, scan.ExecRunner{})
 		// The signature lands where pulls actually happen (the rewrite
 		// target), exactly where verification will look.
 		if err := signer.Sign(ctx, f.host+"/apps/app@"+lock.Images[0].Digest, false); err != nil {

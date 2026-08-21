@@ -119,6 +119,37 @@ func TestEngineScanGate(t *testing.T) {
 	})
 }
 
+// TestEngineScanRoster pins the roster policy: every image scanner is
+// default-off, so with scanning enabled an empty roster must be a hard
+// error naming the toggles — never a silently-clean scan — while
+// scan.enabled: false disables the stage deliberately.
+func TestEngineScanRoster(t *testing.T) {
+	f, entry := scanFixture(t)
+	ctx := context.Background()
+
+	t.Run("empty roster is a hard error", func(t *testing.T) {
+		eng := scanEngine(f)
+		_, err := eng.Scan(ctx, entry)
+		if err == nil || !strings.Contains(err.Error(), "no image scanner enabled") {
+			t.Fatalf("Scan error = %v, want the empty-roster error", err)
+		}
+	})
+
+	t.Run("scan.enabled false disables the stage", func(t *testing.T) {
+		mirrorYAML := f.read("mirror.yaml")
+		f.write("mirror.yaml", mirrorYAML+"scan:\n  enabled: false\n")
+		defer f.write("mirror.yaml", mirrorYAML)
+		eng := scanEngine(f)
+		report, err := eng.Scan(ctx, entry)
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if report.Failed() || len(report.Scanned) != 0 {
+			t.Errorf("report = %+v, want an empty disabled report", report)
+		}
+	})
+}
+
 func TestEngineDeriveAllowlist(t *testing.T) {
 	f, _ := scanFixture(t)
 	ctx := context.Background()

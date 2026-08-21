@@ -112,6 +112,10 @@ func (u Update) EffectiveCooldownDays() int {
 // Scan is the global vulnerability-scan policy. FailOn and IgnoreUnfixed
 // can be overridden per entry; the scanner roster is global.
 type Scan struct {
+	// Enabled turns image scanning off entirely when false (default
+	// true). With scanning enabled, at least one image scanner must be
+	// enabled in Scanners.
+	Enabled  *bool    `yaml:"enabled"`
 	Scanners Scanners `yaml:"scanners"`
 	// FailOn lists blocking severities (default CRITICAL, HIGH).
 	FailOn []string `yaml:"failOn"`
@@ -126,9 +130,11 @@ type Scan struct {
 	AllowlistNewDays int `yaml:"allowlistNewDays"`
 }
 
-// Scanners toggles the pluggable scanners independently; none is forced.
+// Scanners toggles the pluggable scanners independently; none is forced,
+// but an image scan with neither osv nor grype enabled is an error.
 type Scanners struct {
-	// OSV is the built-in library scanner (default enabled).
+	// OSV shells out to osv-scanner, which must be on PATH when enabled
+	// (default disabled).
 	OSV *ScannerToggle `yaml:"osv"`
 	// Grype shells out to grype, which must be on PATH when enabled
 	// (default disabled).
@@ -150,8 +156,8 @@ type KubescapeScanner struct {
 	Mode string `yaml:"mode"`
 }
 
-// OSVEnabled resolves the osv default (on).
-func (s Scanners) OSVEnabled() bool { return s.OSV == nil || s.OSV.Enabled }
+// OSVEnabled resolves the osv default (off).
+func (s Scanners) OSVEnabled() bool { return s.OSV != nil && s.OSV.Enabled }
 
 // GrypeEnabled resolves the grype default (off).
 func (s Scanners) GrypeEnabled() bool { return s.Grype != nil && s.Grype.Enabled }
@@ -179,6 +185,11 @@ func (s Scan) EffectiveFailOn() []string {
 		return s.FailOn
 	}
 	return []string{"CRITICAL", "HIGH"}
+}
+
+// EffectiveEnabled resolves the scanning-enabled default (on).
+func (s Scan) EffectiveEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 // EffectiveIgnoreUnfixed resolves the IgnoreUnfixed default.

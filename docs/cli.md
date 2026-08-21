@@ -248,6 +248,13 @@ patchy mirror validate --all            # the CI gate: current, verified, clean
 patchy mirror sync --all                # converge the registry, idempotently
 ```
 
+Signing, verification, and image scanning shell out to external binaries rather than linking them: `sync` and `validate`
+need `cosign` (v3 or later) on `PATH`, and the image scanners are all opt-in shell-outs — enable `scan.scanners.osv`
+(`osv-scanner` v2) or `scan.scanners.grype` (`grype`) in `mirror.yaml`, since an image scan with neither enabled is an
+error; `scan.enabled: false` turns image scanning off deliberately. `kubescape` remains the optional configuration
+scanner. Existing stores that relied on the old built-in default should add `scan.scanners.osv.enabled: true` and
+install `osv-scanner` (mise/brew).
+
 `upgrade` mutates files and nothing else — patchy never runs git, so branches, commits, and pull requests belong to the
 calling pipeline. Entries that share a `lockstep` group bump together, holding at the lowest version every member has
 published. `sync` never replaces an existing chart tag and skips anything already current and signed, so re-runs are

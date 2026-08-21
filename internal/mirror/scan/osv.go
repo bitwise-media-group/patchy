@@ -5,36 +5,50 @@ package scan
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
-
-	"github.com/google/osv-scanner/v2/pkg/models"
-	"github.com/google/osv-scanner/v2/pkg/osvscanner"
-	osvschema "github.com/ossf/osv-schema/bindings/go/osvschema"
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/ocireg"
 )
 
-// OSV is the built-in library scanner: the image is exported to a local
-// archive with the same registry client everything else uses, extracted by
-// osv-scalibr, and matched against the OSV.dev API. No binary required.
+// OSV shells out to osv-scanner: the image is exported to a local archive
+// with the same registry client everything else uses, then scanned by the
+// binary (which must be on PATH when the scanner is enabled) against the
+// OSV.dev API.
 type OSV struct {
 	// Registry pulls the image (nil: ambient keychain).
 	Registry *ocireg.Client
-	// doScan is the scanner seam (nil: osvscanner.DoContainerScan).
-	// DoContainerScan is the only entry point that reads the Image
-	// action — DoScan silently ignores it and scans nothing.
-	doScan func(osvscanner.ScannerActions) (models.VulnerabilityResults, error)
+	// Runner executes the binary (nil: the real PATH).
+	Runner ToolRunner
 }
 
 // Name implements ImageScanner.
 func (*OSV) Name() string { return "osv" }
 
+// osv-scanner's meaningful exit codes: 1 is the vulnerabilities-found
+// sentinel (a successful scan; it only drives the upstream CLI's exit),
+// 128 means nothing extractable (scratch/distroless — clean, not a
+// failure).
+const (
+	osvExitVulnsFound = 1
+	osvExitNoPackages = 128
+)
+
 // ScanImage implements ImageScanner.
 func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
+	runner := o.Runner
+	if runner == nil {
+		runner = ExecRunner{}
+	}
+	if !runner.Look("osv-scanner") {
+		return nil, errors.New("osv-scanner is enabled but not on PATH; install it " +
+			"(mise install / brew install osv-scanner) or set scan.scanners.osv.enabled: false in mirror.yaml")
+	}
 	reg := o.Registry
 	if reg == nil {
 		reg = ocireg.New(nil)
@@ -48,21 +62,12 @@ func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 	if err := reg.SaveTarball(ctx, ref, archive); err != nil {
 		return nil, err
 	}
-	scanArchive := o.doScan
-	if scanArchive == nil {
-		scanArchive = osvscanner.DoContainerScan
-	}
-	results, err := scanArchive(osvscanner.ScannerActions{
-		Image:          archive,
-		IsImageArchive: true,
-	})
-	switch {
-	case err == nil, errors.Is(err, osvscanner.ErrVulnerabilitiesFound):
-		// Finding vulnerabilities is a successful scan; the sentinel
-		// only drives the upstream CLI's exit code.
-		return osvFindings(results), nil
-	case errors.Is(err, osvscanner.ErrNoPackagesFound):
-		// Nothing extractable (scratch/distroless): clean, not a failure.
+	// --format json routes logs to stderr and the report to stdout.
+	stdout, err := runner.Run(ctx, "osv-scanner",
+		[]string{"scan", "image", "--archive", "--format", "json", archive}, nil)
+	switch code := exitStatus(err); {
+	case err == nil, code == osvExitVulnsFound:
+	case code == osvExitNoPackages:
 		return nil, nil
 	default:
 		// Any other error means the scan is not authoritative — even
@@ -70,16 +75,72 @@ func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 		// broken scan into false assurance.
 		return nil, fmt.Errorf("osv scan of %s: %w", ref, err)
 	}
+	var out osvOutput
+	if err := json.Unmarshal(stdout, &out); err != nil {
+		return nil, fmt.Errorf("parse osv-scanner output for %s: %w", ref, err)
+	}
+	return osvFindings(out), nil
+}
+
+// exitStatus extracts a subprocess exit code from a (wrapped) run error;
+// -1 when err carries none.
+func exitStatus(err error) int {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
+}
+
+// osvOutput is the subset of osv-scanner's JSON report the mirror reads
+// (the serialized form of its VulnerabilityResults model).
+type osvOutput struct {
+	Results []struct {
+		Packages []osvPackage `json:"packages"`
+	} `json:"results"`
+}
+
+// osvPackage is one scanned package with its grouped vulnerabilities.
+type osvPackage struct {
+	Package struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	} `json:"package"`
+	Groups          []osvGroup         `json:"groups"`
+	Vulnerabilities []osvVulnerability `json:"vulnerabilities"`
+}
+
+// osvGroup carries a related-advisory set's alias list and max severity.
+type osvGroup struct {
+	IDs         []string `json:"ids"`
+	Aliases     []string `json:"aliases"`
+	MaxSeverity string   `json:"max_severity"`
+}
+
+// osvVulnerability is one advisory with its fixed-version events.
+type osvVulnerability struct {
+	ID       string   `json:"id"`
+	Aliases  []string `json:"aliases"`
+	Affected []struct {
+		Package struct {
+			Name string `json:"name"`
+		} `json:"package"`
+		Ranges []struct {
+			Events []struct {
+				Fixed string `json:"fixed"`
+			} `json:"events"`
+		} `json:"ranges"`
+	} `json:"affected"`
 }
 
 // osvFindings flattens osv results to the neutral shape.
-func osvFindings(results models.VulnerabilityResults) []Finding {
+func osvFindings(out osvOutput) []Finding {
 	var findings []Finding
-	for _, source := range results.Results {
+	for _, source := range out.Results {
 		for _, pkg := range source.Packages {
 			// Group metadata carries the alias sets and max severity;
 			// index them by member ID.
-			groupOf := map[string]models.GroupInfo{}
+			groupOf := map[string]osvGroup{}
 			for _, g := range pkg.Groups {
 				for _, id := range g.IDs {
 					groupOf[id] = g
@@ -87,15 +148,15 @@ func osvFindings(results models.VulnerabilityResults) []Finding {
 			}
 			for _, vuln := range pkg.Vulnerabilities {
 				f := Finding{
-					ID:        vuln.GetId(),
-					Aliases:   append([]string(nil), vuln.GetAliases()...),
+					ID:        vuln.ID,
+					Aliases:   append([]string(nil), vuln.Aliases...),
 					Package:   pkg.Package.Name,
 					Installed: pkg.Package.Version,
 					FixedIn:   osvFixedVersions(vuln, pkg.Package.Name),
 					Scanner:   "osv",
 					Severity:  "UNKNOWN",
 				}
-				if g, ok := groupOf[vuln.GetId()]; ok {
+				if g, ok := groupOf[vuln.ID]; ok {
 					f.Severity = SeverityFromScore(g.MaxSeverity)
 					// The group's aliases cover every related ID family.
 					f.Aliases = append(f.Aliases, g.Aliases...)
@@ -115,16 +176,16 @@ func osvFindings(results models.VulnerabilityResults) []Finding {
 }
 
 // osvFixedVersions collects the advisory's fixed events for the package.
-func osvFixedVersions(vuln *osvschema.Vulnerability, pkgName string) []string {
+func osvFixedVersions(vuln osvVulnerability, pkgName string) []string {
 	var fixed []string
-	for _, affected := range vuln.GetAffected() {
-		if affected.GetPackage().GetName() != "" && affected.GetPackage().GetName() != pkgName {
+	for _, affected := range vuln.Affected {
+		if affected.Package.Name != "" && affected.Package.Name != pkgName {
 			continue
 		}
-		for _, r := range affected.GetRanges() {
-			for _, ev := range r.GetEvents() {
-				if ev.GetFixed() != "" {
-					fixed = append(fixed, ev.GetFixed())
+		for _, r := range affected.Ranges {
+			for _, ev := range r.Events {
+				if ev.Fixed != "" {
+					fixed = append(fixed, ev.Fixed)
 				}
 			}
 		}

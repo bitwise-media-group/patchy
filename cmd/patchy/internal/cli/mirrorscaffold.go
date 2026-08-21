@@ -45,7 +45,7 @@ update:
 
 scan:
   scanners:
-    # built-in library scanner
+    # shells out to osv-scanner, which must be on PATH (default off)
     osv:
       enabled: true
     # use grype as an alternative (or in addition) to osv

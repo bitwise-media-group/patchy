@@ -5,34 +5,33 @@ package verify
 
 import (
 	"context"
-	"crypto"
 	"errors"
 	"fmt"
 
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
-	cliverify "github.com/sigstore/cosign/v3/cmd/cosign/cli/verify"
-	"github.com/sigstore/cosign/v3/pkg/cosign"
-	ociremote "github.com/sigstore/cosign/v3/pkg/oci/remote"
-
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
+
+// ToolRunner executes the cosign binary; a seam so tests can can its
+// invocations. scan.ExecRunner satisfies it.
+type ToolRunner interface {
+	// Run executes name with args and extra environment, returning stdout.
+	Run(ctx context.Context, name string, args, env []string) (stdout []byte, err error)
+	// Look reports whether the binary is available.
+	Look(name string) bool
+}
 
 // Subject is one verification: what to check and against which trust.
 type Subject struct {
 	// Ref is the artifact to verify (tag or digest reference).
 	Ref string
-	// Keychain authenticates registry reads (nil: ambient default).
-	Keychain authn.Keychain
 
 	// KeyRef verifies against a public key (a path, URL or KMS URI);
 	// empty means keyless.
 	KeyRef string
 	// HashAlgorithm overrides the payload digest for key verification
-	// (some publishers sign with sha512).
-	HashAlgorithm crypto.Hash
+	// ("", "sha256", "sha384" or "sha512" — some publishers sign with
+	// sha512).
+	HashAlgorithm string
 	// IdentityRegexp matches the certificate identity for keyless
 	// verification (mutually exclusive with Identity).
 	IdentityRegexp string
@@ -47,13 +46,16 @@ type Subject struct {
 	// IgnoreTlog skips transparency-log verification (key-based rules
 	// and offline self-checks).
 	IgnoreTlog bool
+	// AllowHTTPRegistry permits plain-HTTP registries (tests, local
+	// mirrors).
+	AllowHTTPRegistry bool
 }
 
 // UpstreamSubject translates a manifest verifyUpstream rule for ref.
 // Provider none is the caller's business — it is a documented gap, never a
 // verification.
-func UpstreamSubject(ref string, rule spec.VerifyRule, keychain authn.Keychain) (Subject, error) {
-	s := Subject{Ref: ref, Keychain: keychain, SignatureRepository: rule.SignatureRepository}
+func UpstreamSubject(ref string, rule spec.VerifyRule) (Subject, error) {
+	s := Subject{Ref: ref, SignatureRepository: rule.SignatureRepository}
 	switch rule.EffectiveProvider() {
 	case "cosign-keyless":
 		if rule.CertificateIdentityRegexp == "" {
@@ -69,11 +71,11 @@ func UpstreamSubject(ref string, rule spec.VerifyRule, keychain authn.Keychain) 
 		s.IgnoreTlog = true
 		switch rule.SignatureDigestAlgorithm {
 		case "", "sha256":
-			s.HashAlgorithm = crypto.SHA256
+			s.HashAlgorithm = "sha256"
 		case "sha384":
-			s.HashAlgorithm = crypto.SHA384
+			s.HashAlgorithm = "sha384"
 		case "sha512":
-			s.HashAlgorithm = crypto.SHA512
+			s.HashAlgorithm = "sha512"
 		default:
 			return Subject{}, fmt.Errorf("unsupported signatureDigestAlgorithm %q", rule.SignatureDigestAlgorithm)
 		}
@@ -86,8 +88,8 @@ func UpstreamSubject(ref string, rule spec.VerifyRule, keychain authn.Keychain) 
 // MirrorSubject translates the mirror's own signing config into the
 // self-verification for ref: the exact identity keyless signing produces,
 // or the KMS key's public half.
-func MirrorSubject(ref string, signing *spec.Signing, keychain authn.Keychain) (Subject, error) {
-	s := Subject{Ref: ref, Keychain: keychain}
+func MirrorSubject(ref string, signing *spec.Signing) (Subject, error) {
+	s := Subject{Ref: ref}
 	switch signing.Provider {
 	case "keyless":
 		if signing.Keyless == nil || signing.Keyless.CertificateIdentity == "" {
@@ -103,7 +105,7 @@ func MirrorSubject(ref string, signing *spec.Signing, keychain authn.Keychain) (
 			return Subject{}, errors.New("kms signing config lacks key")
 		}
 		s.KeyRef = signing.KMS.Key
-		s.HashAlgorithm = crypto.SHA256
+		s.HashAlgorithm = "sha256"
 		s.IgnoreTlog = true
 	default:
 		return Subject{}, fmt.Errorf("unsupported signing provider %q", signing.Provider)
@@ -111,81 +113,53 @@ func MirrorSubject(ref string, signing *spec.Signing, keychain authn.Keychain) (
 	return s, nil
 }
 
-// Verify checks the subject, driving the same discovery the cosign CLI
-// uses: sigstore bundles via referrers when present, legacy .sig tags
-// otherwise.
-func Verify(ctx context.Context, s Subject) error {
+// Verify checks the subject by shelling out to the cosign binary, whose
+// default --new-bundle-format=true drives the same discovery the old
+// in-process path did: sigstore bundles via referrers when present, legacy
+// .sig tags otherwise. The CLI additionally checks claims (--check-claims
+// defaults true) — strictly stronger than the previous nil ClaimVerifier,
+// and desirable.
+func Verify(ctx context.Context, runner ToolRunner, s Subject) error {
 	// Defense in depth behind the Subject constructors: cosign treats an
 	// identity with neither subject nor regexp as an unconstrained match,
 	// so an empty keyless subject would verify against ANY signer.
 	if s.KeyRef == "" && s.Identity == "" && s.IdentityRegexp == "" {
 		return fmt.Errorf("verify %s: keyless verification requires a certificate identity or identity regexp", s.Ref)
 	}
-	ref, err := name.ParseReference(s.Ref)
-	if err != nil {
-		return fmt.Errorf("parse %s: %w", s.Ref, err)
+	if !runner.Look("cosign") {
+		return fmt.Errorf("verify %s: cosign not found on PATH (install it: mise install / brew install cosign)", s.Ref)
 	}
-	keychain := s.Keychain
-	if keychain == nil {
-		keychain = authn.DefaultKeychain
-	}
-	regOpts := []ociremote.Option{
-		ociremote.WithRemoteOptions(remote.WithContext(ctx), remote.WithAuthFromKeychain(keychain)),
-	}
-	if s.SignatureRepository != "" {
-		sigRepo, err := name.NewRepository(s.SignatureRepository)
-		if err != nil {
-			return fmt.Errorf("parse signature repository %q: %w", s.SignatureRepository, err)
+
+	args := []string{"verify"}
+	if s.KeyRef != "" {
+		alg := s.HashAlgorithm
+		if alg == "" {
+			alg = "sha256"
 		}
-		regOpts = append(regOpts, ociremote.WithTargetRepository(sigRepo))
-	}
-
-	co := &cosign.CheckOpts{
-		RegistryClientOpts: regOpts,
-		IgnoreTlog:         s.IgnoreTlog,
-		MaxWorkers:         10,
-	}
-	if s.KeyRef == "" {
-		id := cosign.Identity{Issuer: s.Issuer}
-		if s.Identity != "" {
-			id.Subject = s.Identity
-		} else {
-			id.SubjectRegExp = s.IdentityRegexp
-		}
-		co.Identities = []cosign.Identity{id}
-	}
-
-	// Prefer bundles attached via the referrers API; fall back to the
-	// legacy signature tag when the artifact carries none.
-	bundles, _, err := cosign.GetBundles(ctx, ref, co.RegistryClientOpts)
-	co.NewBundleFormat = err == nil && len(bundles) > 0
-
-	offlineKey := s.KeyRef != "" && co.IgnoreTlog
-	if err := cliverify.SetTrustedMaterial(ctx, "", "", "", "", "", offlineKey, co); err != nil {
-		return fmt.Errorf("setting trusted material: %w", err)
-	}
-	keyless := s.KeyRef == ""
-	if err := cliverify.SetLegacyClientsAndKeys(ctx, co.IgnoreTlog, keyless, keyless,
-		options.DefaultRekorURL, "", "", "", "", co); err != nil {
-		return fmt.Errorf("setting up clients and keys: %w", err)
-	}
-	hash := s.HashAlgorithm
-	if hash == 0 {
-		hash = crypto.SHA256
-	}
-	sigVerifier, _, closeSV, err := cliverify.LoadVerifierFromKeyOrCert(ctx, s.KeyRef, "", "", "", hash, false, false, co)
-	if err != nil {
-		return fmt.Errorf("loading verifier: %w", err)
-	}
-	defer closeSV()
-	co.SigVerifier = sigVerifier
-
-	if co.NewBundleFormat {
-		_, _, err = cosign.VerifyImageAttestations(ctx, ref, co)
+		args = append(args, "--key", s.KeyRef, "--signature-digest-algorithm="+alg)
 	} else {
-		_, _, err = cosign.VerifyImageSignatures(ctx, ref, co)
+		if s.Identity != "" {
+			args = append(args, "--certificate-identity="+s.Identity)
+		} else {
+			args = append(args, "--certificate-identity-regexp="+s.IdentityRegexp)
+		}
+		args = append(args, "--certificate-oidc-issuer="+s.Issuer)
 	}
-	if err != nil {
+	if s.IgnoreTlog {
+		args = append(args, "--insecure-ignore-tlog=true")
+	}
+	if s.AllowHTTPRegistry {
+		args = append(args, "--allow-insecure-registry")
+	}
+	args = append(args, s.Ref)
+
+	var env []string
+	if s.SignatureRepository != "" {
+		env = append(env, "COSIGN_REPOSITORY="+s.SignatureRepository)
+	}
+	// Stdout (the verified-payload JSON) is discarded; on failure the
+	// runner folds stderr into the error, which is cosign's failure shape.
+	if _, err := runner.Run(ctx, "cosign", args, env); err != nil {
 		return fmt.Errorf("verify %s: %w", s.Ref, err)
 	}
 	return nil

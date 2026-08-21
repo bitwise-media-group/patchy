@@ -30,6 +30,10 @@ includes = [".mise/tasks/go-cli.toml", "tasks.toml"]
 # controller-runtime minor pinned in go.mod (v0.24.x). yq extracts the CRD
 # spec schemas into the patchy-config values schema (hack/codegen.sh).
 [tools]
+# osv-scanner is a runtime dependency of `patchy mirror` image scanning
+# (the scan stage shells out to it); cosign — which sign/verify shell out
+# to — is already pinned by the shared toolchain.
+"aqua:google/osv-scanner" = "2.5.0"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "0.24.1"
 "go:golang.org/x/perf/cmd/benchstat" = "0.0.0-20260709024250-82a0b07e230d"

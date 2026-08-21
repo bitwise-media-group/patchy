@@ -40,6 +40,10 @@ func (r *ScanReport) Failed() bool { return len(r.Blocking) > 0 || r.ConfigScanF
 // rendered manifests for configuration findings.
 func (e *Engine) Scan(ctx context.Context, entry spec.Entry) (*ScanReport, error) {
 	report := &ScanReport{}
+	if !e.global.Scan.EffectiveEnabled() {
+		e.notef(entry.Name, "scan", "scanning disabled (scan.enabled: false)")
+		return report, nil
+	}
 	refs, err := e.scanRefs(ctx, entry)
 	if err != nil {
 		return nil, err
@@ -149,7 +153,14 @@ func (e *Engine) runnableImage(ctx context.Context, ref string) (bool, error) {
 
 // scanImages fans every enabled scanner over every reference.
 func (e *Engine) scanImages(ctx context.Context, entry spec.Entry, refs []string) ([]scan.Finding, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
 	scanners := e.scanners()
+	if len(scanners) == 0 {
+		return nil, fmt.Errorf("%s: no image scanner enabled: enable scan.scanners.osv or scan.scanners.grype "+
+			"in mirror.yaml (or set scan.enabled: false)", entry.Name)
+	}
 	var all []scan.Finding
 	for _, ref := range refs {
 		for _, s := range scanners {
@@ -171,7 +182,7 @@ func (e *Engine) scanners() []scan.ImageScanner {
 	}
 	var out []scan.ImageScanner
 	if e.global.Scan.Scanners.OSVEnabled() {
-		out = append(out, &scan.OSV{Registry: e.reg})
+		out = append(out, &scan.OSV{Registry: e.reg, Runner: e.tools})
 	}
 	if e.global.Scan.Scanners.GrypeEnabled() {
 		out = append(out, &scan.Grype{Runner: e.tools})
@@ -211,6 +222,10 @@ type AllowlistResult struct {
 // databases, so deriving inside validate would diff a tree nobody touched.
 func (e *Engine) DeriveAllowlist(ctx context.Context, entry spec.Entry) (*AllowlistResult, error) {
 	if entry.Kind != spec.KindChart || entry.Chart.Scan == nil || !entry.Chart.Scan.Allowlist.Generate {
+		return &AllowlistResult{}, nil
+	}
+	if !e.global.Scan.EffectiveEnabled() {
+		e.notef(entry.Name, "allowlist", "scanning disabled (scan.enabled: false); skipping derivation")
 		return &AllowlistResult{}, nil
 	}
 	refs, err := e.scanRefs(ctx, entry)

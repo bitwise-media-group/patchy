@@ -234,7 +234,7 @@ func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, targe
 // mirrorSignatureValid reports whether ref already carries a valid mirror
 // signature.
 func (e *Engine) mirrorSignatureValid(ctx context.Context, ref string, signing *spec.Signing) bool {
-	s, err := verify.MirrorSubject(ref, signing, nil)
+	s, err := verify.MirrorSubject(ref, signing)
 	if err != nil {
 		return false
 	}

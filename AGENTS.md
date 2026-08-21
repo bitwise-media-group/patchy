@@ -191,10 +191,13 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   re-encode), `helmchart` (pull/extract/tree-diff/push), `render` (byte-stable `helm template` equivalent —
   helm SDK pinned; upgrades are deliberate, the validate gate byte-compares output), `discover` (4-pass image
   discovery), `distro` (distribution-manifests → generated images.extra.yaml sidecar), `verify`/`sign`
-  (cosign: upstream provenance in, bundle-referrers signatures out; KMS via sigstore providers), `scan`
-  (pluggable: osv library + grype/kubescape shell-outs), `allowlist` (derive with keep-expiry/drop-stale
-  rules). The engine never touches git — the calling pipeline owns commits/branches/PRs — and only the
-  upgrade path may consult the wall clock, keeping `validate`'s byte-identity gate deterministic.
+  (shell out to the cosign binary: upstream provenance in, bundle-referrers signatures out; KMS support is
+  the installed cosign build's), `scan` (pluggable: osv + grype/kubescape, all shell-outs; every image
+  scanner defaults off, and an image scan with none enabled is a hard error), `allowlist` (derive with
+  keep-expiry/drop-stale rules). The engine never touches git — the calling pipeline owns
+  commits/branches/PRs — and only the upgrade path may consult the wall clock, keeping `validate`'s
+  byte-identity gate deterministic. cosign (≥ v3) and osv-scanner (v2) are runtime dependencies of the
+  respective verbs, never linked.
 
 ## Conventions
 

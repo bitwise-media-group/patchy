@@ -73,7 +73,7 @@ func (e *Engine) verifySubjectRule(ctx context.Context, entry spec.Entry, report
 		ref = e.rewrite(a.Ref) + ":" + a.Version
 	}
 	e.notef(entry.Name, "verify", "verifying %s (%s)", ref, rule.EffectiveProvider())
-	s, err := verify.UpstreamSubject(ref, rule, nil)
+	s, err := verify.UpstreamSubject(ref, rule)
 	if err != nil {
 		return fmt.Errorf("%s: %s: %w", entry.Name, subject, err)
 	}
@@ -108,7 +108,7 @@ func (e *Engine) verifyLockedImages(ctx context.Context, entry spec.Entry, repor
 		}
 		ref := e.rewrite(srcRef.Repository) + "@" + img.Digest
 		e.notef(entry.Name, "verify", "verifying %s (%s)", img.Source, rule.EffectiveProvider())
-		s, err := verify.UpstreamSubject(ref, rule.VerifyRule, nil)
+		s, err := verify.UpstreamSubject(ref, rule.VerifyRule)
 		if err != nil {
 			return fmt.Errorf("%s: rule %s: %w", entry.Name, rule.Match, err)
 		}

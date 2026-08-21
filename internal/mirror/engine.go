@@ -48,7 +48,8 @@ type Config struct {
 	// PushChart pushes a chart tgz to ref, returning the manifest digest
 	// (nil: the helm-layout push).
 	PushChart func(tgz []byte, ref string) (string, error)
-	// Tools runs external scanner binaries (nil: the real PATH).
+	// Tools runs external tool binaries — scanners and cosign (nil: the
+	// real PATH).
 	Tools scan.ToolRunner
 	// ImageScanners overrides the enabled scanner roster (nil: built
 	// from the global scan config). Tests inject fakes.
@@ -95,10 +96,12 @@ func New(cfg Config) *Engine {
 		e.tools = scan.ExecRunner{}
 	}
 	if e.verifyFn == nil {
-		e.verifyFn = verify.Verify
+		e.verifyFn = func(ctx context.Context, s verify.Subject) error {
+			return verify.Verify(ctx, e.tools, s)
+		}
 	}
 	if e.newSigner == nil {
-		e.newSigner = func(s *spec.Signing) (ArtifactSigner, error) { return sign.New(s, nil) }
+		e.newSigner = func(s *spec.Signing) (ArtifactSigner, error) { return sign.New(s, e.tools) }
 	}
 	if e.pushChart == nil {
 		e.pushChart = helmchart.Push

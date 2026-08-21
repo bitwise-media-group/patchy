@@ -53,9 +53,19 @@ func TestScanDefaults(t *testing.T) {
 	if s.EffectiveAllowlistMaxDays() != 90 || s.EffectiveAllowlistNewDays() != 90 {
 		t.Error("allowlist day defaults should be 90")
 	}
+	if !s.EffectiveEnabled() {
+		t.Error("scan enabled default should be true")
+	}
+	disabled := false
+	if (Scan{Enabled: &disabled}).EffectiveEnabled() {
+		t.Error("scan.enabled: false should disable scanning")
+	}
 	var sc Scanners
-	if !sc.OSVEnabled() || sc.GrypeEnabled() || !sc.KubescapeEnabled() || sc.KubescapeMode() != "warn" {
+	if sc.OSVEnabled() || sc.GrypeEnabled() || !sc.KubescapeEnabled() || sc.KubescapeMode() != "warn" {
 		t.Errorf("zero-value scanner defaults wrong: %+v", sc)
+	}
+	if !(Scanners{OSV: &ScannerToggle{Enabled: true}}).OSVEnabled() {
+		t.Error("osv.enabled: true should enable osv")
 	}
 }
 

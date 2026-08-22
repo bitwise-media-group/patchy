@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/bitwise-media-group/patchy/compare/v0.11.0...v0.11.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.1 ([#236](https://github.com/bitwise-media-group/patchy/issues/236)) ([a500803](https://github.com/bitwise-media-group/patchy/commit/a5008038d7ef067b0bc23111b31faad0df9adb88))
+
 ## [0.11.0](https://github.com/bitwise-media-group/patchy/compare/v0.10.1...v0.11.0) (2026-08-21)
 
 

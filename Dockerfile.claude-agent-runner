@@ -44,7 +44,7 @@ RUN apt-get update \
 # 2.1.203 is the floor for CLAUDE_CODE_SKIP_FOUNDRY_AUTH (the egress-broker
 # gateway mode); the bedrock/vertex gateway vars also want a modern CLI.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_VERSION=2.1.237
+ARG CLAUDE_VERSION=2.1.238
 
 # Fetch the native binary for the target platform from the official release
 # bucket (what https://claude.ai/install.sh resolves to) and verify it

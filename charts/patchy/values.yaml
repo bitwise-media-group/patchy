@@ -605,7 +605,10 @@ egressBroker:
     # Ingress: 8080 from the agent namespace only (plus probes). Egress: DNS
     # + TCP 443 (the model APIs) + the Kubernetes API for TokenReview.
     # extraEgress appends verbatim rules — the EKS Pod Identity agent
-    # (169.254.170.23:80) or GKE metadata (169.254.169.254:80), say.
+    # (169.254.170.23:80) or GKE metadata (169.254.169.254:80), say. Under
+    # agent.networkPolicy mode cilium those two are granted by a chart-rendered
+    # CiliumNetworkPolicy instead (toEntities host — Cilium ipBlock rules
+    # cannot match a node-local address), so extraEgress is not needed there.
     networkPolicy:
         create: true
         extraEgress: []

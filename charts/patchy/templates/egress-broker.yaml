@@ -265,7 +265,9 @@ spec:
 # too) — plus 8081 probes from anywhere (kubelet probes arrive from the node
 # IP). Egress: DNS, then TCP 443/6443 — the model APIs and the Kubernetes API
 # server (TokenReview). extraEgress covers the cloud-identity side channels
-# (EKS Pod Identity 169.254.170.23:80, GKE metadata 169.254.169.254:80).
+# (EKS Pod Identity 169.254.170.23:80, GKE metadata 169.254.169.254:80) —
+# but only on CNIs whose ipBlock can reach the node; under mode cilium the
+# CiliumNetworkPolicy below is what actually grants them.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -309,5 +311,42 @@ spec:
         # Operator-supplied additions (egressBroker.networkPolicy.extraEgress).
         {{- toYaml . | nindent 8 }}
         {{- end }}
+{{- if and (eq (include "patchy.egressMode" .) "cilium") (has $providerName (list "bedrock" "vertex")) }}
+---
+# The cloud-identity credential endpoint the broker's SDK dials — the EKS Pod
+# Identity agent (bedrock, 169.254.170.23:80) or the GKE metadata server
+# (vertex, 169.254.169.254:80) — is a hostNetwork process on the pod's own
+# node. Cilium classifies traffic to any node-local address as the reserved
+# `host` entity, and its CIDR selectors (an ipBlock in the base policy above,
+# extraEgress included) never match reserved identities — so under Cilium an
+# ipBlock allow for that address silently matches nothing and the egress-
+# enforcing base policy drops the credential call. The host entity is the
+# only way to express this destination; policies union, so this rides
+# alongside the base NetworkPolicy rather than replacing it. Same egressMode
+# election as the agent-sandbox dialect (networkpolicy-cilium.yaml); the gke
+# mode needs no equivalent because Dataplane V2 always admits metadata-server
+# traffic.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+    name: {{ include "patchy.fullname" . }}-{{ $name }}-cloud-credentials
+    namespace: {{ .Release.Namespace }}
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+spec:
+    endpointSelector:
+        matchLabels:
+            {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}
+    egress:
+        - toEntities: [host]
+          toPorts:
+              - ports:
+                    - port: "80"
+                      protocol: TCP
+{{- end }}
 {{- end }}
 {{- end }}

@@ -14,7 +14,11 @@
 #
 # So the image must carry: the agent-runner binary, git, /bin/sh, and the codex
 # CLI. codex ships as a self-contained native (musl-static) binary, so the
-# runtime base is plain debian:trixie-slim — no node, no npm. The fetch stage
+# runtime base is wolfi-base — busybox sh, ca-certificates and the nonroot
+# user, nothing else; no node, no npm. Wolfi over debian-slim because
+# Chainguard rebuilds it against upstream security fixes continuously, so the
+# lint-docker grype gate on base images stays clean (debian's official images
+# lag the security archive until the next image rebuild). The fetch stage
 # below downloads the pinned version from the GitHub release and refuses
 # anything whose sha256 does not match the per-arch pin; only the verified
 # binary reaches the runtime stage.
@@ -27,12 +31,13 @@
 # root filesystem, uid 65532, all capabilities dropped. The only writable
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir); codex keeps
 # its state under $HOME=/workspace.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+# latest is the only tag wolfi-base publishes; the digest is the real pin
+# (renovate bumps it).
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+# ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl
 
 # Pinned codex CLI release. Renovate bumps each tag + sha256 pair together via
 # the org preset's release-asset manager (one annotated block per arch; both
@@ -66,25 +71,21 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/codex.tar.gz \
     && chmod 0755 /codex
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's
-# commit/diff flow.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+# commit/diff flow. ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl git
 
 COPY --from=fetch /codex /usr/local/bin/codex
 
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 
-# uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
-# convention). create it: a bare debian image has no non-root user.
-RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# No user setup: wolfi-base already ships the nonroot user, uid 65532 —
+# matching internal/jobs' runAsUser (and the distroless "nonroot" convention).
 
 # HOME is overridden to /workspace by the Job (the only writable dir); this is
 # only the sane default for a bare `docker run`.

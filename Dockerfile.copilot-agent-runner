@@ -16,11 +16,17 @@
 # copilot CLI. Like claude and codex, copilot is a single self-contained file:
 # the github/copilot-cli release ships a pre-built standalone executable per
 # platform (copilot-linux-<arch>.tar.gz, one `copilot` member, glibc build —
-# matching the debian runtime base) plus a SHA256SUMS.txt manifest. This is the
+# matching the glibc runtime base) plus a SHA256SUMS.txt manifest. This is the
 # same asset upstream's install.sh and the Homebrew cask install. The release
 # also carries the npm package tarballs (github-copilot-<version>-<os>-<arch>.tgz),
 # but those are the @github/copilot loader package tree whose `copilot` bin is a
 # Node script — useless without node, which this image deliberately lacks.
+#
+# The runtime base is wolfi-base — glibc, busybox sh, ca-certificates and the
+# nonroot user, nothing else. Wolfi over debian-slim because Chainguard
+# rebuilds it against upstream security fixes continuously, so the lint-docker
+# grype gate on base images stays clean (debian's official images lag the
+# security archive until the next image rebuild).
 #
 # The fetch stage below downloads the standalone binary from the release — not
 # the npm registry: Renovate's npm datasource has no digest support, so registry
@@ -37,12 +43,13 @@
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir); copilot keeps
 # its state under $COPILOT_HOME, which defaults to $HOME/.copilot, and
 # COPILOT_AUTO_UPDATE=false pins it to the baked version.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+# latest is the only tag wolfi-base publishes; the digest is the real pin
+# (renovate bumps it).
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+# ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl
 
 # Pinned copilot CLI release. Renovate bumps each tag + sha256 pair together via
 # the org preset's release-asset manager (one annotated block per arch; both
@@ -69,7 +76,7 @@ ARG COPILOT_ARM64_SHA256=3ed85e711955e13be523bf492bc6c93b40b69925bcb7f817c9d08ab
 # Fetch the standalone binary tarball for the target platform from the GitHub
 # release and verify it against the pinned sha256 before it leaves this stage.
 # The tarball holds a single `copilot` executable; the glibc `linux` (not
-# `linuxmusl`) build matches the debian runtime base.
+# `linuxmusl`) build matches the glibc runtime base.
 ARG TARGETARCH
 # hadolint ignore=DL4006
 RUN case "${TARGETARCH}" in \
@@ -85,25 +92,24 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/copilot.tar.gz \
     && chmod 0755 /out/copilot
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's
-# commit/diff flow.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+# commit/diff flow. libstdc++ (which pulls libgcc) is for the copilot binary:
+# its ELF NEEDED set includes libstdc++.so.6 and libgcc_s.so.1, which debian
+# carried implicitly via apt's own dependency chain but wolfi-base does not.
+# ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl git libstdc++
 
 COPY --from=fetch /out/copilot /usr/local/bin/copilot
 
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 
-# uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
-# convention). create it: a bare debian image has no non-root user.
-RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# No user setup: wolfi-base already ships the nonroot user, uid 65532 —
+# matching internal/jobs' runAsUser (and the distroless "nonroot" convention).
 
 # The CLI self-updates by default outside CI; an image pins a version and runs
 # on a read-only rootfs, so updating must never be attempted. internal/harness

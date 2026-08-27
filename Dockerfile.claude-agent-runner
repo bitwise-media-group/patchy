@@ -14,11 +14,15 @@
 #
 # So the image must carry: the agent-runner binary, git, /bin/sh, and the
 # claude CLI. claude ships as a self-contained native binary (ripgrep
-# bundled; glibc its only runtime need), so the runtime base is plain
-# debian:trixie-slim — no node, no npm, no node_modules. The fetch stage
-# below downloads the pinned version and refuses anything whose sha256 does
-# not match the release manifest; only the verified binary reaches the
-# runtime stage.
+# bundled; glibc its only runtime need — its ELF NEEDED set is glibc-only),
+# so the runtime base is wolfi-base: glibc, busybox sh, ca-certificates and
+# the nonroot user, nothing else — no node, no npm, no node_modules. Wolfi
+# over debian-slim because Chainguard rebuilds it against upstream security
+# fixes continuously, so the lint-docker grype gate on base images stays
+# clean (debian's official images lag the security archive until the next
+# image rebuild). The fetch stage below downloads the pinned version and
+# refuses anything whose sha256 does not match the release manifest; only
+# the verified binary reaches the runtime stage.
 #
 # Built by GoReleaser (`dockers_v2` in .goreleaser.yaml): the agent-runner
 # binary is compiled by GoReleaser and arrives in the build context at
@@ -29,12 +33,13 @@
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir). Nothing in
 # this image may write outside those at runtime: claude keeps its state under
 # $HOME=/workspace, and DISABLE_AUTOUPDATER pins it to the baked version.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+# latest is the only tag wolfi-base publishes; the digest is the real pin
+# (renovate bumps it).
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-  && apt-get install --no-install-recommends -y ca-certificates curl jq \
-  && rm -rf /var/lib/apt/lists/*
+# ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl jq
 
 # Pinned claude CLI version. Dependabot/renovate should bump this ARG: the
 # native binaries are released in lockstep with the npm package
@@ -66,25 +71,21 @@ RUN case "${TARGETARCH}" in \
   && echo "${checksum}  /claude" | sha256sum -c - \
   && chmod 0755 /claude
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's
-# commit/diff flow.
-# hadolint ignore=DL3008
-RUN apt-get update \
-  && apt-get install --no-install-recommends -y ca-certificates curl git \
-  && rm -rf /var/lib/apt/lists/*
+# commit/diff flow. ca-certificates-bundle ships in the base.
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl git
 
 COPY --from=fetch /claude /usr/local/bin/claude
 
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 
-# uid 65532 matches internal/jobs' runAsUser (and the distroless "nonroot"
-# convention). create it: a bare debian image has no non-root user.
-RUN groupadd --gid 65532 nonroot \
-  && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# No user setup: wolfi-base already ships the nonroot user, uid 65532 —
+# matching internal/jobs' runAsUser (and the distroless "nonroot" convention).
 
 # The native claude binary self-updates by default; an image pins a version
 # and runs on a read-only rootfs, so updating must never be attempted.

@@ -72,6 +72,11 @@ type GitHubIntegration struct {
 	// github.com.
 	// +optional
 	BaseURL string `json:"baseURL,omitempty"`
+	// Proxy routes this integration's GitHub traffic through an HTTP/HTTPS
+	// forward proxy, overriding the process proxy environment for this
+	// integration.
+	// +optional
+	Proxy *ProxyConfig `json:"proxy,omitempty"`
 	// Issues enables the tracking projection.
 	// +optional
 	Issues *GitHubIssues `json:"issues,omitempty"`
@@ -415,7 +420,9 @@ type IntegrationSpec struct {
 	Provider IntegrationProvider `json:"provider"`
 	// SecretRef names the credential Secret. For github: either key "token"
 	// (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-	// "webhookSecret" for receiver HMAC validation. For wiz: key
+	// "webhookSecret" for receiver HMAC validation, plus optional keys
+	// "proxyUsername" + "proxyPassword" when spec.github.proxy needs basic
+	// auth. For wiz: key
 	// "webhookToken" (the shared bearer token deliveries carry), plus keys
 	// "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
 	// generic: key "webhookSecret", the shared HMAC secret signing both

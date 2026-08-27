@@ -178,3 +178,27 @@ spec:
   github:
     baseURL: https://ghes.example.com/api/v3
 ```
+
+## Egress proxy
+
+`spec.github.proxy` routes all of this integration's GitHub traffic — issue projection, alert fetches and dismissals,
+the delivery sweep, the backfill — through an HTTP/HTTPS forward proxy, the pattern for GitHub Enterprise Cloud
+organizations behind an IP allowlist:
+
+```yaml
+spec:
+  github:
+    proxy:
+      url: http://proxy.corp.example:3128
+```
+
+Basic-auth credentials go in the credential Secret under the optional keys `proxyUsername` and `proxyPassword`, never in
+the URL. A `spec.github.proxy` overrides the process `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` environment for this
+integration's traffic; unset, the environment applies.
+
+!!! warning "Set the proxy on the Forge too"
+
+    The integration-controller authenticates through the **Integration** — its own Secret and `baseURL`, not the
+    Forge's — so a proxy on the [Forge](../forges/github.md#egress-proxy) alone leaves this resource's calls (the
+    backfill's `list installations`, for one) outside the allowlist. An allowlisted estate must set the proxy on
+    **both** resources.

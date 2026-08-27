@@ -84,9 +84,13 @@ func (c *Creds) Client(ctx context.Context, integ *v1alpha1.Integration, repo gh
 	}
 	baseURL := githubBaseURL(integ)
 	if tok, ok := ghsecret.Token(secret); ok {
-		return ghclient.NewToken(tok, baseURL)
+		purl, err := ghsecret.ProxyURL(secret, githubProxyURL(integ))
+		if err != nil {
+			return nil, err
+		}
+		return ghclient.NewToken(tok, baseURL, ghclient.WithProxy(purl))
 	}
-	app, err := c.apps.FromSecret(secret, baseURL)
+	app, err := c.apps.FromSecret(secret, baseURL, githubProxyURL(integ))
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +108,7 @@ func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghcl
 	if _, isPAT := ghsecret.Token(secret); isPAT {
 		return nil, false, nil
 	}
-	app, err = c.apps.FromSecret(secret, githubBaseURL(integ))
+	app, err = c.apps.FromSecret(secret, githubBaseURL(integ), githubProxyURL(integ))
 	if err != nil {
 		return nil, false, err
 	}
@@ -164,7 +168,7 @@ func (c *Creds) Validate(ctx context.Context, integ *v1alpha1.Integration) error
 	if err != nil {
 		return err
 	}
-	if err := c.apps.Validate(secret, githubBaseURL(integ)); err != nil {
+	if err := c.apps.Validate(secret, githubBaseURL(integ), githubProxyURL(integ)); err != nil {
 		return err
 	}
 	if len(secret.Data[ghsecret.KeyWebhookSecret]) == 0 {
@@ -240,6 +244,15 @@ func githubBaseURL(integ *v1alpha1.Integration) string {
 		return ""
 	}
 	return integ.Spec.GitHub.BaseURL
+}
+
+// githubProxyURL returns the Integration's raw spec proxy URL, empty for
+// no proxy (the environment applies).
+func githubProxyURL(integ *v1alpha1.Integration) string {
+	if integ.Spec.GitHub == nil || integ.Spec.GitHub.Proxy == nil {
+		return ""
+	}
+	return integ.Spec.GitHub.Proxy.URL
 }
 
 // githubHost returns the host the Integration's repositories live on.

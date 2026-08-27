@@ -40,7 +40,12 @@ func (w *forgeWriter) Push(ctx context.Context, namespace, repoURL, branch strin
 	if err != nil {
 		return fmt.Errorf("mint push token: %w", err)
 	}
-	return ghpush.New(res.Forge.Spec.BaseURL).Push(ctx, res.Repo, token, branch, cs)
+	purl, err := w.forges.ProxyURL(ctx, res)
+	if err != nil {
+		return fmt.Errorf("resolve forge proxy: %w", err)
+	}
+	return ghpush.New(res.Forge.Spec.BaseURL, ghclient.WithProxy(purl)).
+		Push(ctx, res.Repo, token, branch, cs)
 }
 
 // EnsurePR implements ForgeWriter: find-by-head first so a crash between

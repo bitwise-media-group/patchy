@@ -52,3 +52,27 @@ Point the resource at your instance and everything else is identical (the
 spec:
   baseURL: https://ghes.example.com/api/v3
 ```
+
+## Egress proxy
+
+GitHub Enterprise Cloud estates commonly enforce an [organization IP allowlist], reachable only through a centrally
+managed forward proxy. `spec.proxy` routes **all** of this forge's GitHub traffic — API calls, archive downloads
+(`codeload.github.com`), pushes — through that proxy:
+
+```yaml
+spec:
+  proxy:
+    url: http://proxy.corp.example:3128
+```
+
+If the proxy requires basic authentication, put the credentials in the forge's credential Secret under the optional keys
+`proxyUsername` and `proxyPassword` — never in the URL; the schema rejects embedded userinfo at admission.
+
+**Precedence.** A `spec.proxy` overrides the process `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` environment for this forge's
+traffic — including `NO_PROXY`, which does not punch holes in an explicit setting. Unset, the environment applies (set
+cluster-wide via the [chart's `proxy` values](../../getting-started/install.md)). Remember the
+[Integration](../sources/github.md#egress-proxy) authenticates with its own credential: in an allowlisted estate, set
+the proxy on **both** resources.
+
+[organization IP allowlist]:
+  https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-security-settings-for-your-organization/managing-allowed-ip-addresses-for-your-organization

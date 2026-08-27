@@ -110,6 +110,27 @@ The chart's `appVersion` is stamped 1:1 with each release, and the default image
 chart `X.Y.Z` runs images `vX.Y.Z`. The rendered `NOTES.txt` recaps the webhook URL and the Secrets it expects. The full
 values surface is on the [Helm chart page](../deployment/helm.md).
 
+### Egress proxy
+
+If the controllers' outbound traffic must traverse a corporate forward proxy — the GitHub Enterprise Cloud IP-allowlist
+estate — set the chart's `proxy` values; they render `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` into every controller's
+ConfigMap:
+
+```yaml
+proxy:
+  httpsProxy: http://proxy.corp.example:3128
+  # httpProxy: ""
+  # noProxy: internal.example
+```
+
+When either proxy is set, `NO_PROXY` is automatically prefixed with `localhost,127.0.0.1,.svc,.cluster.local` so
+in-cluster traffic (the artifact endpoint, the egress broker, the Kubernetes API server) never detours through the
+proxy; `noProxy` appends to that list. A [`spec.proxy` on a Forge](../integrations/forges/github.md#egress-proxy) or
+[GitHub Integration](../integrations/sources/github.md#egress-proxy) overrides the environment for that resource's
+traffic, and `config.extra` (per-controller: `<controller>.config.extra`) remains the escape hatch that wins over both
+derived keys. Reaching a proxy on a port like 3128 also needs `<controller>.networkPolicy.extraEgress` — see the
+[isolation model](../deployment/isolation.md#egress-proxies).
+
 ## Switch the pipeline on: the `patchy-config` chart
 
 The controllers idle until two custom resources exist: an [**Integration**](../integrations/sources/github.md) (where

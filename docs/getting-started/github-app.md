@@ -68,6 +68,10 @@ Three values leave this page and become one [Kubernetes Secret](install.md#creat
 
 3. **Private key** — **General → Private keys → Generate a private key** downloads a `.pem` file.
 
+If the referencing `Forge`/`Integration` will name a forward proxy that requires basic authentication
+([egress proxy](../integrations/forges/github.md#egress-proxy)), the same Secret also carries the optional keys
+`proxyUsername` and `proxyPassword` — the proxy credentials never go in the proxy URL itself.
+
 ## Install the App
 
 Finally, **Install App** on your organization and select the repositories patchy should watch (the ones with code

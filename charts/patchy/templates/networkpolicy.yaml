@@ -123,7 +123,8 @@ spec:
         {{- with $c.vals.networkPolicy.extraEgress }}
         # Operator-supplied additions (<controller>.networkPolicy.extraEgress)
         # — a generic Integration's resolver or enhancer endpoint on a port
-        # other than 443, say. Rendered verbatim.
+        # other than 443, say, or an egress proxy (.Values.proxy / spec.proxy)
+        # listening on 3128/8080. Rendered verbatim.
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}

@@ -69,6 +69,19 @@ type LocalSecretReference struct {
 	Name string `json:"name"`
 }
 
+// ProxyConfig routes the referencing resource's GitHub traffic through an
+// HTTP/HTTPS forward proxy — the GitHub Enterprise Cloud IP-allowlist
+// pattern. When set it overrides the process HTTPS_PROXY/HTTP_PROXY/NO_PROXY
+// environment for this resource's traffic; unset, the environment applies.
+type ProxyConfig struct {
+	// URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
+	// and https. Credentials must not be embedded in the URL — put them in
+	// the credential Secret under "proxyUsername" + "proxyPassword".
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^https?://[^@\s]+$`
+	URL string `json:"url"`
+}
+
 // LocalObjectReference names an object of a known kind in the same namespace.
 type LocalObjectReference struct {
 	// Name of the referent.

@@ -85,7 +85,7 @@ func TestRetryTransport(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv, hits := limitNTimes(t, tt.limited, tt.set)
-			client := &http.Client{Transport: newRetryTransport()}
+			client := &http.Client{Transport: newRetryTransport(nil)}
 
 			var (
 				resp *http.Response
@@ -114,7 +114,7 @@ func TestRetryTransport(t *testing.T) {
 
 func TestRetryTransportNonReplayableBody(t *testing.T) {
 	srv, hits := limitNTimes(t, 99, retryAfter(0))
-	client := &http.Client{Transport: newRetryTransport()}
+	client := &http.Client{Transport: newRetryTransport(nil)}
 
 	// Wrapping the reader hides its type from http.NewRequest, so GetBody
 	// stays nil and the transport must not retry.
@@ -137,7 +137,7 @@ func TestRetryTransportNonReplayableBody(t *testing.T) {
 
 func TestRetryTransportContextCancelled(t *testing.T) {
 	srv, hits := limitNTimes(t, 99, retryAfter(30))
-	client := &http.Client{Transport: newRetryTransport()}
+	client := &http.Client{Transport: newRetryTransport(nil)}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

@@ -37,6 +37,11 @@ integrations: []
 #       interval: 10m               # credential revalidation
 #       github:
 #           # baseURL: https://ghes.example.com/api/v3   # GHES only
+#           # proxy:                  # forward proxy for THIS integration's
+#           #     url: http://proxy.corp.example:3128    # GitHub traffic (the
+#           # GHEC IP-allowlist pattern); overrides the process proxy env.
+#           # Basic-auth credentials go in the credential Secret under
+#           # proxyUsername + proxyPassword, never in the url.
 #           issues:
 #               enabled: true       # tracking projection + human signals
 #               approveComment: /approve
@@ -208,6 +213,10 @@ forges: []
 #   spec:
 #       provider: github
 #       # baseURL: https://ghes.example.com/api/v3       # GHES only
+#       # proxy:                    # forward proxy for this forge's traffic
+#       #     url: http://proxy.corp.example:3128        # (GHEC IP allowlist);
+#       # overrides the process proxy env. Basic-auth credentials go in the
+#       # credential Secret under proxyUsername + proxyPassword, never in url.
 #       secretRef:
 #           name: patchy-github     # appID+privateKey or token
 #       # orgs: [acme]              # optional org allowlist

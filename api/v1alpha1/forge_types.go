@@ -30,8 +30,14 @@ type ForgeSpec struct {
 	// (github.com).
 	// +optional
 	BaseURL string `json:"baseURL,omitempty"`
+	// Proxy routes this forge's GitHub traffic through an HTTP/HTTPS forward
+	// proxy, overriding the process proxy environment for this forge.
+	// +optional
+	Proxy *ProxyConfig `json:"proxy,omitempty"`
 	// SecretRef names the credential Secret: key "token" (PAT, dev) or keys
-	// "appID" + "privateKey" (GitHub App).
+	// "appID" + "privateKey" (GitHub App). With spec.proxy set, optional keys
+	// "proxyUsername" + "proxyPassword" carry the proxy's basic-auth
+	// credentials.
 	SecretRef LocalSecretReference `json:"secretRef"`
 	// Orgs restricts this forge to the listed organizations; empty means all.
 	// +optional

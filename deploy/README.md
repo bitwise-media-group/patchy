@@ -178,6 +178,14 @@ The per-harness `PATCHY_<HARNESS>_AGENT_IMAGE` keys are a special case: they are
 into the Jobs they create, and kustomize's `images:` transformer **does not rewrite ConfigMap values**. An overlay that
 pins a runner image must patch both the `images:` entry and the matching `PATCHY_<HARNESS>_AGENT_IMAGE` key.
 
+**Egress proxy.** The controllers honour the standard `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` environment; an overlay that
+must reach GitHub through a corporate forward proxy (the GHEC IP-allowlist estate) patches those variables into the
+ConfigMap alongside the `PATCHY_*` keys. Keep in-cluster traffic out of the proxy —
+`NO_PROXY: localhost,127.0.0.1,.svc,.cluster.local` at minimum, so the artifact endpoint, the egress broker, and the API
+server stay direct — and widen the controllers' egress NetworkPolicies for the proxy's port. A `spec.proxy` on a `Forge`
+or GitHub `Integration` overrides the environment for that resource's traffic (proxy basic-auth credentials go in its
+credential Secret under `proxyUsername`/`proxyPassword`).
+
 ## The isolation model — what it actually is
 
 DESIGN.md requires the coding agent to run with "no internet access / no access to github APIs". For the default

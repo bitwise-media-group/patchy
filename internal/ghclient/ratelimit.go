@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -27,9 +28,16 @@ type retryTransport struct {
 	base http.RoundTripper
 }
 
-// newRetryTransport wraps http.DefaultTransport with the retry policy.
-func newRetryTransport() *retryTransport {
-	return &retryTransport{base: http.DefaultTransport}
+// newRetryTransport wraps a clone of http.DefaultTransport with the retry
+// policy. A non-nil proxy routes every request through that forward proxy —
+// the resource-level override; nil keeps the clone's ProxyFromEnvironment, so
+// HTTPS_PROXY/HTTP_PROXY/NO_PROXY apply.
+func newRetryTransport(proxy *url.URL) *retryTransport {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	if proxy != nil {
+		base.Proxy = http.ProxyURL(proxy)
+	}
+	return &retryTransport{base: base}
 }
 
 // RoundTrip implements http.RoundTripper.

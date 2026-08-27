@@ -134,6 +134,22 @@ narrow what a compromised agent can talk to, not what it can do to your forge.
     egress fence works — verify isolation on a CNI that enforces it (k3s on [Colima](colima.md) enforces the L3/L4
     floor; the FQDN layer needs a real Cilium or Istio cluster).
 
+## Egress proxies
+
+The **controllers'** NetworkPolicies (separate from the agent sandbox above) allow only their declared egress: DNS,
+443/6443, and each controller's specific peers. Routing forge traffic through a corporate forward proxy — the chart's
+[`proxy` values](../getting-started/install.md#egress-proxy) or a `spec.proxy` on a Forge/GitHub Integration — adds a
+new destination, so a proxy listening on a port like 3128 or 8080 needs a matching
+`<controller>.networkPolicy.extraEgress` rule on every controller that talks to GitHub (integration, source,
+remediation).
+
+Get `NO_PROXY` right when setting the environment-wide proxy: in-cluster traffic — the artifact endpoint on
+source-controller (:9790), the egress broker, the Kubernetes API server — must not detour through an external proxy. The
+chart derives `localhost,127.0.0.1,.svc,.cluster.local` automatically and appends your `noProxy`; if you set the
+variables another way (kustomize `config.extra`, for instance), carry those suffixes yourself. A `spec.proxy` on a
+resource is deliberate and total: it routes **all** of that resource's GitHub traffic through the named proxy, and the
+environment's `NO_PROXY` does not punch holes in it.
+
 ## What leaves the pod
 
 The agent's only output channel is the `PATCHY-EVENT:` JSONL stream on stdout (parsed by the owning controller from the

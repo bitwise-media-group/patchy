@@ -324,6 +324,23 @@ spec:
                     required:
                     - enabled
                     type: object
+                  proxy:
+                    description: |-
+                      Proxy routes this integration's GitHub traffic through an HTTP/HTTPS
+                      forward proxy, overriding the process proxy environment for this
+                      integration.
+                    properties:
+                      url:
+                        description: |-
+                          URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
+                          and https. Credentials must not be embedded in the URL — put them in
+                          the credential Secret under "proxyUsername" + "proxyPassword".
+                        minLength: 1
+                        pattern: ^https?://[^@\s]+$
+                        type: string
+                    required:
+                    - url
+                    type: object
                   redelivery:
                     description: Redelivery enables the failed-delivery sweep.
                     properties:
@@ -495,7 +512,9 @@ spec:
                 description: |-
                   SecretRef names the credential Secret. For github: either key "token"
                   (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
-                  "webhookSecret" for receiver HMAC validation. For wiz: key
+                  "webhookSecret" for receiver HMAC validation, plus optional keys
+                  "proxyUsername" + "proxyPassword" when spec.github.proxy needs basic
+                  auth. For wiz: key
                   "webhookToken" (the shared bearer token deliveries carry), plus keys
                   "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
                   generic: key "webhookSecret", the shared HMAC secret signing both

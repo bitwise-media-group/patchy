@@ -5,6 +5,7 @@ package v1alpha1_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -211,6 +212,10 @@ func TestSchemaValidation(t *testing.T) {
 
 	t.Run("azure integration requires its provider block and no credential", func(t *testing.T) {
 		testAzureIntegrationSchema(ctx, t, c)
+	})
+
+	t.Run("proxy url pattern on forge and integration", func(t *testing.T) {
+		testProxySchema(ctx, t, c)
 	})
 
 	t.Run("finding rejects an unknown phase and accepts a legal one", func(t *testing.T) {
@@ -427,6 +432,58 @@ func testGenericIntegrationSchema(ctx context.Context, t *testing.T, c client.Cl
 		Generic:   block,
 	})); err == nil {
 		t.Error("Create(generic integration named ghas) = nil, want reserved-name rejection")
+	}
+}
+
+// testProxySchema exercises the ProxyConfig URL pattern on both kinds that
+// carry it: a plain http/https proxy is accepted; embedded userinfo and
+// non-HTTP schemes are rejected at admission.
+func testProxySchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	forge := func(name, proxyURL string) *patchyv1.Forge {
+		return &patchyv1.Forge{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: patchyv1.ForgeSpec{
+				Provider:  patchyv1.ForgeProviderGitHub,
+				Proxy:     &patchyv1.ProxyConfig{URL: proxyURL},
+				SecretRef: patchyv1.LocalSecretReference{Name: "s"},
+			},
+		}
+	}
+	integration := func(name, proxyURL string) *patchyv1.Integration {
+		return &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider:  patchyv1.IntegrationProviderGitHub,
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+				GitHub: &patchyv1.GitHubIntegration{
+					Proxy:  &patchyv1.ProxyConfig{URL: proxyURL},
+					Issues: &patchyv1.GitHubIssues{Enabled: true},
+				},
+			},
+		}
+	}
+	tests := []struct {
+		name     string
+		proxyURL string
+		wantErr  bool
+	}{
+		{"valid http proxy", "http://proxy.corp.example:3128", false},
+		{"valid https proxy", "https://proxy.corp.example", false},
+		{"userinfo rejected", "http://user:pass@proxy.corp.example:3128", true},
+		{"socks5 rejected", "socks5://proxy.corp.example:1080", true},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := c.Create(ctx, forge(fmt.Sprintf("proxy-forge-%d", i), tt.proxyURL))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Create(forge, proxy=%q) = %v, wantErr %v", tt.proxyURL, err, tt.wantErr)
+			}
+			err = c.Create(ctx, integration(fmt.Sprintf("proxy-integ-%d", i), tt.proxyURL))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Create(integration, proxy=%q) = %v, wantErr %v", tt.proxyURL, err, tt.wantErr)
+			}
+		})
 	}
 }
 

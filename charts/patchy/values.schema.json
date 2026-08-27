@@ -286,6 +286,21 @@
         "global": {
             "type": "object"
         },
+        "proxy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "httpsProxy": {
+                    "type": "string"
+                },
+                "httpProxy": {
+                    "type": "string"
+                },
+                "noProxy": {
+                    "type": "string"
+                }
+            }
+        },
         "config": {
             "type": "object",
             "additionalProperties": false,

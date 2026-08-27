@@ -63,6 +63,23 @@ commonLabels: {}
 # service/serviceAccount/webhook annotations) win key-by-key.
 commonAnnotations: {}
 
+# Egress proxy for every controller's outbound HTTP(S) traffic — the estate
+# whose GitHub org enforces an IP allowlist reachable only through a corporate
+# forward proxy. Rendered into each controller's ConfigMap as
+# HTTPS_PROXY/HTTP_PROXY/NO_PROXY (Go's standard proxy environment).
+# Precedence: a spec.proxy on a Forge or GitHub Integration overrides these
+# for that resource's traffic; config.extra (and <controller>.config.extra)
+# still wins over what is derived here. When either proxy is set, NO_PROXY is
+# auto-prefixed with "localhost,127.0.0.1,.svc,.cluster.local" so in-cluster
+# traffic (the artifact endpoint, the egress broker, the API server) never
+# detours through the proxy; noProxy appends to that list. Remember the
+# controllers' NetworkPolicies allow only their declared egress — reaching a
+# proxy on e.g. 3128/8080 needs <controller>.networkPolicy.extraEgress.
+proxy:
+    httpsProxy: ""
+    httpProxy: ""
+    noProxy: ""
+
 # Settings shared by more than one controller. Each controller renders its own
 # ConfigMap (consumed with envFrom) holding these plus its `config` block, and
 # may repeat any key here under <controller>.config to override it for that

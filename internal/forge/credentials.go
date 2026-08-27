@@ -69,7 +69,7 @@ func (s *Store) Token(ctx context.Context, res *Resolved, scope Scope) (string, 
 	if tok, ok := ghsecret.Token(secret); ok {
 		return tok, time.Time{}, nil
 	}
-	app, err := s.apps.FromSecret(secret, res.Forge.Spec.BaseURL)
+	app, err := s.apps.FromSecret(secret, res.Forge.Spec.BaseURL, proxyURL(res.Forge))
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -85,9 +85,13 @@ func (s *Store) Client(ctx context.Context, res *Resolved) (*ghclient.Client, er
 		return nil, err
 	}
 	if tok, ok := ghsecret.Token(secret); ok {
-		return ghclient.NewToken(tok, res.Forge.Spec.BaseURL)
+		purl, err := ghsecret.ProxyURL(secret, proxyURL(res.Forge))
+		if err != nil {
+			return nil, err
+		}
+		return ghclient.NewToken(tok, res.Forge.Spec.BaseURL, ghclient.WithProxy(purl))
 	}
-	app, err := s.apps.FromSecret(secret, res.Forge.Spec.BaseURL)
+	app, err := s.apps.FromSecret(secret, res.Forge.Spec.BaseURL, proxyURL(res.Forge))
 	if err != nil {
 		return nil, err
 	}
@@ -95,14 +99,38 @@ func (s *Store) Client(ctx context.Context, res *Resolved) (*ghclient.Client, er
 }
 
 // Validate checks the Forge's secret is usable: a non-empty PAT, or a
-// parseable App credential. The Forge reconciler calls this for the Ready
-// condition.
+// parseable App credential, either way with a parseable proxy URL. The Forge
+// reconciler calls this for the Ready condition.
 func (s *Store) Validate(ctx context.Context, f *v1alpha1.Forge) error {
 	secret, err := s.secret(ctx, f)
 	if err != nil {
 		return err
 	}
-	return s.apps.Validate(secret, f.Spec.BaseURL)
+	return s.apps.Validate(secret, f.Spec.BaseURL, proxyURL(f))
+}
+
+// ProxyURL returns the resolved Forge's effective proxy URL — the spec proxy
+// with the Secret's basic-auth credentials attached — for callers building
+// their own client (the write-path pusher). "" means no spec proxy; the
+// environment applies.
+func (s *Store) ProxyURL(ctx context.Context, res *Resolved) (string, error) {
+	raw := proxyURL(res.Forge)
+	if raw == "" {
+		return "", nil
+	}
+	secret, err := s.secret(ctx, res.Forge)
+	if err != nil {
+		return "", err
+	}
+	return ghsecret.ProxyURL(secret, raw)
+}
+
+// proxyURL returns the Forge's raw spec proxy URL, "" when unset.
+func proxyURL(f *v1alpha1.Forge) string {
+	if f == nil || f.Spec.Proxy == nil {
+		return ""
+	}
+	return f.Spec.Proxy.URL
 }
 
 // secret fetches the Forge's credential Secret from its own namespace.

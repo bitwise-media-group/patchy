@@ -119,6 +119,27 @@ namespace for claude anymore.
 {{- $_ := set $data "PATCHY_REMEDIATE_TIMEOUT" $.Values.agent.remediate.timeout }}
 {{- end }}
 {{- end }}
+{{/*
+The global egress proxy (spec.proxy on a Forge/GitHub Integration overrides
+it per resource). NO_PROXY always starts with the cluster-internal suffixes
+so in-cluster traffic (the artifact endpoint, the egress broker, the API
+server) never detours through the proxy. Set before the extra loops so
+config.extra keeps the last word.
+*/}}
+{{- $p := $.Values.proxy | default dict }}
+{{- if or $p.httpsProxy $p.httpProxy }}
+{{- with $p.httpsProxy }}
+{{- $_ := set $data "HTTPS_PROXY" . }}
+{{- end }}
+{{- with $p.httpProxy }}
+{{- $_ := set $data "HTTP_PROXY" . }}
+{{- end }}
+{{- $no := "localhost,127.0.0.1,.svc,.cluster.local" }}
+{{- with $p.noProxy }}
+{{- $no = printf "%s,%s" $no . }}
+{{- end }}
+{{- $_ := set $data "NO_PROXY" $no }}
+{{- end }}
 {{- range $k, $v := $g.extra }}
 {{- $_ := set $data $k $v }}
 {{- end }}

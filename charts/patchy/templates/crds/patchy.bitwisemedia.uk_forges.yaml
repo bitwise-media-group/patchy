@@ -88,6 +88,22 @@ spec:
                 enum:
                 - github
                 type: string
+              proxy:
+                description: |-
+                  Proxy routes this forge's GitHub traffic through an HTTP/HTTPS forward
+                  proxy, overriding the process proxy environment for this forge.
+                properties:
+                  url:
+                    description: |-
+                      URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
+                      and https. Credentials must not be embedded in the URL — put them in
+                      the credential Secret under "proxyUsername" + "proxyPassword".
+                    minLength: 1
+                    pattern: ^https?://[^@\s]+$
+                    type: string
+                required:
+                - url
+                type: object
               repositories:
                 description: |-
                   Repositories restricts this forge to repositories whose "owner/name"
@@ -98,7 +114,9 @@ spec:
               secretRef:
                 description: |-
                   SecretRef names the credential Secret: key "token" (PAT, dev) or keys
-                  "appID" + "privateKey" (GitHub App).
+                  "appID" + "privateKey" (GitHub App). With spec.proxy set, optional keys
+                  "proxyUsername" + "proxyPassword" carry the proxy's basic-auth
+                  credentials.
                 properties:
                   name:
                     description: Name of the Secret.

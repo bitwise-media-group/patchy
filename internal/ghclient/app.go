@@ -19,6 +19,7 @@ type AppConfig struct {
 	AppID      int64
 	PrivateKey []byte // PEM-encoded RSA private key
 	BaseURL    string // default https://api.github.com/ ; tests and GHES override
+	ProxyURL   string // forward proxy for all the App's traffic; "" = environment
 }
 
 // App mints installation-scoped clients and tokens for a GitHub App.
@@ -37,7 +38,11 @@ func NewApp(cfg AppConfig) (*App, error) {
 	if cfg.AppID == 0 {
 		return nil, errors.New("ghclient: AppConfig.AppID is required")
 	}
-	atr, err := ghinstallation.NewAppsTransport(newRetryTransport(), cfg.AppID, cfg.PrivateKey)
+	proxy, err := parseProxy(cfg.ProxyURL)
+	if err != nil {
+		return nil, err
+	}
+	atr, err := ghinstallation.NewAppsTransport(newRetryTransport(proxy), cfg.AppID, cfg.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("ghclient: app transport: %w", err)
 	}

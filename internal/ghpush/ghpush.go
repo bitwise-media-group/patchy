@@ -15,18 +15,22 @@ import (
 // Pusher pushes agent changesets through the GitHub API.
 type Pusher struct {
 	baseURL string
+	opts    []ghclient.Option
 }
 
 // New builds a Pusher. baseURL overrides the GitHub API endpoint (GHES,
-// tests); empty means github.com.
-func New(baseURL string) *Pusher { return &Pusher{baseURL: baseURL} }
+// tests); empty means github.com. opts (e.g. ghclient.WithProxy) shape the
+// per-push client.
+func New(baseURL string, opts ...ghclient.Option) *Pusher {
+	return &Pusher{baseURL: baseURL, opts: opts}
+}
 
 // Push creates one commit from the changeset on top of its base SHA and
 // points branch at it. The short-lived write token lives only for this call
 // and is never persisted.
 func (p *Pusher) Push(ctx context.Context, repo ghclient.Repo, token, branch string,
 	cs *envelope.Changeset) error {
-	client, err := ghclient.NewToken(token, p.baseURL)
+	client, err := ghclient.NewToken(token, p.baseURL, p.opts...)
 	if err != nil {
 		return fmt.Errorf("ghpush: %w", err)
 	}

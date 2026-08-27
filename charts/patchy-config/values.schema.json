@@ -300,6 +300,20 @@
                             "type": "object",
                             "additionalProperties": false
                         },
+                        "proxy": {
+                            "description": "Proxy routes this integration's GitHub traffic through an HTTP/HTTPS\nforward proxy, overriding the process proxy environment for this\nintegration.",
+                            "properties": {
+                                "url": {
+                                    "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Credentials must not be embedded in the URL — put them in\nthe credential Secret under \"proxyUsername\" + \"proxyPassword\".",
+                                    "minLength": 1,
+                                    "pattern": "^https?://[^@\\s]+$",
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["url"],
+                            "type": "object",
+                            "additionalProperties": false
+                        },
                         "redelivery": {
                             "description": "Redelivery enables the failed-delivery sweep.",
                             "properties": {
@@ -461,7 +475,7 @@
                     "additionalProperties": false
                 },
                 "secretRef": {
-                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation. For wiz: key\n\"webhookToken\" (the shared bearer token deliveries carry), plus keys\n\"clientId\" + \"clientSecret\" when spec.wiz.api enables write-back. For\ngeneric: key \"webhookSecret\", the shared HMAC secret signing both\ninbound deliveries and patchy's outbound resolver/enhancer calls.\nRequired for github, wiz, and generic, optional otherwise — a\ngoogle-cloud integration holds no credential, since Pub/Sub\nauthenticates itself with a signed OIDC token. It stays permitted for\nevery provider so a future capability that does need one (SCC\nmute-on-ignore) needs no schema change.",
+                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation, plus optional keys\n\"proxyUsername\" + \"proxyPassword\" when spec.github.proxy needs basic\nauth. For wiz: key\n\"webhookToken\" (the shared bearer token deliveries carry), plus keys\n\"clientId\" + \"clientSecret\" when spec.wiz.api enables write-back. For\ngeneric: key \"webhookSecret\", the shared HMAC secret signing both\ninbound deliveries and patchy's outbound resolver/enhancer calls.\nRequired for github, wiz, and generic, optional otherwise — a\ngoogle-cloud integration holds no credential, since Pub/Sub\nauthenticates itself with a signed OIDC token. It stays permitted for\nevery provider so a future capability that does need one (SCC\nmute-on-ignore) needs no schema change.",
                     "properties": {
                         "name": {
                             "description": "Name of the Secret.",
@@ -566,6 +580,20 @@
                     "enum": ["github"],
                     "type": "string"
                 },
+                "proxy": {
+                    "description": "Proxy routes this forge's GitHub traffic through an HTTP/HTTPS forward\nproxy, overriding the process proxy environment for this forge.",
+                    "properties": {
+                        "url": {
+                            "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Credentials must not be embedded in the URL — put them in\nthe credential Secret under \"proxyUsername\" + \"proxyPassword\".",
+                            "minLength": 1,
+                            "pattern": "^https?://[^@\\s]+$",
+                            "type": "string"
+                        }
+                    },
+                    "required": ["url"],
+                    "type": "object",
+                    "additionalProperties": false
+                },
                 "repositories": {
                     "description": "Repositories restricts this forge to repositories whose \"owner/name\"\nmatches any of the listed RE2 regular expressions; empty means all.",
                     "items": {
@@ -574,7 +602,7 @@
                     "type": "array"
                 },
                 "secretRef": {
-                    "description": "SecretRef names the credential Secret: key \"token\" (PAT, dev) or keys\n\"appID\" + \"privateKey\" (GitHub App).",
+                    "description": "SecretRef names the credential Secret: key \"token\" (PAT, dev) or keys\n\"appID\" + \"privateKey\" (GitHub App). With spec.proxy set, optional keys\n\"proxyUsername\" + \"proxyPassword\" carry the proxy's basic-auth\ncredentials.",
                     "properties": {
                         "name": {
                             "description": "Name of the Secret.",

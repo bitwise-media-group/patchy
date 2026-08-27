@@ -37,7 +37,7 @@
 # paths are /workspace (emptyDir, and HOME) and /tmp (emptyDir); copilot keeps
 # its state under $COPILOT_HOME, which defaults to $HOME/.copilot, and
 # COPILOT_AUTO_UPDATE=false pins it to the baked version.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132 AS fetch
 
 # hadolint ignore=DL3008
 RUN apt-get update \
@@ -85,7 +85,7 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/copilot.tar.gz \
     && chmod 0755 /out/copilot
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's

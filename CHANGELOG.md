@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/bitwise-media-group/patchy/compare/v0.11.1...v0.11.2) (2026-08-27)
+
+
+### Features
+
+* HTTP/HTTPS proxy support for GitHub forge traffic ([a8168d1](https://github.com/bitwise-media-group/patchy/commit/a8168d1e0dc1a079b9def43e2c67b0d3e0587a9e))
+
 ## [0.11.1](https://github.com/bitwise-media-group/patchy/compare/v0.11.0...v0.11.1) (2026-08-25)
 
 

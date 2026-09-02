@@ -67,11 +67,11 @@ RUN apk add --no-cache curl
 # retarget every future bump (how the loader-package tarball got pinned once).
 # The unversioned asset name keeps that same-name mapping exact across releases.
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_AMD64_RELEASE=v1.0.81
-ARG COPILOT_AMD64_SHA256=3082c4a27aa683def52e48397c02606dc7f8267dcef1c93949f3f58de4a5cde3
+ARG COPILOT_AMD64_RELEASE=v1.0.82
+ARG COPILOT_AMD64_SHA256=37fa67686a9e4ed8d46dcd6a9c80ab524dea840ecaa0a3f7edf8d09f961b97a9
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_ARM64_RELEASE=v1.0.81
-ARG COPILOT_ARM64_SHA256=f0e621e6793b14e04c0f651cd46d818a5bf0bf54d74c9566c9424744b41a279c
+ARG COPILOT_ARM64_RELEASE=v1.0.82
+ARG COPILOT_ARM64_SHA256=86c4c77a91b1ff5dd7313cbea9f861699a2cdceb4696f3864f3f0584e9684e0f
 
 # Fetch the standalone binary tarball for the target platform from the GitHub
 # release and verify it against the pinned sha256 before it leaves this stage.

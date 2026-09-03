@@ -12,7 +12,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.1
-	github.com/aws/aws-sdk-go-v2/service/configservice v1.70.1
+	github.com/aws/aws-sdk-go-v2/service/configservice v1.71.0
 	github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.30.1
 	github.com/aws/smithy-go v1.28.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0

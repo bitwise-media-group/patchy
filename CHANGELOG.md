@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.11.3](https://github.com/bitwise-media-group/patchy/compare/v0.11.2...v0.11.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#273](https://github.com/bitwise-media-group/patchy/issues/273)) ([4f50013](https://github.com/bitwise-media-group/patchy/commit/4f5001365c7d820923b02a8de962bb1ababe9ecd))
+* **deps:** update aws-sdk-go-v2 monorepo ([#276](https://github.com/bitwise-media-group/patchy/issues/276)) ([98314d1](https://github.com/bitwise-media-group/patchy/commit/98314d100d2357a18e609e7fb069ec2b1376dc68))
+* **deps:** update aws-sdk-go-v2 monorepo ([#284](https://github.com/bitwise-media-group/patchy/issues/284)) ([f170159](https://github.com/bitwise-media-group/patchy/commit/f1701592e4a3a78fb69a4ef11ea84b6776736a58))
+* **deps:** update aws-sdk-go-v2 monorepo ([#285](https://github.com/bitwise-media-group/patchy/issues/285)) ([298fc31](https://github.com/bitwise-media-group/patchy/commit/298fc3194af3a81424e4977e057d42a2ca94ee3d))
+* **deps:** update aws-sdk-go-v2 monorepo ([#302](https://github.com/bitwise-media-group/patchy/issues/302)) ([00e5bcc](https://github.com/bitwise-media-group/patchy/commit/00e5bcc998041d8180709ebc6d229f3a47b8c7a1))
+* **deps:** update azure-sdk-for-go monorepo ([#283](https://github.com/bitwise-media-group/patchy/issues/283)) ([20e6593](https://github.com/bitwise-media-group/patchy/commit/20e6593ef0c1911e8b717081a197d60af492aaa4))
+* **deps:** update kubernetes monorepo to v0.37.0 ([#278](https://github.com/bitwise-media-group/patchy/issues/278)) ([f882c83](https://github.com/bitwise-media-group/patchy/commit/f882c835b463b89cb95bcbc7c5ca0799d02a2fd1))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/configservice to v1.71.0 ([#299](https://github.com/bitwise-media-group/patchy/issues/299)) ([22dbbe7](https://github.com/bitwise-media-group/patchy/commit/22dbbe71a0451a16a81f6efdf1f1fb3560d827ea))
+* **deps:** update module github.com/aws/smithy-go to v1.28.0 ([#268](https://github.com/bitwise-media-group/patchy/issues/268)) ([f231c28](https://github.com/bitwise-media-group/patchy/commit/f231c282aea44bb458ba7693e8d1c65d95d515dc))
+* **deps:** update module github.com/aws/smithy-go to v1.28.1 ([#277](https://github.com/bitwise-media-group/patchy/issues/277)) ([6a9be25](https://github.com/bitwise-media-group/patchy/commit/6a9be2540ff8354e06283dd2b80ff368d121b1c3))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.21.0 ([#309](https://github.com/bitwise-media-group/patchy/issues/309)) ([1c78104](https://github.com/bitwise-media-group/patchy/commit/1c78104c6329e8634ff0571727601a6c19cff871))
+* **deps:** update module github.com/google/go-containerregistry to v0.22.0 ([#269](https://github.com/bitwise-media-group/patchy/issues/269)) ([6e49e67](https://github.com/bitwise-media-group/patchy/commit/6e49e6734140392bf080b2517575c496f660852f))
+* **deps:** update module google.golang.org/api to v0.295.0 ([#279](https://github.com/bitwise-media-group/patchy/issues/279)) ([4ec90b3](https://github.com/bitwise-media-group/patchy/commit/4ec90b3af73de67b16315d3167a6f6fbf78c69d1))
+* **deps:** update module google.golang.org/api to v0.296.0 ([#300](https://github.com/bitwise-media-group/patchy/issues/300)) ([2646146](https://github.com/bitwise-media-group/patchy/commit/2646146182944e584988fc9ca317ab4c479d107d))
+* **deps:** update module google.golang.org/api to v0.297.0 ([#310](https://github.com/bitwise-media-group/patchy/issues/310)) ([48a7239](https://github.com/bitwise-media-group/patchy/commit/48a72397088dddd5bea53bcbf52360fc2687f055))
+* **deps:** update module google.golang.org/grpc to v1.83.2 ([#267](https://github.com/bitwise-media-group/patchy/issues/267)) ([e2d7994](https://github.com/bitwise-media-group/patchy/commit/e2d7994b8047f3d735c22cb8b5378e1f8924fb1b))
+* **deps:** update opentelemetry-go monorepo ([#270](https://github.com/bitwise-media-group/patchy/issues/270)) ([90ad209](https://github.com/bitwise-media-group/patchy/commit/90ad209d26272d6124161ae03d78defe5bb6b681))
+* **deps:** update opentelemetry-go-contrib monorepo ([#274](https://github.com/bitwise-media-group/patchy/issues/274)) ([7d2d402](https://github.com/bitwise-media-group/patchy/commit/7d2d402fa9dc5f59198aaa83aaf1b62febff39ad))
+
 ## [0.11.2](https://github.com/bitwise-media-group/patchy/compare/v0.11.1...v0.11.2) (2026-08-27)
 
 

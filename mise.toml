@@ -34,7 +34,7 @@ includes = [".mise/tasks/go-cli.toml", "tasks.toml"]
 # (the scan stage shells out to it); cosign — which sign/verify shell out
 # to — is already pinned by the shared toolchain.
 "aqua:google/osv-scanner" = "2.5.1"
-"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.22.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "0.24.1"
 "go:golang.org/x/perf/cmd/benchstat" = "0.0.0-20260709024250-82a0b07e230d"
 "aqua:mikefarah/yq" = "4.53.6"

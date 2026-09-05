@@ -115,5 +115,5 @@ version = "0.24.1"
 backend = "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]
-version = "0.21.0"
+version = "0.22.0"
 backend = "go:sigs.k8s.io/controller-tools/cmd/controller-gen"

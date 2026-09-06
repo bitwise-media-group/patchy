@@ -111,7 +111,7 @@ version = "0.0.0-20260709024250-82a0b07e230d"
 backend = "go:golang.org/x/perf/cmd/benchstat"
 
 [[tools."go:sigs.k8s.io/controller-runtime/tools/setup-envtest"]]
-version = "0.24.1"
+version = "0.25.0"
 backend = "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]

@@ -43,7 +43,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
-      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      digest: sha256:43b4f379ac71ed34e635fa913942eaecae77efb68e9f6a46e8a57eb482b63ecf
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 

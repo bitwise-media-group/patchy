@@ -35,7 +35,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
       digest: sha256:119e7f0f74ab4b901df819cb8317fe1ff041cad97597682e103569db45f94e14
     - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
-      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      digest: sha256:5c0c95811fe3d4c4edfdf66a2f9115a4c97e273c4b09575a519eb374f2134da3
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner

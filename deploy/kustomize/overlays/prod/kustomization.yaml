@@ -29,7 +29,7 @@ components:
 # container images, not ConfigMap values.
 images:
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
-      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      digest: sha256:eeef0b9eb3d7acc9968e962892d19320f3db639dbadb7278f8eb426f95b8efb6
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     - name: ghcr.io/bitwise-media-group/patchy/context-controller

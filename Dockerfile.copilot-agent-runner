@@ -45,7 +45,7 @@
 # COPILOT_AUTO_UPDATE=false pins it to the baked version.
 # latest is the only tag wolfi-base publishes; the digest is the real pin
 # (renovate bumps it).
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:fd536778d12e19bff29cfcf73265a14f585152a49d7f7cd6739ebe48dff01e26 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:824f77df45397eb954dfb963db255907ee8842e3446353ce93d688e5e862f51d AS fetch
 
 # ca-certificates-bundle ships in the base.
 # hadolint ignore=DL3018
@@ -92,7 +92,7 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/copilot.tar.gz \
     && chmod 0755 /out/copilot
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:fd536778d12e19bff29cfcf73265a14f585152a49d7f7cd6739ebe48dff01e26
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:824f77df45397eb954dfb963db255907ee8842e3446353ce93d688e5e862f51d
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's

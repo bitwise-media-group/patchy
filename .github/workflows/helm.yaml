@@ -65,6 +65,7 @@ jobs:
               with:
                   # empty ref falls through to checkout's default (the triggering ref)
                   ref: ${{ inputs.ref }}
+                  persist-credentials: false # nothing here pushes to git; helm/docker log in with the token directly
 
             - name: Lint
               run: |

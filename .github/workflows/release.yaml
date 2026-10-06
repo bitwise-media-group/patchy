@@ -78,7 +78,7 @@ jobs:
     helm:
         needs: release
         if: needs.release.outputs.release_created
-        uses: ./.github/workflows/helm.yaml
+        uses: ./.github/workflows/helm.yaml # zizmor: ignore[self-repository] -- actionlint 1.7.12 (also in lint) rejects the $/ form
         # ceiling for helm.yaml's publish job
         permissions:
             contents: read

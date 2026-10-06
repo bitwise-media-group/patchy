@@ -24,7 +24,7 @@
 #     --certificate-identity-regexp='^https://github.com/bitwise-media-group/patchy/'
 #
 # Actions are pinned to full commit SHAs (tag in the comment) so a moved tag
-# can never change what runs; Dependabot keeps the pins fresh.
+# can never change what runs; Renovate keeps the pins fresh.
 name: Helm Chart
 
 on:

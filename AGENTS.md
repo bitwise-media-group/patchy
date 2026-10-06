@@ -114,8 +114,9 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
                     `kubectl patchy` completes: kubectl ignores a plugin's completion script
                     and instead runs kubectl_complete-<plugin> from PATH.
 .mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +
-                    the go-cli task archetype. Makefile is a one-line forwarder; repo-local tasks
-                    (multi-binary build, e2e, envtest, codegen, replay) live in tasks.toml.
+                    the common + go task archetype; Go itself is pinned in the root mise.toml.
+                    Makefile is a one-line forwarder; repo-local tasks (multi-binary build, e2e,
+                    envtest, codegen, replay) live in tasks.toml.
 .claude/plans/      The living implementation plan (git-ignored).
 ```
 

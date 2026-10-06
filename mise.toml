@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT
 #
 # patchy consumes the shared toolchain (bitwise-media-group/toolchain) as the
-# .mise/ submodule: pinned tools + the go-cli task archetype come from there,
-# and the Makefile is a thin forwarder (.mise/mise.mk). Structural knobs live
-# in [vars]; repo-local tasks live in tasks.toml (see [task_config] below).
+# .mise/ submodule: pinned tools come from its config.toml (loaded natively as
+# .mise/config.toml), the shared tasks from common/ and the go archetype, and
+# the Makefile is a thin forwarder (.mise/archetypes/go/include.mk). The Go
+# runtime, govulncheck and the repo-local tools are pinned below (locked in
+# mise.lock); structural knobs live in [vars]; repo-local tasks live in
+# tasks.toml (see [task_config] below).
 
 [settings]
 lockfile = true
@@ -19,17 +22,26 @@ app = "patchy"
 app_pkg = "./cmd/source-controller"
 
 [task_config]
-# Repo-local tasks live in tasks.toml, included AFTER the archetype so its
-# same-named task (build) replaces the archetype's definition — an included
-# file wins over this config's own [tasks] on name collisions.
-includes = [".mise/tasks/go-cli.toml", "tasks.toml"]
+# common first, then exactly one archetype, then the repo-local tasks.toml —
+# included AFTER the archetype so its same-named tasks (go-lint, build, ci, pr)
+# replace the archetype's definitions (later includes win whole-task, and an
+# included file also beats this config's own [tasks] on name collisions).
+includes = [
+  ".mise/common/tasks.toml",
+  ".mise/archetypes/go/tasks.toml",
+  "tasks.toml",
+]
 
-# Repo-local tool pins the shared toolchain doesn't carry: the Kubernetes
-# code/CRD generator and the envtest binary manager for api/v1alpha1.
-# controller-gen floats on its own release line; setup-envtest tracks the
-# controller-runtime minor pinned in go.mod (v0.24.x). yq extracts the CRD
-# spec schemas into the patchy-config values schema (hack/codegen.sh).
+# The Go runtime and govulncheck (go-installed by that same Go): the toolchain
+# leaves both to each Go repo. The rest are repo-local tool pins the shared
+# toolchain doesn't carry: the Kubernetes code/CRD generator and the envtest
+# binary manager for api/v1alpha1. controller-gen floats on its own release
+# line; setup-envtest tracks the controller-runtime minor pinned in go.mod
+# (v0.24.x). yq extracts the CRD spec schemas into the patchy-config values
+# schema (hack/codegen.sh).
 [tools]
+go = "1.27.1"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.8.0"
 # osv-scanner is a runtime dependency of `patchy mirror` image scanning
 # (the scan stage shells out to it); cosign — which sign/verify shell out
 # to — is already pinned by the shared toolchain.

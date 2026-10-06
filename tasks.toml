@@ -3,10 +3,13 @@
 #
 # ---- repo-local tasks (the long tail the library intentionally omits) -------
 
-# Overrides the archetype's go-lint: same golangci-lint pass, but
-# govulncheck runs through hack/govulncheck.sh, which can carry a reviewed
-# acceptance list for advisories with no fix (currently empty — see the
-# script for how to accept one with a rationale and a re-review trigger).
+# Overrides the archetype's go-lint (.mise/archetypes/go/scripts/lint.sh:
+# golangci-lint plus a bare `govulncheck ./...`, once per GOOS in vars.goos —
+# patchy sets none, so the host's only). The golangci-lint pass is the same;
+# the override exists for govulncheck, which runs through hack/govulncheck.sh
+# so it can carry a reviewed acceptance list for advisories with no fix
+# (currently empty — see the script for how to accept one with a rationale
+# and a re-review trigger). A bare govulncheck has no ignore mechanism.
 [go-lint]
 hide = true
 dir = "{{cwd}}"
@@ -135,7 +138,7 @@ run = "./hack/helm-lint.sh"
 # Everything derived from the CLI's cobra command tree: the per-command
 # reference under docs/cli (nav'd from docs/cli.md) and the shell completions.
 # Kept repo-local because the archetype leaves `docs` to the app — see the
-# comment at the head of .mise/tasks/go-cli.toml.
+# comment at the head of .mise/archetypes/go/tasks.toml.
 #
 # Both are committed rather than generated at release time: the Homebrew cask
 # installs the completions as static files, because a cask that executed the

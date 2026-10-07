@@ -141,9 +141,10 @@ run = "./hack/helm-lint.sh"
 # comment at the head of .mise/archetypes/go/tasks.toml.
 #
 # Both are committed rather than generated at release time: the Homebrew cask
-# installs the completions as static files, because a cask that executed the
-# binary at install time would trip Gatekeeper on the still-quarantined
-# download (see homebrew_casks in .goreleaser.yaml).
+# installs the completions as static files, so the install is deterministic
+# and never executes the binary at install time (see homebrew_casks in
+# .goreleaser.yaml).
+
 #
 # `go run` rather than bin/patchy: the CLI is the one binary the multi-binary
 # build task is not needed for, and nothing here depends on the status page

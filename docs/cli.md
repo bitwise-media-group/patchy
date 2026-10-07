@@ -18,7 +18,8 @@ On macOS and linux, from the Homebrew tap:
 brew install bitwise-media-group/tap/patchy
 ```
 
-Otherwise, binaries ship with each release, cosign-signed, for linux, macOS and windows:
+Otherwise, binaries ship with each release for linux, macOS and windows — cosign-signed on linux and windows, Developer
+ID-signed and notarized on macOS, so a downloaded `patchy` runs without a Gatekeeper prompt:
 
 ```sh
 # from a release archive

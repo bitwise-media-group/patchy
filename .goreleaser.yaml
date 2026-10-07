@@ -7,8 +7,9 @@
 # that draft (use_existing_draft + mode: replace below). Build locally without
 # publishing via `make snapshot`.
 #
-# Produces cross-platform binary archives + checksums + SBOMs + keyless cosign
-# signatures, the container images (multi-arch manifests built by buildx from
+# Produces cross-platform binary archives + checksums + SBOMs, keyless cosign
+# signatures (linux/windows) and Developer ID-signed, notarized darwin
+# binaries, the container images (multi-arch manifests built by buildx from
 # the repo-root Dockerfile.* — dockers_v2 below — and pushed to ghcr on
 # release), and a Homebrew cask for the workstation CLI pushed to
 # bitwise-media-group/homebrew-tap.
@@ -172,20 +173,39 @@ builds:
     # The CLI is the one binary here that runs on a workstation rather than in
     # the cluster, which is why it alone builds for windows and has no container
     # image: nothing would ever run it in a pod.
+    #
+    # Its darwin build (and kubectl-patchy's) is a separate build id purely so
+    # binary_signs (cosign) can exclude it by id: goreleaser runs binary_signs
+    # BEFORE notarize, and notarization rewrites the Mach-O in place, so a
+    # cosign bundle over the pre-notarized bytes would never verify against
+    # the shipped binary. The OSS binary_signs has no per-artifact `if`, so the
+    # build id is the only handle. Archive names are unchanged (the template
+    # keys on ProjectName/Os/Arch, not the id).
     - id: patchy
       main: ./cmd/patchy
       binary: patchy
       flags:
           - -trimpath
-      ldflags:
+      # shared with the darwin build below (same binary, split only by goos)
+      ldflags: &patchy_ldflags
           - -s -w
           - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
           - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
           - windows
+      goarch:
+          - amd64
+          - arm64
+    - id: patchy-darwin
+      main: ./cmd/patchy
+      binary: patchy
+      flags:
+          - -trimpath
+      ldflags: *patchy_ldflags
+      goos:
+          - darwin
       goarch:
           - amd64
           - arm64
@@ -200,15 +220,27 @@ builds:
       binary: kubectl-patchy
       flags:
           - -trimpath
-      ldflags:
+      # shared with the darwin build below (same binary, split only by goos)
+      ldflags: &kubectl_patchy_ldflags
           - -s -w
           - -X github.com/bitwise-media-group/patchy/internal/version.Version={{ .Version }}
           - -X github.com/bitwise-media-group/patchy/internal/version.Commit={{ .ShortCommit }}
           - -X github.com/bitwise-media-group/patchy/internal/version.BuildDate={{ .Date }}
       goos:
           - linux
-          - darwin
           - windows
+      goarch:
+          - amd64
+          - arm64
+    # darwin split out for the same notarize-vs-cosign reason as patchy-darwin.
+    - id: kubectl-patchy-darwin
+      main: ./cmd/kubectl-patchy
+      binary: kubectl-patchy
+      flags:
+          - -trimpath
+      ldflags: *kubectl_patchy_ldflags
+      goos:
+          - darwin
       goarch:
           - amd64
           - arm64
@@ -238,7 +270,7 @@ archives:
       files:
           - LICENSE
     - id: patchy-cli
-      ids: [patchy, kubectl-patchy]
+      ids: [patchy, patchy-darwin, kubectl-patchy, kubectl-patchy-darwin]
       formats: [tar.gz]
       name_template: "{{ .ProjectName }}-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
       files:
@@ -493,10 +525,27 @@ docker_signs:
       output: true
 
 # ^ref: https://goreleaser.com/customization/sign/sign/
-# Keyless cosign signatures over each built binary; the reusable release workflow
-# supplies the GitHub Actions OIDC token. `make snapshot` skips this (--skip=sign).
+# Keyless cosign signatures over the linux/windows binaries; the reusable
+# release workflow supplies the GitHub Actions OIDC token. The darwin CLI
+# binaries are excluded by build id and carry the Apple signature +
+# notarization below instead (cosign runs before notarize and would sign the
+# wrong bytes); the SLSA attestation over checksums.txt still covers their
+# archives. `make snapshot` skips this (--skip=sign).
 binary_signs:
     - cmd: cosign
+      # every build id except the two *-darwin ones
+      ids:
+          - source-controller
+          - context-controller
+          - evaluation-controller
+          - remediation-controller
+          - integration-controller
+          - investigation-controller
+          - egress-broker
+          - agent-runner
+          - status-server
+          - patchy
+          - kubectl-patchy
       signature: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}.sigstore.json"
       args:
           - sign-blob
@@ -504,6 +553,30 @@ binary_signs:
           - ${artifact}
           - --yes
       output: true
+
+# ^ref: https://goreleaser.com/customization/sign/notarize/
+# Developer ID signing + Apple notarization of the darwin binaries, done
+# cross-platform by goreleaser's embedded quill (no macOS runner). Certificate
+# and API key arrive as env from the reusable release workflow, from the org
+# secrets shared by every open-source repo that notarizes.
+# enabled: every real release notarizes and fails if the secrets are missing
+# (a published release is never un-notarized, which is what lets the cask
+# skip the quarantine workaround for the binaries); a snapshot only does when
+# MACOS_SIGN_P12 is exported, so `make snapshot` stays offline and a local
+# end-to-end test is one env export away.
+notarize:
+    macos:
+        - enabled: '{{ or (not .IsSnapshot) (isEnvSet "MACOS_SIGN_P12") }}'
+          ids: [patchy-darwin, kubectl-patchy-darwin]
+          sign:
+              certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+              password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+          notarize:
+              issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+              key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+              key: "{{ .Env.MACOS_NOTARY_KEY }}"
+              wait: true
+              timeout: 15m
 
 # One SBOM per BINARY, not per archive.
 #
@@ -584,13 +657,12 @@ homebrew_casks:
       # it somewhere kubectl never looks.
       binaries: [patchy, kubectl-patchy, completions/kubectl_complete-patchy]
       # Static completion stanzas, NOT generate_completions_from_executable:
-      # Homebrew installs cask artifacts in a fixed type-based order, but
-      # GeneratedCompletion is missing from that sort table (as of brew 6.0),
-      # so its position is decided by an unstable sort — it can run before the
-      # quarantine-clearing preflight below, executing the still-quarantined
-      # binary and tripping Gatekeeper mid-install. Static bash_completion /
-      # zsh_completion / fish_completion artifacts are ordered deterministically
-      # and never execute the binary.
+      # the committed completions/* are deterministic output of `mise run docs`
+      # and install as plain files, so the cask never executes the binary at
+      # install time and the install is reproducible from the archive alone.
+      # (Static bash_completion / zsh_completion / fish_completion artifacts are
+      # also ordered deterministically by Homebrew, which GeneratedCompletion —
+      # missing from brew's artifact sort table as of 6.0 — is not.)
       completions:
           bash: completions/patchy.bash
           zsh: completions/patchy.zsh
@@ -609,9 +681,18 @@ homebrew_casks:
           name: homebrew-tap
           branch: main
           token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      # patchy and kubectl-patchy are Developer ID-signed and notarized
+      # (notarize.macos above), so Gatekeeper lets them run straight from the
+      # quarantined download. kubectl_complete-patchy cannot be: it is a POSIX
+      # sh script, and codesign/notarization only cover Mach-O binaries and
+      # bundles, so its quarantine flag is stripped here instead. Only that one
+      # file; the binaries keep their quarantine flag and are cleared by the
+      # notarization ticket on first run.
       hooks:
           pre:
               install: |
                   if OS.mac?
-                    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/patchy", "#{staged_path}/kubectl-patchy", "#{staged_path}/completions/kubectl_complete-patchy"]
+                    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/completions/kubectl_complete-patchy"]
+
                   end
+

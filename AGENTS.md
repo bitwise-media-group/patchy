@@ -108,8 +108,9 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-brande
                     the commands' Short/Long/Example, not the markdown; docs/cli.md beside it
                     is the hand-written tour.
 completions/        GENERATED shell completions, committed so the Homebrew cask installs them
-                    as static files (executing a freshly-downloaded binary at install time
-                    trips Gatekeeper). `mise run docs` writes both this and docs/cli/.
+                    as static files (deterministic, and the cask never executes the binary
+                    at install time). `mise run docs` writes both this and docs/cli/.
+
                     kubectl_complete-patchy is the exception — hand-written, and the reason
                     `kubectl patchy` completes: kubectl ignores a plugin's completion script
                     and instead runs kubectl_complete-<plugin> from PATH.

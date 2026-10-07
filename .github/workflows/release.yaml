@@ -5,7 +5,8 @@
 # release-please watches main and keeps a release PR current from the Conventional
 # Commit history; when that PR merges the workflow cuts the draft GitHub release +
 # vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
-# keyless cosign signatures, and a SLSA build-provenance attestation over
+# keyless cosign signatures (linux/windows), Developer ID-signed + notarized
+# darwin binaries, and a SLSA build-provenance attestation over
 # everything in checksums.txt. Container images are published by goreleaser
 # (dockers_v2 over the repo-root Dockerfile.*) to ghcr, and their digests
 # (dist/digests.txt) get the same build-provenance attestation as the archives.
@@ -69,6 +70,16 @@ jobs:
             # PAT with write access to bitwise-media-group/homebrew-tap — the default
             # GITHUB_TOKEN cannot push the cask to another repository.
             homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+            # Apple signing + notarization of the darwin binaries (notarize.macos in
+            # .goreleaser.yaml). Org secrets scoped to the notarizing repos: the
+            # shared open-source Developer ID Application certificate (+ its export
+            # password) and the App Store Connect team API key. Setup is documented
+            # in github-workflows README → "macOS notarization: org setup".
+            macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
+            macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
+            macos-notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+            macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+            macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
 
     # Package, sign, and push the helm chart to ghcr — only when this run cut a
     # release (release_created is an empty string otherwise). Runs after the

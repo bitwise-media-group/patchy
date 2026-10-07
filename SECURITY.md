@@ -21,10 +21,12 @@ scope, and the isolation of the agent from the code it operates on. It defends a
   frontmatter, model allowlists, clamped budgets) and executed only inside the disposable Job pod, never on a
   controller; repository state is verified rather than trusting agent claims.
 - **Tampered release artifacts** — releases ship `checksums.txt`, a SLSA build-provenance attestation, keyless Sigstore
-  (cosign) bundles per binary, and an SPDX SBOM per archive.
+  (cosign) bundles per linux/windows binary, Developer ID-signed and Apple-notarized darwin binaries, and an SPDX SBOM
+  per binary.
 
 Out of scope: the repositories patchy operates on and the model provider itself; a compromise of the release workflow's
-signing identity; and a compromise of the cluster patchy runs in.
+signing identity or of the organisation's Apple Developer ID certificate; and a compromise of the cluster patchy runs
+in.
 
 ## Code scanning triage
 

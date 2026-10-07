@@ -2,7 +2,7 @@
     {
         "name": "controllers-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -14,7 +14,7 @@
     {
         "name": "fakegithub-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -26,7 +26,7 @@
     {
         "name": "controllers-need-the-kubernetes-api",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -43,7 +43,7 @@
     {
         "name": "controllers-rbac-is-the-minimal-cr-and-job-lifecycle",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -61,7 +61,7 @@
     {
         "name": "status-server-needs-the-kubernetes-api",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -78,7 +78,7 @@
     {
         "name": "status-server-rbac-is-the-minimal-read-and-spec-write",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -96,7 +96,7 @@
     {
         "name": "status-server-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -108,7 +108,7 @@
     {
         "name": "status-server-c0255-c0258-mounts-its-own-auth-config",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -120,7 +120,7 @@
     {
         "name": "configmaps-c0012-key-name-regex-false-positives",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -132,7 +132,7 @@
     {
         "name": "controllers-c0207-github-app-id-is-not-a-credential",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -144,7 +144,7 @@
     {
         "name": "controllers-c0255-c0258-mount-their-own-credentials",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -156,7 +156,7 @@
     {
         "name": "images-c0237-signed-but-scanner-cannot-see-it",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -168,7 +168,7 @@
     {
         "name": "dev-webhook-ingress-c0263-tls-terminates-at-the-tunnel",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -180,7 +180,7 @@
     {
         "name": "egress-broker-needs-the-kubernetes-api",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -197,7 +197,7 @@
     {
         "name": "egress-broker-rbac-is-tokenreview-only",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -215,7 +215,7 @@
     {
         "name": "egress-broker-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",
@@ -227,7 +227,7 @@
     {
         "name": "egress-broker-c0255-c0258-mounts-the-model-credential",
         "policyType": "postureExceptionPolicy",
-        "actions": ["alertOnly"],
+        "actions": ["disable"],
         "resources": [
             {
                 "designatorType": "Attributes",

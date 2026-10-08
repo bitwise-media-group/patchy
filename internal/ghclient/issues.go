@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v92/github"
 )
 
 // listPageSize is the per-page size for paginated list calls.
@@ -65,7 +65,7 @@ func (c *Client) Create(ctx context.Context, repo Repo, req IssueRequest) (*Issu
 
 // Comment adds a comment to the issue.
 func (c *Client) Comment(ctx context.Context, repo Repo, number int, body string) error {
-	comment := &github.IssueComment{Body: new(body)}
+	comment := github.IssueCommentRequest{Body: body}
 	if _, _, err := c.gh.Issues.CreateComment(ctx, repo.Owner, repo.Name, number, comment); err != nil {
 		return fmt.Errorf("ghclient: comment on %s#%d: %w", repo, number, err)
 	}
@@ -74,8 +74,8 @@ func (c *Client) Comment(ctx context.Context, repo Repo, number int, body string
 
 // EditComment replaces the body of an existing issue comment.
 func (c *Client) EditComment(ctx context.Context, repo Repo, commentID int64, body string) error {
-	comment := &github.IssueComment{Body: new(body)}
-	if _, _, err := c.gh.Issues.EditComment(ctx, repo.Owner, repo.Name, commentID, comment); err != nil {
+	comment := github.IssueCommentRequest{Body: body}
+	if _, _, err := c.gh.Issues.UpdateComment(ctx, repo.Owner, repo.Name, commentID, comment); err != nil {
 		return fmt.Errorf("ghclient: edit comment %d on %s: %w", commentID, repo, err)
 	}
 	return nil

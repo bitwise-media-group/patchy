@@ -181,7 +181,10 @@ type Scan struct {
 	AllowlistMaxDays int `yaml:"allowlistMaxDays"`
 	// AllowlistNewDays is the expiry stamped on new derived entries
 	// (default 90). Surviving entries keep the date they were first
-	// accepted with, so regeneration never rolls the clock forward.
+	// accepted with, so regeneration never rolls a live acceptance
+	// forward — except one whose date has already lapsed (on or before
+	// today), which is renewed to this horizon as a fresh acceptance,
+	// reviewed as a date change in the upgrade diff.
 	AllowlistNewDays int `yaml:"allowlistNewDays"`
 }
 

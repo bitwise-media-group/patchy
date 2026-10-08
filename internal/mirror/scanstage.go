@@ -211,7 +211,9 @@ type AllowlistResult struct {
 	// Generated is false when the entry does not opt in.
 	Generated bool `json:"generated"`
 	Kept      int  `json:"kept"`
-	Added     int  `json:"added"`
+	// Renewed lists still-reported IDs whose lapsed expiry was restamped.
+	Renewed []string `json:"renewed,omitempty"`
+	Added   int      `json:"added"`
 	// Dropped lists IDs no longer reported.
 	Dropped []string `json:"dropped,omitempty"`
 }
@@ -258,11 +260,18 @@ func (e *Engine) DeriveAllowlist(ctx context.Context, entry spec.Entry) (*Allowl
 	if err := writeFile(path, rendered); err != nil {
 		return nil, err
 	}
+	renewed := make([]string, 0, len(stats.Renewed))
+	for _, r := range stats.Renewed {
+		e.notef(entry.Name, "allowlist", "renewing %s (expired on %s)", r.ID, r.ExpiredAt)
+		renewed = append(renewed, r.ID)
+	}
 	sort.Strings(stats.Dropped)
 	for _, id := range stats.Dropped {
 		e.notef(entry.Name, "allowlist", "dropping %s (no longer reported)", id)
 	}
-	e.notef(entry.Name, "allowlist", "wrote %s (%d kept, %d new, %d dropped)",
-		spec.AllowlistFile, stats.Kept, stats.Added, len(stats.Dropped))
-	return &AllowlistResult{Generated: true, Kept: stats.Kept, Added: stats.Added, Dropped: stats.Dropped}, nil
+	e.notef(entry.Name, "allowlist", "wrote %s (%d kept, %d renewed, %d new, %d dropped)",
+		spec.AllowlistFile, stats.Kept, len(stats.Renewed), stats.Added, len(stats.Dropped))
+	return &AllowlistResult{
+		Generated: true, Kept: stats.Kept, Renewed: renewed, Added: stats.Added, Dropped: stats.Dropped,
+	}, nil
 }

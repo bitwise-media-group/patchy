@@ -150,11 +150,11 @@ func TestEngineScanRoster(t *testing.T) {
 	})
 }
 
-func TestEngineDeriveAllowlist(t *testing.T) {
+// allowlistEngine opts the fixture chart into allowlist generation (with a
+// preamble) and returns an engine whose scan reports criticalFinding.
+func allowlistEngine(t *testing.T) (*fixture, *Engine, spec.Entry) {
+	t.Helper()
 	f, _ := scanFixture(t)
-	ctx := context.Background()
-
-	// Opt the chart into generation with a preamble.
 	manifest := f.read("charts/demo/manifest.yaml")
 	manifest = strings.Replace(manifest, "publish:", `scan:
   allowlist:
@@ -169,6 +169,13 @@ publish:`, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return f, eng, entry
+}
+
+func TestEngineDeriveAllowlist(t *testing.T) {
+	f, eng, entry := allowlistEngine(t)
+	ctx := context.Background()
+
 	res, err := eng.DeriveAllowlist(ctx, entry)
 	if err != nil {
 		t.Fatalf("DeriveAllowlist: %v", err)
@@ -191,6 +198,43 @@ publish:`, 1)
 	}
 	if report.Failed() {
 		t.Errorf("gate after derivation = %+v", report)
+	}
+}
+
+// A still-reported entry whose expiry lapsed is renewed, narrated, and
+// clears lint again — the upgrade PR is the re-review.
+func TestEngineDeriveAllowlistRenewsLapsed(t *testing.T) {
+	f, eng, entry := allowlistEngine(t)
+	ctx := context.Background()
+
+	var notes []string
+	eng.onEvent = func(ev Event) { notes = append(notes, ev.Message) }
+	f.write("charts/demo/security/allowlist.yaml", `vulnerabilities:
+  - id: CVE-2026-1111
+    statement: s
+    expired_at: "2026-08-01"
+`)
+	res, err := eng.DeriveAllowlist(ctx, entry)
+	if err != nil {
+		t.Fatalf("DeriveAllowlist (lapsed): %v", err)
+	}
+	if res.Kept != 0 || res.Added != 0 || len(res.Renewed) != 1 || res.Renewed[0] != "CVE-2026-1111" {
+		t.Errorf("result = %+v", res)
+	}
+	joined := strings.Join(notes, "\n")
+	if !strings.Contains(joined, "renewing CVE-2026-1111 (expired on 2026-08-01)") ||
+		!strings.Contains(joined, "(0 kept, 1 renewed, 0 new, 0 dropped)") {
+		t.Errorf("notes:\n%s", joined)
+	}
+	if raw := f.read("charts/demo/security/allowlist.yaml"); !strings.Contains(raw, `expired_at: "2026-11-09"`) {
+		t.Errorf("renewed expiry:\n%s", raw)
+	}
+	lint, err := eng.Validate(ctx, entry, []string{StageLint})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if strings.Contains(strings.Join(lint.Lint, "\n"), "CVE-2026-1111") {
+		t.Errorf("lint after renewal = %v", lint.Lint)
 	}
 }
 

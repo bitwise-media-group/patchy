@@ -30,14 +30,27 @@ type Finding struct {
 // Stats summarizes one derivation for narration.
 type Stats struct {
 	Kept    int
+	Renewed []Renewal
 	Added   int
 	Dropped []string
+}
+
+// Renewal records a surviving entry whose expiry had already lapsed and
+// was restamped like a new acceptance.
+type Renewal struct {
+	ID string
+	// ExpiredAt is the lapsed date the previous file carried.
+	ExpiredAt string
 }
 
 // Derive regenerates the allowlist entries from findings against the
 // previous file. Entries come out sorted by ID; surviving IDs keep their
 // previous expiry and notes, new IDs expire newDays after today, and
-// previous IDs no longer reported are dropped (returned in Stats).
+// previous IDs no longer reported are dropped (returned in Stats). A
+// surviving entry whose expiry is on or before today (lint's boundary) is
+// renewed to the new-entry expiry instead: it already blocks lint, and the
+// date change surfaces in the upgrade diff for review. Unexpired entries
+// never move, so regeneration cannot roll a live acceptance forward.
 func Derive(findings []Finding, prev *spec.Allowlist, today time.Time, newDays int) ([]spec.AllowlistEntry, Stats) {
 	byID := map[string][]Finding{}
 	for _, f := range findings {
@@ -63,16 +76,18 @@ func Derive(findings []Finding, prev *spec.Allowlist, today time.Time, newDays i
 	var stats Stats
 	for _, id := range ids {
 		entry := spec.AllowlistEntry{ID: id, Statement: statement(byID[id])}
-		if prevEntry, ok := prevByID[id]; ok && prevEntry.ExpiredAt != "" {
-			entry.ExpiredAt = prevEntry.ExpiredAt
-			entry.Notes = prevEntry.Notes
-			stats.Kept++
-		} else {
+		prevEntry, ok := prevByID[id]
+		entry.Notes = prevEntry.Notes
+		switch {
+		case !ok || prevEntry.ExpiredAt == "":
 			entry.ExpiredAt = newExpiry
-			if prevEntry, ok := prevByID[id]; ok {
-				entry.Notes = prevEntry.Notes
-			}
 			stats.Added++
+		case lapsed(prevEntry.ExpiredAt, today):
+			entry.ExpiredAt = newExpiry
+			stats.Renewed = append(stats.Renewed, Renewal{ID: id, ExpiredAt: prevEntry.ExpiredAt})
+		default:
+			entry.ExpiredAt = prevEntry.ExpiredAt
+			stats.Kept++
 		}
 		entries = append(entries, entry)
 	}
@@ -82,6 +97,14 @@ func Derive(findings []Finding, prev *spec.Allowlist, today time.Time, newDays i
 		}
 	}
 	return entries, stats
+}
+
+// lapsed reports whether expiredAt is on or before today, matching lint's
+// "expired — re-review required" boundary. An unparseable date is left for
+// lint to reject rather than silently replaced.
+func lapsed(expiredAt string, today time.Time) bool {
+	expiry, err := time.Parse("2006-01-02", expiredAt)
+	return err == nil && !expiry.After(today)
 }
 
 // prevOrder lists previous IDs in file order, deduplicated.

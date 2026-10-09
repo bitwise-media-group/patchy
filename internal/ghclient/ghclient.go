@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v92/github"
 )
 
 // Repo identifies a GitHub repository.

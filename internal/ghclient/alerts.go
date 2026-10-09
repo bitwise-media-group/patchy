@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v92/github"
 )
 
 // GetAlert fetches one code-scanning alert.

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v92/github"
 )
 
 // DefaultMaxAlerts bounds one backfill enumeration (100 alerts per page,

@@ -4,7 +4,10 @@ module github.com/bitwise-media-group/patchy/e2e
 
 go 1.26.6
 
-replace github.com/bitwise-media-group/patchy => ..
+// The trailing slash is load-bearing: Renovate's gomodTidyAll only recognizes
+// a local replace written as ./ or ../, and without it the root module's
+// bumps would never re-tidy this one.
+replace github.com/bitwise-media-group/patchy => ../
 
 require (
 	github.com/bitwise-media-group/patchy v0.0.0-00010101000000-000000000000

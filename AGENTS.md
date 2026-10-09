@@ -205,7 +205,7 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 
 ## Conventions
 
-- Go 1.26; cobra + viper (`PATCHY_` env prefix); `log/slog` to stderr (stdout is reserved — agent-runner's event
+- Go 1.27; cobra + viper (`PATCHY_` env prefix); `log/slog` to stderr (stdout is reserved — agent-runner's event
   stream lives there); OpenTelemetry with an otelslog fanout that never fails startup.
 - Every package has a `doc.go`; every file starts with the MIT SPDX header (enforced by revive + addlicense).
 - Table-driven stdlib tests, no testify; fakes over mocks; controller-runtime fake client for reconciler tests;

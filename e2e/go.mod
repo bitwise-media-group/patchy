@@ -2,7 +2,7 @@
 // the product binaries.
 module github.com/bitwise-media-group/patchy/e2e
 
-go 1.26.6
+go 1.27.2
 
 // The trailing slash is load-bearing: Renovate's gomodTidyAll only recognizes
 // a local replace written as ./ or ../, and without it the root module's

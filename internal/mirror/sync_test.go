@@ -29,13 +29,16 @@ func keyPair(t *testing.T) (keyPath, pubPath string, password []byte) {
 	}
 	password = []byte("test-password")
 	dir := t.TempDir()
-	cmd := exec.Command("cosign", "generate-key-pair")
-	cmd.Dir = dir
+	prefix := filepath.Join(dir, "cosign")
+	// Write through --output-key-prefix rather than cmd.Dir: cosign is a lazy
+	// mise tool, and its shim resolves the repo's config from the working
+	// directory, so run from outside the repo it cannot find a cosign to install.
+	cmd := exec.Command("cosign", "generate-key-pair", "--output-key-prefix", prefix)
 	cmd.Env = append(cmd.Environ(), "COSIGN_PASSWORD="+string(password))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cosign generate-key-pair: %v (%s)", err, out)
 	}
-	return filepath.Join(dir, "cosign.key"), filepath.Join(dir, "cosign.pub"), password
+	return prefix + ".key", prefix + ".pub", password
 }
 
 // keyedEngine rebuilds the fixture's engine with key-based sign/verify

@@ -40,7 +40,7 @@ includes = [
 # (v0.24.x). yq extracts the CRD spec schemas into the patchy-config values
 # schema (hack/codegen.sh).
 [tools]
-go = "1.27.1"
+go = "1.27.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "1.8.0"
 # osv-scanner is a runtime dependency of `patchy mirror` image scanning
 # (the scan stage shells out to it); cosign — which sign/verify shell out

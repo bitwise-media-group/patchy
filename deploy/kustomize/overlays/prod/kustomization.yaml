@@ -41,7 +41,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
       digest: sha256:b944857b6f11b9ec0aa7dd400d4c6c829b0bd744290b8c112fb6f6a903dd0ba8
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
-      digest: sha256:e1f04c8cbf75939101977fa9fb2f6fad0d6c80f407b55efb1d8ce98c97ae09c3
+      digest: sha256:adee164410d3fb2b6c3c4a838024e4f89d066ac48d3cc5db709dfef2c0112dd4
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
       digest: sha256:43b4f379ac71ed34e635fa913942eaecae77efb68e9f6a46e8a57eb482b63ecf
     - name: ghcr.io/bitwise-media-group/patchy/status-server

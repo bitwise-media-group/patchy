@@ -45,7 +45,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
       digest: sha256:0684b781214dfe59947d8953209f78176e84ef0b8c208159fd13849bd0b499c0
     - name: ghcr.io/bitwise-media-group/patchy/status-server
-      digest: sha256:f862e8b1eac84ac407cfa36137ed1fa3d8f839849debacbdb11c5a11b0bb6af0
+      digest: sha256:a5e2ed82dbfcc01ae7ac84a1e79ad52ec6d6a51fc47700dcbae4be173c339c86
 
 patches:
     - path: configmap-patch.yaml

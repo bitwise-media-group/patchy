@@ -45,7 +45,7 @@ go = "1.27.2"
 # osv-scanner is a runtime dependency of `patchy mirror` image scanning
 # (the scan stage shells out to it); cosign — which sign/verify shell out
 # to — is already pinned by the shared toolchain.
-"aqua:google/osv-scanner" = "2.6.0"
+"aqua:google/osv-scanner" = "2.7.0"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.22.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "v0.25.2"
 "go:golang.org/x/perf/cmd/benchstat" = "0.0.0-20260709024250-82a0b07e230d"

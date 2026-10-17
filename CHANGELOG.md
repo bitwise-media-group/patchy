@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.4](https://github.com/bitwise-media-group/patchy/compare/v0.11.3...v0.11.4) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#418](https://github.com/bitwise-media-group/patchy/issues/418)) ([eee216a](https://github.com/bitwise-media-group/patchy/commit/eee216a241f073e319298998687d30403e09221e))
+* **deps:** update aws-sdk-go-v2 monorepo ([#428](https://github.com/bitwise-media-group/patchy/issues/428)) ([555b40e](https://github.com/bitwise-media-group/patchy/commit/555b40ebc431c367903de661f41315aa95c0ebe4))
+* **deps:** update aws-sdk-go-v2 monorepo ([#436](https://github.com/bitwise-media-group/patchy/issues/436)) ([9624267](https://github.com/bitwise-media-group/patchy/commit/9624267fab023499fe86ab4b4e8541e3dce0d4df))
+* **deps:** update bitwise-media-group/github-workflows action to v8 ([#424](https://github.com/bitwise-media-group/patchy/issues/424)) ([b841619](https://github.com/bitwise-media-group/patchy/commit/b84161970409ec82359e29f43a9b4db63de4b447))
+* **deps:** update module github.com/aws/smithy-go to v1.28.4 ([#419](https://github.com/bitwise-media-group/patchy/issues/419)) ([4557200](https://github.com/bitwise-media-group/patchy/commit/455720016202e97e3ba8c631fcd7cbcd2c209cdf))
+* **deps:** update module github.com/aws/smithy-go to v1.28.5 ([#437](https://github.com/bitwise-media-group/patchy/issues/437)) ([1fe74c3](https://github.com/bitwise-media-group/patchy/commit/1fe74c396dd36b76e3c950c49f205091e072c428))
+* **deps:** update module github.com/azure/azure-sdk-for-go/sdk/azcore to v1.23.3 ([#420](https://github.com/bitwise-media-group/patchy/issues/420)) ([9da54f5](https://github.com/bitwise-media-group/patchy/commit/9da54f549bbf2973814f8a1c9b79c4f0f8a7d9fb))
+* **deps:** update module golang.org/x/sync to v0.24.0 ([#422](https://github.com/bitwise-media-group/patchy/issues/422)) ([855d8e4](https://github.com/bitwise-media-group/patchy/commit/855d8e444c84ccaad53351a606d228d1d981379e))
+* **deps:** update module golang.org/x/term to v0.47.0 ([#434](https://github.com/bitwise-media-group/patchy/issues/434)) ([edfbe58](https://github.com/bitwise-media-group/patchy/commit/edfbe58e7deed188e9085295856e2b8ea5307dd3))
+* **deps:** update module google.golang.org/api to v0.301.0 ([#423](https://github.com/bitwise-media-group/patchy/issues/423)) ([bd99f07](https://github.com/bitwise-media-group/patchy/commit/bd99f0758f9276c17d967855608254a53910eb0e))
+
 ## [0.11.3](https://github.com/bitwise-media-group/patchy/compare/v0.11.2...v0.11.3) (2026-10-09)
 
 

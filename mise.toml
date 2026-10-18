@@ -46,7 +46,7 @@ go = "1.27.2"
 # (the scan stage shells out to it); cosign — which sign/verify shell out
 # to — is already pinned by the shared toolchain.
 "aqua:google/osv-scanner" = "2.7.0"
-"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.22.0"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.23.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "v0.25.2"
 "go:golang.org/x/perf/cmd/benchstat" = "0.0.0-20260709024250-82a0b07e230d"
 "aqua:mikefarah/yq" = "4.54.1"

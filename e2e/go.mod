@@ -11,7 +11,7 @@ replace github.com/bitwise-media-group/patchy => ../
 
 require (
 	github.com/bitwise-media-group/patchy v0.0.0-00010101000000-000000000000
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-logr/logr v1.4.4
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1

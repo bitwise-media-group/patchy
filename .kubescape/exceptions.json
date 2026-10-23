@@ -154,7 +154,7 @@
         "posturePolicies": [{ "controlID": "C-0255" }, { "controlID": "C-0258" }]
     },
     {
-        "name": "images-c0237-signed-but-scanner-cannot-see-it",
+        "name": "images-c0236-c0237-signed-but-scanner-cannot-see-it",
         "policyType": "postureExceptionPolicy",
         "actions": ["disable"],
         "resources": [
@@ -163,7 +163,7 @@
                 "attributes": { "name": ".*patchy-.*" }
             }
         ],
-        "posturePolicies": [{ "controlID": "C-0237" }]
+        "posturePolicies": [{ "controlID": "C-0236" }, { "controlID": "C-0237" }]
     },
     {
         "name": "dev-webhook-ingress-c0263-tls-terminates-at-the-tunnel",
@@ -176,6 +176,18 @@
             }
         ],
         "posturePolicies": [{ "controlID": "C-0263" }]
+    },
+    {
+        "name": "agents-egress-c0299-selects-runtime-created-job-pods",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["disable"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "kind": "NetworkPolicy", "name": "patchy-agents-egress", "namespace": "patchy-agents" }
+            }
+        ],
+        "posturePolicies": [{ "controlID": "C-0299" }]
     },
     {
         "name": "egress-broker-needs-the-kubernetes-api",

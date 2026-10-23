@@ -51,7 +51,15 @@ controllers' mounts. The mounts are the design: every controller file-mounts the
 GitHub-facing three mount the App key (charts/patchy values and base manifests do the same; those scans just have no
 Secret objects in scope). Flagging "workload can read a secret it mounts" is tautological here.
 
-## images-c0237-signed-but-scanner-cannot-see-it (C-0237)
+## agents-egress-c0299-selects-runtime-created-job-pods (C-0299)
+
+`patchy-agents-egress` selects the agent pods (`app.kubernetes.io/name: patchy-agent`), which no manifest declares: the
+investigation/remediation/evaluation controllers create those Jobs at runtime (internal/jobs). A static scan of the
+rendered manifests therefore never finds a workload the policy matches and reports it as dangling. The policy is the
+agents' only egress allowance under the namespace's default deny — removing it would cut the sandbox off from the
+artifact server and the egress broker.
+
+## images-c0236-c0237-signed-but-scanner-cannot-see-it (C-0236, C-0237)
 
 The images ARE signed: GoReleaser's `docker_signs` runs keyless cosign in the release workflow (GitHub Actions OIDC
 identity), which as of cosign 3.x attaches signatures in the new sigstore bundle format
@@ -63,4 +71,5 @@ scheme kubescape's check looks for. Verify for yourself:
       --certificate-oidc-issuer https://token.actions.githubusercontent.com \
       ghcr.io/bitwise-media-group/patchy/source-controller:v0.3.0
 
-Drop this entry if/when kubescape's signature rule learns the bundle format.
+C-0236 (verify the signature) fails for the same reason C-0237 (a signature exists) does: it finds no legacy `.sig` tag
+to verify. Drop this entry if/when kubescape's signature rules learn the bundle format.

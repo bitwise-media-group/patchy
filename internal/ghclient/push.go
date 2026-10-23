@@ -40,7 +40,7 @@ func (c *Client) PushBranch(ctx context.Context, repo Repo, req BranchPush) erro
 	for _, f := range req.Files {
 		// Blobs go up base64-encoded, so binary content is safe.
 		blob, _, err := c.gh.Git.CreateBlob(ctx, repo.Owner, repo.Name, github.Blob{
-			Content:  new(base64.StdEncoding.EncodeToString(f.Content)),
+			Content:  base64.StdEncoding.EncodeToString(f.Content),
 			Encoding: new("base64"),
 		})
 		if err != nil {

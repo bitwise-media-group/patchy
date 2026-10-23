@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-github/v92/github"
+	"github.com/google/go-github/v93/github"
 )
 
 // listPageSize is the per-page size for paginated list calls.

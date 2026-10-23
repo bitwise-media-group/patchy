@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/google/go-github/v92/github"
+	"github.com/google/go-github/v93/github"
 )
 
 // IsNotFound reports whether err (anywhere in its chain) is a GitHub API

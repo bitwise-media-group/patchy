@@ -19,10 +19,11 @@ import (
 // everything derived from them.
 func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	var (
-		all   bool
-		group string
-		to    string
-		check bool
+		all    bool
+		group  string
+		to     string
+		check  bool
+		pinned bool
 	)
 	cmd := &cobra.Command{
 		Use:   "upgrade [name]...",
@@ -36,10 +37,15 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"upstream has published every member's tag.\n\n" +
 			"--check reports the plan as data without touching the tree (exit 0 with an\n" +
 			"empty groups list when everything is current). patchy never commits: the\n" +
-			"calling pipeline turns the mutated tree into branches and PRs.",
+			"calling pipeline turns the mutated tree into branches and PRs.\n\n" +
+			"--pinned converges on the pins already in the tree, for an external updater\n" +
+			"(Renovate) that moved chart.version or a tracked tag itself: no target is\n" +
+			"resolved and no tracked tag is re-picked, but every pin must satisfy its\n" +
+			"versionConstraint and every lockstep member must share it.",
 		Example: "  patchy mirror upgrade --check -o json\n" +
 			"  patchy mirror upgrade --all\n" +
 			"  patchy mirror upgrade --group flux --to 0.57.0\n" +
+			"  patchy mirror upgrade --pinned kyverno\n" +
 			"  patchy mirror upgrade opentelemetry-collector",
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: mirrorEntryCompletion(opts, f),
@@ -61,6 +67,9 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 				return errUsage(err)
 			}
 
+			if pinned && (to != "" || check) {
+				return errUsage(fmt.Errorf("--pinned cannot be combined with --to or --check"))
+			}
 			if check {
 				plan, err := eng.CheckUpdates(cmd.Context(), entries)
 				if err != nil {
@@ -72,11 +81,19 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			if to != "" && all {
 				return errUsage(fmt.Errorf("--to needs named entries or a --group, not --all"))
 			}
-			targets, err := upgradeTargets(cmd, eng, entries, to)
-			if err != nil {
-				return err
+			upgrade := func(entry spec.Entry) (*mirror.UpgradeResult, error) {
+				return eng.UpgradePinned(cmd.Context(), entry)
 			}
-			results, failed := runUpgrades(cmd, eng, entries, targets, all)
+			if !pinned {
+				targets, err := upgradeTargets(cmd, eng, entries, to)
+				if err != nil {
+					return err
+				}
+				upgrade = func(entry spec.Entry) (*mirror.UpgradeResult, error) {
+					return eng.Upgrade(cmd.Context(), entry, targets[entry.Name])
+				}
+			}
+			results, failed := runUpgrades(entries, all, upgrade)
 			if err := renderUpgradeResults(opts, results, format); err != nil {
 				return err
 			}
@@ -91,6 +108,7 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	fl.StringVar(&group, "group", "", "upgrade one lockstep group")
 	fl.StringVar(&to, "to", "", "target version (default: newest satisfying the constraint)")
 	fl.BoolVar(&check, "check", false, "report the update plan without touching the tree")
+	fl.BoolVar(&pinned, "pinned", false, "converge on the pins already in the tree (validate, don't pick)")
 	_ = cmd.RegisterFlagCompletionFunc("group", noFileCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("to", noFileCompletion)
 	return cmd
@@ -122,12 +140,12 @@ func upgradeTargets(cmd *cobra.Command, eng *mirror.Engine, entries []spec.Entry
 
 // runUpgrades converges every entry, attempting all of them under --all
 // and collecting per-entry failures instead of stopping.
-func runUpgrades(cmd *cobra.Command, eng *mirror.Engine, entries []spec.Entry,
-	targets map[string]string, all bool) ([]mirror.UpgradeResult, int) {
+func runUpgrades(entries []spec.Entry, all bool,
+	upgrade func(spec.Entry) (*mirror.UpgradeResult, error)) ([]mirror.UpgradeResult, int) {
 	var results []mirror.UpgradeResult
 	failed := 0
 	for _, entry := range entries {
-		res, err := eng.Upgrade(cmd.Context(), entry, targets[entry.Name])
+		res, err := upgrade(entry)
 		if err != nil {
 			failed++
 			results = append(results, mirror.UpgradeResult{

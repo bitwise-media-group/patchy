@@ -17,6 +17,7 @@ import (
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/distro"
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
+	"github.com/bitwise-media-group/patchy/internal/mirror/semverpick"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 	"github.com/bitwise-media-group/patchy/internal/mirror/yamledit"
 )
@@ -43,6 +44,89 @@ type UpgradeResult struct {
 // state in place. Later pipeline stages (upstream verification, scanning,
 // allowlist derivation) run on top of the regenerated tree.
 func (e *Engine) Upgrade(ctx context.Context, entry spec.Entry, target string) (*UpgradeResult, error) {
+	return e.upgrade(ctx, entry, target, false)
+}
+
+// UpgradePinned converges one entry on the pins already in the tree: an
+// external updater (Renovate) moved the chart version or a tracked tag,
+// and patchy only regenerates what derives from them. Nothing is picked —
+// no target resolution, no tracked-tag cooldown walk — but every pin is
+// checked against its constraint and its lockstep group first, so a bad
+// bump fails loudly instead of shipping.
+func (e *Engine) UpgradePinned(ctx context.Context, entry spec.Entry) (*UpgradeResult, error) {
+	if err := e.ValidatePins(entry); err != nil {
+		return nil, err
+	}
+	return e.upgrade(ctx, entry, "", true)
+}
+
+// ValidatePins checks an entry's pins as an external updater left them:
+// the version satisfies versionConstraint, every tracked tag satisfies its
+// explicit versionConstraint, and every lockstep group member in the store
+// pins the same version.
+func (e *Engine) ValidatePins(entry spec.Entry) error {
+	ok, err := semverpick.Satisfies(entry.Version(), entry.VersionConstraint())
+	if err != nil {
+		return fmt.Errorf("%s: %w", entry.Name, err)
+	}
+	if !ok {
+		return fmt.Errorf("%s: pinned version %s does not satisfy versionConstraint %q",
+			entry.Name, entry.Version(), entry.VersionConstraint())
+	}
+	if entry.Kind == spec.KindChart {
+		for i, rule := range entry.Chart.Images.Track {
+			if err := validateTrackPin(entry, i, rule); err != nil {
+				return err
+			}
+		}
+	}
+	return e.validateLockstep(entry)
+}
+
+// validateTrackPin checks one tracked tag against its explicit constraint.
+// A derived constraint is the pin's own major, so it can never reject it.
+func validateTrackPin(entry spec.Entry, i int, rule spec.Track) error {
+	pin, err := trackPin(entry, i, rule)
+	if err != nil {
+		return err
+	}
+	if rule.VersionConstraint == "" {
+		return nil
+	}
+	ok, err := semverpick.Satisfies(pin.Current, rule.VersionConstraint)
+	if err != nil {
+		return fmt.Errorf("%s: %s: %w", entry.Name, rule.Image, err)
+	}
+	if !ok {
+		return fmt.Errorf("%s: tracked %s:%s does not satisfy versionConstraint %q",
+			entry.Name, rule.Image, pin.Current, rule.VersionConstraint)
+	}
+	return nil
+}
+
+// validateLockstep checks that every member of the entry's lockstep group
+// pins the entry's version — a half-bumped pair must not ship.
+func (e *Engine) validateLockstep(entry spec.Entry) error {
+	group := entry.Lockstep()
+	if group == "" {
+		return nil
+	}
+	entries, err := e.Entries()
+	if err != nil {
+		return err
+	}
+	for _, other := range entries {
+		if other.Lockstep() == group && other.Version() != entry.Version() {
+			return fmt.Errorf("%s: lockstep group %s diverged: %s pins %s, %s pins %s",
+				entry.Name, group, entry.Name, entry.Version(), other.Name, other.Version())
+		}
+	}
+	return nil
+}
+
+// upgrade is the shared convergence path; pinned keeps the tracked tags
+// already in the values files instead of re-picking them.
+func (e *Engine) upgrade(ctx context.Context, entry spec.Entry, target string, pinned bool) (*UpgradeResult, error) {
 	result := &UpgradeResult{Name: entry.Name, Kind: entry.Kind, From: entry.Version(), To: entry.Version()}
 	before, err := snapshotTree(entry.Dir)
 	if err != nil {
@@ -61,7 +145,7 @@ func (e *Engine) Upgrade(ctx context.Context, entry spec.Entry, target string) (
 		}
 	}
 
-	if entry.Kind == spec.KindChart {
+	if entry.Kind == spec.KindChart && !pinned {
 		tracked, err := e.ApplyTracks(ctx, entry)
 		if err != nil {
 			return nil, err

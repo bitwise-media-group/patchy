@@ -17,6 +17,11 @@ upstream has published every member's tag.
 empty groups list when everything is current). patchy never commits: the
 calling pipeline turns the mutated tree into branches and PRs.
 
+--pinned converges on the pins already in the tree, for an external updater
+(Renovate) that moved chart.version or a tracked tag itself: no target is
+resolved and no tracked tag is re-picked, but every pin must satisfy its
+versionConstraint and every lockstep member must share it.
+
 ```
 patchy mirror upgrade [name]... [flags]
 ```
@@ -27,6 +32,7 @@ patchy mirror upgrade [name]... [flags]
   patchy mirror upgrade --check -o json
   patchy mirror upgrade --all
   patchy mirror upgrade --group flux --to 0.57.0
+  patchy mirror upgrade --pinned kyverno
   patchy mirror upgrade opentelemetry-collector
 ```
 
@@ -37,6 +43,7 @@ patchy mirror upgrade [name]... [flags]
       --check          report the update plan without touching the tree
       --group string   upgrade one lockstep group
   -h, --help           help for upgrade
+      --pinned         converge on the pins already in the tree (validate, don't pick)
       --to string      target version (default: newest satisfying the constraint)
 ```
 

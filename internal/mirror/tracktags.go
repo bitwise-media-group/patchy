@@ -37,6 +37,43 @@ func (e *Engine) checkTracks(ctx context.Context, entry spec.Entry) ([]TrackPlan
 // checkTrack resolves one track rule: current pin from the values file,
 // selected tag from the cooldown walk.
 func (e *Engine) checkTrack(ctx context.Context, entry spec.Entry, i int, rule spec.Track) (TrackPlan, error) {
+	plan, err := trackPin(entry, i, rule)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+
+	constraint := rule.VersionConstraint
+	if constraint == "" {
+		// No explicit range: follow the pin's own release train. The pin
+		// starts at the chart's default tag, so the derived range is the
+		// major that default declared support for.
+		if constraint, err = semverpick.DefaultConstraint(plan.Current); err != nil {
+			return TrackPlan{}, fmt.Errorf("%s: images.track[%d]: derive constraint (set versionConstraint explicitly): %w",
+				entry.Name, i, err)
+		}
+		e.notef(entry.Name, "track", "%s: derived constraint %q from the pinned tag", rule.Image, constraint)
+	}
+
+	cooldownDays := e.global.Update.EffectiveCooldownDays()
+	if rule.CooldownDays != nil {
+		cooldownDays = *rule.CooldownDays
+	}
+	candidates, err := e.reg.Tags(ctx, e.rewrite(rule.Image))
+	if err != nil {
+		return TrackPlan{}, fmt.Errorf("%s: %w", entry.Name, err)
+	}
+	e.notef(entry.Name, "track", "%s: picking newest tag past the %dd cooldown", rule.Image, cooldownDays)
+	selected, err := e.cooldownPick(ctx, entry.Name, rule.Image, candidates, constraint, cooldownDays)
+	if err != nil {
+		return TrackPlan{}, fmt.Errorf("%s: %s: %w", entry.Name, rule.Image, err)
+	}
+	plan.Selected = selected
+	return plan, nil
+}
+
+// trackPin reads one track rule's current pin from its values file, as a
+// plan that keeps it (Selected == Current).
+func trackPin(entry spec.Entry, i int, rule spec.Track) (TrackPlan, error) {
 	if rule.Image == "" {
 		return TrackPlan{}, fmt.Errorf("%s: images.track[%d] missing image", entry.Name, i)
 	}
@@ -73,38 +110,12 @@ func (e *Engine) checkTrack(ctx context.Context, entry spec.Entry, i int, rule s
 		}
 		current = parsed.Tag
 	}
-
-	constraint := rule.VersionConstraint
-	if constraint == "" {
-		// No explicit range: follow the pin's own release train. The pin
-		// starts at the chart's default tag, so the derived range is the
-		// major that default declared support for.
-		if constraint, err = semverpick.DefaultConstraint(current); err != nil {
-			return TrackPlan{}, fmt.Errorf("%s: images.track[%d]: derive constraint (set versionConstraint explicitly): %w",
-				entry.Name, i, err)
-		}
-		e.notef(entry.Name, "track", "%s: derived constraint %q from the pinned tag", rule.Image, constraint)
-	}
-
-	cooldownDays := e.global.Update.EffectiveCooldownDays()
-	if rule.CooldownDays != nil {
-		cooldownDays = *rule.CooldownDays
-	}
-	candidates, err := e.reg.Tags(ctx, e.rewrite(rule.Image))
-	if err != nil {
-		return TrackPlan{}, fmt.Errorf("%s: %w", entry.Name, err)
-	}
-	e.notef(entry.Name, "track", "%s: picking newest tag past the %dd cooldown", rule.Image, cooldownDays)
-	selected, err := e.cooldownPick(ctx, entry.Name, rule.Image, candidates, constraint, cooldownDays)
-	if err != nil {
-		return TrackPlan{}, fmt.Errorf("%s: %s: %w", entry.Name, rule.Image, err)
-	}
 	return TrackPlan{
 		Image:      rule.Image,
 		ValuesFile: valuesFile,
 		ValuesPath: rule.ValuesPath,
 		Current:    current,
-		Selected:   selected,
+		Selected:   current,
 		TagOnly:    tagOnly,
 	}, nil
 }

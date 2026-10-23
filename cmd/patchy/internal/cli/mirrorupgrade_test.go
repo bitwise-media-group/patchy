@@ -151,3 +151,19 @@ func TestUpgradeTargetsExplicit(t *testing.T) {
 		t.Errorf("targets = %v", targets)
 	}
 }
+
+// TestMirrorUpgradePinnedExclusive pins --pinned as a usage error beside
+// the flags that pick versions: it converges on the tree, never a target.
+func TestMirrorUpgradePinnedExclusive(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeMirrorStore(t)
+	for _, args := range [][]string{
+		{"mirror", "upgrade", "--pinned", "--to", "2.0.0", "demo"},
+		{"mirror", "upgrade", "--pinned", "--check", "--all"},
+	} {
+		_, err := execDev(t, args...)
+		if !isUsage(err) || !strings.Contains(err.Error(), "--pinned cannot be combined") {
+			t.Errorf("%v: error = %v, want a --pinned usage error", args, err)
+		}
+	}
+}

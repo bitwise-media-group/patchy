@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.5](https://github.com/bitwise-media-group/patchy/compare/v0.11.4...v0.11.5) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#495](https://github.com/bitwise-media-group/patchy/issues/495)) ([2e64abb](https://github.com/bitwise-media-group/patchy/commit/2e64abb2ccb44e082899813042b3c72be8190125))
+* **deps:** update aws-sdk-go-v2 monorepo ([#513](https://github.com/bitwise-media-group/patchy/issues/513)) ([e71f666](https://github.com/bitwise-media-group/patchy/commit/e71f666b491ea5207cb88504ef79ba517d9d869d))
+* **deps:** update module cloud.google.com/go/asset to v1.30.0 ([#496](https://github.com/bitwise-media-group/patchy/issues/496)) ([cad59fa](https://github.com/bitwise-media-group/patchy/commit/cad59fa9d71cd7aa2d695d3595617167b729870b))
+* **deps:** update module github.com/aws/smithy-go to v1.28.6 ([#487](https://github.com/bitwise-media-group/patchy/issues/487)) ([32a4620](https://github.com/bitwise-media-group/patchy/commit/32a462062fa20cae95e429bef55fef21285685e1))
+* **deps:** update module google.golang.org/api to v0.308.0 ([#488](https://github.com/bitwise-media-group/patchy/issues/488)) ([c5e5771](https://github.com/bitwise-media-group/patchy/commit/c5e57718738598942c56c4d9eb518c7884567345))
+* **deps:** update module google.golang.org/grpc to v1.85.0 ([#521](https://github.com/bitwise-media-group/patchy/issues/521)) ([6ca37c3](https://github.com/bitwise-media-group/patchy/commit/6ca37c34e620ca749a34f676348defd0692ab024))
+
 ## [0.11.4](https://github.com/bitwise-media-group/patchy/compare/v0.11.3...v0.11.4) (2026-10-23)
 
 

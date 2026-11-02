@@ -243,7 +243,15 @@ func TestVerifyArgs(t *testing.T) {
 			name:    "key with defaulted digest",
 			subject: Subject{Ref: "reg.example.test/app:1.0.0", KeyRef: "cosign.pub"},
 			wantArgs: []string{
-				"verify", "--key", "cosign.pub", "--signature-digest-algorithm=sha256",
+				"verify", "--key", "cosign.pub",
+				"reg.example.test/app:1.0.0",
+			},
+		},
+		{
+			name:    "key with an explicit sha256 digest",
+			subject: Subject{Ref: "reg.example.test/app:1.0.0", KeyRef: "cosign.pub", HashAlgorithm: "sha256"},
+			wantArgs: []string{
+				"verify", "--key", "cosign.pub",
 				"reg.example.test/app:1.0.0",
 			},
 		},
@@ -290,7 +298,7 @@ func TestVerifyArgs(t *testing.T) {
 				SignatureRepository: "ghcr.example.test/signatures",
 			},
 			wantArgs: []string{
-				"verify", "--key", "cosign.pub", "--signature-digest-algorithm=sha256",
+				"verify", "--key", "cosign.pub",
 				"reg.example.test/app:1.0.0",
 			},
 			wantEnvs: []string{"COSIGN_REPOSITORY=ghcr.example.test/signatures"},

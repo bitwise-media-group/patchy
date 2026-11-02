@@ -8,7 +8,8 @@
 // API — never legacy .sig tags — the format policy engines' bundle rules
 // and modern consumers verify.
 //
-// The KMS URI schemes register through blank imports of the sigstore KMS
-// providers; a signer for tests can point KeyRef at a local cosign
-// keypair instead.
+// Signing shells out to the cosign binary (>= v3) with a generated
+// sigstore signing config, the only service channel that is not
+// deprecated; KMS URI schemes are whatever that cosign build supports. A
+// signer for tests can point at a local cosign keypair instead.
 package sign

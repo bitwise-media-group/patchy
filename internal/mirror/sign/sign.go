@@ -5,8 +5,10 @@ package sign
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -18,13 +20,54 @@ import (
 const signTimeout = 3 * time.Minute
 
 // The public sigstore trust services keyless signing pins deliberately —
-// public repos want the public log, and the storage format is bundles
-// either way.
-const (
-	defaultFulcioURL     = "https://fulcio.sigstore.dev"
-	defaultRekorURL      = "https://rekor.sigstore.dev"
-	defaultOIDCIssuerURL = "https://oauth2.sigstore.dev/auth"
+// public repos want the public log. Each entry mirrors the public-good
+// instance's own signing config (operator, API version, validity start),
+// minus the TSA: the tlog entry is the signing-time evidence.
+var (
+	fulcioService = signingService{
+		URL: "https://fulcio.sigstore.dev", MajorAPIVersion: 1,
+		ValidFor: serviceValidity{Start: "2022-04-13T20:06:15Z"}, Operator: "sigstore.dev",
+	}
+	oidcService = signingService{
+		URL: "https://oauth2.sigstore.dev/auth", MajorAPIVersion: 1,
+		ValidFor: serviceValidity{Start: "2022-04-13T20:06:15Z"}, Operator: "sigstore.dev",
+	}
+	rekorService = signingService{
+		URL: "https://rekor.sigstore.dev", MajorAPIVersion: 1,
+		ValidFor: serviceValidity{Start: "2021-01-12T11:53:27Z"}, Operator: "sigstore.dev",
+	}
 )
+
+// signingConfigMediaType is the sigstore signing config schema cosign v3
+// reads through --signing-config.
+const signingConfigMediaType = "application/vnd.dev.sigstore.signingconfig.v0.2+json"
+
+// signingConfig is the sigstore protobuf-specs SigningConfig, JSON-encoded:
+// the service set one cosign sign run may use. A service list left empty
+// is a service never contacted.
+type signingConfig struct {
+	MediaType       string           `json:"mediaType"`
+	CAURLs          []signingService `json:"caUrls,omitempty"`
+	OIDCURLs        []signingService `json:"oidcUrls,omitempty"`
+	RekorTlogURLs   []signingService `json:"rekorTlogUrls,omitempty"`
+	RekorTlogConfig serviceSelector  `json:"rekorTlogConfig"`
+	TSAConfig       serviceSelector  `json:"tsaConfig"`
+}
+
+type signingService struct {
+	URL             string          `json:"url"`
+	MajorAPIVersion int             `json:"majorApiVersion"`
+	ValidFor        serviceValidity `json:"validFor"`
+	Operator        string          `json:"operator"`
+}
+
+type serviceValidity struct {
+	Start string `json:"start"`
+}
+
+type serviceSelector struct {
+	Selector string `json:"selector,omitempty"`
+}
 
 // ToolRunner executes the cosign binary; a seam so tests can can its
 // invocations. scan.ExecRunner satisfies it.
@@ -46,7 +89,6 @@ type Signer struct {
 	// keypair instead of keyless/KMS).
 	keyRef        string
 	password      []byte
-	ignoreTlog    bool
 	allowInsecure bool
 }
 
@@ -72,7 +114,6 @@ func NewWithKeyFile(keyPath string, password []byte, runner ToolRunner) *Signer 
 		runner:        runner,
 		keyRef:        keyPath,
 		password:      password,
-		ignoreTlog:    true,
 		allowInsecure: true,
 	}
 }
@@ -87,7 +128,10 @@ func (s *Signer) Sign(ctx context.Context, ref string, recursive bool) error {
 	ctx, cancel := context.WithTimeout(ctx, signTimeout)
 	defer cancel()
 
-	tlogUpload := false
+	// Every service comes from the signing config, never per-service flags
+	// (deprecated in cosign v3). A key signs with none — no Fulcio, no
+	// tlog, no TSA — so its bundle carries the signature alone.
+	cfg := signingConfig{MediaType: signingConfigMediaType}
 	var keyArgs, env []string
 	switch {
 	case s.keyRef != "":
@@ -98,27 +142,28 @@ func (s *Signer) Sign(ctx context.Context, ref string, recursive bool) error {
 	default:
 		// Keyless: ambient OIDC (the CI workflow identity) through the
 		// pinned public trust services.
-		keyArgs = []string{
-			"--fulcio-url=" + defaultFulcioURL,
-			"--rekor-url=" + defaultRekorURL,
-			"--oidc-issuer=" + defaultOIDCIssuerURL,
+		cfg.CAURLs = []signingService{fulcioService}
+		cfg.OIDCURLs = []signingService{oidcService}
+		if s.signing.Keyless.TlogUploadEnabled() {
+			cfg.RekorTlogURLs = []signingService{rekorService}
+			cfg.RekorTlogConfig.Selector = "ANY"
 		}
-		tlogUpload = s.signing.Keyless.TlogUploadEnabled()
 	}
-	if s.ignoreTlog {
-		tlogUpload = false
+	cfgPath, err := writeSigningConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("sign %s: %w", ref, err)
 	}
+	defer func() { _ = os.Remove(cfgPath) }()
 
-	// --new-bundle-format is deprecated-but-live in cosign v3 and pins
-	// bundle storage on older v2.5–2.x installs; drop it when cosign
-	// removes the flag. --use-signing-config=false keeps the pinned
-	// service URLs authoritative.
+	// --signing-config also pins the storage format: cosign accepts it only
+	// for sigstore bundles, which it attaches as OCI 1.1 referrers — never
+	// sha256-<digest>.sig tags — so a cosign that would write legacy tags
+	// fails instead. (A registry without the referrers API gets the spec's
+	// sha256-<digest> fallback index tag; ECR serves the API.)
 	args := []string{
 		"sign", "--yes",
 		"--recursive=" + strconv.FormatBool(recursive),
-		"--new-bundle-format=true",
-		"--use-signing-config=false",
-		"--tlog-upload=" + strconv.FormatBool(tlogUpload),
+		"--signing-config=" + cfgPath,
 	}
 	args = append(args, keyArgs...)
 	if s.allowInsecure {
@@ -130,4 +175,26 @@ func (s *Signer) Sign(ctx context.Context, ref string, recursive bool) error {
 		return fmt.Errorf("sign %s: %w", ref, err)
 	}
 	return nil
+}
+
+// writeSigningConfig writes cfg to a fresh temp file for cosign to read.
+func writeSigningConfig(cfg signingConfig) (string, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("encode signing config: %w", err)
+	}
+	f, err := os.CreateTemp("", "patchy-signing-config-*.json")
+	if err != nil {
+		return "", fmt.Errorf("write signing config: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("write signing config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("write signing config: %w", err)
+	}
+	return f.Name(), nil
 }

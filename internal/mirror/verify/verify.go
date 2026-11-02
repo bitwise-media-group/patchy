@@ -114,9 +114,9 @@ func MirrorSubject(ref string, signing *spec.Signing) (Subject, error) {
 }
 
 // Verify checks the subject by shelling out to the cosign binary, whose
-// default --new-bundle-format=true drives the same discovery the old
-// in-process path did: sigstore bundles via referrers when present, legacy
-// .sig tags otherwise. The CLI additionally checks claims (--check-claims
+// bundle-format default drives the same discovery the old in-process path
+// did: sigstore bundles via referrers when present, legacy .sig tags
+// otherwise (upstreams may still publish those). The CLI additionally checks claims (--check-claims
 // defaults true) — strictly stronger than the previous nil ClaimVerifier,
 // and desirable.
 func Verify(ctx context.Context, runner ToolRunner, s Subject) error {
@@ -136,7 +136,13 @@ func Verify(ctx context.Context, runner ToolRunner, s Subject) error {
 		if alg == "" {
 			alg = "sha256"
 		}
-		args = append(args, "--key", s.KeyRef, "--signature-digest-algorithm="+alg)
+		args = append(args, "--key", s.KeyRef)
+		// A bundle carries its own digest algorithm; the deprecated flag
+		// only matters for a legacy .sig publisher signing past sha256,
+		// so it is passed for exactly that opt-in and never by default.
+		if alg != "sha256" {
+			args = append(args, "--signature-digest-algorithm="+alg)
+		}
 	} else {
 		if s.Identity != "" {
 			args = append(args, "--certificate-identity="+s.Identity)

@@ -33,7 +33,7 @@
 # its state under $HOME=/workspace.
 # latest is the only tag wolfi-base publishes; the digest is the real pin
 # (renovate bumps it).
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:fd50bd0cdeb808cf4f45c9c9189e0cc7f7fcc27195d69abd6622c80527e7e021 AS fetch
 
 # ca-certificates-bundle ships in the base.
 # hadolint ignore=DL3018
@@ -71,7 +71,7 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/codex.tar.gz \
     && chmod 0755 /codex
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:fd50bd0cdeb808cf4f45c9c9189e0cc7f7fcc27195d69abd6622c80527e7e021
 
 # curl serves the init container's credential-less artifact fetch (the
 # SHA-pinned repo tarball from source-controller); git serves the agent's

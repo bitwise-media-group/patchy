@@ -227,10 +227,13 @@ func (c *Client) evalPrepareContainer(runner Runner, spec EvalSpec, res corev1.R
 // CLI: eval pods run no patchy binary that could set the header per-request,
 // so the wrapper captures the projected token into ANTHROPIC_CUSTOM_HEADERS
 // once at start (the token TTL is sized past the deadline for exactly this).
-// /bin/sh is already an image requirement — the prepare script runs it.
+// /bin/sh is already an image requirement — the prepare script runs it. On the
+// first-party route it also exports the non-secret auth placeholder the CLI
+// needs before it will send anything (provider.BrokerAuthPlaceholder).
 var evalBrokeredCommand = []string{"/bin/sh", "-c",
 	`export ANTHROPIC_CUSTOM_HEADERS="` + provider.BrokerTokenHeader + `: $(cat ` + brokerTokenPath +
-		`)"; exec evolve exec-unit`}
+		`)"; [ -z "$ANTHROPIC_BASE_URL" ] || export ` + provider.BrokerAuthPlaceholderEnv + `=` +
+		provider.BrokerAuthPlaceholder + `; exec evolve exec-unit`}
 
 // evalAgentContainer runs the in-pod evolve client. The pod IS the sandbox:
 // a non-brokered runner's only credential is the model key, injected through

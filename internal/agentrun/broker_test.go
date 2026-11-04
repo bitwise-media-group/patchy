@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/harness"
+	"github.com/bitwise-media-group/patchy/internal/provider"
 )
 
 func TestCliModel(t *testing.T) {
@@ -80,6 +81,48 @@ func TestBrokerTokenInjectedPerStage(t *testing.T) {
 	// The raw token is registered for transcript scrubbing.
 	if !slices.Contains(agent.scrub, "fresh-token") {
 		t.Errorf("scrub values = %v, want the raw token registered", agent.scrub)
+	}
+}
+
+// The claude CLI refuses the first-party route ("Not logged in") with no
+// credential channel set, so a brokered anthropic stage carries the
+// non-secret placeholder; routes with a skip-auth switch do not.
+func TestBrokerAuthPlaceholderOnFirstPartyRoute(t *testing.T) {
+	placeholder := provider.BrokerAuthPlaceholderEnv + "=" + provider.BrokerAuthPlaceholder
+	tests := []struct {
+		name    string
+		baseURL string
+		want    bool
+	}{
+		{"anthropic route", "http://broker:8080/anthropic", true},
+		{"skip-auth route", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ANTHROPIC_BASE_URL", tt.baseURL)
+			ws := newWorkspace(t)
+			tokenFile := filepath.Join(t.TempDir(), "token")
+			if err := os.WriteFile(tokenFile, []byte("tok\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			cfg := newConfig(t, ws, &out)
+			cfg.BrokerTokenFile = tokenFile
+			fx := &fakeExec{steps: []step{
+				{ws: ws, stdout: streamSuccess, writes: map[string]string{
+					"reports/investigation.md": goodInvestigation,
+				}},
+			}}
+			if err := New(cfg, fx).Run(context.Background()); err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if len(fx.specs) != 1 {
+				t.Fatalf("stages run = %d, want 1", len(fx.specs))
+			}
+			if got := slices.Contains(fx.specs[0].Env, placeholder); got != tt.want {
+				t.Errorf("stage env %v contains %q = %v, want %v", fx.specs[0].Env, placeholder, got, tt.want)
+			}
+		})
 	}
 }
 

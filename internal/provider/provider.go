@@ -20,6 +20,18 @@ import (
 // drift.
 const BrokerTokenHeader = "X-Patchy-Broker-Token"
 
+// The claude CLI's first-party route refuses to send any request ("Not logged
+// in · Please run /login") unless one of its credential channels is set, and —
+// unlike bedrock/vertex/foundry — it has no CLAUDE_CODE_SKIP_*_AUTH switch. A
+// brokered anthropic run therefore presents this fixed, non-secret stand-in on
+// the child process's env (never the pod spec, which stays credential-free).
+// The broker strips Authorization before injecting the real credential, so
+// the value never leaves the cluster and grants nothing.
+const (
+	BrokerAuthPlaceholderEnv = "ANTHROPIC_AUTH_TOKEN"
+	BrokerAuthPlaceholder    = "patchy-egress-broker"
+)
+
 // Provider names — the model APIs a brokered claude runner can front.
 const (
 	Anthropic = "anthropic"

@@ -269,7 +269,13 @@ func (a *Agent) brokerEnv() ([]string, error) {
 		return nil, fmt.Errorf("broker token file %s is empty", a.cfg.BrokerTokenFile)
 	}
 	a.scrub = append(a.scrub, token)
-	return []string{"ANTHROPIC_CUSTOM_HEADERS=" + provider.BrokerTokenHeader + ": " + token}, nil
+	env := []string{"ANTHROPIC_CUSTOM_HEADERS=" + provider.BrokerTokenHeader + ": " + token}
+	// ANTHROPIC_BASE_URL is set (gateway-owned) only on the first-party
+	// route, the one route with no skip-auth switch.
+	if os.Getenv("ANTHROPIC_BASE_URL") != "" {
+		env = append(env, provider.BrokerAuthPlaceholderEnv+"="+provider.BrokerAuthPlaceholder)
+	}
+	return env, nil
 }
 
 // credentialValues returns the literal secret values to scrub from a

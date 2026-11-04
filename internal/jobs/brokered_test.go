@@ -227,6 +227,9 @@ func TestBrokeredEvalJobShape(t *testing.T) {
 		!strings.Contains(cmd, provider.BrokerTokenHeader) {
 		t.Errorf("eval command = %q, want the caller-token export", cmd)
 	}
+	if !strings.Contains(cmd, provider.BrokerAuthPlaceholderEnv+"="+provider.BrokerAuthPlaceholder) {
+		t.Errorf("eval command = %q, want the first-party auth placeholder export", cmd)
+	}
 	envs := envMap(agent)
 	if got := envs["ANTHROPIC_BASE_URL"].Value; !strings.HasSuffix(got, "/anthropic") {
 		t.Errorf("eval ANTHROPIC_BASE_URL = %q, want the broker route", got)

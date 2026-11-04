@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.11.6](https://github.com/bitwise-media-group/patchy/compare/v0.11.5...v0.11.6) (2026-11-04)
+
+
+### Bug Fixes
+
+* **agentrun:** present an auth placeholder on the brokered anthropic route ([61f4714](https://github.com/bitwise-media-group/patchy/commit/61f4714bd204f9cba6cb87f71bceffe9f2c40fe1))
+* **deps:** update aws-sdk-go-v2 monorepo ([#535](https://github.com/bitwise-media-group/patchy/issues/535)) ([a74b45d](https://github.com/bitwise-media-group/patchy/commit/a74b45d56b8d0efc8d85ba8cbf144386da513e27))
+* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.7 ([#536](https://github.com/bitwise-media-group/patchy/issues/536)) ([e48c7e1](https://github.com/bitwise-media-group/patchy/commit/e48c7e18a3de96e3ef85ae4f6dba9bd8c9fd7bcb))
+* **deps:** update module go.yaml.in/yaml/v3 to v3.0.6 ([#540](https://github.com/bitwise-media-group/patchy/issues/540)) ([a466e63](https://github.com/bitwise-media-group/patchy/commit/a466e63b0f903fcf41c451c4f21073494aabdd38))
+* **release:** pass mise trust through to the syft sbom cataloger ([51e9c75](https://github.com/bitwise-media-group/patchy/commit/51e9c7599ef0553ed9839e46fe52b2bb3f9624b4))
+
 ## [0.11.5](https://github.com/bitwise-media-group/patchy/compare/v0.11.4...v0.11.5) (2026-11-02)
 
 

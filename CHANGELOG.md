@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.7](https://github.com/bitwise-media-group/patchy/compare/v0.11.6...v0.11.7) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.1.1 ([14e30a0](https://github.com/bitwise-media-group/patchy/commit/14e30a0815ddf9abb09085ed87f62296f00e5898))
+
 ## [0.11.6](https://github.com/bitwise-media-group/patchy/compare/v0.11.5...v0.11.6) (2026-11-04)
 
 

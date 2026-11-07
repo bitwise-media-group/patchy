@@ -31,7 +31,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
       digest: sha256:d65d53294d114b91254ea0a7aa7e3a0f31d3ab738cc0fec96e67fde1ad65a47d
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
-      digest: sha256:8e054e6b81e8265161f55b684769047be6fae67283bdfedcce226c39e2f21913
+      digest: sha256:7487b6342d3497351efbbc7abb8cc47e6d5b556cf46d30fd45bbde96c20d6464
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
       digest: sha256:a45cb7b3b1b3b6e93237f4d043af82b6ba87c25807e971c9b469d0e8a73feddb
     - name: ghcr.io/bitwise-media-group/patchy/investigation-controller

@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Extract unpacks a chart tgz into destDir the way tar -xzf does, minus

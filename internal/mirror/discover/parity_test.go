@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"

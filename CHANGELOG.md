@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.8](https://github.com/bitwise-media-group/patchy/compare/v0.11.7...v0.11.8) (2026-11-09)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#571](https://github.com/bitwise-media-group/patchy/issues/571)) ([fb1ded3](https://github.com/bitwise-media-group/patchy/commit/fb1ded31de9f6f425831b8e11f9fe294bf4becdf))
+* **deps:** update github.com/klauspost/compress to v1.20.2 ([5fd0822](https://github.com/bitwise-media-group/patchy/commit/5fd0822403d7e9fcb530ac3d79e66fa2fc121923))
+* **deps:** update module github.com/azure/azure-sdk-for-go/sdk/azcore to v1.24.0 ([#568](https://github.com/bitwise-media-group/patchy/issues/568)) ([67062da](https://github.com/bitwise-media-group/patchy/commit/67062da4cebc1cf9850849e9d234f39d5f2e2b0c))
+* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.9 ([#567](https://github.com/bitwise-media-group/patchy/issues/567)) ([d3e70d1](https://github.com/bitwise-media-group/patchy/commit/d3e70d1ec035a7ba4a32fe94d714b98437545274))
+* **deps:** update module go.yaml.in/yaml/v3 to v4 ([#580](https://github.com/bitwise-media-group/patchy/issues/580)) ([d455a70](https://github.com/bitwise-media-group/patchy/commit/d455a70c9a4b4be5e06637f9d837858205e88106))
+* **deps:** update module google.golang.org/api to v0.311.0 ([#573](https://github.com/bitwise-media-group/patchy/issues/573)) ([dd9c794](https://github.com/bitwise-media-group/patchy/commit/dd9c7947d8b59c2bf2e69881946373d54c78cc60))
+* **deps:** update sigstore/cosign-installer action to v4.1.3 ([#572](https://github.com/bitwise-media-group/patchy/issues/572)) ([37ca388](https://github.com/bitwise-media-group/patchy/commit/37ca38895b7f32bd849f4e8641bc2b62d6969e0c))
+
 ## [0.11.7](https://github.com/bitwise-media-group/patchy/compare/v0.11.6...v0.11.7) (2026-11-05)
 
 

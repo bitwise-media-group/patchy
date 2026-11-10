@@ -39,7 +39,7 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
       digest: sha256:15cb12ad51523944f11b58157e708d945f9dba8cc6a9a3965293e424408554ae
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
-      digest: sha256:9820248faab6eeaf4a272dff7d749e033fd13be7c0a8c3e4fd2bf897377ba4a9
+      digest: sha256:6b58f677ed6fa0b71555105dbcf7501d03387509a140a0ffbe4cc4d3bcf83420
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
       digest: sha256:1279f5f13f18d0a7210e7fca4ef82e1469a31d062dc51372011992d2faab408a
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner

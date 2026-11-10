@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitwise-media-group/patchy/internal/mirror/scan"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
@@ -25,6 +26,15 @@ type Finding struct {
 	Installed string
 	// FixedIn lists the advisory's fixed versions across release branches.
 	FixedIn []string
+}
+
+// Rows converts policy-filtered scan findings into derivation rows.
+func Rows(blocking []scan.Finding) []Finding {
+	rows := make([]Finding, 0, len(blocking))
+	for _, f := range blocking {
+		rows = append(rows, Finding{ID: f.ID, Package: f.Package, Installed: f.Installed, FixedIn: f.FixedIn})
+	}
+	return rows
 }
 
 // Stats summarizes one derivation for narration.

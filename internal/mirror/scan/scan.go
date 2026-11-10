@@ -43,6 +43,32 @@ type ImageScanner interface {
 	ScanImage(ctx context.Context, ref string) ([]Finding, error)
 }
 
+// ArchiveScanner scans a local docker-archive tarball — an image that
+// exists only on disk, like a fresh build no registry has seen yet.
+type ArchiveScanner interface {
+	// Name identifies the scanner in findings and narration.
+	Name() string
+	// ScanArchive scans the docker archive at path.
+	ScanArchive(ctx context.Context, path string) ([]Finding, error)
+}
+
+// Blocking applies a resolved policy's blocking rule: severity in failOn,
+// and — under ignoreUnfixed — only findings a released fix exists for.
+// Allowlist suppression (Suppress) is a separate, later step.
+func Blocking(findings []Finding, policy spec.ScanPolicy) []Finding {
+	var out []Finding
+	for _, f := range findings {
+		if !SeverityIn(f.Severity, policy.FailOn) {
+			continue
+		}
+		if policy.IgnoreUnfixed && !f.Fixed() {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // ToolRunner executes external scanner binaries; a seam so tests can can
 // their output.
 type ToolRunner interface {

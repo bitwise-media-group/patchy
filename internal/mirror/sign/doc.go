@@ -12,4 +12,8 @@
 // sigstore signing config, the only service channel that is not
 // deprecated; KMS URI schemes are whatever that cosign build supports. A
 // signer for tests can point at a local cosign keypair instead.
+//
+// Ensurer is the verify-then-sign step mirror sync and build share: a
+// reference that already verifies under the resolved signing config is
+// left alone, so publishing stays idempotent across re-runs.
 package sign

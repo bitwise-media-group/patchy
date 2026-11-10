@@ -24,9 +24,10 @@ const defaultWorkers = 4
 
 // Config wires an Engine.
 type Config struct {
-	// Root is the mirror store root (the directory holding mirror.yaml).
+	// Root is the mirror store root (the directory holding charts/ and
+	// artifacts/).
 	Root string
-	// Global is the loaded mirror.yaml.
+	// Global is the resolved mirror view of the patchy config.
 	Global *spec.Config
 	// Now is the wall clock; injectable for tests. Only upgrade-path
 	// stages may consult it.
@@ -57,9 +58,7 @@ type Config struct {
 }
 
 // ArtifactSigner signs one OCI artifact reference.
-type ArtifactSigner interface {
-	Sign(ctx context.Context, ref string, recursive bool) error
-}
+type ArtifactSigner = sign.ArtifactSigner
 
 // Engine runs the mirror pipeline stages over one store.
 type Engine struct {

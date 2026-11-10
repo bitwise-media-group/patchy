@@ -17,7 +17,7 @@ type Grype struct {
 	Runner ToolRunner
 }
 
-// Name implements ImageScanner.
+// Name implements ImageScanner and ArchiveScanner.
 func (*Grype) Name() string { return "grype" }
 
 // grypeOutput is the subset of grype's JSON report the mirror reads.
@@ -44,6 +44,17 @@ type grypeOutput struct {
 // reference. The severity gate is the engine's, so grype never gates here
 // — its JSON is the product.
 func (g *Grype) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
+	return g.scan(ctx, "registry:"+ref, ref)
+}
+
+// ScanArchive implements ArchiveScanner: grype -o json over a local docker
+// archive.
+func (g *Grype) ScanArchive(ctx context.Context, archive string) ([]Finding, error) {
+	return g.scan(ctx, "docker-archive:"+archive, archive)
+}
+
+// scan runs grype over one source and parses its report.
+func (g *Grype) scan(ctx context.Context, source, label string) ([]Finding, error) {
 	runner := g.Runner
 	if runner == nil {
 		runner = ExecRunner{}
@@ -51,13 +62,13 @@ func (g *Grype) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 	if !runner.Look("grype") {
 		return nil, fmt.Errorf("grype is enabled but not on PATH")
 	}
-	stdout, err := runner.Run(ctx, "grype", []string{"--quiet", "-o", "json", "registry:" + ref}, nil)
+	stdout, err := runner.Run(ctx, "grype", []string{"--quiet", "-o", "json", source}, nil)
 	if err != nil && len(stdout) == 0 {
-		return nil, fmt.Errorf("grype scan of %s: %w", ref, err)
+		return nil, fmt.Errorf("grype scan of %s: %w", label, err)
 	}
 	var out grypeOutput
 	if err := json.Unmarshal(stdout, &out); err != nil {
-		return nil, fmt.Errorf("parse grype output for %s: %w", ref, err)
+		return nil, fmt.Errorf("parse grype output for %s: %w", label, err)
 	}
 	var findings []Finding
 	for _, m := range out.Matches {

@@ -162,6 +162,36 @@ func (c *Client) Copy(ctx context.Context, src, dst string) error {
 	return nil
 }
 
+// Write pushes a local image (a fresh build, a packaged artifact) to ref.
+func (c *Client) Write(ctx context.Context, ref string, img v1.Image) error {
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", ref, err)
+	}
+	if err := remote.Write(r, img, c.remoteOptions(ctx)...); err != nil {
+		return fmt.Errorf("push %s: %w", ref, err)
+	}
+	return nil
+}
+
+// WriteIndex pushes a local image index (a multi-platform build) and every
+// manifest beneath it to ref.
+func (c *Client) WriteIndex(ctx context.Context, ref string, idx v1.ImageIndex) error {
+	r, err := name.ParseReference(ref)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", ref, err)
+	}
+	if err := remote.WriteIndex(r, idx, c.remoteOptions(ctx)...); err != nil {
+		return fmt.Errorf("push %s: %w", ref, err)
+	}
+	return nil
+}
+
+// remoteOptions builds the per-call remote options.
+func (c *Client) remoteOptions(ctx context.Context) []remote.Option {
+	return []remote.Option{remote.WithContext(ctx), remote.WithAuthFromKeychain(c.keychain)}
+}
+
 // SaveTarball writes ref as a docker-archive tarball at path, for scanners
 // that consume local image archives.
 func (c *Client) SaveTarball(ctx context.Context, ref, path string) error {
@@ -196,11 +226,7 @@ func (c *Client) LayerBytes(ctx context.Context, ref, mediaType string) ([]byte,
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ref, err)
 	}
-	img, err := remote.Image(
-		r,
-		remote.WithContext(ctx),
-		remote.WithAuthFromKeychain(c.keychain),
-	)
+	img, err := remote.Image(r, c.remoteOptions(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", ref, err)
 	}

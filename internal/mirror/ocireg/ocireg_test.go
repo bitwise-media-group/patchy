@@ -248,3 +248,53 @@ func TestConfigMediaTypeAndLayerBytes(t *testing.T) {
 		t.Error("LayerBytes with absent media type: want error")
 	}
 }
+
+func TestWriteAndWriteIndex(t *testing.T) {
+	host := newRegistry(t)
+	ctx := context.Background()
+	c := New(nil)
+
+	img, err := random.Image(256, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Write(ctx, host+"/built/app:v1", img); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.Digest(ctx, host+"/built/app:v1"); err != nil || got != want.String() {
+		t.Errorf("Digest after Write = %q, %v; want %s", got, err, want)
+	}
+
+	idx, err := random.Index(256, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.WriteIndex(ctx, host+"/built/multi:v1", idx); err != nil {
+		t.Fatalf("WriteIndex: %v", err)
+	}
+	wantIdx, err := idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.Digest(ctx, host+"/built/multi:v1"); err != nil || got != wantIdx.String() {
+		t.Errorf("Digest after WriteIndex = %q, %v; want %s", got, err, wantIdx)
+	}
+	// Every child manifest travelled with the index.
+	m, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range m.Manifests {
+		if _, ok, err := c.Exists(ctx, host+"/built/multi@"+d.Digest.String()); err != nil || !ok {
+			t.Errorf("child %s missing after WriteIndex: %v", d.Digest, err)
+		}
+	}
+
+	if err := c.Write(ctx, "not a ref", img); err == nil {
+		t.Error("Write accepted an unparseable reference")
+	}
+}

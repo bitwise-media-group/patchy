@@ -27,7 +27,7 @@ type OSV struct {
 	Runner ToolRunner
 }
 
-// Name implements ImageScanner.
+// Name implements ImageScanner and ArchiveScanner.
 func (*OSV) Name() string { return "osv" }
 
 // osv-scanner's meaningful exit codes: 1 is the vulnerabilities-found
@@ -39,15 +39,12 @@ const (
 	osvExitNoPackages = 128
 )
 
-// ScanImage implements ImageScanner.
+// ScanImage implements ImageScanner: export ref to a docker archive with
+// the registry client, then scan the archive.
 func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
-	runner := o.Runner
-	if runner == nil {
-		runner = ExecRunner{}
-	}
-	if !runner.Look("osv-scanner") {
-		return nil, errors.New("osv-scanner is enabled but not on PATH; install it " +
-			"(mise install / brew install osv-scanner) or set scan.scanners.osv.enabled: false in mirror.yaml")
+	runner := o.runner()
+	if err := requireOSV(runner); err != nil {
+		return nil, err
 	}
 	reg := o.Registry
 	if reg == nil {
@@ -62,6 +59,20 @@ func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 	if err := reg.SaveTarball(ctx, ref, archive); err != nil {
 		return nil, err
 	}
+	findings, err := o.ScanArchive(ctx, archive)
+	if err != nil {
+		return nil, fmt.Errorf("osv scan of %s: %w", ref, err)
+	}
+	return findings, nil
+}
+
+// ScanArchive implements ArchiveScanner: osv-scanner scan image --archive
+// over a local docker archive (a mirror export or a freshly built image).
+func (o *OSV) ScanArchive(ctx context.Context, archive string) ([]Finding, error) {
+	runner := o.runner()
+	if err := requireOSV(runner); err != nil {
+		return nil, err
+	}
 	// --format json routes logs to stderr and the report to stdout.
 	stdout, err := runner.Run(ctx, "osv-scanner",
 		[]string{"scan", "image", "--archive", "--format", "json", archive}, nil)
@@ -73,13 +84,30 @@ func (o *OSV) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 		// Any other error means the scan is not authoritative — even
 		// with partial results, reporting them as complete would turn a
 		// broken scan into false assurance.
-		return nil, fmt.Errorf("osv scan of %s: %w", ref, err)
+		return nil, err
 	}
 	var out osvOutput
 	if err := json.Unmarshal(stdout, &out); err != nil {
-		return nil, fmt.Errorf("parse osv-scanner output for %s: %w", ref, err)
+		return nil, fmt.Errorf("parse osv-scanner output: %w", err)
 	}
 	return osvFindings(out), nil
+}
+
+// runner resolves the tool runner default.
+func (o *OSV) runner() ToolRunner {
+	if o.Runner == nil {
+		return ExecRunner{}
+	}
+	return o.Runner
+}
+
+// requireOSV fails with the way out when the binary is missing.
+func requireOSV(runner ToolRunner) error {
+	if !runner.Look("osv-scanner") {
+		return errors.New("osv-scanner is enabled but not on PATH; install it " +
+			"(mise install / brew install osv-scanner) or set scan.scanners.osv.enabled: false in the patchy config")
+	}
+	return nil
 }
 
 // exitStatus extracts a subprocess exit code from a (wrapped) run error;

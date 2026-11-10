@@ -152,3 +152,57 @@ func TestKubescape(t *testing.T) {
 		}
 	})
 }
+
+func TestGrypeScanArchive(t *testing.T) {
+	runner := &cannedRunner{stdout: []byte(grypeJSON), have: true}
+	var s ArchiveScanner = &Grype{Runner: runner}
+	findings, err := s.ScanArchive(context.Background(), "/tmp/build/controller.tar")
+	if err != nil || len(findings) != 2 {
+		t.Fatalf("ScanArchive = %+v, %v", findings, err)
+	}
+	if strings.Join(runner.args, " ") != "--quiet -o json docker-archive:/tmp/build/controller.tar" {
+		t.Errorf("args = %v", runner.args)
+	}
+}
+
+func TestOSVScanArchive(t *testing.T) {
+	runner := &cannedRunner{stdout: []byte(osvVulnJSON), err: exitErr(t, 1), have: true}
+	var s ArchiveScanner = &OSV{Runner: runner}
+	findings, err := s.ScanArchive(context.Background(), "/tmp/build/controller.tar")
+	if err != nil || len(findings) != 1 {
+		t.Fatalf("ScanArchive = %+v, %v", findings, err)
+	}
+	if strings.Join(runner.args, " ") != "scan image --archive --format json /tmp/build/controller.tar" {
+		t.Errorf("args = %v", runner.args)
+	}
+}
+
+func TestBlocking(t *testing.T) {
+	findings := []Finding{
+		{ID: "CRIT-FIXED", Severity: "CRITICAL", FixedIn: []string{"1.0.1"}},
+		{ID: "CRIT-UNFIXED", Severity: "CRITICAL"},
+		{ID: "HIGH-FIXED", Severity: "HIGH", FixedIn: []string{"1.0.1"}},
+		{ID: "LOW-FIXED", Severity: "LOW", FixedIn: []string{"1.0.1"}},
+	}
+	ids := func(fs []Finding) string {
+		out := make([]string, 0, len(fs))
+		for _, f := range fs {
+			out = append(out, f.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	tests := []struct {
+		name   string
+		policy spec.ScanPolicy
+		want   string
+	}{
+		{"defaults", spec.ScanPolicy{FailOn: []string{"CRITICAL", "HIGH"}, IgnoreUnfixed: true}, "CRIT-FIXED,HIGH-FIXED"},
+		{"critical only", spec.ScanPolicy{FailOn: []string{"critical"}, IgnoreUnfixed: true}, "CRIT-FIXED"},
+		{"unfixed count", spec.ScanPolicy{FailOn: []string{"CRITICAL"}}, "CRIT-FIXED,CRIT-UNFIXED"},
+	}
+	for _, tt := range tests {
+		if got := ids(Blocking(findings, tt.policy)); got != tt.want {
+			t.Errorf("%s: Blocking = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}

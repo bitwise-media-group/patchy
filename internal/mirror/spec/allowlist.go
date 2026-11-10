@@ -39,7 +39,13 @@ type AllowlistEntry struct {
 // LoadAllowlist reads an entry's allowlist. A missing file is an empty
 // allowlist, not an error.
 func LoadAllowlist(entryDir string) (*Allowlist, error) {
-	path := filepath.Join(entryDir, AllowlistFile)
+	return LoadAllowlistFile(filepath.Join(entryDir, AllowlistFile))
+}
+
+// LoadAllowlistFile reads an allowlist by path (a build entry's
+// security/allowlists/<name>.yaml). A missing file is an empty allowlist,
+// not an error.
+func LoadAllowlistFile(path string) (*Allowlist, error) {
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Allowlist{}, nil

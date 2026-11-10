@@ -12,8 +12,8 @@ import (
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
 	"github.com/bitwise-media-group/patchy/internal/mirror/imageref"
+	"github.com/bitwise-media-group/patchy/internal/mirror/sign"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
-	"github.com/bitwise-media-group/patchy/internal/mirror/verify"
 )
 
 // Sync actions.
@@ -275,36 +275,31 @@ func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, targe
 	return rec, nil
 }
 
+// ensurer is the shared verify-then-sign step over the engine's seams.
+func (e *Engine) ensurer() sign.Ensurer {
+	return sign.Ensurer{Verify: e.verifyFn, NewSigner: e.newSigner}
+}
+
 // mirrorSignatureValid reports whether ref already carries a valid mirror
 // signature.
 func (e *Engine) mirrorSignatureValid(ctx context.Context, ref string, signing *spec.Signing) bool {
-	s, err := verify.MirrorSubject(ref, signing)
-	if err != nil {
-		return false
-	}
-	return e.verifyFn(ctx, s) == nil
+	return e.ensurer().Valid(ctx, ref, signing)
 }
 
 // ensureSigned signs ref unless it already carries a valid mirror
-// signature. Returns whether a signature was created.
+// signature. Returns whether a signature was created (or, dry run, would
+// be).
 func (e *Engine) ensureSigned(ctx context.Context, entryName, ref string,
 	signing *spec.Signing, recursive, dryRun bool) (bool, error) {
-	if dryRun {
-		if !e.mirrorSignatureValid(ctx, ref, signing) {
-			e.notef(entryName, "sync", "would sign %s", ref)
-			return true, nil
-		}
-		return false, nil
-	}
 	if e.mirrorSignatureValid(ctx, ref, signing) {
 		return false, nil
 	}
-	e.notef(entryName, "sync", "signing %s", ref)
-	signer, err := e.newSigner(signing)
-	if err != nil {
-		return false, fmt.Errorf("%s: %w", entryName, err)
+	if dryRun {
+		e.notef(entryName, "sync", "would sign %s", ref)
+		return true, nil
 	}
-	if err := signer.Sign(ctx, ref, recursive); err != nil {
+	e.notef(entryName, "sync", "signing %s", ref)
+	if err := e.ensurer().Sign(ctx, ref, signing, recursive); err != nil {
 		return false, fmt.Errorf("%s: %w", entryName, err)
 	}
 	return true, nil

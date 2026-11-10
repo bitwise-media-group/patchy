@@ -214,7 +214,10 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `build` — the engine behind `patchy build` (CLI-only): builds the config's `build.images` (docker buildx → OCI
   layout) and `build.manifests` (staged tree → deterministic Flux OCI artifact), scans BEFORE any push, publishes
   to every registry (`<url>/<repository>:<tag>`; tags never move: pushed / skipped-current / skipped-tag-exists)
-  and signs per registry. Reuses `mirror/{ocireg,scan,sign,spec,allowlist}` rather than the mirror engine itself;
+  and signs per registry; `--dry-run` needs no registries (`File.BuildPlanConfig`), so public repos commit none.
+  `Promote` (`patchy build promote`) adds a tag to the newest signed build matching a glob, without rebuilding,
+  and reports its revision annotation. Reuses `mirror/{ocireg,scan,sign,spec,allowlist}` rather than the mirror
+  engine itself;
   image allowlists live at `security/allowlists/<name>.yaml`. Subpackages: `expand` (pure `${VAR}` /
   `${VAR:-d}` / `${VAR:o:l}` / `$$` templating + the `PATCHY_TIMESTAMP` built-in; fuzzed), `buildx` (argv +
   runner over `scan.ToolRunner`), `fluxartifact` (stage with gitignore patterns, deterministic tar.gz, the

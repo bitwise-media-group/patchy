@@ -283,3 +283,59 @@ func TestRenderBuildResultsTable(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildCommandDryRunWithoutRegistries: a plan needs no registries
+// configured, so CI and workstations build with no registry URLs anywhere;
+// a publishing run still demands them.
+func TestBuildCommandDryRunWithoutRegistries(t *testing.T) {
+	config := buildConfig[strings.Index(buildConfig, "build:"):]
+	buildWorkspace(t, config)
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	root := NewRoot(&Options{Out: out, ErrOut: errOut, Output: "table", NoColor: true})
+	root.SetOut(out)
+	root.SetErr(errOut)
+	root.SetArgs([]string{"build", "platform", "--dry-run"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if !strings.Contains(out.String(), "sha256:") || !strings.Contains(out.String(), "built") {
+		t.Errorf("stdout = %q, want the build's digest", out)
+	}
+	if !strings.Contains(errOut.String(), "no registries configured") {
+		t.Errorf("stderr = %q, want the no-registries note", errOut)
+	}
+	if _, err := execDev(t, "build", "platform"); err == nil || !strings.Contains(err.Error(), "registries must list") {
+		t.Errorf("publish without registries = %v", err)
+	}
+}
+
+func TestBuildPromoteCommandValidation(t *testing.T) {
+	tests := []struct {
+		name, config string
+		args         []string
+		want         string
+		usage        bool
+	}{
+		{name: "no --from", config: buildConfig, args: []string{"build", "promote", "--all", "--tag", "v1"},
+			want: "--from and --tag are required", usage: true},
+		{name: "no selection", config: buildConfig,
+			args: []string{"build", "promote", "--from", "*", "--tag", "v1"}, want: "pass --all", usage: true},
+		{name: "unknown registry", config: buildConfig,
+			args: []string{"build", "promote", "--all", "--from", "*", "--tag", "v1", "--registry", "nope"},
+			want: `unknown registry "nope"`, usage: true},
+		{name: "no registries", config: "build: {}\n",
+			args: []string{"build", "promote", "--all", "--from", "*", "--tag", "v1"}, want: "registries must list"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buildWorkspace(t, tt.config)
+			_, err := execDev(t, tt.args...)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+			if tt.usage && !isUsage(err) {
+				t.Errorf("not a usage error: %v", err)
+			}
+		})
+	}
+}

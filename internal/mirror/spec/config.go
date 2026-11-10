@@ -49,6 +49,18 @@ func (c *Config) Resolve() error {
 	if len(c.Registries) == 0 {
 		return errors.New("registries must list at least one registry")
 	}
+	return c.resolve()
+}
+
+// ResolveWithoutRegistries is Resolve for callers that never contact a
+// registry (`patchy build --dry-run`): the same validation and defaults, but
+// an empty registries list is allowed, so a plan needs no registry config.
+func (c *Config) ResolveWithoutRegistries() error {
+	return c.resolve()
+}
+
+// resolve is Resolve's body, after the registry-count check.
+func (c *Config) resolve() error {
 	seen := make(map[string]bool, len(c.Registries))
 	for i := range c.Registries {
 		r := &c.Registries[i]

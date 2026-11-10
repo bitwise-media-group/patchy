@@ -84,12 +84,25 @@ func (f *File) MirrorConfig() (*spec.Config, error) {
 // BuildConfig returns the shared registries, signing and scan blocks
 // (resolved) plus the validated build spec.
 func (f *File) BuildConfig() (*spec.Config, *build.Spec, error) {
+	return f.buildConfig((*spec.Config).Resolve)
+}
+
+// BuildPlanConfig is BuildConfig for a run that never contacts a registry
+// (`patchy build --dry-run`): registries may be absent, so CI and a
+// workstation can build and scan with no registry configured at all.
+func (f *File) BuildPlanConfig() (*spec.Config, *build.Spec, error) {
+	return f.buildConfig((*spec.Config).ResolveWithoutRegistries)
+}
+
+// buildConfig assembles the build's view, resolving the shared blocks with
+// the given resolver.
+func (f *File) buildConfig(resolve func(*spec.Config) error) (*spec.Config, *build.Spec, error) {
 	c := &spec.Config{
 		Registries: slices.Clone(f.Registries),
 		Signing:    f.Signing,
 		Scan:       f.Scan,
 	}
-	if err := c.Resolve(); err != nil {
+	if err := resolve(c); err != nil {
 		return nil, nil, fmt.Errorf("patchy config: %w", err)
 	}
 	s := f.Build

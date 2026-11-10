@@ -153,6 +153,35 @@ func (c *Client) ConfigMediaType(ctx context.Context, ref string) (string, error
 	return m.Config.MediaType, nil
 }
 
+// Tag adds tag to the manifest (or index) ref resolves to, in the same
+// repository, without re-uploading anything (crane tag). It moves an
+// existing tag, so callers check the tag is absent first.
+func (c *Client) Tag(ctx context.Context, ref, tag string) error {
+	if err := crane.Tag(ref, tag, c.options(ctx)...); err != nil {
+		return fmt.Errorf("tag %s as %s: %w", ref, tag, err)
+	}
+	return nil
+}
+
+// Annotations returns the annotations of the manifest (or index) ref
+// resolves to; none is an empty map.
+func (c *Client) Annotations(ctx context.Context, ref string) (map[string]string, error) {
+	raw, err := crane.Manifest(ref, c.options(ctx)...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch manifest of %s: %w", ref, err)
+	}
+	var m struct {
+		Annotations map[string]string `json:"annotations"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("parse manifest of %s: %w", ref, err)
+	}
+	if m.Annotations == nil {
+		m.Annotations = map[string]string{}
+	}
+	return m.Annotations, nil
+}
+
 // Copy replicates src to dst byte-preservingly (manifest lists keep their
 // original bytes and children), like crane cp.
 func (c *Client) Copy(ctx context.Context, src, dst string) error {

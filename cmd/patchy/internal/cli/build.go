@@ -53,7 +53,8 @@ func newBuildCmd(opts *Options) *cobra.Command {
 			"skipped, and one at another digest is left alone with a warning. With\n" +
 			"SOURCE_DATE_EPOCH set, rebuilds of one commit reproduce the same digest.\n\n" +
 			"--dry-run builds and scans but never contacts a registry (safe in PR CI with\n" +
-			"no push credentials). --update-allowlists rebuilds and rescans each image\n" +
+			"no push credentials), and needs no registries configured: without any, it\n" +
+			"reports each build's digest. --update-allowlists rebuilds and rescans each image\n" +
 			"entry whose scan.allowlist.generate is true and regenerates its allowlist —\n" +
 			"never pushing, signing, or failing on findings: the PR review of the diff is\n" +
 			"where the risk is accepted.\n\n" +
@@ -73,9 +74,19 @@ func newBuildCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			noteConfigSources(opts, loaded)
-			global, spec, err := loaded.File.BuildConfig()
+			resolve := loaded.File.BuildConfig
+			if dryRun {
+				// A plan never contacts a registry, so it needs none
+				// configured: CI and workstations build and scan with no
+				// registry URLs anywhere.
+				resolve = loaded.File.BuildPlanConfig
+			}
+			global, spec, err := resolve()
 			if err != nil {
 				return err
+			}
+			if len(global.Registries) == 0 {
+				notef(opts.ErrOut, "patchy: no registries configured; reporting each build's digest only\n")
 			}
 			format, err := printer.ParseFormat(opts.Output)
 			if err != nil {
@@ -150,6 +161,7 @@ func newBuildCmd(opts *Options) *cobra.Command {
 	fl.StringSliceVar(&tags, "tag", nil,
 		"replace the configured tag templates for this run (repeatable; still ${ENV}-expanded)")
 	cmd.MarkFlagsMutuallyExclusive("dry-run", "update-allowlists")
+	cmd.AddCommand(newBuildPromoteCmd(opts))
 	_ = cmd.RegisterFlagCompletionFunc("registry", registryCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("tag", noFileCompletion)
 	return cmd
@@ -233,6 +245,11 @@ func renderBuildResults(opts *Options, results []build.Result, format printer.Fo
 	for _, r := range results {
 		if r.Err != "" {
 			rows = append(rows, []string{r.Name, "", "", "failed: " + r.Err, ""})
+			continue
+		}
+		if len(r.Records) == 0 && r.Digest != "" {
+			// a dry run with no registries configured: the build itself
+			rows = append(rows, []string{r.Name, "", r.Digest, "built", ""})
 			continue
 		}
 		for _, rec := range r.Records {

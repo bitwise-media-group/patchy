@@ -148,29 +148,38 @@ fails in seconds rather than after a long build. Every expanded tag must be a va
 That makes `build` safe against registries with immutable tags, and it means a channel can't be a moving tag. A channel
 is instead its **newest immutable build**, written as a semver pre-release that sorts by time:
 
-| Channel | Tag                                     | Consumer follows                                                                                |
-| ------- | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| edge    | `1.4.0-edge.20261110090807.g0123456`    | semver `>=0.0.0-0`, filtered to `^[0-9]+[.][0-9]+[.][0-9]+-edge[.][0-9]{14}[.]g[0-9a-f]{7,40}$` |
-| staging | `1.4.0-staging.20261110090807.g0123456` | semver `>=0.0.0-0`, filtered to the same pattern with `staging`                                 |
-| stable  | `1.4.0`                                 | semver `>=0.0.0`, which excludes pre-releases                                                   |
+| Channel | Tag                                  | Consumer follows                                                                                |
+| ------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| edge    | `1.4.0-edge.20261110090807.g0123456` | semver `>=0.0.0-0`, filtered to `^[0-9]+[.][0-9]+[.][0-9]+-edge[.][0-9]{14}[.]g[0-9a-f]{7,40}$` |
+| stable  | `v1.4.0`                             | semver `>=0.0.0`, which excludes pre-releases                                                   |
 
-A Flux `OCIRepository` follows a channel with `ref.semver` plus `ref.semverFilter`. The templates that produce the
-pre-release tags are the default `tags` above, with `CHANNEL` set per workflow. `sha-${GITHUB_SHA}` gives every build a
-second, commit-addressed name.
+A Flux `OCIRepository` follows a channel with `ref.semver` plus `ref.semverFilter`. Base an edge build on the **next**
+release (`1.4.0` while `1.3.2` is the latest), so the order is consistent everywhere: `1.3.2` < `1.4.0-edge.*` <
+`1.4.0`. A release-please repository has it in the open release pull request's `.release-please-manifest.json`.
+`sha-${GITHUB_SHA}` gives every build a second, commit-addressed name. More channels (`staging`, `rc`) are the same
+pattern with another pre-release word.
 
-**Promotion** adds the plain version tag to a build that already exists. A manifests artifact is a pure function of its
-tree and its `source` and `revision` values, so rebuilding the released commit with the same values reproduces the
-staging build's digest, and `--tag` lands the new tag on it:
+### Promotion
+
+**Promotion** adds a tag to a build that already exists, so what shipped is exactly what was tested.
+`patchy build promote` does it without rebuilding:
 
 ```sh
-git checkout v1.4.0
-VERSION=1.4.0 patchy build --all --tag '${VERSION}'
+patchy build promote --all --from '${VERSION}-edge.*' --tag 'v${VERSION}'
 ```
 
-For this to work, keep anything that differs between the two runs out of `revision`. In particular, don't use the
-workflow's ref name, which differs between the release run and a manual dispatch. Image entries reproduce the same way
-only if their build is reproducible (see above). Otherwise the stable tag lands on a new digest built from the same
-commit.
+For each entry, in every registry:
+
+1. The newest tag matching `--from` (a glob, compared in semver order, so edge builds order by their timestamp) is the
+   build promoted.
+2. Its digest must carry a valid signature under that registry's signing config. An unsigned build is never promoted.
+3. `--tag` is added to that digest. A `--tag` already on it is `skipped-current`; one on another digest fails the entry,
+   because tags never move.
+
+Nothing is built, scanned or signed. Each row also reports the build's `org.opencontainers.image.revision`, so a release
+pipeline can check that the build came from the commit it is releasing before it promotes (`--dry-run -o json` resolves
+and verifies without tagging). A release commit that only bumps versions and the changelog leaves every artifact's tree
+unchanged, which is what makes the newest edge build the right one to promote.
 
 ## Publishing and signing
 
@@ -186,8 +195,9 @@ target, and a fenced block listing any blocking findings, ready for a job summar
 ## Dry runs
 
 `--dry-run` builds and scans everything and reports `would-push` for every target, but never contacts a registry. That
-makes it the pull-request gate. It needs no push credentials and no signing identity, but it does need the variables
-your tag templates reference, because they are expanded first.
+makes it the pull-request gate. It needs no push credentials, no signing identity, and no `registries` at all: with none
+configured it reports each build's digest. That keeps registry URLs out of a public repository, which only needs them
+where it publishes. It does need the variables your tag templates reference, because they are expanded first.
 
 ## Allowlists
 
@@ -213,21 +223,24 @@ before publishing (`docker login`, or a cloud auth action). Keyless signing need
     VERSION: "0.0.0" # anything that expands; nothing is published
 ```
 
-**Push to main: an edge build.** release-please repositories already record the last release in
-`.release-please-manifest.json`, which makes a monotonic base for edge builds.
+**Push to main, no release cut: an edge build.** Base it on the next release:
 
 ```sh
-export VERSION="$(jq -r '."."' .release-please-manifest.json)" CHANNEL=edge
+export VERSION="<the next version>" CHANNEL=edge
 export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 patchy build --all -o markdown >> "$GITHUB_STEP_SUMMARY"
 ```
 
-**Release: a staging build.**
+**Release cut: promote the newest edge build.**
 
 ```sh
-export VERSION="${TAG#v}" CHANNEL=staging SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-patchy build --all -o markdown >> "$GITHUB_STEP_SUMMARY"
+export VERSION="${TAG#v}"
+patchy build promote --all --from '${VERSION}-edge.*' --tag 'v${VERSION}' -o markdown >> "$GITHUB_STEP_SUMMARY"
 ```
+
+The registries and the signing config can come from a lower config layer the workflow writes
+(`~/.config/patchy/config.yaml`), so the repository's `patchy.yaml` carries only its `build:` block. The org's shared
+GitHub workflows package all of this as the `patchy-publish` action.
 
 **Scheduled: refresh allowlists.** Run `patchy build --all --update-allowlists` and open a pull request with whatever
 changed under `security/allowlists/`, the same way the mirror's update sweep does.

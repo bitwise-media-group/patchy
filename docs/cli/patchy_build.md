@@ -27,7 +27,8 @@ skipped, and one at another digest is left alone with a warning. With
 SOURCE_DATE_EPOCH set, rebuilds of one commit reproduce the same digest.
 
 --dry-run builds and scans but never contacts a registry (safe in PR CI with
-no push credentials). --update-allowlists rebuilds and rescans each image
+no push credentials), and needs no registries configured: without any, it
+reports each build's digest. --update-allowlists rebuilds and rescans each image
 entry whose scan.allowlist.generate is true and regenerates its allowlist —
 never pushing, signing, or failing on findings: the PR review of the diff is
 where the risk is accepted.
@@ -83,4 +84,5 @@ patchy build [name]... [flags]
 ### SEE ALSO
 
 * [patchy](patchy.md)	 - Work with patchy security findings from the terminal
+* [patchy build promote](patchy_build_promote.md)	 - Promote published builds by adding a tag to them, without rebuilding
 

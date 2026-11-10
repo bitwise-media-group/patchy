@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/bitwise-media-group/patchy/compare/v0.12.0...v0.12.1) (2026-11-10)
+
+
+### Features
+
+* **cli:** promote published builds and dry-run builds without registries ([bc64f98](https://github.com/bitwise-media-group/patchy/commit/bc64f9825f9646b18409e2b6f24af3237a206e4a))
+
 ## [0.12.0](https://github.com/bitwise-media-group/patchy/compare/v0.11.8...v0.12.0) (2026-11-10)
 
 

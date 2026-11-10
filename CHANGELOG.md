@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/bitwise-media-group/patchy/compare/v0.11.8...v0.12.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** mirror.yaml is no longer read. Move registries, signing and scan to the top level of patchy.yaml, put update and sourceRegistryRewrites under mirror:, and drop apiVersion/kind; a mirror.yaml at the mirror root now fails with that migration. The mirror root no longer walks up to find mirror.yaml: it is -C / mirror.directory, defaulting to the working directory. .patchy.yaml is no longer read (a warning names the new locations). scan.allowlistMaxDays and scan.allowlistNewDays become scan.allowlist.maxDays and scan.allowlist.newDays. An entry's explicit scan.enabled now overrides the config's scan.enabled.
+
+### Features
+
+* **cli:** add patchy build and layered patchy config ([6b34203](https://github.com/bitwise-media-group/patchy/commit/6b342033c413ca8e76fce1e8d38e1fa7b25713ee))
+* **cli:** make patchy build --all a no-op when no build entries are configured ([a426b4c](https://github.com/bitwise-media-group/patchy/commit/a426b4ccc17274ae75b19b87d0e53d2b3e3fdfc4))
+
 ## [0.11.8](https://github.com/bitwise-media-group/patchy/compare/v0.11.7...v0.11.8) (2026-11-09)
 
 

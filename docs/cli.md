@@ -265,7 +265,7 @@ scan: # scanner roster + the defaults every entry inherits (below)
     osv: { enabled: true }
 mirror: # directory, workers, update.cooldownDays, sourceRegistryRewrites
   update: { cooldownDays: 3 }
-build: {} # see "Building images and Flux manifests"
+build: {} # see supply-chain/build.md
 dev: {} # the dev command flags, by name
 ```
 
@@ -281,42 +281,10 @@ Both files are gone. A `mirror.yaml` left at a mirror root fails every `mirror` 
 
 ### Scanning policy
 
-One `scan` block shape is used everywhere: in the config, where it holds the defaults, and in every chart manifest,
-artifact manifest and build entry, where it overrides them field by field. Each field resolves from the entry when set,
-else from the config, else the built-in default:
-
-```yaml
-# config (defaults)                     # chart / artifact manifest, build entry (overrides)
-scan:                                   scan:
-  enabled: true      # master default     enabled: auto      # auto | true | false
-  scanners: {...}    # config only        failOn: [CRITICAL]
-  failOn: [CRITICAL, HIGH]                ignoreUnfixed: false
-  ignoreUnfixed: true                     allowlist:
-  allowlist:                                generate: true
-    maxDays: 90                             maxDays: 30
-    newDays: 90
-    generate: false
-    preamble: ""
-```
-
-| Field                | Built-in default   | Meaning                                                               |
-| -------------------- | ------------------ | --------------------------------------------------------------------- |
-| `failOn`             | `[CRITICAL, HIGH]` | severities that block                                                 |
-| `ignoreUnfixed`      | `true`             | findings with no released fix never block                             |
-| `allowlist.maxDays`  | `90`               | allowlist entries must expire within this many days                   |
-| `allowlist.newDays`  | `90`               | expiry stamped on newly derived allowlist entries (at most `maxDays`) |
-| `allowlist.generate` | `false`            | regenerate the entry's allowlist from a fresh scan                    |
-| `allowlist.preamble` | none               | whole-file context rendered atop a generated allowlist                |
-
-An entry's `enabled: auto` (the default) defers to the config's `scan.enabled`, then to the kind's own rule; an explicit
-`true` or `false` overrides `scan.enabled` for that entry, and `false` disables every scan, kubescape included.
-
-| Kind            | `auto` means                                                                         |
-| --------------- | ------------------------------------------------------------------------------------ |
-| Chart           | scan its locked images (plus kubescape over the rendered manifests)                  |
-| Artifact        | scan only when it is a runnable image                                                |
-| Build image     | scan every platform image                                                            |
-| Build manifests | kubescape only — `failOn`, `ignoreUnfixed` and `allowlist` are rejected on the entry |
+One `scan` block shape is used everywhere: in the config it holds the defaults (which scanners run, which severities
+block, how long an allowlist acceptance may last), and every chart manifest, artifact manifest and build entry overrides
+it field by field. See [Scanning and allowlists](supply-chain/scanning.md) for the fields, their built-in defaults, what
+`enabled: auto` means for each kind of entry, and the allowlist format.
 
 ## Testing a generic integration
 
@@ -337,113 +305,37 @@ Every `dev` flag also resolves from `PATCHY_DEV_*` environment variables and the
 [patchy configuration](#configuration) (flag beats environment beats file). See the
 [generic integration guide](integrations/sources/generic.md#testing-your-integration-locally) for the full walkthrough.
 
-## Maintaining a chart and image mirror
+## Mirroring and building artifacts
 
-The `mirror` commands maintain a vendored mirror store — a git repository where every `charts/<name>/` or
-`artifacts/<name>/` directory pins one upstream helm chart or OCI artifact, vendored for PR review, digest-locked,
-provenance-verified, scanned, and published signed to one or more platform registries. The registries, signing and scan
-defaults come from the [patchy configuration](#configuration); every entry publishes to all the registries, each signed
-with that registry's own `signing` block when it has one (a KMS key, say) and the global default otherwise. The
-`mirror:` block adds `update.cooldownDays` and `sourceRegistryRewrites`.
+Two command groups publish what a platform runs as signed OCI artifacts in your own registries, sharing the config's
+`registries`, `signing` and `scan` blocks. Neither touches a cluster or runs git. The
+[supply chain guide](supply-chain/index.md) covers both end to end, with CI recipes.
 
-```sh
-patchy mirror upgrade --check -o json   # what would move, as data
-patchy mirror upgrade --all             # move pins, regenerate everything derived
-patchy mirror validate --all            # the CI gate: current, verified, clean
-patchy mirror sync --all                # converge every registry, idempotently
-patchy mirror sync --all --registry ghcr   # just the named registry
-```
-
-Signing, verification, and image scanning shell out to external binaries rather than linking them: `sync` and `validate`
-need `cosign` (v3 or later) on `PATH`, and the image scanners are all opt-in shell-outs — enable `scan.scanners.osv`
-(`osv-scanner` v2) or `scan.scanners.grype` (`grype`) in the patchy config, since an image scan with neither enabled is
-an error; `scan.enabled: false` turns image scanning off deliberately. `kubescape` remains the optional configuration
-scanner. Every entry's `scan:` block overrides the config's defaults field by field (see
-[Scanning policy](#scanning-policy)); an artifact with `scan.allowlist.generate: true` gets its
-`security/allowlist.yaml` regenerated on upgrade, exactly like a chart.
-
-`upgrade` mutates files and nothing else — patchy never runs git, so branches, commits, and pull requests belong to the
-calling pipeline. Entries that share a `lockstep` group bump together, holding at the lowest version every member has
-published. `sync` never replaces an existing chart tag and skips anything already current and signed, so re-runs are
-safe. `validate` regenerates the derived state out-of-tree and byte-compares it, which is why upgrade is the only verb
-allowed to consult the wall clock (tracked-tag cooldowns, allowlist expiry stamping).
-
-Like `dev`, the `mirror` flags also resolve from `PATCHY_MIRROR_*` environment variables and the `mirror:` block. The
-store root is `-C` (or `mirror.directory`), resolved against the working directory and defaulting to it; the config is
-always found from the working directory. On first use, `mirror add` writes a starter `patchy.yaml` with commented
-defaults when the working directory has no patchy config yet.
-
-## Building images and Flux manifests
-
-`patchy build` is the mirror's first-party sibling: it builds the Dockerfiles and Flux manifest directories listed in
-the config's `build:` block, scans them **before** anything is pushed, publishes them to every configured registry as
-`<registry.url>/<repository>:<tag>`, and signs them with that registry's signing block — the same registries, signing,
-scanners and allowlist rules as `mirror`.
-
-```yaml
-build:
-  architectures: [amd64, arm64] # default for image entries; amd64 means linux/amd64
-  tags: # default for entries; an entry's own list replaces it
-    - "${VERSION}-${CHANNEL}.${PATCHY_TIMESTAMP}.g${GITHUB_SHA:0:7}"
-    - "sha-${GITHUB_SHA}"
-  images:
-    - name: controller # unique across images and manifests
-      repository: patchy/controller
-      dockerfile: Dockerfile.controller # default <context>/Dockerfile
-      context: .
-      target: "" # optional build stage
-      args: { GO_VERSION: "1.27" } # values ${ENV}-expanded; key case preserved
-      scan:
-        failOn: [CRITICAL]
-        allowlist: { generate: true, maxDays: 30 } # security/allowlists/controller.yaml
-  manifests:
-    - name: platform
-      repository: manifests/platform
-      path: deploy/flux
-      ignore: ["*.md", "tests/"] # gitignore syntax; .git/ always ignored
-      source: "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
-      revision: "${GITHUB_REF_NAME}@sha1:${GITHUB_SHA}"
-```
+**`patchy mirror`** maintains a vendored mirror store: a git tree in which every `charts/<name>/` or `artifacts/<name>/`
+directory pins one upstream helm chart or OCI artifact. Each is vendored for review, digest-locked, checked against its
+publisher's signatures, scanned, and published signed. See [Mirroring charts and images](supply-chain/mirror.md).
 
 ```sh
-patchy build --all --dry-run          # PR CI: build and scan, never contact a registry
-patchy build --all -o markdown        # publish and sign, summary ready for a job summary
-patchy build controller --registry ghcr
-patchy build --all --update-allowlists
+patchy mirror add dex --url https://charts.dexidp.io   # scaffold an entry (and a starter patchy.yaml)
+patchy mirror upgrade --check -o json                  # what would move, as data
+patchy mirror upgrade --all                            # move pins, regenerate everything derived
+patchy mirror validate --all                           # the CI gate: current, verified, clean
+patchy mirror sync --all                               # converge every registry, idempotently
 ```
 
-**Images** build with `docker buildx` into a local OCI layout. Every platform image is scanned as a docker archive under
-the entry's resolved [scanning policy](#scanning-policy); `security/allowlists/<name>.yaml` (the same format as a mirror
-entry's allowlist) accepts findings, a lapsed acceptance is reported and accepts nothing, and an allowlist that breaks
-the rules (missing fields, an expiry beyond `maxDays`) fails the entry before it is even built. Any blocking finding
-left fails the entry with **nothing pushed**. **Manifests** directories are staged with the ignore patterns applied
-(symlinks are refused), swept by kubescape, and published as-is as a Flux OCI artifact — config
-`application/vnd.cncf.flux.config.v1+json`, one `application/vnd.cncf.flux.content.v1.tar+gzip` layer, the `source` and
-`revision` annotations — that `flux pull artifact` and an `OCIRepository` consume. The tarball is deterministic, so an
-unchanged tree republishes as the same digest.
+**`patchy build`** builds the Dockerfiles and Flux manifest directories listed under `build:`, scans them before
+anything is pushed, publishes every tag (tags never move), and signs. See
+[Building images and Flux manifests](supply-chain/build.md).
 
-Tags, args, `source` and `revision` expand environment references: `${VAR}` (unset is an error naming the entry),
-`${VAR:-default}`, `${VAR:offset:length}` and `$$` for a literal `$`; any other `$` is an error. `${PATCHY_TIMESTAMP}`
-is built in: a UTC `yyyymmddhhmmss` fixed once per run, taken from `SOURCE_DATE_EPOCH` when that is set, and overridden
-by a real `PATCHY_TIMESTAMP` so several jobs can share one value. An edge build of `1.4.0` from commit `0123456…`
-publishes `1.4.0-edge.20261110090807.g0123456` and `sha-0123456789abcdef…`. `--tag` replaces the configured templates
-for one run.
+```sh
+patchy build --all --dry-run              # PR CI: build and scan, never contact a registry
+patchy build --all -o markdown            # publish and sign, summary ready for a job summary
+patchy build --all --update-allowlists    # regenerate security/allowlists/<name>.yaml
+```
 
-**Tags never move.** For each registry and tag: an absent tag is pushed; one already at the build's digest is
-`skipped-current`; one at a different digest is `skipped-tag-exists`, left alone with a warning. Every registry where a
-tag holds the digest then gets it signed (recursively for an image index). With `SOURCE_DATE_EPOCH` set, buildx rewrites
-layer timestamps, so rebuilding one commit reproduces its digest and a re-run is all `skipped-current`.
-
-`--dry-run` builds and scans and reports a `would-push` row per target without contacting any registry, so it needs no
-push credentials. `--update-allowlists` is build's counterpart of the mirror's upgrade-time derivation: each selected
-image entry whose resolved `scan.allowlist.generate` is true is rebuilt, rescanned, and its
-`security/allowlists/<name>.yaml` regenerated (kept, renewed, added, dropped) — never pushing, signing, or failing on
-findings, because reviewing the allowlist diff in the PR is where the risk is accepted. Entries run one at a time;
-`--all` continues past a failure and exits non-zero if any entry failed.
-
-`build` needs `docker` with the buildx plugin — a multi-platform OCI export needs a `docker-container` builder
-(`docker buildx create --use --driver docker-container`) or the containerd image store — plus `cosign` (v3 or later) for
-signing and the enabled scanners (`osv-scanner`, `grype`, `kubescape`) on `PATH`.
+Like `dev`, the `mirror` flags also resolve from `PATCHY_MIRROR_*` environment variables and the `mirror:` block. Both
+groups shell out to `cosign` (v3 or later) for signing and verification, and to whichever scanners the config enables
+(`osv-scanner`, `grype`, `kubescape`). `build` also needs `docker` with buildx for image entries.
 
 ## Permissions
 

@@ -78,6 +78,12 @@ nav = [
     { "Overview" = "cli.md" },
     { "Command reference" = "cli/patchy.md" },
   ] },
+  { "Supply chain" = [
+    { "Overview" = "supply-chain/index.md" },
+    { "Mirroring charts and images" = "supply-chain/mirror.md" },
+    { "Building images and manifests" = "supply-chain/build.md" },
+    { "Scanning and allowlists" = "supply-chain/scanning.md" },
+  ] },
   { "Extending" = "extending.md" },
 ]
 

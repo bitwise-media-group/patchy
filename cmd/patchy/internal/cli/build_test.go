@@ -145,10 +145,6 @@ func TestBuildCommandValidation(t *testing.T) {
 			args: []string{"build", "--all", "--dry-run", "--update-allowlists"}, want: "none of the others can be",
 		},
 		{name: "no registries", config: "build: {}\n", args: []string{"build", "--all"}, want: "registries must list"},
-		{
-			name: "no entries", config: "registries: [{name: r, url: r.invalid/x}]\n",
-			args: []string{"build", "--all"}, want: "no build entries",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -161,6 +157,31 @@ func TestBuildCommandValidation(t *testing.T) {
 				t.Errorf("not a usage error: %v", err)
 			}
 		})
+	}
+}
+
+// TestBuildCommandNoEntries: --all over an empty build: block is a narrated
+// no-op, so a shared task can run it in a repo that only mirrors.
+func TestBuildCommandNoEntries(t *testing.T) {
+	buildWorkspace(t, "registries: [{name: r, url: r.invalid/x}]\n")
+	for _, args := range [][]string{
+		{"build", "--all", "--dry-run", "-o", "json"},
+		{"build", "--all", "--update-allowlists", "-o", "json"},
+	} {
+		out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+		root := NewRoot(&Options{Out: out, ErrOut: errOut, Output: "table", NoColor: true})
+		root.SetOut(out)
+		root.SetErr(errOut)
+		root.SetArgs(args)
+		if err := root.ExecuteContext(context.Background()); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if strings.TrimSpace(out.String()) != "[]" {
+			t.Errorf("%v stdout = %q, want []", args, out)
+		}
+		if !strings.Contains(errOut.String(), "no build entries") {
+			t.Errorf("%v stderr = %q, want the no-entries note", args, errOut)
+		}
 	}
 }
 

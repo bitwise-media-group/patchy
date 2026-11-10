@@ -101,11 +101,18 @@ func newBuildCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(names) == 0 {
+				// --all over an empty build: block. Nothing to do is a
+				// success, so a shared task (`mise run build`) can run it in
+				// a repo that only mirrors.
+				notef(opts.ErrOut, "patchy: the patchy config has no build entries "+
+					"(build.images, build.manifests); nothing to build\n")
+			}
 			if updateAllowlists {
 				return runUpdateAllowlists(cmd, opts, eng, names, all, format)
 			}
 
-			var results []build.Result
+			results := []build.Result{}
 			failed := 0
 			for _, name := range names {
 				res, err := eng.Build(cmd.Context(), name, build.Options{
@@ -133,7 +140,8 @@ func newBuildCmd(opts *Options) *cobra.Command {
 		},
 	}
 	fl := cmd.Flags()
-	fl.BoolVar(&all, "all", false, "build every configured entry, continuing past failures")
+	fl.BoolVar(&all, "all", false,
+		"build every configured entry, continuing past failures (none configured is a no-op)")
 	fl.BoolVar(&dryRun, "dry-run", false, "build and scan, but never contact a registry")
 	fl.BoolVar(&updateAllowlists, "update-allowlists", false,
 		"rebuild, rescan and regenerate security/allowlists/<name>.yaml; never publishes")
@@ -154,12 +162,10 @@ func selectBuildEntries(eng *build.Engine, names []string, all bool) ([]string, 
 	case all && len(names) > 0:
 		return nil, errUsage(errors.New("--all cannot be combined with entry names"))
 	case all:
+		// Every entry, which may be none: the caller narrates an empty run.
 		var out []string
 		for _, e := range eng.Entries() {
 			out = append(out, e.Name)
-		}
-		if len(out) == 0 {
-			return nil, errors.New("the patchy config has no build entries (build.images, build.manifests)")
 		}
 		return out, nil
 	case len(names) > 0:
@@ -177,7 +183,7 @@ func selectBuildEntries(eng *build.Engine, names []string, all bool) ([]string, 
 // runUpdateAllowlists regenerates each selected entry's allowlist.
 func runUpdateAllowlists(cmd *cobra.Command, opts *Options, eng *build.Engine, names []string, all bool,
 	format printer.Format) error {
-	var results []build.AllowlistResult
+	results := []build.AllowlistResult{}
 	failed := 0
 	for _, name := range names {
 		res, err := eng.UpdateAllowlist(cmd.Context(), name)

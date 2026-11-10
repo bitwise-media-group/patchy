@@ -59,7 +59,7 @@ patchy build [name]... [flags]
 ### Options
 
 ```
-      --all                 build every configured entry, continuing past failures
+      --all                 build every configured entry, continuing past failures (none configured is a no-op)
       --dry-run             build and scan, but never contact a registry
   -h, --help                help for build
       --registry strings    restrict publishing to the named registries (repeatable or comma-separated; default all)

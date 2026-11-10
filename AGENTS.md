@@ -64,9 +64,13 @@ Ten binaries, one module. "Not monolithic" means separate binaries/deployments w
   caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
   action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API
   writes is the ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`, NOT the CLI's
-  own SelfSubjectAccessReview (that is ergonomics). Two cluster-free command groups ride along: `dev` (the
-  generic-integration test harness) and `mirror` (vendored chart/artifact mirroring over `internal/mirror`;
-  kubeconfig flags inert, git never touched). Builds for windows too, and ships a `kubectl-patchy`
+  own SelfSubjectAccessReview (that is ergonomics). Three cluster-free command groups ride along: `dev` (the
+  generic-integration test harness), `mirror` (vendored chart/artifact mirroring over `internal/mirror`) and
+  `build` (first-party image + Flux-manifest build/scan/publish/sign over `internal/build`); kubeconfig flags inert,
+  git never touched. All three read the layered patchy config (`cmd/patchy/internal/config`: seven locations from
+  `/etc/patchy/config.<ext>` to `<workdir>/patchy.<ext>`, yaml/yml/json/toml, maps merge / lists replace / null
+  deletes, strict per-layer keys; the engines only ever receive typed structs — `File.MirrorConfig()` /
+  `File.BuildConfig()` — never discover files). Builds for windows too, and ships a `kubectl-patchy`
   alias. Ships no container image: it is distributed as its own `patchy-cli` release archive (separate from
   the cluster binaries' `patchy` archive) and as a Homebrew cask in bitwise-media-group/homebrew-tap.
 
@@ -187,21 +191,34 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref); the
   only place a write credential is exercised. No git binary anywhere controller-side.
 - `mirror` — the engine behind `patchy mirror` (CLI-only; no controller consumes it): vendored mirroring of
-  upstream helm charts and OCI artifacts into one or more platform registries (mirror.yaml lists them; every
-  entry publishes to all, lock files record targets per registry name, and each registry may carry its own
-  wholesale `signing` override — `sync --registry` restricts a run). One concern per subpackage: `spec` (the
-  mirror.yaml/manifest/lock schema + glob discovery — the tree is the registry of entries), `imageref`,
+  upstream helm charts and OCI artifacts into one or more platform registries (the patchy config's top-level
+  `registries` lists them, with `signing` and the `scan` defaults beside it — the engine receives a resolved
+  `spec.Config`; every entry publishes to all, lock files record targets per registry name, and each registry may
+  carry its own wholesale `signing` override — `sync --registry` restricts a run). One concern per subpackage:
+  `spec` (the manifest/lock schema + glob discovery — the tree is the registry of entries — plus the shared
+  `Config.Resolve`, and the one `scan` block: config defaults, per-entry `ScanOverride`,
+  `EffectiveScanPolicy` resolving entry → config → built-in), `imageref`,
   `semverpick` (constraints + cooldown walks), `yamledit` (comment-preserving byte-splice edits, never
   re-encode), `helmchart` (pull/extract/tree-diff/push), `render` (byte-stable `helm template` equivalent —
   helm SDK pinned; upgrades are deliberate, the validate gate byte-compares output), `discover` (4-pass image
   discovery), `distro` (distribution-manifests → generated images.extra.yaml sidecar), `verify`/`sign`
   (shell out to the cosign binary: upstream provenance in, bundle-referrers signatures out; KMS support is
-  the installed cosign build's), `scan` (pluggable: osv + grype/kubescape, all shell-outs; every image
-  scanner defaults off, and an image scan with none enabled is a hard error), `allowlist` (derive with
-  keep-expiry/drop-stale rules). The engine never touches git — the calling pipeline owns
+  the installed cosign build's; `sign.Ensurer` is the shared verify-then-sign step), `scan` (pluggable: osv +
+  grype/kubescape, all shell-outs, by registry ref or local docker archive; `scan.Blocking` is the shared policy
+  filter; every image scanner defaults off, and an image scan with none enabled is a hard error), `allowlist`
+  (derive with keep-expiry/drop-stale rules, plus the shared `Lint` / `Active` / `Regenerate`), `ocireg` (also
+  `Write`/`WriteIndex` for local builds). The engine never touches git — the calling pipeline owns
   commits/branches/PRs — and only the upgrade path may consult the wall clock, keeping `validate`'s
   byte-identity gate deterministic. cosign (≥ v3) and osv-scanner (v2) are runtime dependencies of the
   respective verbs, never linked.
+- `build` — the engine behind `patchy build` (CLI-only): builds the config's `build.images` (docker buildx → OCI
+  layout) and `build.manifests` (staged tree → deterministic Flux OCI artifact), scans BEFORE any push, publishes
+  to every registry (`<url>/<repository>:<tag>`; tags never move: pushed / skipped-current / skipped-tag-exists)
+  and signs per registry. Reuses `mirror/{ocireg,scan,sign,spec,allowlist}` rather than the mirror engine itself;
+  image allowlists live at `security/allowlists/<name>.yaml`. Subpackages: `expand` (pure `${VAR}` /
+  `${VAR:-d}` / `${VAR:o:l}` / `$$` templating + the `PATCHY_TIMESTAMP` built-in; fuzzed), `buildx` (argv +
+  runner over `scan.ToolRunner`), `fluxartifact` (stage with gitignore patterns, deterministic tar.gz, the
+  `{}`-config Flux manifest).
 
 ## Conventions
 

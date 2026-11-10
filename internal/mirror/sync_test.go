@@ -46,10 +46,7 @@ func keyPair(t *testing.T) (keyPath, pubPath string, password []byte) {
 // services.
 func keyedEngine(f *fixture, keyPath, pubPath string, password []byte) *Engine {
 	f.t.Helper()
-	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	global := f.global()
 	eng := New(Config{
 		Root:   f.root,
 		Global: global,
@@ -217,10 +214,7 @@ func twoRegistryEngine(f *fixture) (*Engine, *[]*spec.Signing) {
       kms:
         key: awskms://alias/registry-override
 `, f.host))
-	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	global := f.global()
 	var resolved []*spec.Signing
 	signer := &fakeSigner{}
 	eng := New(Config{
@@ -341,10 +335,7 @@ func TestEngineSyncTwoRegistryKeys(t *testing.T) {
 	// Key selection follows the resolved signing config: the kms override
 	// (registry b) signs and verifies with keypair B, the global default
 	// with keypair A — a cross-signed ref must NOT verify.
-	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	global := f.global()
 	eng := New(Config{
 		Root:   f.root,
 		Global: global,

@@ -53,7 +53,7 @@ func TestDevGenericSecretEnvCollision(t *testing.T) {
 	t.Chdir(t.TempDir())
 	// Both values arrive without an explicit flag to break the tie: the
 	// environment supplies one, the config file the other.
-	if err := os.WriteFile(".patchy.yaml", []byte("dev:\n  secret-file: ./s\n"), 0o600); err != nil {
+	if err := os.WriteFile("patchy.yaml", []byte("dev:\n  secret-file: ./s\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATCHY_DEV_SECRET", "from-env")

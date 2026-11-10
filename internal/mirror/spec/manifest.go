@@ -16,13 +16,14 @@ type ChartManifest struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
 	// Name must match the entry's directory name.
-	Name      string        `yaml:"name"`
-	Chart     ChartSpec     `yaml:"chart"`
-	Discovery Discovery     `yaml:"discovery"`
-	Images    Images        `yaml:"images"`
-	OCIRefs   OCIRefs       `yaml:"ociRefs"`
-	Scan      *ScanOverride `yaml:"scan"`
-	Publish   ChartPublish  `yaml:"publish"`
+	Name      string    `yaml:"name"`
+	Chart     ChartSpec `yaml:"chart"`
+	Discovery Discovery `yaml:"discovery"`
+	Images    Images    `yaml:"images"`
+	OCIRefs   OCIRefs   `yaml:"ociRefs"`
+	// Scan overrides the config's scan block for this chart.
+	Scan    ScanOverride `yaml:"scan"`
+	Publish ChartPublish `yaml:"publish"`
 }
 
 // ChartSpec pins the upstream chart.
@@ -205,49 +206,11 @@ type OCIRefAllow struct {
 	Reason  string `yaml:"reason"`
 }
 
-// ScanOverride adjusts the global scan policy for one entry.
-type ScanOverride struct {
-	FailOn        []string        `yaml:"failOn"`
-	IgnoreUnfixed *bool           `yaml:"ignoreUnfixed"`
-	Allowlist     AllowlistPolicy `yaml:"allowlist"`
-}
-
-// AllowlistPolicy opts an entry into allowlist derivation.
-type AllowlistPolicy struct {
-	// Generate regenerates security/allowlist.yaml from the scan during
-	// upgrade; the PR review is where the risk is actually accepted.
-	Generate bool `yaml:"generate"`
-	// Preamble is whole-file context rendered as comments atop the
-	// generated allowlist.
-	Preamble string `yaml:"preamble"`
-}
-
 // ChartPublish names the publish destination.
 type ChartPublish struct {
 	// ChartRepo is the repository path applied under every registry URL
 	// (default <chartNamespace>/<name>).
 	ChartRepo string `yaml:"chartRepo"`
-}
-
-// ScanPolicy is the resolved (entry over global) blocking policy.
-type ScanPolicy struct {
-	FailOn        []string
-	IgnoreUnfixed bool
-}
-
-// EffectiveScanPolicy resolves an entry's scan override against the global
-// scan config.
-func EffectiveScanPolicy(global Scan, override *ScanOverride) ScanPolicy {
-	p := ScanPolicy{FailOn: global.EffectiveFailOn(), IgnoreUnfixed: global.EffectiveIgnoreUnfixed()}
-	if override != nil {
-		if len(override.FailOn) > 0 {
-			p.FailOn = override.FailOn
-		}
-		if override.IgnoreUnfixed != nil {
-			p.IgnoreUnfixed = *override.IgnoreUnfixed
-		}
-	}
-	return p
 }
 
 // ArtifactManifest is an artifacts/<name>/manifest.yaml: one mirrored OCI
@@ -257,10 +220,12 @@ type ArtifactManifest struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
 	// Name must match the entry's directory name.
-	Name     string          `yaml:"name"`
-	Artifact ArtifactSpec    `yaml:"artifact"`
-	Scan     ArtifactScan    `yaml:"scan"`
-	Publish  ArtifactPublish `yaml:"publish"`
+	Name     string       `yaml:"name"`
+	Artifact ArtifactSpec `yaml:"artifact"`
+	// Scan overrides the config's scan block for this artifact; under
+	// enabled: auto it scans only when the artifact is a runnable image.
+	Scan    ScanOverride    `yaml:"scan"`
+	Publish ArtifactPublish `yaml:"publish"`
 }
 
 // ArtifactSpec pins the upstream artifact.
@@ -280,21 +245,6 @@ type ArtifactSpec struct {
 	VerifyUpstream VerifyRule `yaml:"verifyUpstream"`
 }
 
-// ArtifactScan opts the artifact into image scanning.
-type ArtifactScan struct {
-	// Enabled is auto (scan iff the artifact is a runnable image), true
-	// or false.
-	Enabled string `yaml:"enabled"`
-}
-
-// EffectiveEnabled resolves the enabled default (auto).
-func (s ArtifactScan) EffectiveEnabled() string {
-	if s.Enabled == "" {
-		return "auto"
-	}
-	return s.Enabled
-}
-
 // ArtifactPublish names the publish destination.
 type ArtifactPublish struct {
 	// Repo is the repository path applied under every registry URL
@@ -307,7 +257,7 @@ type ArtifactPublish struct {
 func legacySigningHint(err error) error {
 	if strings.Contains(err.Error(), "field signing not found") {
 		return fmt.Errorf("%w (per-entry signing was replaced by per-registry "+
-			"signing blocks in mirror.yaml; move the override there)", err)
+			"signing blocks in the patchy config; move the override there)", err)
 	}
 	return err
 }

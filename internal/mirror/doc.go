@@ -7,12 +7,14 @@
 // scanning and signing of everything published.
 //
 // The mirror store is a git tree (the caller's, not this package's
-// concern): mirror.yaml holds global defaults, charts/<name>/ and
-// artifacts/<name>/ each hold an intent manifest plus machine-derived
-// facts (vendored chart tree, rendered manifests, digest locks,
-// allowlists). The engine's verbs regenerate facts from intent (upgrade),
-// converge the registry onto the committed facts (sync), and re-derive
-// out-of-tree to prove the committed facts are current (validate).
+// concern): charts/<name>/ and artifacts/<name>/ each hold an intent
+// manifest plus machine-derived facts (vendored chart tree, rendered
+// manifests, digest locks, allowlists). Registries, signing and the scan
+// defaults come from the layered patchy config, which the CLI resolves and
+// hands in as a spec.Config — the engine never discovers config files.
+// The engine's verbs regenerate facts from intent (upgrade), converge the
+// registry onto the committed facts (sync), and re-derive out-of-tree to
+// prove the committed facts are current (validate).
 //
 // The engine never touches git and never creates commits, branches or
 // PRs — it mutates files (upgrade, add) or the registry (sync), and the

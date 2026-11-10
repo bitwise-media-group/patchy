@@ -341,3 +341,59 @@ func TestLintAllowlistShape(t *testing.T) {
 		}
 	}
 }
+
+// TestLintAllowlistEntryHorizon pins the entry-level scan.allowlist block:
+// lint judges expiries against the entry's own maxDays, and rejects a
+// resolved policy stamping new entries past it.
+func TestLintAllowlistEntryHorizon(t *testing.T) {
+	allowlist := `vulnerabilities:
+  - id: CVE-1
+    statement: s
+    expired_at: "2026-10-10"
+`
+	tests := []struct {
+		name, scanBlock string
+		want            []string
+		clean           bool
+	}{
+		{name: "config horizon (90d) accepts 60d", clean: true},
+		{
+			name:      "entry horizon (30d) rejects 60d",
+			scanBlock: "scan:\n  allowlist:\n    maxDays: 30\n",
+			want: []string{
+				"allowlist CVE-1 expires more than 30 days out",
+				"scan.allowlist.newDays (90) exceeds scan.allowlist.maxDays (30)",
+			},
+		},
+		{
+			name:      "bad enabled value",
+			scanBlock: "scan:\n  enabled: maybe\n",
+			want:      []string{`scan.enabled must be auto, true or false (got "maybe")`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.chartManifest("demo", tt.scanBlock)
+			f.write("charts/demo/security/allowlist.yaml", allowlist)
+			eng := f.engine()
+			entry, err := eng.Entry("demo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			issues, err := eng.Lint(entry)
+			if err != nil {
+				t.Fatalf("Lint: %v", err)
+			}
+			joined := strings.Join(issues, "\n")
+			if tt.clean && strings.Contains(joined, "allowlist") {
+				t.Errorf("unexpected allowlist issues:\n%s", joined)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(joined, want) {
+					t.Errorf("issues lack %q:\n%s", want, joined)
+				}
+			}
+		})
+	}
+}

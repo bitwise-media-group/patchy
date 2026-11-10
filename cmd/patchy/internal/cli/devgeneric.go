@@ -20,7 +20,7 @@ import (
 )
 
 // devGenericFlags carries the harness configuration; every field also
-// resolves from PATCHY_DEV_* and .patchy.<ext> via loadCLIConfig.
+// resolves from PATCHY_DEV_* and the patchy config via loadCLIConfig.
 type devGenericFlags struct {
 	addr           string
 	name           string
@@ -68,8 +68,8 @@ func newDevGenericCmd(opts *Options) *cobra.Command {
 			"write-back only when a finding is dismissed, typically much later.\n\n" +
 			"Without --secret or --secret-file a random secret is generated and printed,\n" +
 			"so a first run needs no setup. Every flag also reads from a PATCHY_DEV_*\n" +
-			"environment variable and a .patchy.yaml/.yml/.json in the working directory\n" +
-			"(flag > environment > file > default).",
+			"environment variable and the dev: block of the patchy config (flag >\n" +
+			"environment > file > default).\n\n" + configHelp,
 		Example: "  patchy dev generic\n" +
 			"  patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance\n" +
 			"  patchy dev generic --secret-file ./webhook.secret --resolve-url http://127.0.0.1:9000/resolve\n" +
@@ -98,7 +98,7 @@ func newDevGenericCmd(opts *Options) *cobra.Command {
 }
 
 func runDevGeneric(cmd *cobra.Command, opts *Options, f *devGenericFlags) error {
-	v, err := loadCLIConfig(cmd, devGenericKeys)
+	v, loaded, err := loadCLIConfig(cmd, devGenericKeys)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func runDevGeneric(cmd *cobra.Command, opts *Options, f *devGenericFlags) error 
 	f.resolveTimeout = v.GetDuration("dev.resolve-timeout")
 	f.resolveDelay = v.GetDuration("dev.resolve-delay")
 	f.noAutoResolve = v.GetBool("dev.no-auto-resolve")
-	noteConfigFile(opts, v)
+	noteConfigSources(opts, loaded)
 
 	if err := validateDevName(f.name); err != nil {
 		return err

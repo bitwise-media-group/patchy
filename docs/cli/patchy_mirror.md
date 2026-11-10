@@ -4,10 +4,11 @@ Mirror upstream helm charts and OCI artifacts into a platform registry
 
 ### Synopsis
 
-Maintain a vendored mirror store: a git tree where mirror.yaml holds global
-defaults and every charts/<name>/ or artifacts/<name>/ directory pins one
-upstream chart or OCI artifact — vendored for review, digest-locked,
-provenance-verified, scanned, and published signed.
+Maintain a vendored mirror store: a git tree where every charts/<name>/ or
+artifacts/<name>/ directory pins one upstream chart or OCI artifact — vendored
+for review, digest-locked, provenance-verified, scanned, and published signed.
+The registries, signing and scan defaults come from the patchy config (shared
+with `patchy build`); the mirror: block adds update and sourceRegistryRewrites.
 
 `upgrade` moves pins forward and regenerates the derived state; `sync`
 converges the registry onto the committed state (idempotent, never replacing
@@ -15,13 +16,19 @@ an existing tag); `validate` proves the committed state is self-consistent
 without touching the tree. patchy never runs git: commits, branches and PRs
 belong to the calling pipeline.
 
-Flags also resolve from PATCHY_MIRROR_* environment variables and an optional
-.patchy.yaml (mirror: block) in the working directory.
+Flags also resolve from PATCHY_MIRROR_* environment variables and the patchy
+config's mirror: block.
+
+The patchy config merges from, least to most preferred: /etc/patchy/config.<ext>,
+~/.config/patchy/config.<ext>, then in the working directory mise/patchy.<ext>,
+patchy/config.<ext>, .mise/patchy.<ext>, .patchy/config.<ext> and patchy.<ext>
+(<ext> is yaml, yml, json or toml). Maps merge, lists replace, and null deletes
+an inherited key.
 
 ### Options
 
 ```
-  -C, --directory string   mirror store directory (walks up to mirror.yaml; default: the working directory)
+  -C, --directory string   mirror store directory, relative to the working directory (default: the working directory)
   -h, --help               help for mirror
       --workers int        concurrent registry operations per stage (default 4)
 ```

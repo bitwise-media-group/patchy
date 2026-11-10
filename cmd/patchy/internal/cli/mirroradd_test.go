@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 
+	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/config"
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
@@ -136,19 +137,23 @@ func TestStayInMajor(t *testing.T) {
 // bricks the store it just created.
 func TestScaffoldsSurviveTheStrictParser(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "mirror.yaml")
-	if err := os.WriteFile(configPath, scaffoldMirrorConfig(), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "patchy.yaml"), scaffoldConfig(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := spec.LoadConfig(configPath)
+	loaded, err := config.Load(config.Options{Workdir: dir, Home: t.TempDir(), SystemDir: t.TempDir()})
 	if err != nil {
-		t.Fatalf("scaffolded mirror.yaml does not parse: %v", err)
+		t.Fatalf("scaffolded patchy.yaml does not load: %v", err)
+	}
+	cfg, err := loaded.File.MirrorConfig()
+	if err != nil {
+		t.Fatalf("scaffolded patchy.yaml is not a valid mirror config: %v", err)
 	}
 	if !cfg.Scan.Scanners.OSVEnabled() || cfg.Scan.Scanners.GrypeEnabled() || !cfg.Scan.Scanners.KubescapeEnabled() {
 		t.Errorf("scanner toggles = %+v", cfg.Scan.Scanners)
 	}
-	if cfg.Update.EffectiveCooldownDays() != 3 || cfg.Scan.AllowlistMaxDays != 90 {
-		t.Errorf("config = update %d, allowlistMaxDays %d", cfg.Update.EffectiveCooldownDays(), cfg.Scan.AllowlistMaxDays)
+	policy := spec.EffectiveScanPolicy(cfg.Scan, spec.ScanOverride{})
+	if cfg.Update.EffectiveCooldownDays() != 3 || policy.Allowlist.MaxDays != 90 || policy.Allowlist.NewDays != 90 {
+		t.Errorf("config = update %d, allowlist %+v", cfg.Update.EffectiveCooldownDays(), policy.Allowlist)
 	}
 
 	chartPath := filepath.Join(dir, "chart-manifest.yaml")
@@ -184,26 +189,74 @@ func TestScaffoldsSurviveTheStrictParser(t *testing.T) {
 	if am.Publish.Repo != "" {
 		t.Errorf("artifact scaffold pins publish.repo = %q", am.Publish.Repo)
 	}
-	if am.Scan.EffectiveEnabled() != "auto" {
+	if am.Scan.Enabled.Effective() != spec.ScanAuto {
 		t.Errorf("artifact scan = %+v", am.Scan)
 	}
 }
 
-// TestMirrorAddBrokenConfigPropagates pins the init gate: only the
-// no-store miss may scaffold a fresh mirror.yaml — a broken CLI config
-// must surface as the error it is, not be papered over with a new store.
+// TestScaffoldBuildExampleValidates uncomments the scaffold's build:
+// example and runs it through BuildConfig: a documented example that does
+// not validate teaches the wrong shape.
+func TestScaffoldBuildExampleValidates(t *testing.T) {
+	scaffold := string(scaffoldConfig())
+	head, example, ok := strings.Cut(scaffold, "# build:\n")
+	if !ok {
+		t.Fatal("scaffold lacks the commented build example")
+	}
+	var b strings.Builder
+	b.WriteString(head + "build:\n")
+	for line := range strings.SplitSeq(strings.TrimRight(example, "\n"), "\n") {
+		b.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "#"), " ") + "\n")
+	}
+	buildDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(buildDir, "patchy.yaml"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(config.Options{Workdir: buildDir, Home: t.TempDir(), SystemDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("uncommented build example does not load: %v\n%s", err, b.String())
+	}
+	if _, bs, err := loaded.File.BuildConfig(); err != nil || len(bs.Entries()) != 2 {
+		t.Fatalf("uncommented build example = %v, %v", bs, err)
+	}
+}
+
+// TestMirrorAddBrokenConfigPropagates pins the init gate: only a missing
+// project config may earn a scaffold — a broken one must surface as the
+// error it is, not be papered over (or overwritten) with a fresh file.
 func TestMirrorAddBrokenConfigPropagates(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile(".patchy.yaml", []byte("mirror: [broken\n"), 0o600); err != nil {
+	if err := os.MkdirAll(".patchy", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(".patchy", "config.yaml"), []byte("mirror: [broken\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := execDev(t, "mirror", "add", "bundle",
 		"--url", "ghcr.example.test/org/bundle", "--type", "artifact", "--version", "1.2.3")
-	if err == nil || !strings.Contains(err.Error(), ".patchy.yaml") {
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(".patchy", "config.yaml")) {
 		t.Fatalf("error = %v, want the config parse failure", err)
 	}
-	if _, statErr := os.Stat("mirror.yaml"); statErr == nil {
-		t.Error("a broken config scaffolded a store anyway")
+	if _, statErr := os.Stat("patchy.yaml"); statErr == nil {
+		t.Error("a broken config scaffolded a patchy.yaml anyway")
+	}
+}
+
+// TestMirrorRejectsLegacyStoreConfig pins the breaking change: a mirror.yaml
+// at the store root fails with the migration instead of being ignored.
+func TestMirrorRejectsLegacyStoreConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeMirrorStore(t)
+	if err := os.WriteFile("mirror.yaml", []byte("kind: MirrorConfig\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := execDev(t, "mirror", "validate", "--all")
+	if err == nil || !strings.Contains(err.Error(), "mirror.yaml is no longer read") ||
+		!strings.Contains(err.Error(), "under mirror:") {
+		t.Fatalf("error = %v, want the migration error", err)
+	}
+	if !isUsage(err) {
+		t.Errorf("legacy store config is not a usage error: %v", err)
 	}
 }
 

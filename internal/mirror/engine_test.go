@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/static"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
@@ -40,6 +41,10 @@ type fixture struct {
 	host string
 	root string
 	eng  *Engine
+	// config is the mirror view of the patchy config in Config.Resolve
+	// struct form — the engine never reads config files, so the fixture
+	// hands it in decoded.
+	config string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -59,15 +64,13 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// setRegistries rewrites mirror.yaml with the given registries block (a
-// pre-indented YAML list), keeping the rest of the fixture config fixed.
+// setRegistries rewrites the fixture config with the given registries block
+// (a pre-indented YAML list), keeping the rest of it fixed.
 // Multi-registry tests point several names at path prefixes of the same
 // in-memory registry — no second server needed.
 func (f *fixture) setRegistries(registries string) {
 	f.t.Helper()
-	mirrorYAML := fmt.Sprintf(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
-kind: MirrorConfig
-registries:
+	f.config = fmt.Sprintf(`registries:
 %ssigning:
   provider: keyless
   keyless:
@@ -78,7 +81,21 @@ update:
 sourceRegistryRewrites:
   example.test: %s
 `, registries, f.host)
-	f.write("mirror.yaml", mirrorYAML)
+}
+
+// global decodes and resolves the fixture config, as the CLI would.
+func (f *fixture) global() *spec.Config {
+	f.t.Helper()
+	dec := yaml.NewDecoder(strings.NewReader(f.config))
+	dec.KnownFields(true)
+	var c spec.Config
+	if err := dec.Decode(&c); err != nil {
+		f.t.Fatalf("decode fixture config: %v", err)
+	}
+	if err := c.Resolve(); err != nil {
+		f.t.Fatalf("resolve fixture config: %v", err)
+	}
+	return &c
 }
 
 // appCanonical is the canonical source name of the test app image; the
@@ -88,11 +105,7 @@ const appCanonical = "example.test/apps/app"
 // engine (re)builds the engine so config edits take effect.
 func (f *fixture) engine() *Engine {
 	f.t.Helper()
-	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	f.eng = New(Config{Root: f.root, Global: global, Now: func() time.Time { return testNow }})
+	f.eng = New(Config{Root: f.root, Global: f.global(), Now: func() time.Time { return testNow }})
 	return f.eng
 }
 

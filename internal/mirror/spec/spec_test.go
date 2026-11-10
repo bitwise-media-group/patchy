@@ -6,14 +6,33 @@ package spec
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestLoadConfig(t *testing.T) {
-	c, err := LoadConfig("testdata/store/mirror.yaml")
+// loadConfig decodes a Config fixture strictly and resolves it — the same
+// two steps the CLI's layered config performs before handing a Config in.
+func loadConfig(t *testing.T, path string) (*Config, error) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+		t.Fatal(err)
+	}
+	var c Config
+	if err := decodeStrict(raw, &c); err != nil {
+		return nil, err
+	}
+	if err := c.Resolve(); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func TestConfigResolve(t *testing.T) {
+	c, err := loadConfig(t, "testdata/config.yaml")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 	assertConfigRegistries(t, c)
 	if c.Signing.Provider != "keyless" || c.Signing.Keyless == nil {
@@ -33,6 +52,9 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if c.SourceRegistryRewrites["docker.io"] != "mirror.example.com/dockerhub" {
 		t.Errorf("rewrites = %v", c.SourceRegistryRewrites)
+	}
+	if a := EffectiveScanPolicy(c.Scan, ScanOverride{}).Allowlist; a.MaxDays != 90 || a.NewDays != 60 {
+		t.Errorf("allowlist policy = %+v, want maxDays 90 newDays 60", a)
 	}
 }
 
@@ -69,14 +91,15 @@ func assertConfigRegistries(t *testing.T, c *Config) {
 
 func TestScanDefaults(t *testing.T) {
 	var s Scan
-	if got := strings.Join(s.EffectiveFailOn(), ","); got != "CRITICAL,HIGH" {
+	if got := strings.Join(EffectiveScanPolicy(s, ScanOverride{}).FailOn, ","); got != "CRITICAL,HIGH" {
 		t.Errorf("failOn default = %q", got)
 	}
-	if !s.EffectiveIgnoreUnfixed() {
+	p := EffectiveScanPolicy(s, ScanOverride{})
+	if !p.IgnoreUnfixed {
 		t.Error("ignoreUnfixed default should be true")
 	}
-	if s.EffectiveAllowlistMaxDays() != 90 || s.EffectiveAllowlistNewDays() != 90 {
-		t.Error("allowlist day defaults should be 90")
+	if p.Allowlist.MaxDays != 90 || p.Allowlist.NewDays != 90 || p.Allowlist.Generate || p.Allowlist.Preamble != "" {
+		t.Errorf("allowlist defaults = %+v, want 90/90/false/empty", p.Allowlist)
 	}
 	if !s.EffectiveEnabled() {
 		t.Error("scan enabled default should be true")
@@ -94,10 +117,10 @@ func TestScanDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejects(t *testing.T) {
+func TestConfigResolveRejects(t *testing.T) {
 	write := func(t *testing.T, content string) string {
 		t.Helper()
-		path := filepath.Join(t.TempDir(), "mirror.yaml")
+		path := filepath.Join(t.TempDir(), "config.yaml")
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -107,79 +130,51 @@ func TestLoadConfigRejects(t *testing.T) {
 	tests := []struct {
 		name, content, wantErr string
 	}{
+		{name: "no registries", content: "signing: {provider: keyless}\n", wantErr: "at least one registry"},
+		{name: "legacy singular registry block", content: "registry: {url: r.example.com/x}\n", wantErr: "registry"},
+		{name: "missing registry name", content: "registries: [{url: r.example.com/x}]\n", wantErr: "name"},
 		{
-			name:    "wrong kind",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: Chart\n" + registries,
-			wantErr: "kind",
-		},
-		{
-			name:    "wrong apiVersion",
-			content: "apiVersion: flux-containers/v1alpha1\nkind: MirrorConfig\n" + registries,
-			wantErr: "apiVersion",
-		},
-		{
-			name:    "no registries",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n",
-			wantErr: "at least one registry",
-		},
-		{
-			name: "legacy singular registry block",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registry: {url: r.example.com/x}\n",
-			wantErr: "registry",
-		},
-		{
-			name: "missing registry name",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registries: [{url: r.example.com/x}]\n",
+			name:    "bad registry name charset",
+			content: "registries: [{name: \"Prod Registry\", url: r.example.com/x}]\n",
 			wantErr: "name",
 		},
+		{name: "missing registry url", content: "registries: [{name: r}]\n", wantErr: "url is required"},
 		{
-			name: "bad registry name charset",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registries: [{name: \"Prod Registry\", url: r.example.com/x}]\n",
-			wantErr: "name",
-		},
-		{
-			name: "missing registry url",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registries: [{name: r}]\n",
-			wantErr: "url is required",
-		},
-		{
-			name: "duplicate registry names",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registries: [{name: r, url: a.example.com/x}, {name: r, url: b.example.com/x}]\n",
+			name:    "duplicate registry names",
+			content: "registries: [{name: r, url: a.example.com/x}, {name: r, url: b.example.com/x}]\n",
 			wantErr: "duplicate name",
 		},
 		{
-			name: "invalid per-registry signing",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				"registries: [{name: r, url: r.example.com/x, signing: {provider: kms}}]\n",
+			name:    "invalid per-registry signing",
+			content: "registries: [{name: r, url: r.example.com/x, signing: {provider: kms}}]\n",
 			wantErr: "kms.key",
 		},
+		{name: "unknown field", content: registries + "bogus: true\n", wantErr: "bogus"},
+		{name: "kms without key", content: registries + "signing: {provider: kms}\n", wantErr: "kms.key"},
 		{
-			name: "unknown field",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				registries + "bogus: true\n",
-			wantErr: "bogus",
+			name:    "newDays beyond maxDays",
+			content: registries + "scan: {allowlist: {maxDays: 30, newDays: 60}}\n",
+			wantErr: "newDays (60) exceeds scan.allowlist.maxDays (30)",
 		},
 		{
-			name: "kms without key",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				registries + "signing: {provider: kms}\n",
-			wantErr: "kms.key",
+			name:    "newDays beyond the default maxDays",
+			content: registries + "scan: {allowlist: {newDays: 120}}\n",
+			wantErr: "exceeds scan.allowlist.maxDays (90)",
 		},
 		{
-			name: "newDays beyond maxDays",
-			content: "apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: MirrorConfig\n" +
-				registries + "scan: {allowlistMaxDays: 30, allowlistNewDays: 60}\n",
-			wantErr: "allowlistNewDays",
+			name:    "zero maxDays",
+			content: registries + "scan: {allowlist: {maxDays: 0}}\n",
+			wantErr: "maxDays must be positive",
+		},
+		{
+			name:    "removed allowlistMaxDays key",
+			content: registries + "scan: {allowlistMaxDays: 30}\n",
+			wantErr: "allowlistMaxDays",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadConfig(write(t, tt.content))
+			_, err := loadConfig(t, write(t, tt.content))
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("want error containing %q, got %v", tt.wantErr, err)
 			}
@@ -188,9 +183,9 @@ func TestLoadConfigRejects(t *testing.T) {
 }
 
 func TestSelectRegistries(t *testing.T) {
-	c, err := LoadConfig("testdata/store/mirror.yaml")
+	c, err := loadConfig(t, "testdata/config.yaml")
 	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+		t.Fatalf("Resolve: %v", err)
 	}
 	names := func(regs []Registry) string {
 		out := make([]string, len(regs))
@@ -273,8 +268,11 @@ func assertDemoChart(t *testing.T, demo Entry) {
 	if m.Chart.VerifyUpstream.EffectiveOidcIssuer() != defaultOidcIssuer {
 		t.Error("chart rule issuer default")
 	}
-	if m.Scan == nil || !m.Scan.Allowlist.Generate || !strings.Contains(m.Scan.Allowlist.Preamble, "Whole-file") {
-		t.Errorf("scan override = %+v", m.Scan)
+	if g := m.Scan.Allowlist.Generate; g == nil || !*g {
+		t.Errorf("scan.allowlist.generate = %v, want true", g)
+	}
+	if p := m.Scan.Allowlist.Preamble; p == nil || !strings.Contains(*p, "Whole-file") {
+		t.Errorf("scan.allowlist.preamble = %v", p)
 	}
 	if got := filepath.Base(demo.LockPath()); got != "images.lock.yaml" {
 		t.Errorf("chart lock path = %q", got)
@@ -290,8 +288,8 @@ func assertBundleArtifact(t *testing.T, bundle Entry) {
 	if cd := bundle.Artifact.Artifact.CooldownDays; cd == nil || *cd != 0 {
 		t.Errorf("cooldownDays = %v, want explicit 0", cd)
 	}
-	if bundle.Artifact.Scan.EffectiveEnabled() != "auto" {
-		t.Errorf("scan enabled = %q", bundle.Artifact.Scan.EffectiveEnabled())
+	if got := bundle.Artifact.Scan.Enabled.Effective(); got != ScanAuto {
+		t.Errorf("scan enabled = %q", got)
 	}
 	if got := filepath.Base(bundle.LockPath()); got != "lock.yaml" {
 		t.Errorf("artifact lock path = %q", got)
@@ -311,33 +309,169 @@ func TestLoadEntry(t *testing.T) {
 	}
 }
 
-func TestFindRoot(t *testing.T) {
-	root, err := filepath.Abs("testdata/store")
-	if err != nil {
-		t.Fatal(err)
+func TestEffectiveScanPolicy(t *testing.T) {
+	yes, no := true, false
+	days := func(n int) *int { return &n }
+	text := func(s string) *string { return &s }
+	tests := []struct {
+		name   string
+		global Scan
+		o      ScanOverride
+		want   ScanPolicy
+	}{
+		{
+			name: "built-in defaults",
+			want: ScanPolicy{
+				Enabled: true, Auto: true, FailOn: []string{"CRITICAL", "HIGH"}, IgnoreUnfixed: true,
+				Allowlist: ResolvedAllowlist{MaxDays: 90, NewDays: 90},
+			},
+		},
+		{
+			name: "config overrides built-ins",
+			global: Scan{
+				FailOn: []string{"CRITICAL"}, IgnoreUnfixed: &no,
+				Allowlist: AllowlistPolicy{MaxDays: days(60), NewDays: days(30), Generate: &yes, Preamble: text("g")},
+			},
+			want: ScanPolicy{
+				Enabled: true, Auto: true, FailOn: []string{"CRITICAL"}, IgnoreUnfixed: false,
+				Allowlist: ResolvedAllowlist{MaxDays: 60, NewDays: 30, Generate: true, Preamble: "g"},
+			},
+		},
+		{
+			name: "entry overrides config field by field",
+			global: Scan{
+				FailOn: []string{"CRITICAL"}, IgnoreUnfixed: &no,
+				Allowlist: AllowlistPolicy{MaxDays: days(60), NewDays: days(30), Generate: &yes, Preamble: text("g")},
+			},
+			o: ScanOverride{
+				FailOn: []string{"HIGH"}, IgnoreUnfixed: &yes,
+				Allowlist: AllowlistPolicy{NewDays: days(10), Generate: &no, Preamble: text("")},
+			},
+			want: ScanPolicy{
+				Enabled: true, Auto: true, FailOn: []string{"HIGH"}, IgnoreUnfixed: true,
+				Allowlist: ResolvedAllowlist{MaxDays: 60, NewDays: 10, Generate: false, Preamble: ""},
+			},
+		},
+		{
+			name:   "auto defers to a disabled config",
+			global: Scan{Enabled: &no},
+			want: ScanPolicy{
+				Enabled: false, Auto: true, FailOn: []string{"CRITICAL", "HIGH"}, IgnoreUnfixed: true,
+				Allowlist: ResolvedAllowlist{MaxDays: 90, NewDays: 90},
+			},
+		},
+		{
+			name:   "explicit true overrides a disabled config",
+			global: Scan{Enabled: &no},
+			o:      ScanOverride{Enabled: ScanOn},
+			want: ScanPolicy{
+				Enabled: true, FailOn: []string{"CRITICAL", "HIGH"}, IgnoreUnfixed: true,
+				Allowlist: ResolvedAllowlist{MaxDays: 90, NewDays: 90},
+			},
+		},
+		{
+			name:   "explicit false overrides an enabled config",
+			global: Scan{Enabled: &yes},
+			o:      ScanOverride{Enabled: ScanOff},
+			want: ScanPolicy{
+				Enabled: false, FailOn: []string{"CRITICAL", "HIGH"}, IgnoreUnfixed: true,
+				Allowlist: ResolvedAllowlist{MaxDays: 90, NewDays: 90},
+			},
+		},
 	}
-	got, err := FindRoot(filepath.Join(root, "charts", "demo"))
-	if err != nil {
-		t.Fatalf("FindRoot: %v", err)
-	}
-	if got != root {
-		t.Errorf("FindRoot = %q, want %q", got, root)
-	}
-	if _, err := FindRoot(t.TempDir()); err == nil {
-		t.Error("want error when no mirror.yaml exists upward")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectiveScanPolicy(tt.global, tt.o)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("EffectiveScanPolicy =\n %+v\nwant\n %+v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestEffectiveScanPolicy(t *testing.T) {
-	var global Scan
-	p := EffectiveScanPolicy(global, nil)
-	if strings.Join(p.FailOn, ",") != "CRITICAL,HIGH" || !p.IgnoreUnfixed {
-		t.Errorf("global policy = %+v", p)
+func TestResolvedAllowlistValidate(t *testing.T) {
+	tests := []struct {
+		a       ResolvedAllowlist
+		wantErr string
+	}{
+		{a: ResolvedAllowlist{MaxDays: 90, NewDays: 90}},
+		{a: ResolvedAllowlist{MaxDays: 30, NewDays: 60}, wantErr: "exceeds"},
+		{a: ResolvedAllowlist{MaxDays: 0, NewDays: 0}, wantErr: "maxDays must be positive"},
+		{a: ResolvedAllowlist{MaxDays: 30, NewDays: -1}, wantErr: "newDays must be positive"},
 	}
-	f := false
-	p = EffectiveScanPolicy(global, &ScanOverride{FailOn: []string{"CRITICAL"}, IgnoreUnfixed: &f})
-	if strings.Join(p.FailOn, ",") != "CRITICAL" || p.IgnoreUnfixed {
-		t.Errorf("override policy = %+v", p)
+	for _, tt := range tests {
+		err := tt.a.Validate()
+		if tt.wantErr == "" {
+			if err != nil {
+				t.Errorf("Validate(%+v) = %v", tt.a, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+			t.Errorf("Validate(%+v) = %v, want %q", tt.a, err, tt.wantErr)
+		}
+	}
+}
+
+func TestScanEnabledDecode(t *testing.T) {
+	tests := []struct {
+		in    string
+		want  ScanEnabled
+		valid bool
+	}{
+		{in: "enabled: true", want: ScanOn, valid: true},
+		{in: "enabled: false", want: ScanOff, valid: true},
+		{in: "enabled: auto", want: ScanAuto, valid: true},
+		{in: `enabled: "true"`, want: ScanOn, valid: true},
+		{in: "{}", want: "", valid: true},
+		{in: "enabled: maybe", want: "maybe", valid: false},
+	}
+	for _, tt := range tests {
+		var o ScanOverride
+		if err := decodeStrict([]byte(tt.in), &o); err != nil {
+			t.Errorf("decode %q: %v", tt.in, err)
+			continue
+		}
+		if o.Enabled != tt.want || o.Enabled.Valid() != tt.valid {
+			t.Errorf("decode %q = %q (valid %v), want %q (valid %v)", tt.in, o.Enabled, o.Enabled.Valid(), tt.want, tt.valid)
+		}
+	}
+	var o ScanOverride
+	if err := decodeStrict([]byte("enabled: [true]"), &o); err == nil {
+		t.Error("a sequence decoded as scan.enabled")
+	}
+}
+
+// TestManifestScanBlocks pins the one scan shape across both manifest
+// kinds: the keys charts and artifacts already used still load, and each
+// kind now accepts the other's keys too.
+func TestManifestScanBlocks(t *testing.T) {
+	dir := t.TempDir()
+	chart := filepath.Join(dir, "chart.yaml")
+	if err := os.WriteFile(chart, []byte("apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: Chart\n"+
+		"name: c\nscan:\n  enabled: false\n  allowlist: {maxDays: 30}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadChartManifest(chart)
+	if err != nil {
+		t.Fatalf("LoadChartManifest: %v", err)
+	}
+	if m.Scan.Enabled != ScanOff || m.Scan.Allowlist.MaxDays == nil || *m.Scan.Allowlist.MaxDays != 30 {
+		t.Errorf("chart scan = %+v", m.Scan)
+	}
+	artifact := filepath.Join(dir, "artifact.yaml")
+	if err := os.WriteFile(artifact, []byte("apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1\nkind: Artifact\n"+
+		"name: a\nscan:\n  enabled: true\n  failOn: [CRITICAL]\n  ignoreUnfixed: false\n"+
+		"  allowlist: {generate: true}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := LoadArtifactManifest(artifact)
+	if err != nil {
+		t.Fatalf("LoadArtifactManifest: %v", err)
+	}
+	if a.Scan.Enabled != ScanOn || len(a.Scan.FailOn) != 1 || a.Scan.IgnoreUnfixed == nil ||
+		a.Scan.Allowlist.Generate == nil || !*a.Scan.Allowlist.Generate {
+		t.Errorf("artifact scan = %+v", a.Scan)
 	}
 }
 

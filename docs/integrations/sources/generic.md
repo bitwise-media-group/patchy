@@ -183,9 +183,9 @@ patchy dev enhance --url http://127.0.0.1:9000/enhance --secret dev-secret findi
 patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findings.json
 ```
 
-Every `dev` flag also resolves from a `PATCHY_DEV_*` environment variable (`PATCHY_DEV_ENHANCE_URL`, …) and an optional
-`.patchy.yaml`/`.yml`/`.json` in the working directory, with explicit flags winning over the environment and the
-environment over the file:
+Every `dev` flag also resolves from a `PATCHY_DEV_*` environment variable (`PATCHY_DEV_ENHANCE_URL`, …) and the `dev:`
+block of the [patchy configuration](../../cli.md#configuration) — `patchy.yaml` in the working directory, or a layer in
+`~/.config/patchy/` — with explicit flags winning over the environment and the environment over the file:
 
 ```yaml
 dev:

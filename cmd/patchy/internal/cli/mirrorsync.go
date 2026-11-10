@@ -5,13 +5,11 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/printer"
 	"github.com/bitwise-media-group/patchy/internal/mirror"
-	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
 // newMirrorSyncCmd is the publish path: converge the registries onto the
@@ -43,13 +41,13 @@ func newMirrorSyncCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"  patchy mirror sync --all --registry ghcr   # one registry only\n" +
 			"  patchy mirror sync opentelemetry-collector",
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: mirrorEntryCompletion(opts, f),
+		ValidArgsFunction: mirrorEntryCompletion(f),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := mirrorRoot(cmd, opts, f)
+			root, loaded, err := mirrorRoot(cmd, opts, f)
 			if err != nil {
 				return err
 			}
-			eng, err := mirrorEngine(opts, f, root)
+			eng, err := mirrorEngine(opts, f, root, loaded)
 			if err != nil {
 				return err
 			}
@@ -93,28 +91,22 @@ func newMirrorSyncCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	fl.BoolVar(&dryRun, "dry-run", false, "report every action without writing to the registry")
 	fl.StringSliceVar(&registries, "registry", nil,
 		"restrict publishing to the named registries (repeatable or comma-separated; default all)")
-	_ = cmd.RegisterFlagCompletionFunc("registry", mirrorRegistryCompletion(opts, f))
+	_ = cmd.RegisterFlagCompletionFunc("registry", registryCompletion)
 	return cmd
 }
 
-// mirrorRegistryCompletion completes registry names from mirror.yaml.
-func mirrorRegistryCompletion(opts *Options,
-	f *mirrorFlags) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		root, err := mirrorRoot(cmd, opts, f)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		global, err := spec.LoadConfig(filepath.Join(root, spec.ConfigFile))
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		var names []string
-		for _, r := range global.Registries {
-			names = append(names, r.Name)
-		}
-		return names, cobra.ShellCompDirectiveNoFileComp
+// registryCompletion completes registry names from the loaded patchy
+// config (mirror sync and build share it).
+func registryCompletion(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	loaded, err := loadPatchyConfig()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
+	var names []string
+	for _, r := range loaded.File.Registries {
+		names = append(names, r.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 // renderSyncResults writes the sync outcome to stdout.

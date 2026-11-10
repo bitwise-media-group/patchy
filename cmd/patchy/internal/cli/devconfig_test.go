@@ -4,7 +4,9 @@
 package cli
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,13 +31,13 @@ func TestLoadDevConfigPrecedence(t *testing.T) {
 		"  name: file-name\n" +
 		"  min-severity: high\n" +
 		"  enhance-timeout: 5s\n"
-	if err := os.WriteFile(".patchy.yaml", []byte(config), 0o600); err != nil {
+	if err := os.WriteFile("patchy.yaml", []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATCHY_DEV_NAME", "env-name")
 
 	cmd := parseDevGeneric(t, "--addr", "flag-addr:1")
-	v, err := loadCLIConfig(cmd, devGenericKeys)
+	v, loaded, err := loadCLIConfig(cmd, devGenericKeys)
 	if err != nil {
 		t.Fatalf("loadCLIConfig: %v", err)
 	}
@@ -55,19 +57,69 @@ func TestLoadDevConfigPrecedence(t *testing.T) {
 	if got := v.GetString("dev.enhance-url"); got != "" {
 		t.Errorf("enhance-url = %q, want the untouched default", got)
 	}
-	if v.ConfigFileUsed() == "" {
-		t.Error("ConfigFileUsed() is empty; provenance narration would be silent")
+	if len(loaded.Sources) != 1 || loaded.Sources[0] != "patchy.yaml" {
+		t.Errorf("sources = %v; provenance narration would be wrong", loaded.Sources)
+	}
+}
+
+// TestLoadDevConfigLayers pins the layering under viper: a user-level
+// layer supplies what the project layer does not set.
+func TestLoadDevConfigLayers(t *testing.T) {
+	t.Chdir(t.TempDir())
+	home := filepath.Join(configOptions.Home, ".config", "patchy")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	if err := os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[dev]\nname = \"home-name\"\nenhance-url = \"http://home.example\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("patchy.yaml", []byte("dev:\n  name: project-name\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, loaded, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
+	if err != nil {
+		t.Fatalf("loadCLIConfig: %v", err)
+	}
+	if v.GetString("dev.name") != "project-name" || v.GetString("dev.enhance-url") != "http://home.example" {
+		t.Errorf("name = %q enhance-url = %q", v.GetString("dev.name"), v.GetString("dev.enhance-url"))
+	}
+	var errOut bytes.Buffer
+	noteConfigSources(&Options{ErrOut: &errOut}, loaded)
+	want := "patchy: using " + filepath.Join("~", ".config", "patchy", "config.toml") + ", patchy.yaml\n"
+	if errOut.String() != want {
+		t.Errorf("narration = %q, want %q", errOut.String(), want)
+	}
+}
+
+func TestLoadDevConfigLegacyWarning(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile(".patchy.yaml", []byte("dev:\n  name: legacy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, loaded, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
+	if err != nil {
+		t.Fatalf("loadCLIConfig: %v", err)
+	}
+	if v.GetString("dev.name") != "dev" {
+		t.Errorf("name = %q, want the default: .patchy.yaml is no longer read", v.GetString("dev.name"))
+	}
+	var errOut bytes.Buffer
+	noteConfigSources(&Options{ErrOut: &errOut}, loaded)
+	if !strings.Contains(errOut.String(), "warning: .patchy.yaml is no longer read") {
+		t.Errorf("narration = %q, want the legacy warning", errOut.String())
 	}
 }
 
 func TestLoadDevConfigAmbiguousFiles(t *testing.T) {
 	t.Chdir(t.TempDir())
-	for _, name := range []string{".patchy.yaml", ".patchy.json"} {
+	for _, name := range []string{"patchy.yaml", "patchy.json"} {
 		if err := os.WriteFile(name, []byte("{}"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
+	_, _, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("error = %v, want the ambiguity refusal", err)
 	}
@@ -78,11 +130,11 @@ func TestLoadDevConfigAmbiguousFiles(t *testing.T) {
 
 func TestLoadDevConfigMalformedFile(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile(".patchy.yaml", []byte("dev: ["), 0o600); err != nil {
+	if err := os.WriteFile("patchy.yaml", []byte("dev: ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
-	if err == nil || !strings.Contains(err.Error(), ".patchy.yaml") {
+	_, _, err := loadCLIConfig(parseDevGeneric(t), devGenericKeys)
+	if err == nil || !strings.Contains(err.Error(), "patchy.yaml") {
 		t.Fatalf("error = %v, want a parse failure naming the file", err)
 	}
 }

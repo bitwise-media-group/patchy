@@ -8,33 +8,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
 	"go.yaml.in/yaml/v4"
 )
 
-// APIVersion is the schema identity every mirror file declares.
+// APIVersion is the schema identity every mirror manifest declares.
 const APIVersion = "mirror.patchy.bitwisemedia.uk/v1alpha1"
 
-// The kinds the schema defines.
+// The manifest kinds the schema defines.
 const (
-	KindMirrorConfig = "MirrorConfig"
-	KindChart        = "Chart"
-	KindArtifact     = "Artifact"
+	KindChart    = "Chart"
+	KindArtifact = "Artifact"
 )
 
-// ConfigFile is the name of the root configuration file; its directory is
-// the mirror root.
-const ConfigFile = "mirror.yaml"
-
-// Config is mirror.yaml: pipeline-wide defaults. Per-entry intent lives in
-// each entry's manifest.yaml, never here.
+// Config is the mirror's view of the patchy configuration: the shared
+// registries, signing and scan blocks plus the mirror: block's update and
+// sourceRegistryRewrites. The CLI assembles it from the layered patchy
+// config; the engine never discovers or reads config files itself, so a
+// Config is always handed in. Per-entry intent lives in each entry's
+// manifest.yaml, never here.
 type Config struct {
-	APIVersion string     `yaml:"apiVersion"`
-	Kind       string     `yaml:"kind"`
 	Registries []Registry `yaml:"registries"`
 	Signing    Signing    `yaml:"signing"`
 	Update     Update     `yaml:"update"`
@@ -43,6 +38,56 @@ type Config struct {
 	// (e.g. a pull-through cache in front of docker.io). Recorded sources
 	// and publish targets keep the canonical path.
 	SourceRegistryRewrites map[string]string `yaml:"sourceRegistryRewrites"`
+}
+
+// Resolve validates the config and fills its defaults in place: at least
+// one registry, each with a well-formed unique name and a url, namespace
+// defaults per registry, the signing default (keyless) and every signing
+// block's shape, and the scan block's allowlist horizon. Callers that only
+// need part of the config (the dev commands) never call it.
+func (c *Config) Resolve() error {
+	if len(c.Registries) == 0 {
+		return errors.New("registries must list at least one registry")
+	}
+	seen := make(map[string]bool, len(c.Registries))
+	for i := range c.Registries {
+		r := &c.Registries[i]
+		if !registryNameRe.MatchString(r.Name) {
+			return fmt.Errorf("registries[%d]: name %q must match %s "+
+				"(it keys lock targets and --registry)", i, r.Name, registryNameRe)
+		}
+		if seen[r.Name] {
+			return fmt.Errorf("registries[%d]: duplicate name %q", i, r.Name)
+		}
+		seen[r.Name] = true
+		if r.URL == "" {
+			return fmt.Errorf("registries[%d] (%s): url is required", i, r.Name)
+		}
+		if r.ChartNamespace == "" {
+			r.ChartNamespace = "charts"
+		}
+		if r.ImageNamespace == "" {
+			r.ImageNamespace = "images"
+		}
+		if r.ArtifactNamespace == "" {
+			r.ArtifactNamespace = "artifacts"
+		}
+		if r.Signing != nil {
+			if err := validateSigning(r.Signing); err != nil {
+				return fmt.Errorf("registries[%d] (%s): signing: %w", i, r.Name, err)
+			}
+		}
+	}
+	if c.Signing.Provider == "" {
+		c.Signing.Provider = "keyless"
+	}
+	if err := validateSigning(&c.Signing); err != nil {
+		return fmt.Errorf("signing: %w", err)
+	}
+	if err := EffectiveScanPolicy(c.Scan, ScanOverride{}).Allowlist.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Registry locates one mirror destination: a registry URL with path
@@ -153,7 +198,7 @@ type Update struct {
 	CooldownDays *int `yaml:"cooldownDays"`
 }
 
-// defaultCooldownDays is the soak window applied when mirror.yaml sets none.
+// defaultCooldownDays is the soak window applied when the config sets none.
 const defaultCooldownDays = 3
 
 // EffectiveCooldownDays resolves the default.
@@ -162,171 +207,6 @@ func (u Update) EffectiveCooldownDays() int {
 		return *u.CooldownDays
 	}
 	return defaultCooldownDays
-}
-
-// Scan is the global vulnerability-scan policy. FailOn and IgnoreUnfixed
-// can be overridden per entry; the scanner roster is global.
-type Scan struct {
-	// Enabled turns image scanning off entirely when false (default
-	// true). With scanning enabled, at least one image scanner must be
-	// enabled in Scanners.
-	Enabled  *bool    `yaml:"enabled"`
-	Scanners Scanners `yaml:"scanners"`
-	// FailOn lists blocking severities (default CRITICAL, HIGH).
-	FailOn []string `yaml:"failOn"`
-	// IgnoreUnfixed skips findings with no fixed version (default true).
-	IgnoreUnfixed *bool `yaml:"ignoreUnfixed"`
-	// AllowlistMaxDays bounds every allowlist entry's expired_at horizon
-	// (default 90) — expiry forces re-review instead of accepted-forever CVEs.
-	AllowlistMaxDays int `yaml:"allowlistMaxDays"`
-	// AllowlistNewDays is the expiry stamped on new derived entries
-	// (default 90). Surviving entries keep the date they were first
-	// accepted with, so regeneration never rolls a live acceptance
-	// forward — except one whose date has already lapsed (on or before
-	// today), which is renewed to this horizon as a fresh acceptance,
-	// reviewed as a date change in the upgrade diff.
-	AllowlistNewDays int `yaml:"allowlistNewDays"`
-}
-
-// Scanners toggles the pluggable scanners independently; none is forced,
-// but an image scan with neither osv nor grype enabled is an error.
-type Scanners struct {
-	// OSV shells out to osv-scanner, which must be on PATH when enabled
-	// (default disabled).
-	OSV *ScannerToggle `yaml:"osv"`
-	// Grype shells out to grype, which must be on PATH when enabled
-	// (default disabled).
-	Grype *ScannerToggle `yaml:"grype"`
-	// Kubescape scans rendered manifests for misconfigurations (default
-	// enabled, warn-only; skipped with a warning when the binary is absent).
-	Kubescape *KubescapeScanner `yaml:"kubescape"`
-}
-
-// ScannerToggle enables or disables one scanner.
-type ScannerToggle struct {
-	Enabled bool `yaml:"enabled"`
-}
-
-// KubescapeScanner configures the configuration scan.
-type KubescapeScanner struct {
-	Enabled bool `yaml:"enabled"`
-	// Mode is "warn" (findings inform review) or "fail" (findings block).
-	Mode string `yaml:"mode"`
-}
-
-// OSVEnabled resolves the osv default (off).
-func (s Scanners) OSVEnabled() bool { return s.OSV != nil && s.OSV.Enabled }
-
-// GrypeEnabled resolves the grype default (off).
-func (s Scanners) GrypeEnabled() bool { return s.Grype != nil && s.Grype.Enabled }
-
-// KubescapeEnabled resolves the kubescape default (on).
-func (s Scanners) KubescapeEnabled() bool { return s.Kubescape == nil || s.Kubescape.Enabled }
-
-// KubescapeMode resolves the kubescape mode default ("warn").
-func (s Scanners) KubescapeMode() string {
-	if s.Kubescape == nil || s.Kubescape.Mode == "" {
-		return "warn"
-	}
-	return s.Kubescape.Mode
-}
-
-// Defaults for the scan policy.
-const (
-	defaultAllowlistMaxDays = 90
-	defaultAllowlistNewDays = 90
-)
-
-// EffectiveFailOn resolves the FailOn default.
-func (s Scan) EffectiveFailOn() []string {
-	if len(s.FailOn) > 0 {
-		return s.FailOn
-	}
-	return []string{"CRITICAL", "HIGH"}
-}
-
-// EffectiveEnabled resolves the scanning-enabled default (on).
-func (s Scan) EffectiveEnabled() bool {
-	return s.Enabled == nil || *s.Enabled
-}
-
-// EffectiveIgnoreUnfixed resolves the IgnoreUnfixed default.
-func (s Scan) EffectiveIgnoreUnfixed() bool {
-	return s.IgnoreUnfixed == nil || *s.IgnoreUnfixed
-}
-
-// EffectiveAllowlistMaxDays resolves the horizon default.
-func (s Scan) EffectiveAllowlistMaxDays() int {
-	if s.AllowlistMaxDays > 0 {
-		return s.AllowlistMaxDays
-	}
-	return defaultAllowlistMaxDays
-}
-
-// EffectiveAllowlistNewDays resolves the new-entry default.
-func (s Scan) EffectiveAllowlistNewDays() int {
-	if s.AllowlistNewDays > 0 {
-		return s.AllowlistNewDays
-	}
-	return defaultAllowlistNewDays
-}
-
-// LoadConfig reads and validates the mirror.yaml at path.
-func LoadConfig(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	var c Config
-	if err := decodeStrict(raw, &c); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	if err := checkHeader(c.APIVersion, c.Kind, KindMirrorConfig); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	if len(c.Registries) == 0 {
-		return nil, fmt.Errorf("%s: registries must list at least one registry", path)
-	}
-	seen := make(map[string]bool, len(c.Registries))
-	for i := range c.Registries {
-		r := &c.Registries[i]
-		if !registryNameRe.MatchString(r.Name) {
-			return nil, fmt.Errorf("%s: registries[%d]: name %q must match %s "+
-				"(it keys lock targets and --registry)", path, i, r.Name, registryNameRe)
-		}
-		if seen[r.Name] {
-			return nil, fmt.Errorf("%s: registries[%d]: duplicate name %q", path, i, r.Name)
-		}
-		seen[r.Name] = true
-		if r.URL == "" {
-			return nil, fmt.Errorf("%s: registries[%d] (%s): url is required", path, i, r.Name)
-		}
-		if r.ChartNamespace == "" {
-			r.ChartNamespace = "charts"
-		}
-		if r.ImageNamespace == "" {
-			r.ImageNamespace = "images"
-		}
-		if r.ArtifactNamespace == "" {
-			r.ArtifactNamespace = "artifacts"
-		}
-		if r.Signing != nil {
-			if err := validateSigning(r.Signing); err != nil {
-				return nil, fmt.Errorf("%s: registries[%d] (%s): signing: %w", path, i, r.Name, err)
-			}
-		}
-	}
-	if c.Signing.Provider == "" {
-		c.Signing.Provider = "keyless"
-	}
-	if err := validateSigning(&c.Signing); err != nil {
-		return nil, fmt.Errorf("%s: signing: %w", path, err)
-	}
-	if c.Scan.EffectiveAllowlistNewDays() > c.Scan.EffectiveAllowlistMaxDays() {
-		return nil, fmt.Errorf("%s: scan.allowlistNewDays (%d) exceeds scan.allowlistMaxDays (%d)",
-			path, c.Scan.EffectiveAllowlistNewDays(), c.Scan.EffectiveAllowlistMaxDays())
-	}
-	return &c, nil
 }
 
 // registryNameRe bounds registry names: they become lock-file map keys and
@@ -347,28 +227,6 @@ func validateSigning(s *Signing) error {
 		return errors.New("provider is required (keyless or kms)")
 	default:
 		return fmt.Errorf("unknown provider %q (want keyless or kms)", s.Provider)
-	}
-}
-
-// ErrNoRoot reports that no mirror.yaml exists in the directory or any
-// parent — the one FindRoot failure "scaffold a fresh store" may answer.
-var ErrNoRoot = errors.New("no " + ConfigFile + " found")
-
-// FindRoot walks up from dir to the directory holding mirror.yaml.
-func FindRoot(dir string) (string, error) {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return "", err
-	}
-	for d := abs; ; {
-		if info, err := os.Stat(filepath.Join(d, ConfigFile)); err == nil && !info.IsDir() {
-			return d, nil
-		}
-		parent := filepath.Dir(d)
-		if parent == d {
-			return "", fmt.Errorf("%w in %s or any parent directory", ErrNoRoot, abs)
-		}
-		d = parent
 	}
 }
 

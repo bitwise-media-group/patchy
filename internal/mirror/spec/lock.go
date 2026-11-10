@@ -138,7 +138,7 @@ func (l *ArtifactLock) Encode() []byte {
 }
 
 // sortedKeys orders a targets map by registry name so the emitted bytes are
-// insensitive to mirror.yaml reordering.
+// insensitive to the order registries are configured in.
 func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

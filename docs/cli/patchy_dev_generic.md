@@ -19,8 +19,14 @@ write-back only when a finding is dismissed, typically much later.
 
 Without --secret or --secret-file a random secret is generated and printed,
 so a first run needs no setup. Every flag also reads from a PATCHY_DEV_*
-environment variable and a .patchy.yaml/.yml/.json in the working directory
-(flag > environment > file > default).
+environment variable and the dev: block of the patchy config (flag >
+environment > file > default).
+
+The patchy config merges from, least to most preferred: /etc/patchy/config.<ext>,
+~/.config/patchy/config.<ext>, then in the working directory mise/patchy.<ext>,
+patchy/config.<ext>, .mise/patchy.<ext>, .patchy/config.<ext> and patchy.<ext>
+(<ext> is yaml, yml, json or toml). Maps merge, lists replace, and null deletes
+an inherited key.
 
 ```
 patchy dev generic [flags]

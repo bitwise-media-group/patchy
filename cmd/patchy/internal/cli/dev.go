@@ -28,9 +28,9 @@ func newDevCmd(opts *Options) *cobra.Command {
 			"`dev generic` hosts the receiver locally and drives the enhancer and resolver\n" +
 			"calls; `dev enhance` and `dev resolve` fire a single outbound exchange for\n" +
 			"authors whose process is only an enhancer or resolver.\n\n" +
-			"Every flag also resolves from a PATCHY_DEV_* environment variable and an\n" +
-			"optional .patchy.yaml (or .yml/.json) in the working directory, with explicit\n" +
-			"flags winning over the environment, and the environment over the file.",
+			"Every flag also resolves from a PATCHY_DEV_* environment variable and the\n" +
+			"dev: block of the patchy config, with explicit flags winning over the\n" +
+			"environment, and the environment over the file.\n\n" + configHelp,
 		Args: cobra.NoArgs,
 	}
 	cmd.AddCommand(newDevGenericCmd(opts), newDevEnhanceCmd(opts), newDevResolveCmd(opts))

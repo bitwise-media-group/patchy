@@ -41,7 +41,7 @@ patchy mirror validate [name]... [flags]
 ```
   -A, --all-namespaces             work across every namespace
       --context string             kubeconfig context to use
-  -C, --directory string           mirror store directory (walks up to mirror.yaml; default: the working directory)
+  -C, --directory string           mirror store directory, relative to the working directory (default: the working directory)
       --kubeconfig string          path to the kubeconfig file
   -n, --namespace string           namespace to work in (default: the context's)
       --no-color                   disable colour and styling

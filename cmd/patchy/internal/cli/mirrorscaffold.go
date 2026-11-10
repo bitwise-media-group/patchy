@@ -8,18 +8,20 @@ import (
 	"strings"
 )
 
-// scaffoldMirrorConfig is the starter mirror.yaml written on first use:
-// every value the pipeline needs, commented for the reviewer to fill in.
-func scaffoldMirrorConfig() []byte {
-	return []byte(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
-kind: MirrorConfig
+// scaffoldConfig is the starter patchy.yaml mirror add writes when the
+// working directory has no patchy config: every value the pipelines need,
+// commented for the reviewer to fill in. It must load and validate as-is.
+func scaffoldConfig() []byte {
+	return []byte(`# patchy configuration, shared by patchy mirror and patchy build. Layers merge
+# from /etc/patchy, ~/.config/patchy and the project (this file wins); maps
+# merge, lists replace, and null deletes an inherited key.
 
 registries:
   # Where everything publishes: every entry goes to every registry listed
-  # here. The name keys the lock files' targets and 'sync --registry'.
+  # here. The name keys the lock files' targets and --registry.
   - name: primary
     url: registry.example.com/org/platform
-    # Path prefixes inside the registry, per artifact class.
+    # Mirror path prefixes inside the registry, per artifact class.
     chartNamespace: charts
     imageNamespace: images        # target = images/<canonical source path>:<tag>
     artifactNamespace: artifacts
@@ -48,13 +50,10 @@ signing:
   # kms:
   #   key: gcpkms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>
 
-update:
-  # Soak window for tracked-tag and artifact-version picks: a tag published
-  # this recently can still be yanked or hot-fixed. Kept short on purpose —
-  # every day here is a day the platform knowingly runs behind on fixes.
-  cooldownDays: 3
-
 scan:
+  # The defaults every mirror entry and build entry inherits; an entry's own
+  # scan: block overrides any field (enabled: auto | true | false there).
+  enabled: true
   scanners:
     # shells out to osv-scanner, which must be on PATH (default off)
     osv:
@@ -68,15 +67,51 @@ scan:
       mode: warn
   failOn: [CRITICAL, HIGH]
   ignoreUnfixed: true
-  # Allowlist entries must expire within this horizon; new derived entries
-  # get allowlistNewDays from the day they first appear.
-  allowlistMaxDays: 90
-  allowlistNewDays: 90
+  allowlist:
+    # Allowlist entries must expire within maxDays; new derived entries get
+    # newDays from the day they first appear.
+    maxDays: 90
+    newDays: 90
+    # Regenerate allowlists from fresh scans (mirror upgrade, build
+    # --update-allowlists); entries usually opt in individually.
+    generate: false
 
-# Rewrites applied when PULLING from an upstream registry (e.g. a mirror in
-# front of docker.io); recorded sources and publish targets keep the
-# canonical path.
-sourceRegistryRewrites: {}
+mirror:
+  # The mirror store root, relative to the working directory (default: the
+  # working directory). Also --directory / PATCHY_MIRROR_DIRECTORY.
+  # directory: mirror
+  update:
+    # Soak window for tracked-tag and artifact-version picks: a tag published
+    # this recently can still be yanked or hot-fixed. Kept short on purpose —
+    # every day here is a day the platform knowingly runs behind on fixes.
+    cooldownDays: 3
+  # Rewrites applied when PULLING from an upstream registry (e.g. a mirror in
+  # front of docker.io); recorded sources and publish targets keep the
+  # canonical path.
+  sourceRegistryRewrites: {}
+
+# build:
+#   # First-party images and Flux manifest trees: patchy build builds,
+#   # scans (before any push), publishes to every registry and signs them.
+#   architectures: [amd64, arm64]
+#   tags:
+#     - "${VERSION}-${CHANNEL}.${PATCHY_TIMESTAMP}.g${GITHUB_SHA:0:7}"
+#     - "sha-${GITHUB_SHA}"
+#   images:
+#     - name: controller           # allowlist: security/allowlists/controller.yaml
+#       repository: org/controller
+#       dockerfile: Dockerfile
+#       context: .
+#       args: {GO_VERSION: "1.27"}
+#       scan:
+#         allowlist: {generate: true}
+#   manifests:
+#     - name: platform
+#       repository: manifests/platform
+#       path: deploy/flux
+#       ignore: ["*.md"]
+#       source: "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+#       revision: "${GITHUB_REF_NAME}@sha1:${GITHUB_SHA}"
 `)
 }
 
@@ -133,8 +168,13 @@ func scaffoldArtifactManifest(name, ref, version, constraint, lockstep string) [
   verifyUpstream:
     provider: none
 scan:
-  # auto scans iff the artifact is a runnable image.
+  # auto scans iff the artifact is a runnable image. Any field of the
+  # config's scan block may be overridden here.
   enabled: auto
+  # failOn: [CRITICAL]
+  # allowlist:
+  #   generate: true            # regenerate security/allowlist.yaml on upgrade
+  #   maxDays: 30
 # publish:
 #   # Override the default publish path (<artifactNamespace>/<ref>), applied
 #   # under every registry URL.

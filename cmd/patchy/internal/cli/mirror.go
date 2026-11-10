@@ -6,12 +6,13 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"os"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/config"
 	"github.com/bitwise-media-group/patchy/internal/mirror"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
@@ -24,22 +25,23 @@ func newMirrorCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mirror",
 		Short: "Mirror upstream helm charts and OCI artifacts into a platform registry",
-		Long: "Maintain a vendored mirror store: a git tree where mirror.yaml holds global\n" +
-			"defaults and every charts/<name>/ or artifacts/<name>/ directory pins one\n" +
-			"upstream chart or OCI artifact — vendored for review, digest-locked,\n" +
-			"provenance-verified, scanned, and published signed.\n\n" +
+		Long: "Maintain a vendored mirror store: a git tree where every charts/<name>/ or\n" +
+			"artifacts/<name>/ directory pins one upstream chart or OCI artifact — vendored\n" +
+			"for review, digest-locked, provenance-verified, scanned, and published signed.\n" +
+			"The registries, signing and scan defaults come from the patchy config (shared\n" +
+			"with `patchy build`); the mirror: block adds update and sourceRegistryRewrites.\n\n" +
 			"`upgrade` moves pins forward and regenerates the derived state; `sync`\n" +
 			"converges the registry onto the committed state (idempotent, never replacing\n" +
 			"an existing tag); `validate` proves the committed state is self-consistent\n" +
 			"without touching the tree. patchy never runs git: commits, branches and PRs\n" +
 			"belong to the calling pipeline.\n\n" +
-			"Flags also resolve from PATCHY_MIRROR_* environment variables and an optional\n" +
-			".patchy.yaml (mirror: block) in the working directory.",
+			"Flags also resolve from PATCHY_MIRROR_* environment variables and the patchy\n" +
+			"config's mirror: block.\n\n" + configHelp,
 		Args: cobra.NoArgs,
 	}
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&f.directory, "directory", "C", "",
-		"mirror store directory (walks up to mirror.yaml; default: the working directory)")
+		"mirror store directory, relative to the working directory (default: the working directory)")
 	pf.IntVar(&f.workers, "workers", 0, "concurrent registry operations per stage (default 4)")
 	cmd.AddCommand(
 		newMirrorAddCmd(opts, f),
@@ -62,31 +64,36 @@ var mirrorKeys = map[string]string{
 	"workers":   "mirror.workers",
 }
 
-// mirrorRoot resolves the store root: the explicit/config directory or the
-// working directory, walked up to mirror.yaml.
-func mirrorRoot(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, error) {
-	v, err := loadCLIConfig(cmd, mirrorKeys)
+// mirrorRoot resolves the store root and the patchy config: the explicit or
+// configured directory (relative paths resolve against the working
+// directory), defaulting to the working directory itself. A mirror.yaml
+// left at the root is the removed store config and fails with the
+// migration.
+func mirrorRoot(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, *config.Loaded, error) {
+	v, loaded, err := loadCLIConfig(cmd, mirrorKeys)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	noteConfigFile(opts, v)
+	noteConfigSources(opts, loaded)
 	f.directory = v.GetString("mirror.directory")
 	f.workers = v.GetInt("mirror.workers")
-	dir := f.directory
-	if dir == "" {
-		dir = "."
+	root := loaded.Workdir
+	if f.directory != "" {
+		root = loaded.Path(f.directory)
 	}
-	root, err := spec.FindRoot(dir)
-	if err != nil {
-		return "", errUsage(err)
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return "", nil, errUsage(fmt.Errorf("mirror store directory %s does not exist", root))
 	}
-	return root, nil
+	if err := config.CheckMirrorRoot(root); err != nil {
+		return "", nil, errUsage(err)
+	}
+	return root, loaded, nil
 }
 
-// mirrorEngine builds the engine for a resolved root, narrating events to
-// stderr.
-func mirrorEngine(opts *Options, f *mirrorFlags, root string) (*mirror.Engine, error) {
-	global, err := spec.LoadConfig(filepath.Join(root, spec.ConfigFile))
+// mirrorEngine builds the engine for a resolved root from the patchy
+// config's mirror view, narrating events to stderr.
+func mirrorEngine(opts *Options, f *mirrorFlags, root string, loaded *config.Loaded) (*mirror.Engine, error) {
+	global, err := loaded.File.MirrorConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -98,18 +105,21 @@ func mirrorEngine(opts *Options, f *mirrorFlags, root string) (*mirror.Engine, e
 	}), nil
 }
 
-// renderMirrorEvent narrates one engine event on stderr. stdout is
-// reserved for the verb's data.
-func renderMirrorEvent(opts *Options, e mirror.Event) {
+// renderMirrorEvent narrates one mirror engine event on stderr.
+func renderMirrorEvent(opts *Options, e mirror.Event) { renderEvent(opts, e.Kind, e.Entry, e.Message) }
+
+// renderEvent narrates one engine event (mirror or build) on stderr.
+// stdout is reserved for the verb's data.
+func renderEvent(opts *Options, kind, entry, message string) {
 	prefix := "patchy: "
-	if e.Kind == "warn" {
+	if kind == "warn" {
 		prefix = "patchy: warning: "
 	}
-	if e.Entry != "" {
-		notef(opts.ErrOut, "%s[%s] %s\n", prefix, e.Entry, e.Message)
+	if entry != "" {
+		notef(opts.ErrOut, "%s[%s] %s\n", prefix, entry, message)
 		return
 	}
-	notef(opts.ErrOut, "%s%s\n", prefix, e.Message)
+	notef(opts.ErrOut, "%s%s\n", prefix, message)
 }
 
 // selectMirrorEntries resolves the entries a verb operates on: explicit

@@ -14,7 +14,7 @@ alert per call. Any 2xx answer is success, and patchy retries failures — the
 endpoint must treat an already-closed alert as success, not an error.
 
 Payload files use the same envelope the webhook receives; flags also resolve
-from PATCHY_DEV_* and .patchy.yaml/.yml/.json.
+from PATCHY_DEV_* and the patchy config's dev: block.
 
 ```
 patchy dev resolve <payload-file>... [flags]
@@ -24,7 +24,7 @@ patchy dev resolve <payload-file>... [flags]
 
 ```
   patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findings.json
-  patchy dev resolve --secret-file ./webhook.secret findings.json   # url from .patchy.yaml
+  patchy dev resolve --secret-file ./webhook.secret findings.json   # url from patchy.yaml
 ```
 
 ### Options

@@ -9,8 +9,9 @@ what --url points at (an https:// helm repository, an oci:// chart
 repository, or a bare artifact reference), pin the newest stable version,
 default the constraint to stay-in-major, and scaffold manifest.yaml.
 
-The name defaults to the URL's last path segment. On first use in an empty
-directory, add also writes a starter mirror.yaml with commented defaults.
+The name defaults to the URL's last path segment. When the working directory
+has no patchy config yet, add also writes a starter patchy.yaml with
+commented defaults (registries, signing, scan, mirror and a build example).
 Nothing is vendored and nothing is committed — review the scaffold, then run
 `patchy mirror upgrade <name>` to vendor and lock it.
 
@@ -42,7 +43,7 @@ patchy mirror add [name] [flags]
 ```
   -A, --all-namespaces             work across every namespace
       --context string             kubeconfig context to use
-  -C, --directory string           mirror store directory (walks up to mirror.yaml; default: the working directory)
+  -C, --directory string           mirror store directory, relative to the working directory (default: the working directory)
       --kubeconfig string          path to the kubeconfig file
   -n, --namespace string           namespace to work in (default: the context's)
       --no-color                   disable colour and styling

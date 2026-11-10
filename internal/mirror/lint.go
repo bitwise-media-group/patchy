@@ -14,6 +14,7 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
+	"github.com/bitwise-media-group/patchy/internal/mirror/allowlist"
 	"github.com/bitwise-media-group/patchy/internal/mirror/imageref"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 	"github.com/bitwise-media-group/patchy/internal/mirror/yamledit"
@@ -34,10 +35,25 @@ func (e *Engine) Lint(entry spec.Entry) ([]string, error) {
 	} else {
 		e.lintArtifact(entry, fail)
 	}
-	if err := e.lintAllowlist(entry, fail); err != nil {
+	policy := e.lintScan(entry, fail)
+	if err := lintAllowlist(entry, policy, e.now(), fail); err != nil {
 		return nil, err
 	}
 	return issues, nil
+}
+
+// lintScan validates the entry's scan block — the same shape for both
+// kinds — and returns its resolved policy.
+func (e *Engine) lintScan(entry spec.Entry, fail func(string, ...any)) spec.ScanPolicy {
+	o := scanOverride(entry)
+	if !o.Enabled.Valid() {
+		fail("scan.enabled must be auto, true or false (got %q)", o.Enabled)
+	}
+	policy := spec.EffectiveScanPolicy(e.global.Scan, o)
+	if err := policy.Allowlist.Validate(); err != nil {
+		fail("%v", err)
+	}
+	return policy
 }
 
 // lintChart covers chart-specific policy.
@@ -124,11 +140,6 @@ func (e *Engine) lintArtifact(entry spec.Entry, fail func(string, ...any)) {
 		fail("artifact.ref and artifact.version are required")
 	}
 	lintProvider("artifact.verifyUpstream", a.Artifact.VerifyUpstream, fail)
-	switch a.Scan.EffectiveEnabled() {
-	case "auto", "true", "false":
-	default:
-		fail("scan.enabled must be auto, true or false (got %q)", a.Scan.Enabled)
-	}
 }
 
 // lintOCIRefs enforces the mirror boundary on rendered output: an oci://
@@ -222,39 +233,15 @@ func walkStrings(node any, visit func(string)) {
 	}
 }
 
-// lintAllowlist enforces the accepted-risk policy: every entry carries a
-// statement and an expiry, expiries are in the future (re-review on
-// schedule is the whole forcing function) and within the policy horizon.
-func (e *Engine) lintAllowlist(entry spec.Entry, fail func(string, ...any)) error {
+// lintAllowlist enforces the accepted-risk policy (allowlist.Lint) against
+// the entry's resolved horizon.
+func lintAllowlist(entry spec.Entry, policy spec.ScanPolicy, today time.Time, fail func(string, ...any)) error {
 	allow, err := spec.LoadAllowlist(entry.Dir)
 	if err != nil {
 		return err
 	}
-	today := e.now()
-	horizon := today.AddDate(0, 0, e.global.Scan.EffectiveAllowlistMaxDays())
-	for i, a := range allow.Vulnerabilities {
-		if a.ID == "" {
-			fail("allowlist entry %d missing id", i)
-			continue
-		}
-		if a.Statement == "" {
-			fail("allowlist %s missing statement", a.ID)
-		}
-		if a.ExpiredAt == "" {
-			fail("allowlist %s missing expired_at", a.ID)
-			continue
-		}
-		expiry, err := time.Parse("2006-01-02", a.ExpiredAt)
-		if err != nil {
-			fail("allowlist %s has unparseable expired_at %q", a.ID, a.ExpiredAt)
-			continue
-		}
-		if !expiry.After(today) {
-			fail("allowlist %s expired on %s — re-review required", a.ID, a.ExpiredAt)
-		}
-		if expiry.After(horizon) {
-			fail("allowlist %s expires more than %d days out", a.ID, e.global.Scan.EffectiveAllowlistMaxDays())
-		}
+	for _, issue := range allowlist.Lint(allow, today, policy.Allowlist.MaxDays) {
+		fail("%s", issue)
 	}
 	return nil
 }

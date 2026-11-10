@@ -13,8 +13,8 @@ findings), validated by the same code, so a fixture works in both places. The
 request carries exactly what production sends for a fresh finding: title,
 description, repository and cloud resource — no issue number, no labels.
 
-Flags also resolve from PATCHY_DEV_* and .patchy.yaml/.yml/.json (the same
-keys the harness reads: dev.enhance-url, dev.secret-file, ...).
+Flags also resolve from PATCHY_DEV_* and the patchy config's dev: block (the
+same keys the harness reads: dev.enhance-url, dev.secret-file, ...).
 
 ```
 patchy dev enhance <payload-file>... [flags]
@@ -24,7 +24,7 @@ patchy dev enhance <payload-file>... [flags]
 
 ```
   patchy dev enhance --url http://127.0.0.1:9000/enhance --secret dev-secret findings.json
-  patchy dev enhance --secret-file ./webhook.secret findings.json   # url from .patchy.yaml
+  patchy dev enhance --secret-file ./webhook.secret findings.json   # url from patchy.yaml
   patchy dev enhance --url http://127.0.0.1:9000/enhance --secret s -o json findings.json | jq .
 ```
 

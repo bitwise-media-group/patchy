@@ -1,7 +1,6 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
-apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
-kind: MirrorConfig
+# The mirror view of a patchy config, in Config.Resolve struct form.
 registries:
   - name: primary
     url: registry.example.com/org/platform
@@ -28,7 +27,8 @@ scan:
     kubescape: {enabled: true, mode: warn}
   failOn: [CRITICAL, HIGH]
   ignoreUnfixed: true
-  allowlistMaxDays: 90
-  allowlistNewDays: 90
+  allowlist:
+    maxDays: 90
+    newDays: 60
 sourceRegistryRewrites:
   docker.io: mirror.example.com/dockerhub

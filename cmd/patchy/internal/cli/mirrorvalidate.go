@@ -39,7 +39,7 @@ func newMirrorValidateCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"  patchy mirror validate --all --only scan -o json\n" +
 			"  patchy mirror validate opentelemetry-collector --only regen,lint",
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: mirrorEntryCompletion(opts, f),
+		ValidArgsFunction: mirrorEntryCompletion(f),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, stage := range only {
 				if !slices.Contains(mirror.ValidateStages, stage) {
@@ -47,11 +47,11 @@ func newMirrorValidateCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 						stage, strings.Join(mirror.ValidateStages, ", ")))
 				}
 			}
-			root, err := mirrorRoot(cmd, opts, f)
+			root, loaded, err := mirrorRoot(cmd, opts, f)
 			if err != nil {
 				return err
 			}
-			eng, err := mirrorEngine(opts, f, root)
+			eng, err := mirrorEngine(opts, f, root, loaded)
 			if err != nil {
 				return err
 			}

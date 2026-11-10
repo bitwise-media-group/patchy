@@ -39,8 +39,9 @@ func newMirrorAddCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"what --url points at (an https:// helm repository, an oci:// chart\n" +
 			"repository, or a bare artifact reference), pin the newest stable version,\n" +
 			"default the constraint to stay-in-major, and scaffold manifest.yaml.\n\n" +
-			"The name defaults to the URL's last path segment. On first use in an empty\n" +
-			"directory, add also writes a starter mirror.yaml with commented defaults.\n" +
+			"The name defaults to the URL's last path segment. When the working directory\n" +
+			"has no patchy config yet, add also writes a starter patchy.yaml with\n" +
+			"commented defaults (registries, signing, scan, mirror and a build example).\n" +
 			"Nothing is vendored and nothing is committed — review the scaffold, then run\n" +
 			"`patchy mirror upgrade <name>` to vendor and lock it.",
 		Example: "  patchy mirror add --url oci://ghcr.io/open-telemetry/" +
@@ -83,9 +84,8 @@ func runMirrorAdd(ctx context.Context, cmd *cobra.Command, opts *Options, f *mir
 	if err != nil {
 		return err
 	}
-	if created {
-		notef(opts.ErrOut, "patchy: created %s with commented defaults — review it before publishing\n",
-			filepath.Join(root, spec.ConfigFile))
+	if created != "" {
+		notef(opts.ErrOut, "patchy: created %s with commented defaults — review it before publishing\n", created)
 	}
 
 	kind, chartRepo, chartName, artifactRef, err := detectAddTarget(ctx, a)
@@ -160,29 +160,27 @@ func runMirrorAdd(ctx context.Context, cmd *cobra.Command, opts *Options, f *mir
 	return nil
 }
 
-// mirrorRootOrInit resolves the store root, scaffolding mirror.yaml in the
-// working directory when no store exists yet. Only the no-store miss earns
-// a scaffold — any other failure (a broken CLI config, say) propagates.
-func mirrorRootOrInit(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, bool, error) {
-	root, err := mirrorRoot(cmd, opts, f)
-	if err == nil {
-		return root, false, nil
+// mirrorRootOrInit resolves the store root, first scaffolding patchy.yaml in
+// the working directory when no layer of the patchy config lives there
+// yet. A broken config propagates — only a missing project config earns a
+// scaffold. Returns the scaffolded path, empty when nothing was written.
+func mirrorRootOrInit(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, string, error) {
+	loaded, err := loadPatchyConfig()
+	if err != nil {
+		return "", "", err
 	}
-	if !errors.Is(err, spec.ErrNoRoot) {
-		return "", false, err
+	created := ""
+	if !loaded.HasProjectLayer() {
+		created = filepath.Join(loaded.Workdir, "patchy.yaml")
+		if err := os.WriteFile(created, scaffoldConfig(), 0o644); err != nil {
+			return "", "", fmt.Errorf("no patchy config found and could not create one: %w", err)
+		}
 	}
-	dir := f.directory
-	if dir == "" {
-		dir = "."
+	root, _, err := mirrorRoot(cmd, opts, f)
+	if err != nil {
+		return "", "", err
 	}
-	abs, absErr := filepath.Abs(dir)
-	if absErr != nil {
-		return "", false, absErr
-	}
-	if writeErr := os.WriteFile(filepath.Join(abs, spec.ConfigFile), scaffoldMirrorConfig(), 0o644); writeErr != nil {
-		return "", false, fmt.Errorf("no mirror.yaml found and could not create one: %w", writeErr)
-	}
-	return abs, true, nil
+	return root, created, nil
 }
 
 // detectAddTarget classifies the URL.

@@ -29,7 +29,7 @@ type devOneShotFlags struct {
 }
 
 // devOneShotKeys maps the one-shot flags onto the same config keys the
-// harness uses, per leg — one .patchy.yaml drives both commands.
+// harness uses, per leg — one patchy config drives both commands.
 func devOneShotKeys(leg string) map[string]string {
 	return map[string]string{
 		"url":         "dev." + leg + "-url",
@@ -52,10 +52,10 @@ func newDevEnhanceCmd(opts *Options) *cobra.Command {
 			"findings), validated by the same code, so a fixture works in both places. The\n" +
 			"request carries exactly what production sends for a fresh finding: title,\n" +
 			"description, repository and cloud resource — no issue number, no labels.\n\n" +
-			"Flags also resolve from PATCHY_DEV_* and .patchy.yaml/.yml/.json (the same\n" +
-			"keys the harness reads: dev.enhance-url, dev.secret-file, ...).",
+			"Flags also resolve from PATCHY_DEV_* and the patchy config's dev: block (the\n" +
+			"same keys the harness reads: dev.enhance-url, dev.secret-file, ...).",
 		Example: "  patchy dev enhance --url http://127.0.0.1:9000/enhance --secret dev-secret findings.json\n" +
-			"  patchy dev enhance --secret-file ./webhook.secret findings.json   # url from .patchy.yaml\n" +
+			"  patchy dev enhance --secret-file ./webhook.secret findings.json   # url from patchy.yaml\n" +
 			"  patchy dev enhance --url http://127.0.0.1:9000/enhance --secret s -o json findings.json | jq .",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,9 +79,9 @@ func newDevResolveCmd(opts *Options) *cobra.Command {
 			"alert per call. Any 2xx answer is success, and patchy retries failures — the\n" +
 			"endpoint must treat an already-closed alert as success, not an error.\n\n" +
 			"Payload files use the same envelope the webhook receives; flags also resolve\n" +
-			"from PATCHY_DEV_* and .patchy.yaml/.yml/.json.",
+			"from PATCHY_DEV_* and the patchy config's dev: block.",
 		Example: "  patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findings.json\n" +
-			"  patchy dev resolve --secret-file ./webhook.secret findings.json   # url from .patchy.yaml",
+			"  patchy dev resolve --secret-file ./webhook.secret findings.json   # url from patchy.yaml",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDevOneShot(cmd, opts, f, "resolve", args)
@@ -103,7 +103,7 @@ func bindDevOneShotFlags(cmd *cobra.Command, f *devOneShotFlags, urlHelp string)
 }
 
 func runDevOneShot(cmd *cobra.Command, opts *Options, f *devOneShotFlags, leg string, files []string) error {
-	v, err := loadCLIConfig(cmd, devOneShotKeys(leg))
+	v, loaded, err := loadCLIConfig(cmd, devOneShotKeys(leg))
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func runDevOneShot(cmd *cobra.Command, opts *Options, f *devOneShotFlags, leg st
 	f.secret = v.GetString("dev.secret")
 	f.secretFile = v.GetString("dev.secret-file")
 	f.timeout = v.GetDuration("dev." + leg + "-timeout")
-	noteConfigFile(opts, v)
+	noteConfigSources(opts, loaded)
 
 	if err := validateDevName(f.name); err != nil {
 		return err

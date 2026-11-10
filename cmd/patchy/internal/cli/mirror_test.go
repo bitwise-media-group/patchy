@@ -17,9 +17,7 @@ import (
 // writeMirrorStore scaffolds a minimal store in the working directory.
 func writeMirrorStore(t *testing.T) {
 	t.Helper()
-	if err := os.WriteFile("mirror.yaml", []byte(`apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
-kind: MirrorConfig
-registries:
+	if err := os.WriteFile("patchy.yaml", []byte(`registries:
   - name: primary
     url: registry.example.com/org/platform
 `), 0o644); err != nil {
@@ -61,7 +59,7 @@ func TestMirrorHelpTree(t *testing.T) {
 	}
 }
 
-func TestMirrorRequiresStore(t *testing.T) {
+func TestMirrorRequiresRegistries(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, args := range [][]string{
 		{"mirror", "upgrade", "--all"},
@@ -69,8 +67,8 @@ func TestMirrorRequiresStore(t *testing.T) {
 		{"mirror", "validate", "--all"},
 	} {
 		_, err := execDev(t, args...)
-		if err == nil || !strings.Contains(err.Error(), "mirror.yaml") {
-			t.Errorf("%v: error = %v, want no-mirror.yaml", args, err)
+		if err == nil || !strings.Contains(err.Error(), "registries must list at least one registry") {
+			t.Errorf("%v: error = %v, want the missing-registries refusal", args, err)
 		}
 	}
 }
@@ -231,6 +229,9 @@ func TestRenderSyncMarkdown(t *testing.T) {
 	}
 }
 
+// TestMirrorDirectoryFlagAndEnv pins the store root: -C, the environment
+// and mirror.directory resolve relative to the working directory, while
+// the patchy config is still found from the working directory.
 func TestMirrorDirectoryFlagAndEnv(t *testing.T) {
 	base := t.TempDir()
 	store := filepath.Join(base, "store")
@@ -239,14 +240,32 @@ func TestMirrorDirectoryFlagAndEnv(t *testing.T) {
 	}
 	t.Chdir(store)
 	writeMirrorStore(t)
+	if err := os.Rename(filepath.Join(store, "patchy.yaml"), filepath.Join(base, "patchy.yaml")); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(base)
 
 	if _, err := execDev(t, "mirror", "validate", "demo", "--only", "lint", "-C", "store"); err != nil {
 		t.Fatalf("-C: %v", err)
 	}
+	if _, err := execDev(t, "mirror", "validate", "demo", "--only", "lint", "-C", "absent"); err == nil ||
+		!strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("-C absent: %v, want the missing-directory refusal", err)
+	}
 	t.Setenv("PATCHY_MIRROR_DIRECTORY", store)
 	if _, err := execDev(t, "mirror", "validate", "demo", "--only", "lint"); err != nil {
 		t.Fatalf("env directory: %v", err)
+	}
+	t.Setenv("PATCHY_MIRROR_DIRECTORY", "")
+	raw, err := os.ReadFile("patchy.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("patchy.yaml", append(raw, "mirror:\n  directory: store\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execDev(t, "mirror", "validate", "demo", "--only", "lint"); err != nil {
+		t.Fatalf("mirror.directory: %v", err)
 	}
 }
 
@@ -291,11 +310,23 @@ func TestMirrorAddInitializesStore(t *testing.T) {
 		"--url", "ghcr.example.com/org/bundle", "--type", "artifact", "--version", "1.2.3"); err != nil {
 		t.Fatalf("add on empty dir: %v", err)
 	}
-	raw, err := os.ReadFile("mirror.yaml")
+	raw, err := os.ReadFile("patchy.yaml")
 	if err != nil {
-		t.Fatalf("mirror.yaml not scaffolded: %v", err)
+		t.Fatalf("patchy.yaml not scaffolded: %v", err)
 	}
-	if !strings.Contains(string(raw), "kind: MirrorConfig") {
-		t.Errorf("mirror.yaml:\n%s", raw)
+	if !strings.Contains(string(raw), "registries:") || !strings.Contains(string(raw), "mirror:") {
+		t.Errorf("patchy.yaml:\n%s", raw)
+	}
+	if _, err := os.Stat("mirror.yaml"); err == nil {
+		t.Error("add scaffolded the removed mirror.yaml")
+	}
+	// A second add finds the project config and leaves it alone.
+	before := string(raw)
+	if _, err := execDev(t, "mirror", "add", "other",
+		"--url", "ghcr.example.com/org/other", "--type", "artifact", "--version", "1.0.0"); err != nil {
+		t.Fatalf("second add: %v", err)
+	}
+	if after, _ := os.ReadFile("patchy.yaml"); string(after) != before {
+		t.Error("a second add rewrote patchy.yaml")
 	}
 }

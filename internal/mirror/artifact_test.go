@@ -6,10 +6,12 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/bitwise-media-group/patchy/internal/mirror/scan"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
@@ -182,4 +184,120 @@ func TestEngineArtifactScanPolicy(t *testing.T) {
 			}
 		})
 	}
+}
+
+// artifactScanFixture upgrades a "bundle" artifact (a runnable image, or a
+// chart-shaped content artifact) under the given scan block and returns an
+// engine whose scanner reports findings.
+func artifactScanFixture(t *testing.T, runnable bool, scanBlock string,
+	findings ...scan.Finding) (*fixture, *Engine, spec.Entry, *fakeScanner) {
+	t.Helper()
+	f := newFixture(t)
+	if runnable {
+		f.pushImage(f.host+"/bundles/bundle:1.0.0", testNow.AddDate(0, -1, 0))
+	} else {
+		f.pushChart(f.host+"/bundles", "bundle", "1.0.0", f.chartTgz("bundle", "1.0.0", "1.0.0", "unused:1.0.0"))
+	}
+	f.artifactManifest("example.test/bundles/bundle", scanBlock)
+	fake := &fakeScanner{name: "fake", findings: findings}
+	eng := scanEngine(f, fake)
+	entry, err := eng.Entry("bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Upgrade(context.Background(), entry, ""); err != nil {
+		t.Fatalf("Upgrade: %v", err)
+	}
+	return f, eng, entry, fake
+}
+
+// TestEngineArtifactScanOverrides pins the unified scan block on
+// artifacts: failOn and ignoreUnfixed now override the config per entry,
+// as they always did for charts.
+func TestEngineArtifactScanOverrides(t *testing.T) {
+	high := scan.Finding{ID: "CVE-HIGH", Severity: "HIGH", Package: "p", Installed: "1", FixedIn: []string{"2"}}
+	unfixed := scan.Finding{ID: "CVE-UNFIXED", Severity: "CRITICAL", Package: "p", Installed: "1"}
+	tests := []struct {
+		name, scanBlock, want string
+	}{
+		{"config defaults", "", "CVE-HIGH"},
+		{"entry failOn and ignoreUnfixed", "scan:\n  failOn: [CRITICAL]\n  ignoreUnfixed: false\n", "CVE-UNFIXED"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, eng, entry, _ := artifactScanFixture(t, true, tt.scanBlock, high, unfixed)
+			report, err := eng.Scan(context.Background(), entry)
+			if err != nil {
+				t.Fatalf("Scan: %v", err)
+			}
+			var got []string
+			for _, f := range report.Blocking {
+				got = append(got, f.ID)
+			}
+			if strings.Join(got, ",") != tt.want {
+				t.Errorf("blocking = %v, want %s", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("explicit true overrides a disabled config", func(t *testing.T) {
+		f, _, entry, fake := artifactScanFixture(t, false, "scan:\n  enabled: true\n")
+		f.config += "scan:\n  enabled: false\n"
+		eng := scanEngine(f, fake)
+		if _, err := eng.Scan(context.Background(), entry); err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if len(fake.scanned) != 1 {
+			t.Errorf("scanned = %v, want the artifact despite scan.enabled: false", fake.scanned)
+		}
+	})
+}
+
+// TestEngineArtifactDeriveAllowlist pins allowlist derivation for
+// artifacts: generated under the resolved policy for a runnable image,
+// skipped (no file) for a content artifact with nothing to scan.
+func TestEngineArtifactDeriveAllowlist(t *testing.T) {
+	ctx := context.Background()
+	block := "scan:\n  allowlist:\n    generate: true\n    newDays: 30\n    preamble: Bundle context.\n"
+
+	t.Run("runnable image", func(t *testing.T) {
+		// Upgrade derived it once already (adding the finding); a re-run
+		// keeps it.
+		f, eng, entry, _ := artifactScanFixture(t, true, block, criticalFinding)
+		res, err := eng.DeriveAllowlist(ctx, entry)
+		if err != nil {
+			t.Fatalf("DeriveAllowlist: %v", err)
+		}
+		if !res.Generated || res.Kept != 1 {
+			t.Errorf("result = %+v", res)
+		}
+		raw := f.read("artifacts/bundle/security/allowlist.yaml")
+		for _, want := range []string{"# Bundle context.", "id: CVE-2026-1111", `expired_at: "2026-09-10"`} {
+			if !strings.Contains(raw, want) {
+				t.Errorf("allowlist lacks %q:\n%s", want, raw)
+			}
+		}
+	})
+
+	t.Run("content artifact skips", func(t *testing.T) {
+		f, eng, entry, fake := artifactScanFixture(t, false, block, criticalFinding)
+		res, err := eng.DeriveAllowlist(ctx, entry)
+		if err != nil {
+			t.Fatalf("DeriveAllowlist: %v", err)
+		}
+		if res.Generated || len(fake.scanned) != 0 {
+			t.Errorf("result = %+v, scanned %v; want a skip", res, fake.scanned)
+		}
+		if _, err := os.Stat(filepath.Join(f.root, "artifacts/bundle/security/allowlist.yaml")); err == nil {
+			t.Error("a non-runnable artifact got an allowlist")
+		}
+	})
+
+	t.Run("generate false is a no-op", func(t *testing.T) {
+		_, eng, entry, fake := artifactScanFixture(t, true, "", criticalFinding)
+		res, err := eng.DeriveAllowlist(ctx, entry)
+		if err != nil || res.Generated || len(fake.scanned) != 0 {
+			t.Errorf("DeriveAllowlist = %+v, %v; scanned %v", res, err, fake.scanned)
+		}
+	})
 }

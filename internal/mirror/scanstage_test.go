@@ -5,7 +5,6 @@ package mirror
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -31,10 +30,7 @@ func (s *fakeScanner) ScanImage(_ context.Context, ref string) ([]scan.Finding, 
 // scanEngine rebuilds the fixture engine with an injected scanner roster.
 func scanEngine(f *fixture, scanners ...scan.ImageScanner) *Engine {
 	f.t.Helper()
-	global, err := spec.LoadConfig(filepath.Join(f.root, "mirror.yaml"))
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	global := f.global()
 	f.eng = New(Config{
 		Root:          f.root,
 		Global:        global,
@@ -136,9 +132,9 @@ func TestEngineScanRoster(t *testing.T) {
 	})
 
 	t.Run("scan.enabled false disables the stage", func(t *testing.T) {
-		mirrorYAML := f.read("mirror.yaml")
-		f.write("mirror.yaml", mirrorYAML+"scan:\n  enabled: false\n")
-		defer f.write("mirror.yaml", mirrorYAML)
+		config := f.config
+		f.config = config + "scan:\n  enabled: false\n"
+		defer func() { f.config = config }()
 		eng := scanEngine(f)
 		report, err := eng.Scan(ctx, entry)
 		if err != nil {

@@ -5,6 +5,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -48,13 +49,13 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"  patchy mirror upgrade --pinned kyverno\n" +
 			"  patchy mirror upgrade opentelemetry-collector",
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: mirrorEntryCompletion(opts, f),
+		ValidArgsFunction: mirrorEntryCompletion(f),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := mirrorRoot(cmd, opts, f)
+			root, loaded, err := mirrorRoot(cmd, opts, f)
 			if err != nil {
 				return err
 			}
-			eng, err := mirrorEngine(opts, f, root)
+			eng, err := mirrorEngine(opts, f, root, loaded)
 			if err != nil {
 				return err
 			}
@@ -279,10 +280,10 @@ func plural(n int, one, many string) string {
 }
 
 // mirrorEntryCompletion completes entry names from the store.
-func mirrorEntryCompletion(opts *Options,
+func mirrorEntryCompletion(
 	f *mirrorFlags) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		root, err := mirrorRoot(cmd, opts, f)
+		root, _, err := mirrorRoot(cmd, &Options{Out: io.Discard, ErrOut: io.Discard}, f)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}

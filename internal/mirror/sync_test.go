@@ -5,6 +5,8 @@ package mirror
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
 	"github.com/bitwise-media-group/patchy/internal/mirror/scan"
 	"github.com/bitwise-media-group/patchy/internal/mirror/sign"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
@@ -505,6 +508,52 @@ publish:
 		}
 		if !strings.Contains(report.Gaps[0], "chart demo") {
 			t.Errorf("gap = %q", report.Gaps[0])
+		}
+	})
+}
+
+// TestEngineChartVersionSpelling pins the pin/Chart.yaml agreement the
+// mirror relies on: the chart is published tagged with the pin, and helm
+// push rejects a tag that differs from the chart's own version. A pin of
+// 1.0.0 over a chart versioned v1.0.0 (cert-manager's spelling) must fail
+// regeneration — so validate/upgrade catch it before merge — and sync must
+// refuse it before pushing anything, for a tree committed past that gate.
+func TestEngineChartVersionSpelling(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	tgz := f.chartTgz("demo", "v1.0.0", "v1.0.0", appCanonical+":1.0.0")
+	f.pushChart(f.host+"/upstream", "demo", "1.0.0", tgz)
+	f.chartManifest("demo", "")
+	f.write("charts/demo/values/discovery.yaml", "{}\n")
+	eng := f.engine()
+	entry, err := eng.Entry("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `chart.version "1.0.0" does not match the chart's own version "v1.0.0"`
+
+	t.Run("regeneration rejects the pin", func(t *testing.T) {
+		_, err := eng.Regenerate(ctx, entry, t.TempDir(), false)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want spelling error, got %v", err)
+		}
+	})
+
+	t.Run("sync refuses before pushing", func(t *testing.T) {
+		// Commit the tree by hand, as if it had bypassed the gate.
+		if err := helmchart.Extract(tgz, filepath.Join(entry.Dir, "vendor")); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(tgz)
+		f.write("charts/demo/images.lock.yaml", fmt.Sprintf(
+			"chart:\n  name: demo\n  version: 1.0.0\n  upstreamTgzSha256: %s\nimages: []\n",
+			hex.EncodeToString(sum[:])))
+		_, err := eng.Sync(ctx, entry, SyncOptions{})
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want spelling error, got %v", err)
+		}
+		if _, exists, _ := eng.reg.Exists(ctx, f.host+"/mirror/charts/demo:1.0.0"); exists {
+			t.Error("sync pushed a chart helm push would reject")
 		}
 	})
 }

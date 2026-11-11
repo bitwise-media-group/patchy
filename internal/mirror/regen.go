@@ -83,6 +83,9 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 	if _, err := os.Stat(filepath.Join(vendor, m.Chart.Name, "Chart.yaml")); err != nil {
 		return nil, fmt.Errorf("%s: extracted chart missing Chart.yaml", entry.Name)
 	}
+	if err := checkChartVersion(entry, vendor); err != nil {
+		return nil, err
+	}
 	e.notef(entry.Name, "vendor", "vendored %s (upstream tgz sha256 %s)", m.Chart.Name, sha)
 
 	// Render with the entry's discovery values (which live in the entry
@@ -153,6 +156,27 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 	}
 	e.notef(entry.Name, "discover", "locked %d image(s)", len(images))
 	return facts, nil
+}
+
+// checkChartVersion fails unless the pin is spelled exactly as the
+// extracted chart's own Chart.yaml version. The mirror publishes the chart
+// tagged with the pin, and helm push (strict mode, enforced by registries
+// such as Artifact Registry) rejects a tag that differs from the chart
+// version — so a "1.21.3" pin over a chart versioned "v1.21.3" would pass
+// every other gate and fail only at publish time.
+func checkChartVersion(entry spec.Entry, chartsDir string) error {
+	m := entry.Chart
+	got, err := helmchart.Version(chartsDir, m.Chart.Name)
+	if err != nil {
+		return fmt.Errorf("%s: %w", entry.Name, err)
+	}
+	if got != m.Chart.Version {
+		return fmt.Errorf(
+			"%s: chart.version %q does not match the chart's own version %q (Chart.yaml); "+
+				"pin %q so the published tag matches the chart, as helm push requires",
+			entry.Name, m.Chart.Version, got, got)
+	}
+	return nil
 }
 
 // resolveImages digest-pins every discovered reference, concurrently but

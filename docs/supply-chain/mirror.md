@@ -110,6 +110,11 @@ publish:
   chartRepo: charts/cert-manager # default <chartNamespace>/<name>
 ```
 
+The pin must be spelled exactly as the chart's own `Chart.yaml` version: `sync` publishes the chart tagged with the
+pin, and `helm push` rejects a tag that differs from the chart version. cert-manager versions its chart `v1.21.2`, so
+the pin carries the `v`. `upgrade` and `validate` fail on a mismatch and name the pin to use. When upstream tags a
+release under both spellings, `upgrade` keeps the one the current pin uses.
+
 ### Provenance: `verifyUpstream`
 
 Every locked image must match one `images.verifyUpstream` rule, and the chart has its own `chart.verifyUpstream`.

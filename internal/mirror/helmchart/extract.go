@@ -156,6 +156,20 @@ func ChartYAML(vendorDir, chartName string) (map[string]any, error) {
 	return m, nil
 }
 
+// Version reads the extracted chart's own version from Chart.yaml. Helm
+// requires it, so an absent or empty version is an error.
+func Version(vendorDir, chartName string) (string, error) {
+	m, err := ChartYAML(vendorDir, chartName)
+	if err != nil {
+		return "", err
+	}
+	v, _ := m["version"].(string)
+	if v = strings.TrimSpace(v); v == "" {
+		return "", fmt.Errorf("chart %s: Chart.yaml has no version", chartName)
+	}
+	return v, nil
+}
+
 // AppVersion reads the extracted chart's appVersion ("" when absent).
 func AppVersion(vendorDir, chartName string) (string, error) {
 	m, err := ChartYAML(vendorDir, chartName)

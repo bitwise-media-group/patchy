@@ -163,6 +163,11 @@ func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Re
 			"%s: committed vendor tree differs from the upstream chart (%s); re-run upgrade",
 			entry.Name, strings.Join(diffs, "; "))
 	}
+	// Fail before any registry sees a push the strict tag check would
+	// reject (a tree committed past the validate gate).
+	if err := checkChartVersion(entry, scratch); err != nil {
+		return nil, err
+	}
 
 	var records []SyncRecord
 	for _, reg := range regs {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -59,6 +60,13 @@ func Satisfies(version, constraint string) (bool, error) {
 // constraint and is strictly newer than current, or ("", false) when the
 // current pin is already the best available. Non-release candidates are
 // skipped; current must itself parse as a version.
+//
+// Registries often publish one release under both spellings (cert-manager
+// tags every chart as 1.21.3 and v1.21.3). Semver ranks those equal, so
+// among same-version candidates the one spelled like current wins —
+// otherwise a v-prefixed pin would flip to the bare tag on whichever
+// spelling the registry happened to list first, and the bare tag no longer
+// matches the version inside the artifact.
 func Newest(current string, candidates []string, constraint string) (string, bool, error) {
 	best, err := semver.NewVersion(current)
 	if err != nil {
@@ -79,11 +87,19 @@ func Newest(current string, candidates []string, constraint string) (string, boo
 		if c != nil && !c.Check(v) {
 			continue
 		}
-		if v.GreaterThan(best) {
+		switch {
+		case v.GreaterThan(best):
 			best, found = v, cand
+		case found != "" && v.Equal(best) && sameSpelling(cand, current) && !sameSpelling(found, current):
+			found = cand
 		}
 	}
 	return found, found != "", nil
+}
+
+// sameSpelling reports whether a and b agree on the optional leading v.
+func sameSpelling(a, b string) bool {
+	return strings.HasPrefix(a, "v") == strings.HasPrefix(b, "v")
 }
 
 // DefaultConstraint derives the allowed range from a pinned version: the

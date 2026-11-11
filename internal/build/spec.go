@@ -59,10 +59,32 @@ type Image struct {
 	Architectures []string `yaml:"architectures"`
 	// Args are build args; values expand ${ENV}, keys keep their case.
 	Args map[string]string `yaml:"args"`
+	// Secrets are BuildKit secret mounts (RUN --mount=type=secret,id=…).
+	// Each names where the value lives — an environment variable or a
+	// file — so the value never reaches the config, the argv or the image.
+	Secrets []Secret `yaml:"secrets"`
 	// Tags overrides the build-level default list.
 	Tags []string `yaml:"tags"`
 	// Scan overrides the config's scan block for this image.
 	Scan spec.ScanOverride `yaml:"scan"`
+}
+
+// Secret is one BuildKit secret an image build mounts. Exactly one of Env
+// or Src is set.
+type Secret struct {
+	// ID is what the Dockerfile mounts: RUN --mount=type=secret,id=<id>.
+	// Unique within the image.
+	ID string `yaml:"id"`
+	// Env names the environment variable holding the value; docker reads
+	// it from patchy's environment. A name, never expanded.
+	Env string `yaml:"env"`
+	// Src is the file holding the value, relative to the working
+	// directory; it expands ${ENV} at build time.
+	Src string `yaml:"src"`
+	// Optional drops the secret (with a note) when its variable is unset
+	// or its file is missing, instead of failing the build — for
+	// Dockerfiles that mount it with required=false.
+	Optional bool `yaml:"optional"`
 }
 
 // Manifests is one Flux manifests directory, published as-is.
@@ -184,6 +206,10 @@ var (
 	nameRe       = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$`)
 	repositoryRe = regexp.MustCompile(`^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$`)
 	platformRe   = regexp.MustCompile(`^[a-z0-9_]+(/[a-z0-9_]+(/[a-z0-9_]+)?)?$`)
+	// secretIDRe keeps ids free of the , and = buildx's CSV --secret
+	// spec splits on.
+	secretIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	envNameRe  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 // Validate checks the build block against the config's scan defaults:
@@ -209,30 +235,8 @@ func (s *Spec) Validate(global spec.Scan) error {
 		if err := claim(prefix, img.Name); err != nil {
 			return err
 		}
-		prefix = fmt.Sprintf("%s (%s)", prefix, img.Name)
-		if err := validateRepository(prefix, img.Repository); err != nil {
+		if err := s.validateImage(fmt.Sprintf("%s (%s)", prefix, img.Name), img, global); err != nil {
 			return err
-		}
-		archs := img.Architectures
-		if len(archs) == 0 {
-			archs = s.Architectures
-		}
-		if len(archs) == 0 {
-			return fmt.Errorf("%s: no architectures: set build.architectures or the entry's own", prefix)
-		}
-		for _, a := range archs {
-			if !platformRe.MatchString(a) {
-				return fmt.Errorf("%s: architecture %q is not arch or os/arch[/variant]", prefix, a)
-			}
-		}
-		if err := validateTags(prefix, img.Tags); err != nil {
-			return err
-		}
-		if err := validateScan(prefix, img.Scan); err != nil {
-			return err
-		}
-		if err := spec.EffectiveScanPolicy(global, img.Scan).Allowlist.Validate(); err != nil {
-			return fmt.Errorf("%s: %w", prefix, err)
 		}
 	}
 	for i, m := range s.Manifests {
@@ -261,6 +265,39 @@ func (s *Spec) Validate(global spec.Scan) error {
 	return validateTags("build", s.Tags)
 }
 
+// validateImage checks one image entry past its name: repository,
+// platforms (entry over build default), secrets, tags and scan block.
+func (s *Spec) validateImage(prefix string, img Image, global spec.Scan) error {
+	if err := validateRepository(prefix, img.Repository); err != nil {
+		return err
+	}
+	archs := img.Architectures
+	if len(archs) == 0 {
+		archs = s.Architectures
+	}
+	if len(archs) == 0 {
+		return fmt.Errorf("%s: no architectures: set build.architectures or the entry's own", prefix)
+	}
+	for _, a := range archs {
+		if !platformRe.MatchString(a) {
+			return fmt.Errorf("%s: architecture %q is not arch or os/arch[/variant]", prefix, a)
+		}
+	}
+	if err := validateSecrets(prefix, img.Secrets); err != nil {
+		return err
+	}
+	if err := validateTags(prefix, img.Tags); err != nil {
+		return err
+	}
+	if err := validateScan(prefix, img.Scan); err != nil {
+		return err
+	}
+	if err := spec.EffectiveScanPolicy(global, img.Scan).Allowlist.Validate(); err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+	return nil
+}
+
 // validateRepository checks one publish repository path.
 func validateRepository(prefix, repo string) error {
 	if repo == "" {
@@ -268,6 +305,36 @@ func validateRepository(prefix, repo string) error {
 	}
 	if !repositoryRe.MatchString(repo) {
 		return fmt.Errorf("%s: repository %q is not a valid OCI repository path", prefix, repo)
+	}
+	return nil
+}
+
+// validateSecrets checks an image's secret mounts: well-formed unique ids,
+// and exactly one well-formed source each. src stays a template until
+// build time, like the other templated fields.
+func validateSecrets(prefix string, secrets []Secret) error {
+	seen := map[string]bool{}
+	for i, s := range secrets {
+		at := fmt.Sprintf("%s: secrets[%d]", prefix, i)
+		switch {
+		case s.ID == "":
+			return fmt.Errorf("%s: id is required", at)
+		case !secretIDRe.MatchString(s.ID):
+			return fmt.Errorf("%s: id %q must match %s", at, s.ID, secretIDRe)
+		case seen[s.ID]:
+			return fmt.Errorf("%s: duplicate id %q", at, s.ID)
+		}
+		seen[s.ID] = true
+		at = fmt.Sprintf("%s (%s)", at, s.ID)
+		switch {
+		case (s.Env == "") == (s.Src == ""):
+			return fmt.Errorf("%s: set exactly one of env or src", at)
+		case s.Env != "" && !envNameRe.MatchString(s.Env):
+			return fmt.Errorf("%s: env %q is not an environment variable name (it is a name, not a template)",
+				at, s.Env)
+		case s.Src != "" && strings.TrimSpace(s.Src) == "":
+			return fmt.Errorf("%s: src is blank", at)
+		}
 	}
 	return nil
 }

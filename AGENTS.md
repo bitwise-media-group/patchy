@@ -212,7 +212,8 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   byte-identity gate deterministic. cosign (≥ v3) and osv-scanner (v2) are runtime dependencies of the
   respective verbs, never linked.
 - `build` — the engine behind `patchy build` (CLI-only): builds the config's `build.images` (docker buildx → OCI
-  layout) and `build.manifests` (staged tree → deterministic Flux OCI artifact), scans BEFORE any push, publishes
+  layout; per-image `secrets` reach buildx as `--secret` references — an env name or a file path, never a value)
+  and `build.manifests` (staged tree → deterministic Flux OCI artifact), scans BEFORE any push, publishes
   to every registry (`<url>/<repository>:<tag>`; tags never move: pushed / skipped-current / skipped-tag-exists)
   and signs per registry; `--dry-run` needs no registries (`File.BuildPlanConfig`), so public repos commit none.
   `Promote` (`patchy build promote`) adds a tag to the newest signed build matching a glob, without rebuilding,

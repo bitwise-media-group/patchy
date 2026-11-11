@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -514,6 +516,150 @@ func TestBuildRegistrySelectionAndTags(t *testing.T) {
 	}
 }
 
+// TestBuildSecrets resolves secret mounts into buildx references before
+// the build: values never enter the request or the narration, and a
+// missing required source fails before the builder runs.
+func TestBuildSecrets(t *testing.T) {
+	const value = "s3cr3t-value"
+	tests := []struct {
+		name    string
+		secrets []Secret
+		env     map[string]string
+		files   map[string]string // workdir-relative path → content
+		dirs    []string
+		want    []buildx.Secret // workdir-relative Src, joined below
+		wantErr string
+		note    string
+	}{
+		{
+			name:    "env set",
+			secrets: []Secret{{ID: "npm_token", Env: "NPM_TOKEN"}},
+			env:     map[string]string{"NPM_TOKEN": value},
+			want:    []buildx.Secret{{ID: "npm_token", Env: "NPM_TOKEN"}},
+		},
+		{
+			name:    "env unset, required",
+			secrets: []Secret{{ID: "npm_token", Env: "NPM_TOKEN"}},
+			wantErr: `secret "npm_token": environment variable NPM_TOKEN is not set`,
+		},
+		{
+			name:    "env empty, required",
+			secrets: []Secret{{ID: "npm_token", Env: "NPM_TOKEN"}},
+			env:     map[string]string{"NPM_TOKEN": ""},
+			wantErr: "NPM_TOKEN is not set",
+		},
+		{
+			name:    "env unset, optional",
+			secrets: []Secret{{ID: "sentry", Env: "SENTRY_AUTH_TOKEN", Optional: true}},
+			note:    "secret sentry: $SENTRY_AUTH_TOKEN not set; not mounted",
+		},
+		{
+			name:    "relative src",
+			secrets: []Secret{{ID: "npmrc", Src: "ci/.npmrc"}},
+			files:   map[string]string{"ci/.npmrc": value},
+			want:    []buildx.Secret{{ID: "npmrc", Src: "ci/.npmrc"}},
+		},
+		{
+			name:    "expanded src",
+			secrets: []Secret{{ID: "npmrc", Src: "${CREDS_DIR}/.npmrc"}},
+			env:     map[string]string{"CREDS_DIR": "creds"},
+			files:   map[string]string{"creds/.npmrc": value},
+			want:    []buildx.Secret{{ID: "npmrc", Src: "creds/.npmrc"}},
+		},
+		{
+			name:    "src unset variable",
+			secrets: []Secret{{ID: "npmrc", Src: "${CREDS_DIR}/.npmrc"}},
+			wantErr: "CREDS_DIR",
+		},
+		{
+			name:    "src missing, required",
+			secrets: []Secret{{ID: "npmrc", Src: ".npmrc"}},
+			wantErr: `secret "npmrc": src .npmrc does not exist`,
+		},
+		{
+			name:    "src missing, optional",
+			secrets: []Secret{{ID: "npmrc", Src: ".npmrc", Optional: true}},
+			note:    "secret npmrc: .npmrc does not exist; not mounted",
+		},
+		{
+			name:    "src is a directory",
+			secrets: []Secret{{ID: "npmrc", Src: "creds"}},
+			dirs:    []string{"creds"},
+			wantErr: "not a regular file",
+		},
+		{
+			name:    "src with a comma",
+			secrets: []Secret{{ID: "npmrc", Src: "a,b"}},
+			files:   map[string]string{"a,b": value},
+			wantErr: "buildx parses --secret as CSV",
+		},
+		{
+			name: "mixed",
+			secrets: []Secret{
+				{ID: "npmrc", Src: ".npmrc"},
+				{ID: "npm_token", Env: "NPM_TOKEN"},
+				{ID: "sentry", Env: "SENTRY_AUTH_TOKEN", Optional: true},
+			},
+			env:   map[string]string{"NPM_TOKEN": value},
+			files: map[string]string{".npmrc": value},
+			want:  []buildx.Secret{{ID: "npmrc", Src: ".npmrc"}, {ID: "npm_token", Env: "NPM_TOKEN"}},
+			note:  "$SENTRY_AUTH_TOKEN not set",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			w.spec.Images[0].Secrets = tt.secrets
+			maps.Copy(w.env, tt.env)
+			for rel, content := range tt.files {
+				w.write(rel, content)
+			}
+			for _, d := range tt.dirs {
+				if err := os.MkdirAll(filepath.Join(w.workdir, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			e := w.engine()
+			var events []string
+			e.onEvent = func(ev Event) { events = append(events, ev.Message) }
+			_, err := e.Build(context.Background(), "controller", Options{DryRun: true})
+			narration := strings.Join(events, "\n")
+			if strings.Contains(narration, value) || (err != nil && strings.Contains(err.Error(), value)) {
+				t.Errorf("a secret value leaked: err %v, events:\n%s", err, narration)
+			}
+			if tt.note != "" && !strings.Contains(narration, tt.note) {
+				t.Errorf("events lack %q:\n%s", tt.note, narration)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Build = %v, want %q", err, tt.wantErr)
+				}
+				if len(w.builder.calls) != 0 {
+					t.Error("the builder ran despite an unresolvable secret")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			req := w.builder.calls[0]
+			want := make([]buildx.Secret, 0, len(tt.want))
+			for _, s := range tt.want {
+				if s.Src != "" {
+					s.Src = filepath.Join(w.workdir, s.Src)
+				}
+				want = append(want, s)
+			}
+			if !slices.Equal(req.Secrets, want) {
+				t.Errorf("request secrets = %+v, want %+v", req.Secrets, want)
+			}
+			if strings.Contains(fmt.Sprintf("%+v", req), value) {
+				t.Errorf("the secret value reached the build request: %+v", req)
+			}
+		})
+	}
+}
+
 // TestBuildDryRunNeverContactsARegistry points every registry at a closed
 // server: any registry call would fail the run.
 func TestBuildDryRunNeverContactsARegistry(t *testing.T) {
@@ -710,6 +856,52 @@ func TestSpecValidate(t *testing.T) {
 			wantErr: "apply to image scans only",
 		},
 		{name: "manifests entry may set enabled", mutate: func(s *Spec) { s.Manifests[0].Scan.Enabled = spec.ScanOff }},
+		{
+			name: "secrets",
+			mutate: func(s *Spec) {
+				s.Images[0].Secrets = []Secret{
+					{ID: "npm_token", Env: "NPM_TOKEN"},
+					{ID: "npmrc", Src: "${RUNNER_TEMP}/.npmrc", Optional: true},
+				}
+			},
+		},
+		{
+			name:    "secret missing id",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{Env: "TOKEN"}} },
+			wantErr: "secrets[0]: id is required",
+		},
+		{
+			name:    "secret bad id",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{ID: "a=b", Env: "TOKEN"}} },
+			wantErr: `id "a=b" must match`,
+		},
+		{
+			name: "secret duplicate id",
+			mutate: func(s *Spec) {
+				s.Images[0].Secrets = []Secret{{ID: "tok", Env: "A"}, {ID: "tok", Src: "f"}}
+			},
+			wantErr: `secrets[1]: duplicate id "tok"`,
+		},
+		{
+			name:    "secret with env and src",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{ID: "tok", Env: "A", Src: "f"}} },
+			wantErr: "set exactly one of env or src",
+		},
+		{
+			name:    "secret with neither",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{ID: "tok"}} },
+			wantErr: "set exactly one of env or src",
+		},
+		{
+			name:    "secret bad env name",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{ID: "tok", Env: "${TOKEN}"}} },
+			wantErr: "not an environment variable name",
+		},
+		{
+			name:    "secret blank src",
+			mutate:  func(s *Spec) { s.Images[0].Secrets = []Secret{{ID: "tok", Src: "  "}} },
+			wantErr: "src is blank",
+		},
 		{
 			name: "image newDays past maxDays",
 			mutate: func(s *Spec) {

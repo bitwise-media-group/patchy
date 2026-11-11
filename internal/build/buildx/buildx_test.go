@@ -51,6 +51,21 @@ func TestArgs(t *testing.T) {
 				"--target runtime --build-arg CGO_ENABLED=0 --build-arg GO_VERSION=1.27 " +
 				"--output type=oci,dest=/tmp/oci,tar=false,rewrite-timestamp=true src",
 		},
+		{
+			name: "secrets sorted by id, between build args and output",
+			r: Request{
+				Dockerfile: "Dockerfile", Context: ".", Platforms: []string{"linux/amd64"},
+				Args: map[string]string{"A": "1"},
+				Secrets: []Secret{
+					{ID: "npmrc", Src: "/run/secrets/.npmrc"},
+					{ID: "gh_token", Env: "GH_TOKEN"},
+				},
+				Output: "/tmp/oci",
+			},
+			want: "buildx build --file Dockerfile --platform linux/amd64 --build-arg A=1 " +
+				"--secret id=gh_token,env=GH_TOKEN --secret id=npmrc,src=/run/secrets/.npmrc " +
+				"--output type=oci,dest=/tmp/oci,tar=false .",
+		},
 	}
 	for _, tt := range tests {
 		if got := strings.Join(Args(tt.r), " "); got != tt.want {

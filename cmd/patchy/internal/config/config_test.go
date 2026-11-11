@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bitwise-media-group/patchy/internal/build"
 )
 
 // roots is one isolated search world: system dir, home and workdir under a
@@ -247,6 +249,13 @@ func TestLoadStrictKeys(t *testing.T) {
 				"'build.images[0]' has invalid keys: dockerfil"},
 		},
 		{
+			name: "unknown key inside a build secret",
+			file: "patchy.yaml",
+			content: "build:\n  images:\n    - name: web\n      repository: platform/web\n" +
+				"      secrets:\n        - id: npm_token\n          value: hunter2\n",
+			want: []string{"patchy.yaml:", "'build.images[0].secrets[0]' has invalid keys: value"},
+		},
+		{
 			name:    "top-level unknown key",
 			file:    "patchy.yaml",
 			content: "bogus: true\n",
@@ -353,6 +362,12 @@ build:
   images:
     - name: controller
       repository: patchy/controller
+      secrets:
+        - id: npm_token
+          env: NPM_TOKEN
+        - id: npmrc
+          src: "${RUNNER_TEMP}/.npmrc"
+          optional: true
   manifests:
     - name: platform
       repository: manifests/platform
@@ -371,6 +386,13 @@ build:
 	}
 	if !reflect.DeepEqual(entries[0].Platforms, []string{"linux/amd64", "linux/arm64/v8"}) {
 		t.Errorf("platforms = %v", entries[0].Platforms)
+	}
+	wantSecrets := []build.Secret{
+		{ID: "npm_token", Env: "NPM_TOKEN"},
+		{ID: "npmrc", Src: "${RUNNER_TEMP}/.npmrc", Optional: true},
+	}
+	if !reflect.DeepEqual(entries[0].Image.Secrets, wantSecrets) {
+		t.Errorf("secrets = %+v", entries[0].Image.Secrets)
 	}
 
 	bad := newRoots(t)

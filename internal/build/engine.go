@@ -270,11 +270,11 @@ func workspace() (string, func(), error) {
 	return dir, func() { _ = os.RemoveAll(dir) }, nil
 }
 
-// buildImage runs the image flow: expand args, lint the allowlist, build,
+// buildImage runs the image flow: resolve args and secrets, lint the allowlist, build,
 // scan every platform, and publish only when nothing blocks.
 func (e *Engine) buildImage(ctx context.Context, entry Entry, tags []string, regs []spec.Registry,
 	dryRun bool, res *Result) error {
-	args, err := e.args(entry.Image)
+	in, err := e.buildInputs(entry)
 	if err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ func (e *Engine) buildImage(ctx context.Context, entry Entry, tags []string, reg
 		return err
 	}
 	defer cleanup()
-	b, err := e.buildLayout(ctx, entry, args, work)
+	b, err := e.buildLayout(ctx, entry, in, work)
 	if err != nil {
 		return err
 	}
@@ -307,6 +307,26 @@ func (e *Engine) buildImage(ctx context.Context, entry Entry, tags []string, reg
 	return err
 }
 
+// buildInputs are an image build's resolved inputs.
+type buildInputs struct {
+	args    map[string]string
+	secrets []buildx.Secret
+}
+
+// buildInputs resolves an image's build args and secrets before anything
+// is built, so a bad template or a missing secret fails fast.
+func (e *Engine) buildInputs(entry Entry) (buildInputs, error) {
+	args, err := e.args(entry.Image)
+	if err != nil {
+		return buildInputs{}, err
+	}
+	secrets, err := e.secrets(entry)
+	if err != nil {
+		return buildInputs{}, err
+	}
+	return buildInputs{args: args, secrets: secrets}, nil
+}
+
 // args expands an image's build-arg values; keys keep their case.
 func (e *Engine) args(img *Image) (map[string]string, error) {
 	out := make(map[string]string, len(img.Args))
@@ -316,6 +336,53 @@ func (e *Engine) args(img *Image) (map[string]string, error) {
 			return nil, err
 		}
 		out[k] = x
+	}
+	return out, nil
+}
+
+// secrets resolves an image's secret mounts to buildx references: an env
+// secret's variable must be set and non-empty (docker inherits it), a src
+// secret's expanded path must be a regular file. A missing optional secret
+// is dropped with a note; a missing required one fails. Errors and notes
+// name the id, variable or path — never a value.
+func (e *Engine) secrets(entry Entry) ([]buildx.Secret, error) {
+	var out []buildx.Secret
+	for _, s := range entry.Image.Secrets {
+		if s.Env != "" {
+			if v, ok := e.lookupEnv(s.Env); !ok || v == "" {
+				if s.Optional {
+					e.notef(entry.Name, "build", "secret %s: $%s not set; not mounted", s.ID, s.Env)
+					continue
+				}
+				return nil, fmt.Errorf("secret %q: environment variable %s is not set "+
+					"(set it, or mark the secret optional)", s.ID, s.Env)
+			}
+			out = append(out, buildx.Secret{ID: s.ID, Env: s.Env})
+			continue
+		}
+		src, err := e.expandField("secret "+s.ID+" src", s.Src)
+		if err != nil {
+			return nil, err
+		}
+		if strings.ContainsAny(src, `,"`) {
+			return nil, fmt.Errorf("secret %q: src %q contains , or \" (buildx parses --secret as CSV)", s.ID, src)
+		}
+		path := e.path(src)
+		fi, err := os.Stat(path)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			if s.Optional {
+				e.notef(entry.Name, "build", "secret %s: %s does not exist; not mounted", s.ID, e.relPath(path))
+				continue
+			}
+			return nil, fmt.Errorf("secret %q: src %s does not exist (create it, or mark the secret optional)",
+				s.ID, e.relPath(path))
+		case err != nil:
+			return nil, fmt.Errorf("secret %q: %w", s.ID, err)
+		case !fi.Mode().IsRegular():
+			return nil, fmt.Errorf("secret %q: src %s is not a regular file", s.ID, e.relPath(path))
+		}
+		out = append(out, buildx.Secret{ID: s.ID, Src: path})
 	}
 	return out, nil
 }
@@ -346,7 +413,7 @@ func (e *Engine) activeAllowlist(entry Entry, policy spec.ScanPolicy, report *Sc
 }
 
 // buildLayout runs the builder into an OCI layout under work and loads it.
-func (e *Engine) buildLayout(ctx context.Context, entry Entry, args map[string]string, work string) (built, error) {
+func (e *Engine) buildLayout(ctx context.Context, entry Entry, in buildInputs, work string) (built, error) {
 	img := entry.Image
 	sde, _ := e.lookupEnv("SOURCE_DATE_EPOCH")
 	req := buildx.Request{
@@ -354,7 +421,8 @@ func (e *Engine) buildLayout(ctx context.Context, entry Entry, args map[string]s
 		Context:         e.path(img.ContextDir()),
 		Platforms:       entry.Platforms,
 		Target:          img.Target,
-		Args:            args,
+		Args:            in.args,
+		Secrets:         in.secrets,
 		Output:          filepath.Join(work, "oci"),
 		SourceDateEpoch: sde,
 	}
@@ -629,7 +697,7 @@ func (e *Engine) UpdateAllowlist(ctx context.Context, name string) (*AllowlistRe
 	if !policy.Enabled {
 		return skip("scanning disabled (" + disabledBy(policy) + ")")
 	}
-	args, err := e.args(entry.Image)
+	in, err := e.buildInputs(entry)
 	if err != nil {
 		return res, err
 	}
@@ -638,7 +706,7 @@ func (e *Engine) UpdateAllowlist(ctx context.Context, name string) (*AllowlistRe
 		return res, err
 	}
 	defer cleanup()
-	b, err := e.buildLayout(ctx, entry, args, work)
+	b, err := e.buildLayout(ctx, entry, in, work)
 	if err != nil {
 		return res, err
 	}

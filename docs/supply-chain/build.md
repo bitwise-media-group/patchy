@@ -27,6 +27,14 @@ build:
       context: .
       target: runtime # optional build stage
       args: { GO_VERSION: "1.27" } # values ${ENV}-expanded, key case preserved
+      secrets: # BuildKit secret mounts; patchy only ever sees where the value lives
+        - id: npm_token # RUN --mount=type=secret,id=npm_token
+          env: NPM_TOKEN # an environment variable docker reads (a name, never expanded)
+        - id: npmrc
+          src: "${RUNNER_TEMP}/.npmrc" # a file; ${ENV}-expanded, relative to the working directory
+        - id: sentry
+          env: SENTRY_AUTH_TOKEN
+          optional: true # absent: not mounted, with a note
       scan:
         failOn: [CRITICAL]
         allowlist: { generate: true, maxDays: 30 }
@@ -61,6 +69,7 @@ Each image entry runs:
 
 ```text
 docker buildx build --file <dockerfile> --platform <platforms> [--target <t>] [--build-arg K=V]... \
+  [--secret id=<id>,env=<VAR>|src=<path>]... \
   --output type=oci,dest=<tmp>,tar=false[,rewrite-timestamp=true] <context>
 ```
 
@@ -92,6 +101,23 @@ export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 
 A re-run of a reproducible build reports `skipped-current` on every target.
 
+**Secrets.** A build that needs a credential (a private registry token, an `.npmrc`, `GOPRIVATE` access) should mount it
+as a BuildKit secret rather than pass it through `args`, which records the value in the image history. Each entry under
+`secrets` sets an `id`, unique within the image, and exactly one source: `env` names a variable in patchy's environment,
+which docker inherits, and `src` names a file. The Dockerfile mounts it by id, either into a variable or as a file:
+
+```dockerfile
+RUN --mount=type=secret,id=npm_token,env=NPM_TOKEN npm ci
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
+```
+
+Patchy hands buildx only the reference (`--secret id=npm_token,env=NPM_TOKEN`, `--secret id=npmrc,src=<path>`), so the
+value never reaches the argv, the image or patchy's output. Secrets are resolved before anything is built: an unset or
+empty variable, or a `src` that is missing or not a regular file, fails the entry in seconds with an error naming the
+id. Mark a secret `optional: true` to drop it with a note instead, for a Dockerfile that mounts it with `required=false`
+(the `RUN --mount` default). BuildKit leaves secret contents out of cache keys, so rotating a secret does not invalidate
+the cache; change something the step depends on when a new value must rebuild it.
+
 ## Flux manifests
 
 A manifests entry publishes a directory as-is, as a Flux OCI artifact, with no render step. The tree under `path` is
@@ -120,7 +146,7 @@ setting them on a manifests entry is a validation error. Inherited config defaul
 
 ## Tags
 
-Tag templates, image `args`, `source` and `revision` all expand environment references:
+Tag templates, image `args`, secret `src` paths, `source` and `revision` all expand environment references:
 
 | Syntax                 | Meaning                                                             |
 | ---------------------- | ------------------------------------------------------------------- |
@@ -197,7 +223,8 @@ target, and a fenced block listing any blocking findings, ready for a job summar
 `--dry-run` builds and scans everything and reports `would-push` for every target, but never contacts a registry. That
 makes it the pull-request gate. It needs no push credentials, no signing identity, and no `registries` at all: with none
 configured it reports each build's digest. That keeps registry URLs out of a public repository, which only needs them
-where it publishes. It does need the variables your tag templates reference, because they are expanded first.
+where it publishes. It does need the variables your tag templates reference, because they are expanded first, and the
+image's required secrets, because the build runs.
 
 ## Allowlists
 
@@ -222,6 +249,18 @@ before publishing (`docker login`, or a cloud auth action). Keyless signing need
   env:
     VERSION: "0.0.0" # anything that expands; nothing is published
 ```
+
+**Build secrets.** Map each secret an image's `env` names onto the `patchy build` step. The variable lives only in that
+step's environment:
+
+```yaml
+- run: patchy build --all -o markdown >> "$GITHUB_STEP_SUMMARY"
+  env:
+    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+A pull request from a fork gets no repository secrets. Mark such secrets `optional: true` (with a Dockerfile that copes
+without them), or the dry run fails.
 
 **Push to main, no release cut: an edge build.** Base it on the next release:
 
@@ -251,7 +290,9 @@ changed under `security/allowlists/`, the same way the mirror's update sweep doe
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `OCI exporter is not supported for the docker driver` | the active builder is the plain `docker` driver: create a `docker-container` builder (above) or turn on the containerd image store                     |
 | `exec format error` during a build step               | a foreign-architecture `RUN` without QEMU: register binfmt handlers                                                                                    |
-| `${VERSION} is not set`                               | a tag, arg, `source` or `revision` template references an unset variable: set it, or give it a `${VERSION:-default}`                                   |
+| `${VERSION} is not set`                               | a tag, arg, secret `src`, `source` or `revision` template references an unset variable: set it, or give it a `${VERSION:-default}`                     |
+| `secret "<id>": environment variable X is not set`    | the image declares a secret whose variable is unset or empty: export it (in CI, map it into the step's `env`), or mark the secret `optional: true`     |
+| `secret "<id>": src … does not exist`                 | the secret's file is missing (relative paths resolve against the working directory): create it first, or mark the secret `optional: true`              |
 | `no image scanner enabled`                            | image scanning is on but `scan.scanners.osv` and `scan.scanners.grype` are both off: enable one, or set the entry's `scan.enabled: false` deliberately |
 | `skipped-tag-exists`                                  | the tag already names another digest: tags never move, so build a new tag (the timestamp and commit in the default templates make each build unique)   |
 | allowlist lint errors before the build                | `security/allowlists/<name>.yaml` breaks policy: every entry needs `id`, `statement` and an `expired_at` within `maxDays`                              |

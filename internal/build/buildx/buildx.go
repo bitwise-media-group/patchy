@@ -26,11 +26,32 @@ type Request struct {
 	Target string
 	// Args are build args, emitted sorted by key.
 	Args map[string]string
+	// Secrets are BuildKit secret mounts, emitted sorted by ID. Each names
+	// where docker reads the value (an environment variable or a file);
+	// the value itself never enters the argv.
+	Secrets []Secret
 	// Output is the OCI layout directory the build exports to.
 	Output string
 	// SourceDateEpoch, when set, is passed to buildx and turns on
 	// rewrite-timestamp for a reproducible digest.
 	SourceDateEpoch string
+}
+
+// Secret is one BuildKit secret (RUN --mount=type=secret,id=<ID>): exactly
+// one of Env (a variable in docker's environment) or Src (a file path) is
+// set.
+type Secret struct {
+	ID  string
+	Env string
+	Src string
+}
+
+// spec renders the --secret value.
+func (s Secret) spec() string {
+	if s.Env != "" {
+		return "id=" + s.ID + ",env=" + s.Env
+	}
+	return "id=" + s.ID + ",src=" + s.Src
 }
 
 // Args builds the docker argv for r (without the leading "docker").
@@ -41,6 +62,10 @@ func Args(r Request) []string {
 	}
 	for _, k := range slices.Sorted(maps.Keys(r.Args)) {
 		args = append(args, "--build-arg", k+"="+r.Args[k])
+	}
+	byID := func(a, b Secret) int { return strings.Compare(a.ID, b.ID) }
+	for _, s := range slices.SortedFunc(slices.Values(r.Secrets), byID) {
+		args = append(args, "--secret", s.spec())
 	}
 	output := "type=oci,dest=" + r.Output + ",tar=false"
 	if r.SourceDateEpoch != "" {

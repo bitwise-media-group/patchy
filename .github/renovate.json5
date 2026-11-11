@@ -1,0 +1,21 @@
+// Copyright 2026 BitWise Media Group Ltd
+// SPDX-License-Identifier: MIT
+
+// Repo overrides on top of the org preset (the bot's global config already applies
+// github>bitwise-media-group/renovate-config:default.json5 to every repository).
+{
+    $schema: "https://docs.renovatebot.com/renovate-schema.json",
+    packageRules: [
+        // patchy's own images are self-referencing: every release publishes new
+        // ghcr.io/bitwise-media-group/patchy/* images, so a Renovate bump of the pinned
+        // references (deploy/kustomize/overlays/prod) is stale as soon as its own merge is
+        // released, and spawns the next bump — they can never converge (patchy#329, #413,
+        // #481, #563, #590). release-please owns those pins instead (release-please-
+        // config.json extra-files): each release PR moves them to the tag it is about to
+        // publish. One writer per field, so Renovate leaves them alone.
+        {
+            matchPackageNames: ["ghcr.io/bitwise-media-group/patchy/**"],
+            enabled: false,
+        },
+    ],
+}

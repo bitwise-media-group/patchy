@@ -201,7 +201,7 @@ The same stack renders from `deploy/kustomize` if Helm isn't your tool:
 
 ```sh
 kubectl apply -k deploy/kustomize/overlays/dev    # kind/colima: throwaway secrets, fast loops, fake harness
-kubectl apply -k deploy/kustomize/overlays/prod   # digest-pinned images + Cilium FQDN egress
+kubectl apply -k deploy/kustomize/overlays/prod   # release-pinned images + Cilium FQDN egress
 ```
 
 Bring the same two Secrets and your `Integration`/`Forge` resources; the base and overlays are covered in

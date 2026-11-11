@@ -36,9 +36,10 @@ data:
     # Keep finished Jobs around long enough to debug a bad run.
     PATCHY_JOB_TTL: 6h
 
-    # PIN ME. Must be the same digest as the claude-agent-runner entry in
+    # Must be the same tag as the claude-agent-runner entry in
     # kustomization.yaml's `images:` block — this string is copied verbatim
-    # into every claude Job the controllers create. (Pin
+    # into every claude Job the controllers create, and kustomize does not
+    # rewrite ConfigMap values. release-please bumps both. (Pin
     # PATCHY_CODEX_AGENT_IMAGE / PATCHY_COPILOT_AGENT_IMAGE too when those
     # runners are enabled.)
-    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.12.1 # x-release-please-version

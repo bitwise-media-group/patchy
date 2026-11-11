@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Production overlay: DESIGN.md's real intervals, the claude harness, digest-
+# Production overlay: DESIGN.md's real intervals, the claude harness, release-
 # pinned images, and the Cilium FQDN policy on top of the base NetworkPolicies.
 #
 # The Secrets (patchy-github and patchy-anthropic, both in `patchy` — the
@@ -22,30 +22,40 @@ components:
     # then the whole of the L3/L4 story).
     - ../../components/cilium
 
-# Digest pinning. PLACEHOLDERS — replace every sha256 below with the digest
-# the release pipeline published (`crane digest ghcr.io/...:vX.Y.Z`), and keep
-# PATCHY_CLAUDE_AGENT_IMAGE (and PATCHY_CODEX_AGENT_IMAGE when enabled) in
-# configmap-patch.yaml in step with the runner digests: kustomize rewrites
-# container images, not ConfigMap values.
+# Release pinning: every image at the release tag goreleaser published
+# (v<version>, never moved once pushed). release-please bumps the block below
+# in each release PR, so the overlay at a release tag always names that
+# release's images — and Renovate leaves these alone (.github/renovate.json5):
+# they are this repo's own output, not a dependency. For immutable pins, add a
+# `digest:` (`crane digest ghcr.io/...:vX.Y.Z`) in your own overlay; a digest
+# beats the tag. Keep PATCHY_CLAUDE_AGENT_IMAGE (and PATCHY_CODEX_AGENT_IMAGE /
+# PATCHY_COPILOT_AGENT_IMAGE when enabled) in configmap-patch.yaml in step:
+# kustomize rewrites container images, not ConfigMap values.
 images:
+    # x-release-please-start-version
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
-      digest: sha256:d65d53294d114b91254ea0a7aa7e3a0f31d3ab738cc0fec96e67fde1ad65a47d
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
-      digest: sha256:7487b6342d3497351efbbc7abb8cc47e6d5b556cf46d30fd45bbde96c20d6464
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
-      digest: sha256:9da5c410c826dbc8dc2c67cd0bdfe0d0f876c780338134ea86e581734047fc9c
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
-      digest: sha256:8f1aa8c408dc12a6fdfb3d19b52c96783c0bce61269e59a734a4aaaf25ab9ca0
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
-      digest: sha256:15cb12ad51523944f11b58157e708d945f9dba8cc6a9a3965293e424408554ae
+      newTag: v0.12.1
+    - name: ghcr.io/bitwise-media-group/patchy/evaluation-controller
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
-      digest: sha256:6b58f677ed6fa0b71555105dbcf7501d03387509a140a0ffbe4cc4d3bcf83420
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
-      digest: sha256:86e07fcd5478128aed2eb74a4d5784e6e338f5a1407930e4facea51b343b2064
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
-      digest: sha256:aa9f18be1c3b68f49928ddc0d7b50c61523d41eaf0ee6c4b4f3863a224cdf001
+      newTag: v0.12.1
     - name: ghcr.io/bitwise-media-group/patchy/status-server
-      digest: sha256:4186271bc16cebb447397fbe222fd977dc41d0ed41742b42c02d6465fa2007de
+      newTag: v0.12.1
+    - name: ghcr.io/bitwise-media-group/patchy/egress-broker
+      newTag: v0.12.1
+    # x-release-please-end
 
 patches:
     - path: configmap-patch.yaml

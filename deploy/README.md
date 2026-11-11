@@ -275,10 +275,11 @@ Three things to know about dev:
 
 DESIGN.md's real intervals (1h accumulation, 1h minimum age, the 14-day finding TTL), the claude harness (add codex by
 enabling its runner and supplying `patchy-openai`, or copilot with `patchy-copilot`), the Cilium FQDN policies,
-production-sized requests/limits, and **digest-pinned images**. The `sha256:0000…` values in
-`overlays/prod/kustomization.yaml` and `PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` are
-placeholders — replace them with the digests your release pipeline published before applying anything. Bring your real
-Secrets and `Integration`/`Forge` resources with SOPS or external-secrets.
+production-sized requests/limits, and **release-pinned images**: every image in `overlays/prod/kustomization.yaml` and
+`PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` names the `vX.Y.Z` tag of the release they ship in
+(release-please bumps them in each release PR), so apply the overlay from a release tag. For immutable pins, add a
+`digest:` per image in your own overlay — a digest beats the tag. Bring your real Secrets and `Integration`/`Forge`
+resources with SOPS or external-secrets.
 
 Ingress/TLS for the webhook endpoint is deliberately absent: add it in an environment overlay, in front of
 `patchy-integration-controller:8080`.

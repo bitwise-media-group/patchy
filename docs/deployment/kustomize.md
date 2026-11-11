@@ -16,7 +16,7 @@ deploy/
 │   └── overlays/
 │       ├── dev/               # kind/colima: NodePort 30079, throwaway secrets + CRs,
 │       │                      #   2m windows, fake harness, fake CMDB
-│       └── prod/              # digest-pinned images + the cilium component
+│       └── prod/              # release-pinned images + the cilium component
 └── README.md
 ```
 
@@ -97,9 +97,10 @@ can launder an approval by deleting a finding and recreating it with one preset.
   reaches the fake. The whole CR pipeline — ingestion through pull request, rollups, and the TTL — runs against it; the
   [demo-tooling walkthrough](dev-fake.md#credential-less-end-to-end-the-dev-fake-overlay) shows the full loop.
 - **prod** uses the real intervals (1h accumulation and min-age, the 14-day TTL), the `claude` harness, the Cilium FQDN
-  component, production-sized requests, and **digest-pinned images** — the checked-in `sha256:0000…` values are
-  placeholders to replace with your release's published digests, including the `PATCHY_CLAUDE_AGENT_IMAGE` value in the
-  ConfigMap patch. Bring real Secrets and CRs with SOPS or external-secrets, and put your Ingress or Gateway in front of
+  component, production-sized requests, and **release-pinned images** — every image, including the
+  `PATCHY_CLAUDE_AGENT_IMAGE` value in the ConfigMap patch, names the `vX.Y.Z` tag of the release it ships in
+  (release-please bumps them), so apply it from a release tag; add `digest:` entries in your own overlay for immutable
+  pins. Bring real Secrets and CRs with SOPS or external-secrets, and put your Ingress or Gateway in front of
   `patchy-integration-controller:8080` in your own overlay — the base deliberately ships none.
 
 The base's `secrets.example.yaml` and `crs.example.yaml` are documentation, not resources — the dev overlay's throwaway

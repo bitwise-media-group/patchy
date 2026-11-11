@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.2](https://github.com/bitwise-media-group/patchy/compare/v0.12.1...v0.12.2) (2026-11-11)
+
+
+### Features
+
+* **build:** support buildx secret mounts for image entries ([7dbf690](https://github.com/bitwise-media-group/patchy/commit/7dbf690a7ac7183a07beb7277f9a073e2ec7f34e))
+* **deploy:** pin the prod overlay to release tags via release-please ([03fd559](https://github.com/bitwise-media-group/patchy/commit/03fd55957d36874dbf68344d9be1b8f18ab421c9))
+
+
+### Bug Fixes
+
+* **deps:** bump go to 1.27.4 ([1f700c5](https://github.com/bitwise-media-group/patchy/commit/1f700c5409f43471ce2e97106844e7038ee4ea2e))
+* **deps:** update bitwise-media-group/github-workflows action to v8.2.1 ([b6668f9](https://github.com/bitwise-media-group/patchy/commit/b6668f98aa01df88a5c0028b8263fe7609310fa3))
+
 ## [0.12.1](https://github.com/bitwise-media-group/patchy/compare/v0.12.0...v0.12.1) (2026-11-10)
 
 

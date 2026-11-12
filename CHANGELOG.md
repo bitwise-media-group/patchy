@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/bitwise-media-group/patchy/compare/v0.12.3...v0.12.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* **build:** let --update-allowlists run without registries configured ([715070b](https://github.com/bitwise-media-group/patchy/commit/715070be95bcd578c394bf02a1676ece10f89215))
+
 ## [0.12.3](https://github.com/bitwise-media-group/patchy/compare/v0.12.2...v0.12.3) (2026-11-12)
 
 

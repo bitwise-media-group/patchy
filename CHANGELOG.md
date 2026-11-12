@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.12.3](https://github.com/bitwise-media-group/patchy/compare/v0.12.2...v0.12.3) (2026-11-12)
+
+
+### Features
+
+* **mirror:** keep locked digests when upstream rebuilds a tag ([9c9dd20](https://github.com/bitwise-media-group/patchy/commit/9c9dd200f095c62f7e161423059d72897f56f5f2))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#601](https://github.com/bitwise-media-group/patchy/issues/601)) ([3c19ffc](https://github.com/bitwise-media-group/patchy/commit/3c19ffcc19ccc7fad6c0f24c9adf44af5bdc87bc))
+* **deps:** update bitwise-media-group/github-workflows action to v8.3.0 ([#610](https://github.com/bitwise-media-group/patchy/issues/610)) ([57b6ef2](https://github.com/bitwise-media-group/patchy/commit/57b6ef2366282b9de1777cf88adc9bbbf1831f90))
+* **deps:** update module github.com/pelletier/go-toml/v2 to v2.4.3 ([#603](https://github.com/bitwise-media-group/patchy/issues/603)) ([2073101](https://github.com/bitwise-media-group/patchy/commit/207310144ef12a2ca7e5fea44fe8687ac2be0521))
+* **deps:** update module github.com/spf13/pflag to v1.1.0 ([#604](https://github.com/bitwise-media-group/patchy/issues/604)) ([53e4917](https://github.com/bitwise-media-group/patchy/commit/53e49177b5dc19807c31011aa6161ab82ef0ea77))
+* **deps:** update module golang.org/x/oauth2 to v0.38.0 ([#605](https://github.com/bitwise-media-group/patchy/issues/605)) ([3cb19dd](https://github.com/bitwise-media-group/patchy/commit/3cb19ddbfa922bfead0ea3f6a4f278f61538b128))
+* **deps:** update module golang.org/x/sync to v0.25.0 ([#606](https://github.com/bitwise-media-group/patchy/issues/606)) ([199078d](https://github.com/bitwise-media-group/patchy/commit/199078d61f8bdad3c5be633f66127e0486f2df70))
+* **mirror:** keep the pinned spelling when a release is dual-tagged ([8ebfb47](https://github.com/bitwise-media-group/patchy/commit/8ebfb474a5afd8b57e129a996821f5cfd3dffec4))
+* **mirror:** require chart pins to match the chart's own version ([821f345](https://github.com/bitwise-media-group/patchy/commit/821f345ab4f72bb24188f9adf13003a7a33df38a))
+
 ## [0.12.2](https://github.com/bitwise-media-group/patchy/compare/v0.12.1...v0.12.2) (2026-11-11)
 
 

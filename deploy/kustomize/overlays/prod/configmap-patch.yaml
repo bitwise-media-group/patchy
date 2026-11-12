@@ -42,4 +42,4 @@ data:
     # rewrite ConfigMap values. release-please bumps both. (Pin
     # PATCHY_CODEX_AGENT_IMAGE / PATCHY_COPILOT_AGENT_IMAGE too when those
     # runners are enabled.)
-    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.12.2 # x-release-please-version
+    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.12.3 # x-release-please-version

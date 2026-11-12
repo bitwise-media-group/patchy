@@ -142,7 +142,7 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 		e.notef(entry.Name, "discover", "excluded: %s", ref)
 	}
 
-	images, err := e.resolveImages(ctx, entry.Name, result.Images)
+	images, err := e.resolveImages(ctx, entry.Name, result.Images, e.committedImageDigests(entry))
 	if err != nil {
 		return nil, err
 	}
@@ -180,22 +180,19 @@ func checkChartVersion(entry spec.Entry, chartsDir string) error {
 }
 
 // resolveImages digest-pins every discovered reference, concurrently but
-// deterministically (results sorted by source).
-func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []string) ([]spec.LockImage, error) {
+// deterministically (results sorted by source). A source already in the
+// committed lock (locked: source -> digest) keeps its locked digest instead
+// of re-resolving its tag — see resolveDigest.
+func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []string,
+	locked map[string]string) ([]spec.LockImage, error) {
 	images := make([]spec.LockImage, len(sources))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(e.workers)
 	for i, source := range sources {
 		g.Go(func() error {
-			pullRef := e.rewrite(source)
-			e.notef(entryName, "discover", "resolving %s", source)
-			digest, err := e.reg.Digest(ctx, pullRef)
+			digest, platforms, err := e.resolveDigest(ctx, entryName, source, locked[source])
 			if err != nil {
-				return fmt.Errorf("%s: resolve digest for %s (via %s): %w", entryName, source, pullRef, err)
-			}
-			platforms, err := e.reg.Platforms(ctx, pullRef)
-			if err != nil {
-				return fmt.Errorf("%s: platforms of %s: %w", entryName, source, err)
+				return err
 			}
 			targets := make(map[string]string, len(e.global.Registries))
 			for _, reg := range e.global.Registries {
@@ -216,19 +213,103 @@ func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []
 	return images, nil
 }
 
+// resolveDigest pins one source reference to a digest and reads its
+// platforms. The committed lock is authoritative: when locked (the digest
+// the committed lock records for this exact source) is set, the tag is
+// NOT re-resolved. Mirror tags are immutable — once a tag is published at
+// a digest it can never be re-pointed — so an upstream that rebuilds a
+// released tag in place must not move the lock: validate would report the
+// committed tree stale, and the next sync could never publish the result.
+// The locked digest is instead proved still pullable upstream, and a moved
+// tag is reported as a warning so the drift stays visible. Only a source
+// new to the lock (a bumped chart, tag or extra) resolves its tag.
+func (e *Engine) resolveDigest(ctx context.Context, entryName, source, locked string) (string, []string, error) {
+	pullRef := e.rewrite(source)
+	if locked == "" {
+		e.notef(entryName, "discover", "resolving %s", source)
+		digest, err := e.reg.Digest(ctx, pullRef)
+		if err != nil {
+			return "", nil, fmt.Errorf("%s: resolve digest for %s (via %s): %w", entryName, source, pullRef, err)
+		}
+		platforms, err := e.reg.Platforms(ctx, pullRef)
+		if err != nil {
+			return "", nil, fmt.Errorf("%s: platforms of %s: %w", entryName, source, err)
+		}
+		return digest, platforms, nil
+	}
+
+	e.notef(entryName, "discover", "keeping locked %s@%s", source, locked)
+	pinRef := repoOf(pullRef) + "@" + locked
+	got, err := e.reg.Digest(ctx, pinRef)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s: locked digest of %s is no longer pullable upstream (%s): %w; "+
+			"move to a newer tag, or drop the image from the lock to re-resolve it", entryName, source, pinRef, err)
+	}
+	if got != locked {
+		return "", nil, fmt.Errorf("%s: %s resolved to %s, not the locked %s", entryName, pinRef, got, locked)
+	}
+	platforms, err := e.reg.Platforms(ctx, pinRef)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s: platforms of %s: %w", entryName, pinRef, err)
+	}
+	// Drift report only: the tag's current digest never feeds the lock.
+	switch current, err := e.reg.Digest(ctx, pullRef); {
+	case err != nil:
+		e.warnf(entryName, "discover", "%s no longer resolves upstream (%v); keeping the locked %s",
+			source, err, locked)
+	case current != locked:
+		e.warnf(entryName, "discover", "upstream rebuilt %s in place (now %s); keeping the locked %s, "+
+			"because mirror tags are immutable", source, current, locked)
+	}
+	return locked, platforms, nil
+}
+
+// committedImageDigests maps each source in the entry's committed lock to
+// its digest. A missing lock (a new entry) is empty, and so is one that no
+// longer parses (a legacy schema), with a warning — upgrade rewrites it
+// from scratch, and validate reports it stale either way.
+func (e *Engine) committedImageDigests(entry spec.Entry) map[string]string {
+	locked := map[string]string{}
+	if _, err := os.Stat(entry.LockPath()); err != nil {
+		return locked
+	}
+	lock, err := spec.LoadImagesLock(entry.LockPath())
+	if err != nil {
+		e.warnf(entry.Name, "discover", "ignoring the committed lock: %v", err)
+		return locked
+	}
+	for _, img := range lock.Images {
+		locked[img.Source] = img.Digest
+	}
+	return locked
+}
+
+// committedArtifactDigest returns the digest the committed artifact lock
+// records for ref:version, or "" when the lock is missing, unreadable, or
+// pins something else.
+func (e *Engine) committedArtifactDigest(entry spec.Entry, ref, version string) string {
+	if _, err := os.Stat(entry.LockPath()); err != nil {
+		return ""
+	}
+	lock, err := spec.LoadArtifactLock(entry.LockPath())
+	if err != nil {
+		e.warnf(entry.Name, "discover", "ignoring the committed lock: %v", err)
+		return ""
+	}
+	if lock.Artifact.Ref != ref || lock.Artifact.Version != version {
+		return ""
+	}
+	return lock.Artifact.Digest
+}
+
 // regenerateArtifact resolves an artifact entry's pinned version.
 func (e *Engine) regenerateArtifact(ctx context.Context, entry spec.Entry) (*spec.ArtifactLock, error) {
 	a := entry.Artifact.Artifact
 	source := a.Ref + ":" + a.Version
-	pullRef := e.rewrite(source)
-	e.notef(entry.Name, "discover", "resolving %s", source)
-	digest, err := e.reg.Digest(ctx, pullRef)
+	digest, platforms, err := e.resolveDigest(ctx, entry.Name, source,
+		e.committedArtifactDigest(entry, a.Ref, a.Version))
 	if err != nil {
-		return nil, fmt.Errorf("%s: resolve digest for %s (via %s): %w", entry.Name, source, pullRef, err)
-	}
-	platforms, err := e.reg.Platforms(ctx, pullRef)
-	if err != nil {
-		return nil, fmt.Errorf("%s: platforms of %s: %w", entry.Name, source, err)
+		return nil, err
 	}
 	targets := make(map[string]string, len(e.global.Registries))
 	for _, reg := range e.global.Registries {

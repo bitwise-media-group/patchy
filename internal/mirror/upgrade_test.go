@@ -53,7 +53,7 @@ func TestResolveImagesSortedBySource(t *testing.T) {
 	eng := f.engine()
 
 	images, err := eng.resolveImages(context.Background(), "demo",
-		[]string{"example.test/apps/bbb:1.0.0", "example.test/apps/aaa:1.0.0"})
+		[]string{"example.test/apps/bbb:1.0.0", "example.test/apps/aaa:1.0.0"}, nil)
 	if err != nil {
 		t.Fatalf("resolveImages: %v", err)
 	}

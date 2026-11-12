@@ -256,13 +256,27 @@ func TestEngineValidate(t *testing.T) {
 	t.Run("stale lock is caught", func(t *testing.T) {
 		lockPath := "charts/demo/images.lock.yaml"
 		original := f.read(lockPath)
-		f.write(lockPath, strings.Replace(original, "sha256:", "sha256:0000", 1))
+		f.write(lockPath, strings.Replace(original, "/mirror/images/", "/mirror/stale/", 1))
 		res, err := eng.Validate(ctx, entry, []string{StageRegen})
 		if err != nil {
 			t.Fatalf("Validate: %v", err)
 		}
 		if len(res.RegenDiffs) == 0 {
 			t.Error("stale lock not detected")
+		}
+		f.write(lockPath, original)
+	})
+
+	// The lock is authoritative for digests (regen keeps a locked digest
+	// rather than re-resolving its tag), so a tampered digest is not a
+	// diff to regenerate away: it fails loudly as unpullable upstream.
+	t.Run("tampered lock digest fails", func(t *testing.T) {
+		lockPath := "charts/demo/images.lock.yaml"
+		original := f.read(lockPath)
+		f.write(lockPath, strings.Replace(original, "sha256:", "sha256:0000", 1))
+		_, err := eng.Validate(ctx, entry, []string{StageRegen})
+		if err == nil || !strings.Contains(err.Error(), "no longer pullable upstream") {
+			t.Errorf("Validate error = %v, want the tampered digest reported", err)
 		}
 		f.write(lockPath, original)
 	})

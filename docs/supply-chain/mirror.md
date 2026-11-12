@@ -142,6 +142,15 @@ References are normalized the way container runtimes expand shorthand (`nginx` b
 filtered through `images.exclude` globs, and resolved to digests. A chart that renders no images (CRDs only) needs
 `images.allowEmpty: true`.
 
+**The lock is authoritative for digests.** A tag resolves only when it's new to `images.lock.yaml`, for example after a
+chart bump, a tracked-tag move or a new `images.extra` entry. A tag the lock already records keeps its locked digest on
+every `upgrade` and `validate`, even if upstream has since rebuilt the tag in place. Mirror tags are immutable, so a
+rebuilt digest could never be published under the same tag, and following it would leave a committed tree that validates
+stale but can't sync. patchy still checks that the locked digest can be pulled upstream, warns when the tag has moved,
+and fails the entry if the digest is gone. A rebuild reaches the mirror with the next upstream version. To adopt one
+deliberately, delete that image's entry from the lock and run `upgrade`. The same rule applies to an artifact's
+`lock.yaml` while its `version` is unchanged.
+
 Two features cover images that discovery cannot reach:
 
 - **`images.distributionManifests`** handles operators that deploy workloads from manifests helm never renders. patchy

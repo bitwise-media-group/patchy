@@ -11,8 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/config"
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/printer"
 	"github.com/bitwise-media-group/patchy/internal/build"
+	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
 // buildEngineHook adjusts the engine config before the engine is built; a
@@ -74,18 +76,11 @@ func newBuildCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			noteConfigSources(opts, loaded)
-			resolve := loaded.File.BuildConfig
-			if dryRun {
-				// A plan never contacts a registry, so it needs none
-				// configured: CI and workstations build and scan with no
-				// registry URLs anywhere.
-				resolve = loaded.File.BuildPlanConfig
-			}
-			global, spec, err := resolve()
+			global, spec, err := resolveBuildConfig(loaded.File, dryRun || updateAllowlists)
 			if err != nil {
 				return err
 			}
-			if len(global.Registries) == 0 {
+			if len(global.Registries) == 0 && dryRun {
 				notef(opts.ErrOut, "patchy: no registries configured; reporting each build's digest only\n")
 			}
 			format, err := printer.ParseFormat(opts.Output)
@@ -190,6 +185,19 @@ func selectBuildEntries(eng *build.Engine, names []string, all bool) ([]string, 
 	default:
 		return nil, errUsage(errors.New("name one or more build entries, or pass --all"))
 	}
+}
+
+// resolveBuildConfig resolves the build config, demanding registries only
+// when the run can publish. Neither a plan (--dry-run) nor an allowlist
+// refresh (--update-allowlists) ever contacts a registry - both build and
+// scan locally, and neither publishes nor signs - so they need none
+// configured: CI and workstations build, scan and regenerate allowlists
+// with no registry URLs anywhere.
+func resolveBuildConfig(f *config.File, local bool) (*spec.Config, *build.Spec, error) {
+	if local {
+		return f.BuildPlanConfig()
+	}
+	return f.BuildConfig()
 }
 
 // runUpdateAllowlists regenerates each selected entry's allowlist.

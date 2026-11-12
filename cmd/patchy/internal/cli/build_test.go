@@ -309,6 +309,31 @@ func TestBuildCommandDryRunWithoutRegistries(t *testing.T) {
 	}
 }
 
+// TestBuildCommandUpdateAllowlistsWithoutRegistries: an allowlist refresh
+// never publishes or signs, so like a plan it needs no registries
+// configured - a repository whose registries only the publish workflow
+// supplies can still regenerate its allowlists on a workstation.
+func TestBuildCommandUpdateAllowlistsWithoutRegistries(t *testing.T) {
+	config := buildConfig[strings.Index(buildConfig, "build:"):]
+	_, s := buildWorkspace(t, config)
+	s.findings = []scan.Finding{cveOne}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	root := NewRoot(&Options{Out: out, ErrOut: errOut, Output: "table", NoColor: true})
+	root.SetOut(out)
+	root.SetErr(errOut)
+	root.SetArgs([]string{"build", "controller", "--update-allowlists"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("--update-allowlists without registries: %v\n%s", err, errOut)
+	}
+	if strings.Contains(errOut.String(), "no registries configured") {
+		t.Errorf("stderr = %q, want no digest-only note (nothing is published either way)", errOut)
+	}
+	allow, err := spec.LoadAllowlistFile(filepath.Join("security", "allowlists", "controller.yaml"))
+	if err != nil || len(allow.Vulnerabilities) != 1 || allow.Vulnerabilities[0].ID != "CVE-1" {
+		t.Errorf("allowlist = %+v, %v", allow, err)
+	}
+}
+
 func TestBuildPromoteCommandValidation(t *testing.T) {
 	tests := []struct {
 		name, config string

@@ -232,8 +232,9 @@ Each image entry's allowlist lives at `security/allowlists/<name>.yaml` (relativ
 format as a mirror entry's. `--update-allowlists` is build's version of the mirror's upgrade-time derivation. For each
 selected image entry whose resolved `scan.allowlist.generate` is true, it rebuilds, rescans and regenerates the file:
 surviving acceptances keep their expiry, new ones get `newDays`, and findings that have gone are dropped. It never
-pushes, never signs and never fails on findings. Reviewing the allowlist diff in a pull request is where the risk is
-accepted. Entries with `generate` off are skipped with a note. See [Scanning and allowlists](scanning.md#allowlists).
+pushes, never signs and never fails on findings. Like a dry run, it never contacts a registry, so it needs no
+`registries` configured. Reviewing the allowlist diff in a pull request is where the risk is accepted. Entries with
+`generate` off are skipped with a note. See [Scanning and allowlists](scanning.md#allowlists).
 
 ## Running it in CI
 

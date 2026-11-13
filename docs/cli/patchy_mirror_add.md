@@ -31,7 +31,7 @@ patchy mirror add [name] [flags]
 
 ```
       --constraint string   version constraint (default: stay within the pinned major)
-  -h, --help                help for add
+  -h, --help[=true|false]   help for add
       --lockstep string     lockstep group this entry bumps with
       --type string         force the entry type: chart or artifact (default: detect)
       --url string          upstream location: https:// helm repo, oci:// chart repo, or artifact ref
@@ -41,16 +41,16 @@ patchy mirror add [name] [flags]
 ### Options inherited from parent commands
 
 ```
-  -A, --all-namespaces             work across every namespace
-      --context string             kubeconfig context to use
-  -C, --directory string           mirror store directory, relative to the working directory (default: the working directory)
-      --kubeconfig string          path to the kubeconfig file
-  -n, --namespace string           namespace to work in (default: the context's)
-      --no-color                   disable colour and styling
-  -o, --output string              output format: table, wide, json, yaml, name, or markdown (default "table")
-      --request-timeout duration   timeout for a single API call (default 30s)
-  -v, --verbose                    log what the CLI is doing to stderr
-      --workers int                concurrent registry operations per stage (default 4)
+  -A, --all-namespaces[=true|false]   work across every namespace
+      --context string                kubeconfig context to use
+  -C, --directory string              mirror store directory, relative to the working directory (default: the working directory)
+      --kubeconfig string             path to the kubeconfig file
+  -n, --namespace string              namespace to work in (default: the context's)
+      --no-color[=true|false]         disable colour and styling
+  -o, --output string                 output format: table, wide, json, yaml, name, or markdown (default "table")
+      --request-timeout duration      timeout for a single API call (default 30s)
+  -v, --verbose[=true|false]          log what the CLI is doing to stderr
+      --workers int                   concurrent registry operations per stage (default 4)
 ```
 
 ### SEE ALSO

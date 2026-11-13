@@ -33,21 +33,21 @@ patchy completion bash
 ### Options
 
 ```
-  -h, --help              help for bash
-      --no-descriptions   disable completion descriptions
+  -h, --help[=true|false]              help for bash
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -A, --all-namespaces             work across every namespace
-      --context string             kubeconfig context to use
-      --kubeconfig string          path to the kubeconfig file
-  -n, --namespace string           namespace to work in (default: the context's)
-      --no-color                   disable colour and styling
-  -o, --output string              output format: table, wide, json, yaml, name, or markdown (default "table")
-      --request-timeout duration   timeout for a single API call (default 30s)
-  -v, --verbose                    log what the CLI is doing to stderr
+  -A, --all-namespaces[=true|false]   work across every namespace
+      --context string                kubeconfig context to use
+      --kubeconfig string             path to the kubeconfig file
+  -n, --namespace string              namespace to work in (default: the context's)
+      --no-color[=true|false]         disable colour and styling
+  -o, --output string                 output format: table, wide, json, yaml, name, or markdown (default "table")
+      --request-timeout duration      timeout for a single API call (default 30s)
+  -v, --verbose[=true|false]          log what the CLI is doing to stderr
 ```
 
 ### SEE ALSO

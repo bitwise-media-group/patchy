@@ -41,25 +41,25 @@ patchy build promote [name]... --from <pattern> --tag <tag> [flags]
 ### Options
 
 ```
-      --all                promote every configured entry, continuing past failures (none configured is a no-op)
-      --dry-run            resolve and verify the builds to promote, but tag nothing
-      --from string        glob over the repository's tags selecting the builds to promote from; the newest wins (${ENV}-expanded)
-  -h, --help               help for promote
-      --registry strings   restrict promotion to the named registries (repeatable or comma-separated; default all)
-      --tag string         the tag to add to the promoted build (${ENV}-expanded)
+      --all[=true|false]       promote every configured entry, continuing past failures (none configured is a no-op)
+      --dry-run[=true|false]   resolve and verify the builds to promote, but tag nothing
+      --from string            glob over the repository's tags selecting the builds to promote from; the newest wins (${ENV}-expanded)
+  -h, --help[=true|false]      help for promote
+      --registry strings       restrict promotion to the named registries (repeatable or comma-separated; default all)
+      --tag string             the tag to add to the promoted build (${ENV}-expanded)
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -A, --all-namespaces             work across every namespace
-      --context string             kubeconfig context to use
-      --kubeconfig string          path to the kubeconfig file
-  -n, --namespace string           namespace to work in (default: the context's)
-      --no-color                   disable colour and styling
-  -o, --output string              output format: table, wide, json, yaml, name, or markdown (default "table")
-      --request-timeout duration   timeout for a single API call (default 30s)
-  -v, --verbose                    log what the CLI is doing to stderr
+  -A, --all-namespaces[=true|false]   work across every namespace
+      --context string                kubeconfig context to use
+      --kubeconfig string             path to the kubeconfig file
+  -n, --namespace string              namespace to work in (default: the context's)
+      --no-color[=true|false]         disable colour and styling
+  -o, --output string                 output format: table, wide, json, yaml, name, or markdown (default "table")
+      --request-timeout duration      timeout for a single API call (default 30s)
+  -v, --verbose[=true|false]          log what the CLI is doing to stderr
 ```
 
 ### SEE ALSO

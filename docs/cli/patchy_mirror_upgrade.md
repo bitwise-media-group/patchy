@@ -39,27 +39,27 @@ patchy mirror upgrade [name]... [flags]
 ### Options
 
 ```
-      --all            upgrade every entry in the store
-      --check          report the update plan without touching the tree
-      --group string   upgrade one lockstep group
-  -h, --help           help for upgrade
-      --pinned         converge on the pins already in the tree (validate, don't pick)
-      --to string      target version (default: newest satisfying the constraint)
+      --all[=true|false]      upgrade every entry in the store
+      --check[=true|false]    report the update plan without touching the tree
+      --group string          upgrade one lockstep group
+  -h, --help[=true|false]     help for upgrade
+      --pinned[=true|false]   converge on the pins already in the tree (validate, don't pick)
+      --to string             target version (default: newest satisfying the constraint)
 ```
 
 ### Options inherited from parent commands
 
 ```
-  -A, --all-namespaces             work across every namespace
-      --context string             kubeconfig context to use
-  -C, --directory string           mirror store directory, relative to the working directory (default: the working directory)
-      --kubeconfig string          path to the kubeconfig file
-  -n, --namespace string           namespace to work in (default: the context's)
-      --no-color                   disable colour and styling
-  -o, --output string              output format: table, wide, json, yaml, name, or markdown (default "table")
-      --request-timeout duration   timeout for a single API call (default 30s)
-  -v, --verbose                    log what the CLI is doing to stderr
-      --workers int                concurrent registry operations per stage (default 4)
+  -A, --all-namespaces[=true|false]   work across every namespace
+      --context string                kubeconfig context to use
+  -C, --directory string              mirror store directory, relative to the working directory (default: the working directory)
+      --kubeconfig string             path to the kubeconfig file
+  -n, --namespace string              namespace to work in (default: the context's)
+      --no-color[=true|false]         disable colour and styling
+  -o, --output string                 output format: table, wide, json, yaml, name, or markdown (default "table")
+      --request-timeout duration      timeout for a single API call (default 30s)
+  -v, --verbose[=true|false]          log what the CLI is doing to stderr
+      --workers int                   concurrent registry operations per stage (default 4)
 ```
 
 ### SEE ALSO

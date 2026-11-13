@@ -31,7 +31,7 @@ patchy dev enhance <payload-file>... [flags]
 ### Options
 
 ```
-  -h, --help                 help for enhance
+  -h, --help[=true|false]    help for enhance
       --name string          integration name sent as the request's integration field (default "dev")
       --secret string        shared HMAC secret the endpoint verifies
       --secret-file string   file holding the shared HMAC secret
@@ -42,14 +42,14 @@ patchy dev enhance <payload-file>... [flags]
 ### Options inherited from parent commands
 
 ```
-  -A, --all-namespaces             work across every namespace
-      --context string             kubeconfig context to use
-      --kubeconfig string          path to the kubeconfig file
-  -n, --namespace string           namespace to work in (default: the context's)
-      --no-color                   disable colour and styling
-  -o, --output string              output format: table, wide, json, yaml, name, or markdown (default "table")
-      --request-timeout duration   timeout for a single API call (default 30s)
-  -v, --verbose                    log what the CLI is doing to stderr
+  -A, --all-namespaces[=true|false]   work across every namespace
+      --context string                kubeconfig context to use
+      --kubeconfig string             path to the kubeconfig file
+  -n, --namespace string              namespace to work in (default: the context's)
+      --no-color[=true|false]         disable colour and styling
+  -o, --output string                 output format: table, wide, json, yaml, name, or markdown (default "table")
+      --request-timeout duration      timeout for a single API call (default 30s)
+  -v, --verbose[=true|false]          log what the CLI is doing to stderr
 ```
 
 ### SEE ALSO

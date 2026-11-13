@@ -500,7 +500,7 @@ func (e *Engine) collectFindings(ctx context.Context, entry Entry, b built,
 	}
 	var all []scan.Finding
 	var platforms []string
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for i, pi := range images {
 		archive := filepath.Join(work, fmt.Sprintf("scan-%d.tar", i))
 		if err := pi.saveArchive(archive); err != nil {
@@ -513,11 +513,16 @@ func (e *Engine) collectFindings(ctx context.Context, entry Entry, b built,
 				return nil, nil, fmt.Errorf("%s scan of %s: %w", s.Name(), pi.platform, err)
 			}
 			for _, f := range findings {
+				// Platforms (and binaries within one image) repeat the same
+				// finding; keep one, but union where it was found so the
+				// allowlist still names every binary carrying it.
 				key := strings.Join([]string{f.Scanner, f.ID, f.Package, f.Installed}, "\x00")
-				if !seen[key] {
-					seen[key] = true
-					all = append(all, f)
+				if i, ok := seen[key]; ok {
+					all[i].Locations = scan.MergeLocations(all[i].Locations, f.Locations)
+					continue
 				}
+				seen[key] = len(all)
+				all = append(all, f)
 			}
 		}
 		_ = os.Remove(archive)

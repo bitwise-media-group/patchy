@@ -5,7 +5,9 @@ package allowlist
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,13 +28,20 @@ type Finding struct {
 	Installed string
 	// FixedIn lists the advisory's fixed versions across release branches.
 	FixedIn []string
+	// Locations are the in-image paths (binary, lockfile, package
+	// database) the package was found in.
+	Locations []string
+	// Image is the scanned reference; empty when the entry's image is
+	// implied (a build entry).
+	Image string
 }
 
 // Rows converts policy-filtered scan findings into derivation rows.
 func Rows(blocking []scan.Finding) []Finding {
 	rows := make([]Finding, 0, len(blocking))
 	for _, f := range blocking {
-		rows = append(rows, Finding{ID: f.ID, Package: f.Package, Installed: f.Installed, FixedIn: f.FixedIn})
+		rows = append(rows, Finding{ID: f.ID, Package: f.Package, Installed: f.Installed, FixedIn: f.FixedIn,
+			Locations: f.Locations, Image: f.Image})
 	}
 	return rows
 }
@@ -188,9 +197,37 @@ func statement(rows []Finding) string {
 		fixed = "an unreleased version"
 	}
 
-	return fmt.Sprintf("Fixed in %s %s; the locked image ships %s. "+
+	return fmt.Sprintf("Fixed in %s %s; the locked image ships %s.%s "+
 		"Derived from the image scan at bump time; accepted in PR review.",
-		strings.Join(pkgs, "/"), fixed, strings.Join(installed, "/"))
+		strings.Join(pkgs, "/"), fixed, strings.Join(installed, "/"), foundIn(rows))
+}
+
+// foundIn names where the affected package sits — the binary it is
+// compiled into, or the lockfile/package database declaring it — grouped
+// by image when the rows carry one (a mirror entry ships several). Sorted
+// throughout so regeneration is byte-stable; empty when no scanner
+// reported a location.
+func foundIn(rows []Finding) string {
+	byImage := map[string][]string{}
+	for _, r := range rows {
+		if len(r.Locations) > 0 {
+			byImage[r.Image] = append(byImage[r.Image], r.Locations...)
+		}
+	}
+	if len(byImage) == 0 {
+		return ""
+	}
+	images := slices.Sorted(maps.Keys(byImage))
+	groups := make([]string, 0, len(images))
+	for _, img := range images {
+		paths := slices.Compact(slices.Sorted(slices.Values(byImage[img])))
+		group := strings.Join(paths, ", ")
+		if img != "" {
+			group = img + ": " + group
+		}
+		groups = append(groups, group)
+	}
+	return " Found in " + strings.Join(groups, "; ") + "."
 }
 
 // uniqueSorted collects one field across rows, deduplicated and sorted.

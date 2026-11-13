@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bitwise-media-group/patchy/internal/mirror/scan"
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
@@ -161,6 +162,60 @@ func TestStatementMinimalFix(t *testing.T) {
 				t.Errorf("statement:\n got %q\nwant prefix %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStatementFoundIn(t *testing.T) {
+	const tail = " Derived from the image scan at bump time; accepted in PR review."
+	tests := []struct {
+		name string
+		rows []Finding
+		want string
+	}{
+		{
+			name: "no locations keeps the statement unchanged",
+			rows: []Finding{{ID: "X-1", Package: "libx", Installed: "1.0.0", FixedIn: []string{"1.0.1"}}},
+			want: "Fixed in libx 1.0.1; the locked image ships 1.0.0." + tail,
+		},
+		{
+			name: "build entry: binaries only, merged and sorted",
+			rows: []Finding{
+				{ID: "GO-1", Package: "stdlib", Installed: "go1.26.4", FixedIn: []string{"1.26.5"},
+					Locations: []string{"/usr/local/bin/b"}},
+				{ID: "GO-1", Package: "stdlib", Installed: "go1.26.4", FixedIn: []string{"1.26.5"},
+					Locations: []string{"/usr/local/bin/a", "/usr/local/bin/b"}},
+			},
+			want: "Fixed in stdlib 1.26.5; the locked image ships go1.26.4. " +
+				"Found in /usr/local/bin/a, /usr/local/bin/b." + tail,
+		},
+		{
+			name: "mirror entry: grouped by image",
+			rows: []Finding{
+				{ID: "GO-2", Package: "golang.org/x/net", Installed: "v0.30.0", FixedIn: []string{"0.33.0"},
+					Locations: []string{"/manager"}, Image: "ghcr.io/x/controller:1.2"},
+				{ID: "GO-2", Package: "golang.org/x/net", Installed: "v0.30.0", FixedIn: []string{"0.33.0"},
+					Locations: []string{"/usr/bin/helm"}, Image: "ghcr.io/x/cli:1.2"},
+				{ID: "GO-2", Package: "golang.org/x/net", Installed: "v0.30.0", FixedIn: []string{"0.33.0"},
+					Image: "ghcr.io/x/nolocation:1.2"},
+			},
+			want: "Fixed in golang.org/x/net 0.33.0; the locked image ships v0.30.0. " +
+				"Found in ghcr.io/x/cli:1.2: /usr/bin/helm; ghcr.io/x/controller:1.2: /manager." + tail,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := statement(tt.rows); got != tt.want {
+				t.Errorf("statement:\n got %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRowsCarriesLocation(t *testing.T) {
+	rows := Rows([]scan.Finding{{ID: "X", Package: "p", Installed: "1",
+		Locations: []string{"/bin/p"}, Image: "img:1"}})
+	if len(rows) != 1 || strings.Join(rows[0].Locations, ",") != "/bin/p" || rows[0].Image != "img:1" {
+		t.Errorf("rows = %+v", rows)
 	}
 }
 

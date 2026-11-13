@@ -5,6 +5,7 @@ package mirror
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +64,7 @@ func scanFixture(t *testing.T) (*fixture, spec.Entry) {
 var criticalFinding = scan.Finding{
 	ID: "CVE-2026-1111", Aliases: []string{"GHSA-aaaa-bbbb"}, Severity: "CRITICAL",
 	Package: "libfoo", Installed: "1.0.0", FixedIn: []string{"1.0.1"}, Scanner: "fake",
+	Locations: []string{"/usr/lib/libfoo.so.1"},
 }
 
 func TestEngineScanGate(t *testing.T) {
@@ -185,6 +187,10 @@ func TestEngineDeriveAllowlist(t *testing.T) {
 	}
 	if !strings.Contains(raw, `expired_at: "2026-11-09"`) { // testNow + 90d
 		t.Errorf("new expiry:\n%s", raw)
+	}
+	// The statement names the scanned image and the path inside it.
+	if !regexp.MustCompile(`Found in \S+/apps/app\S*: /usr/lib/libfoo\.so\.1\.`).MatchString(raw) {
+		t.Errorf("statement lacks image + location:\n%s", raw)
 	}
 
 	// After derivation, the gate passes.

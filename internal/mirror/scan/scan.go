@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,10 +31,36 @@ type Finding struct {
 	FixedIn []string `json:"fixedIn,omitempty"`
 	// Scanner names the reporter (osv, grype).
 	Scanner string `json:"scanner"`
+	// Locations are the in-image paths the package was found in — the
+	// binary a Go module is compiled into, the lockfile or package
+	// database that declares it — sorted and deduplicated.
+	Locations []string `json:"locations,omitempty"`
+	// Image is the reference the finding was reported against, stamped by
+	// the caller when one scan covers several images (a mirror entry);
+	// empty when the scanned image is implied (a build entry).
+	Image string `json:"image,omitempty"`
 }
 
 // Fixed reports whether any fixed version is known.
 func (f Finding) Fixed() bool { return len(f.FixedIn) > 0 }
+
+// MergeLocations unions two location lists, sorted and deduplicated — for
+// callers collapsing repeat reports of one finding.
+func MergeLocations(a, b []string) []string {
+	return sortedUnique(append(slices.Clone(a), b...))
+}
+
+// sortedUnique returns in sorted with duplicates and empties removed; nil
+// when nothing remains, so an absent location stays omitted in JSON.
+func sortedUnique(in []string) []string {
+	out := slices.DeleteFunc(slices.Clone(in), func(s string) bool { return s == "" })
+	slices.Sort(out)
+	out = slices.Compact(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 // ImageScanner scans one image reference for vulnerabilities.
 type ImageScanner interface {

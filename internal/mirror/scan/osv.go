@@ -124,6 +124,11 @@ func exitStatus(err error) int {
 // (the serialized form of its VulnerabilityResults model).
 type osvOutput struct {
 	Results []struct {
+		// Source is what declared the packages: in an image scan, the
+		// binary (type "artifact") or lockfile/package database path.
+		Source struct {
+			Path string `json:"path"`
+		} `json:"source"`
 		Packages []osvPackage `json:"packages"`
 	} `json:"results"`
 }
@@ -183,6 +188,7 @@ func osvFindings(out osvOutput) []Finding {
 					FixedIn:   osvFixedVersions(vuln, pkg.Package.Name),
 					Scanner:   "osv",
 					Severity:  "UNKNOWN",
+					Locations: sortedUnique([]string{source.Source.Path}),
 				}
 				if g, ok := groupOf[vuln.ID]; ok {
 					f.Severity = SeverityFromScore(g.MaxSeverity)

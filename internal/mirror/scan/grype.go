@@ -34,8 +34,11 @@ type grypeOutput struct {
 			ID string `json:"id"`
 		} `json:"relatedVulnerabilities"`
 		Artifact struct {
-			Name    string `json:"name"`
-			Version string `json:"version"`
+			Name      string `json:"name"`
+			Version   string `json:"version"`
+			Locations []struct {
+				Path string `json:"path"`
+			} `json:"locations"`
 		} `json:"artifact"`
 	} `json:"matches"`
 }
@@ -80,6 +83,10 @@ func (g *Grype) scan(ctx context.Context, source, label string) ([]Finding, erro
 			FixedIn:   append([]string(nil), m.Vulnerability.Fix.Versions...),
 			Scanner:   "grype",
 		}
+		for _, loc := range m.Artifact.Locations {
+			f.Locations = append(f.Locations, loc.Path)
+		}
+		f.Locations = sortedUnique(f.Locations)
 		for _, rel := range m.RelatedVulnerabilities {
 			if rel.ID != "" && rel.ID != f.ID {
 				f.Aliases = append(f.Aliases, rel.ID)

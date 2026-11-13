@@ -55,6 +55,7 @@ func exitErr(t *testing.T, code int) error {
 const osvVulnJSON = `{
   "results": [
     {
+      "source": {"path": "/usr/local/bin/controller", "type": "artifact"},
       "packages": [
         {
           "package": {"name": "libfoo", "version": "1.0.0"},

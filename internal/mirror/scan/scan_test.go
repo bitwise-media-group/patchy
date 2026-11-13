@@ -5,6 +5,7 @@ package scan
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -81,7 +82,11 @@ const grypeJSON = `{
         "fix": {"versions": ["1.0.1", "2.0.0"]}
       },
       "relatedVulnerabilities": [{"id": "CVE-2026-1111"}],
-      "artifact": {"name": "libfoo", "version": "1.0.0"}
+      "artifact": {"name": "libfoo", "version": "1.0.0", "locations": [
+        {"path": "/usr/local/bin/tool", "layerID": "sha256:aa"},
+        {"path": "/opt/app/bin/helper", "layerID": "sha256:bb"},
+        {"path": "/usr/local/bin/tool", "layerID": "sha256:cc"}
+      ]}
     },
     {
       "vulnerability": {"id": "CVE-2026-2222", "severity": "Low", "fix": {}},
@@ -107,11 +112,38 @@ func TestGrypeParse(t *testing.T) {
 		strings.Join(f.Aliases, ",") != "CVE-2026-1111" || !f.Fixed() {
 		t.Errorf("finding = %+v", f)
 	}
+	// Locations come out sorted and deduplicated (one path can sit in
+	// several layers).
+	if got := strings.Join(f.Locations, ","); got != "/opt/app/bin/helper,/usr/local/bin/tool" {
+		t.Errorf("locations = %q", got)
+	}
 	if findings[1].Fixed() {
 		t.Error("no-fix finding reports Fixed")
 	}
+	if findings[1].Locations != nil {
+		t.Errorf("location-less match = %v, want nil", findings[1].Locations)
+	}
 	if strings.Join(runner.args, " ") != "--quiet -o json registry:example.test/app@sha256:abc" {
 		t.Errorf("args = %v", runner.args)
+	}
+}
+
+func TestMergeLocations(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b []string
+		want []string
+	}{
+		{"both empty stays nil", nil, nil, nil},
+		{"union sorted and deduplicated", []string{"/b", "/a"}, []string{"/a", "/c", ""}, []string{"/a", "/b", "/c"}},
+		{"one side empty", nil, []string{"/x"}, []string{"/x"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MergeLocations(tt.a, tt.b); !slices.Equal(got, tt.want) || (got == nil) != (tt.want == nil) {
+				t.Errorf("MergeLocations(%v, %v) = %#v, want %#v", tt.a, tt.b, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -171,6 +203,9 @@ func TestOSVScanArchive(t *testing.T) {
 	findings, err := s.ScanArchive(context.Background(), "/tmp/build/controller.tar")
 	if err != nil || len(findings) != 1 {
 		t.Fatalf("ScanArchive = %+v, %v", findings, err)
+	}
+	if got := strings.Join(findings[0].Locations, ","); got != "/usr/local/bin/controller" {
+		t.Errorf("locations = %q, want the source path", got)
 	}
 	if strings.Join(runner.args, " ") != "scan image --archive --format json /tmp/build/controller.tar" {
 		t.Errorf("args = %v", runner.args)

@@ -180,6 +180,11 @@ func (e *Engine) scanImages(ctx context.Context, entry spec.Entry, refs []string
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", entry.Name, err)
 			}
+			// An entry ships several images; the allowlist statement
+			// names which one carries each finding.
+			for i := range findings {
+				findings[i].Image = ref
+			}
 			all = append(all, findings...)
 		}
 	}

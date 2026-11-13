@@ -130,7 +130,11 @@ Three rules make a regenerated file something you can trust rather than a rubber
   `newDays`, and a surviving entry that has already lapsed is renewed like a new acceptance, so the date change shows up
   in the diff for review.
 - **Notes are preserved.** The `statement` is a machine fact: which packages are affected, the smallest released fix,
-  and what the image actually ships. Human reachability analysis goes in `notes`, which regeneration keeps verbatim.
+  what the image actually ships, and where the package was found: the binary a Go module is compiled into, or the
+  lockfile or package database that declares it. On a mirrored entry the paths are grouped by image reference
+  (`Found in ghcr.io/x/controller@sha256:…: /manager.`); a build entry is one image, so it lists the paths alone
+  (`Found in /usr/local/bin/controller.`). Human reachability analysis goes in `notes`, which regeneration keeps
+  verbatim.
 
 The file opens with a generated banner, followed by the entry's `allowlist.preamble`. Use the preamble for whole-file
 context, such as "images ship in lockstep with the chart; the next chart release clears these":

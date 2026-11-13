@@ -278,6 +278,9 @@ func (e *Engine) buildImage(ctx context.Context, entry Entry, tags []string, reg
 	if err != nil {
 		return err
 	}
+	if err := e.enforcePolicy(entry, in.args); err != nil {
+		return err
+	}
 	policy := spec.EffectiveScanPolicy(e.global.Scan, entry.Scan)
 	report := &ScanReport{}
 	res.Scan = report

@@ -89,7 +89,7 @@ images:
       versionConstraint: ">=2.320.0 <3.0.0"
       valuesPath: .image
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/demo

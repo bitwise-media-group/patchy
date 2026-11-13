@@ -39,7 +39,7 @@ images:
       provider: cosign-key
       key: https://example.com/pubkey.pem
       signatureDigestAlgorithm: sha512
-    - match: "*"
+    - match: "**"
       provider: none
 ociRefs:
   allow:

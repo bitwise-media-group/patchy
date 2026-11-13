@@ -38,6 +38,10 @@ type Config struct {
 	// (e.g. a pull-through cache in front of docker.io). Recorded sources
 	// and publish targets keep the canonical path.
 	SourceRegistryRewrites map[string]string `yaml:"sourceRegistryRewrites"`
+	// Policy is the resolved source policy the command enforces (the
+	// mirror: or build: block's, plus every enforced layer's). The CLI
+	// assembles it from the layered config; it has no YAML form here.
+	Policy SourcePolicy `yaml:"-"`
 }
 
 // Resolve validates the config and fills its defaults in place: at least
@@ -99,7 +103,7 @@ func (c *Config) resolve() error {
 	if err := EffectiveScanPolicy(c.Scan, ScanOverride{}).Allowlist.Validate(); err != nil {
 		return err
 	}
-	return nil
+	return c.Policy.Validate()
 }
 
 // Registry locates one mirror destination: a registry URL with path

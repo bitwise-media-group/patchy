@@ -63,7 +63,7 @@ chart:
 // ApplyTracks can execute, or lint green means nothing.
 func TestLintTrackRules(t *testing.T) {
 	discovery := "discovery:\n  valuesFiles: [values/discovery.yaml]\n"
-	verify := "  verifyUpstream:\n    - match: \"*\"\n      provider: none\n"
+	verify := "  verifyUpstream:\n    - match: \"**\"\n      provider: none\n"
 	tests := []struct {
 		name      string
 		discovery string
@@ -218,7 +218,7 @@ chart:
   version: "1.0.0"
 images:
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 ociRefs:
   allow:
@@ -226,6 +226,12 @@ ociRefs:
       reason: upstream operator pulls its own bundle
     - reason: no pattern here
     - pattern: "oci://ghcr.example.test/unreasoned/*"
+    - pattern: "oci://ghcr.example.test/deep/**"
+      reason: everything under deep
+    - pattern: "*"
+      reason: a lone star matches nothing
+    - pattern: "ghcr.example.test/schemeless/*"
+      reason: patterns match the whole reference
 `)
 	f.write("charts/demo/rendered/manifests.yaml", `apiVersion: v1
 kind: ConfigMap
@@ -233,6 +239,8 @@ metadata:
   name: x
 data:
   allowed: oci://ghcr.example.test/allowed/bundle:1.0.0
+  nested: oci://ghcr.example.test/allowed/team/bundle:1.0.0
+  deep: oci://ghcr.example.test/deep/a/b/bundle:1.0.0
   escaped: oci://ghcr.example.test/other/bundle:1.0.0
 `)
 	eng := f.engine()
@@ -245,13 +253,19 @@ data:
 		t.Fatalf("Lint: %v", err)
 	}
 	joined := strings.Join(issues, "\n")
-	if strings.Contains(joined, "allowed/bundle") {
-		t.Errorf("allowed ref still flagged:\n%s", joined)
+	for _, permitted := range []string{"allowed/bundle", "deep/a/b/bundle"} {
+		if strings.Contains(joined, permitted) {
+			t.Errorf("allowed ref %s still flagged:\n%s", permitted, joined)
+		}
 	}
 	for _, want := range []string{
 		"ociRefs.allow[1] missing pattern",
 		"ociRefs.allow[2] missing reason",
+		`ociRefs.allow[4] pattern "*" matches a single path segment`,
+		`ociRefs.allow[5] pattern "ghcr.example.test/schemeless/*" must start with oci://`,
 		`"oci://ghcr.example.test/other/bundle:1.0.0" outside the mirror`,
+		// '*' stays within one segment.
+		`"oci://ghcr.example.test/allowed/team/bundle:1.0.0" outside the mirror`,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("issues lack %q:\n%s", want, joined)
@@ -275,7 +289,7 @@ chart:
   version: "1.0.0"
 images:
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 `)
 	f.write("charts/demo/rendered/manifests.yaml", fmt.Sprintf(`apiVersion: v1
@@ -285,6 +299,7 @@ metadata:
 data:
   second: oci://%[1]s/mirror-b/charts/other:1.0.0
   escaped: oci://elsewhere.example.test/bundle:1.0.0
+  sibling: oci://%[1]s/mirror-bad/charts/other:1.0.0
 `, f.host))
 	eng := f.engine()
 	entry, err := eng.Entry("demo")
@@ -301,6 +316,11 @@ data:
 	}
 	if !strings.Contains(joined, `"oci://elsewhere.example.test/bundle:1.0.0" outside the mirror`) {
 		t.Errorf("outside-both ref not flagged:\n%s", joined)
+	}
+	// A registry at host/mirror-b must not vouch for host/mirror-bad: the
+	// URL has to end at a path boundary.
+	if !strings.Contains(joined, "mirror-bad/charts/other:1.0.0\" outside the mirror") {
+		t.Errorf("sibling-prefix ref not flagged:\n%s", joined)
 	}
 }
 
@@ -395,5 +415,36 @@ func TestLintAllowlistEntryHorizon(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLintVerifyUpstreamLoneStar: under path globs a lone "*" matches one
+// segment and so no image; lint rejects it with the catch-all to use.
+func TestLintVerifyUpstreamLoneStar(t *testing.T) {
+	f := newFixture(t)
+	f.write("charts/demo/manifest.yaml", `apiVersion: mirror.patchy.bitwisemedia.uk/v1alpha1
+kind: Chart
+name: demo
+chart:
+  repo: oci://reg.example.test/upstream
+  name: demo
+  version: "1.0.0"
+images:
+  verifyUpstream:
+    - match: "*"
+      provider: none
+`)
+	eng := f.engine()
+	entry, err := eng.Entry("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issues, err := eng.Lint(entry)
+	if err != nil {
+		t.Fatalf("Lint: %v", err)
+	}
+	want := `images.verifyUpstream[0] match "*" matches a single path segment and so no image; use "**"`
+	if !strings.Contains(strings.Join(issues, "\n"), want) {
+		t.Errorf("issues = %v, want %q", issues, want)
 	}
 }

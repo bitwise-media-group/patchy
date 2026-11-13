@@ -51,7 +51,14 @@ mirror:
   # publish targets keep the canonical path.
   sourceRegistryRewrites:
     docker.io: mirror.gcr.io
+  # Where upstream charts, images and artifacts may come from. See Restricting sources.
+  policy:
+    images:
+      allow: ["registry.k8s.io/**", "ghcr.io/fluxcd/*"]
 ```
+
+`mirror.policy` limits the upstream sources the store may pull from. It is checked before every pull, in `lint`, and
+before `sync` pushes anything. See [Restricting sources](source-policy.md).
 
 ## Adding a chart
 
@@ -99,7 +106,7 @@ images:
       reason: launched per challenge from a controller flag, never in a pod spec
   exclude: []
   verifyUpstream:
-    - match: "quay.io/jetstack/*" # glob over canonical source references; first match wins
+    - match: "quay.io/jetstack/*" # path glob over canonical source references; first match wins
       provider: cosign-key
       key: "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem"
       signatureDigestAlgorithm: sha512
@@ -118,7 +125,19 @@ both spellings, `upgrade` keeps the one the current pin uses.
 ### Provenance: `verifyUpstream`
 
 Every locked image must match one `images.verifyUpstream` rule, and the chart has its own `chart.verifyUpstream`.
-`validate` and `sync` check each artifact's upstream signature with cosign before anything is trusted.
+Upstream signatures are checked with cosign in two places:
+
+- **`validate`'s verify stage** checks every subject: the pull-request gate.
+- **`sync`** checks each subject just before it first pushes or signs it, so nothing reaches your registries unverified
+  even when `validate` never ran. Each subject is checked once per run however many registries it publishes to, and a
+  copy that is already current and signed everywhere is not checked again: a converged store re-syncs with no upstream
+  calls. `sync --dry-run` reports what it would verify without calling cosign.
+
+A `provider: none` rule is reported as a documented gap in both places and never fails.
+
+`match` is a path glob over the canonical, tagged source (`quay.io/jetstack/cert-manager-controller:v1.21.2`): `*`
+matches within one `/`-separated segment and `**` across segments, so `**` is the catch-all. The first matching rule
+wins.
 
 | Provider         | Fields                                                                                              | Use for                                                  |
 | ---------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -139,8 +158,10 @@ patchy finds images by rendering the chart (with `discovery.valuesFiles`) and re
 4. The manifest's `images.extra`, for images no render can see (`{appVersion}` expands from the vendored `Chart.yaml`).
 
 References are normalized the way container runtimes expand shorthand (`nginx` becomes `docker.io/library/nginx`),
-filtered through `images.exclude` globs, and resolved to digests. A chart that renders no images (CRDs only) needs
-`images.allowEmpty: true`.
+filtered through `images.exclude` globs, and resolved to digests. Exclude patterns are path globs: `*` matches within
+one `/`-separated segment and `**` across segments, so `ghcr.io/acme/**` drops everything under `ghcr.io/acme`, while
+`ghcr.io/acme/*` drops only its direct children (tag included: `ghcr.io/acme/app:v1`). A chart that renders no images
+(CRDs only) needs `images.allowEmpty: true`.
 
 **The lock is authoritative for digests.** A tag resolves only when it's new to `images.lock.yaml`, for example after a
 chart bump, a tracked-tag move or a new `images.extra` entry. A tag the lock already records keeps its locked digest on
@@ -181,6 +202,12 @@ ociRefs:
     - pattern: "oci://ghcr.io/acme/policies/*"
       reason: signed policy bundles verified by the admission controller
 ```
+
+`pattern` is matched against the whole reference, scheme and tag included, as a path glob: `*` matches within one
+`/`-separated segment and `**` across segments. So `oci://ghcr.io/acme/policies/*` admits
+`oci://ghcr.io/acme/policies/base:1.2.0` but not `oci://ghcr.io/acme/policies/team/base:1.2.0`. A reference counts as
+inside the mirror only when it sits under a configured registry's `url` at a path boundary, so a registry at
+`registry.example.com/mirror` does not admit `oci://registry.example.com/mirror-old/chart`.
 
 ## Mirroring an artifact
 
@@ -247,14 +274,16 @@ clock out of `validate` is what makes its byte comparison deterministic between 
 - **verify**: check upstream provenance for the chart and every locked image.
 - **scan**: scan the locked images and, with kubescape enabled, the rendered manifests. See
   [Scanning and allowlists](scanning.md).
-- **lint**: schema-valid files can still break policy: every image has a provenance rule, tracked images resolve,
-  `oci://` references stay inside the mirror, and the allowlist has statements and expiry dates within the horizon.
+- **lint**: schema-valid files can still break policy: every source passes the [source policy](source-policy.md), every
+  image has a provenance rule, tracked images resolve, `oci://` references stay inside the mirror, and the allowlist has
+  statements and expiry dates within the horizon.
 
 `sync` re-pulls each upstream chart and fails loudly if upstream changed a released version (digest against the lock,
 tree against the committed `vendor/`). Then, for each registry, it pushes the chart unless its tag already exists (an
 existing tag is never replaced), copies every locked image by digest, and signs everything it published that does not
-already carry a valid signature. Skips are successes, so a re-run after a partial failure finishes the rest. `--workers`
-(default 4) bounds concurrent registry operations per stage.
+already carry a valid signature. Before it pushes or signs anything for a subject, it verifies that subject's upstream
+provenance (see [Provenance](#provenance-verifyupstream)). Skips are successes, so a re-run after a partial failure
+finishes the rest. `--workers` (default 4) bounds concurrent registry operations per stage.
 
 ## Running a store in CI
 
@@ -270,11 +299,10 @@ git diff --quiet "origin/$BASE_REF"...HEAD -- patchy.yaml || changed="--all"
 patchy mirror validate $changed -o markdown > summary.md  # post as a sticky PR comment; the exit code is the gate
 ```
 
-**Merge to main: publish.** Provenance is checked again on main before anything is signed with the platform identity, so
-nothing merged around the PR gate gets the signature.
+**Merge to main: publish.** `sync` checks upstream provenance itself before anything is pushed or signed with the
+platform identity, so nothing merged around the PR gate gets the signature.
 
 ```sh
-patchy mirror validate --all --only verify
 patchy mirror sync --all -o markdown >> "$GITHUB_STEP_SUMMARY"
 ```
 

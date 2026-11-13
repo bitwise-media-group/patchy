@@ -36,7 +36,7 @@ chart:
   version: "1.0.0"
 images:
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/demo

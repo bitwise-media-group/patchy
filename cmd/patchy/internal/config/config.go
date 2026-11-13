@@ -134,6 +134,7 @@ func Load(o Options) (*Loaded, error) {
 		return nil, err
 	}
 	loaded := &Loaded{Merged: map[string]any{}, Workdir: o.Workdir}
+	var enforced []enforcedPolicy
 	for _, l := range layers {
 		shown := o.display(l.path)
 		raw, err := os.ReadFile(l.path)
@@ -146,8 +147,12 @@ func Load(o Options) (*Loaded, error) {
 		}
 		// Strict per-layer decode: an unknown key is reported against the
 		// file that carries it, not the merged result.
-		if _, err := decodeFile(Merge(nil, m)); err != nil {
+		layerFile, err := decodeFile(Merge(nil, m))
+		if err != nil {
 			return nil, fmt.Errorf("%s: %w", shown, err)
+		}
+		if e, ok := enforcedPolicies(shown, layerFile); ok {
+			enforced = append(enforced, e)
 		}
 		loaded.Merged = Merge(loaded.Merged, m)
 		loaded.Sources = append(loaded.Sources, shown)
@@ -159,6 +164,7 @@ func Load(o Options) (*Loaded, error) {
 	if err != nil {
 		return nil, fmt.Errorf("patchy config (merged from %s): %w", strings.Join(loaded.Sources, ", "), err)
 	}
+	file.enforced = enforced
 	loaded.File = file
 	loaded.Warnings = legacyWarnings(o)
 	return loaded, nil

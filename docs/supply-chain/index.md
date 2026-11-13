@@ -12,7 +12,7 @@ registries:
 Both stop at the registry. Neither touches a cluster and neither runs git: commits, branches and pull requests belong to
 the pipeline that calls them. Both read the same [patchy configuration](../cli.md#configuration) for where to publish,
 how to sign and which [scan policy](scanning.md) applies, so a mirrored chart and a first-party image are held to one
-standard.
+standard. Each can also be limited to [approved sources](source-policy.md).
 
 |            | `patchy mirror`                                                                                         | `patchy build`                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -128,13 +128,13 @@ spec:
 
 patchy links nothing it shells out to, so these must be on `PATH` for the verbs that use them:
 
-| Tool                 | Needed by                                                                                       |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `cosign` v3+         | `mirror validate` (provenance verification), `mirror sync`, `build` (signing; not `--dry-run`)  |
-| `osv-scanner` v2     | image scans when `scan.scanners.osv.enabled`                                                    |
-| `grype`              | image scans when `scan.scanners.grype.enabled`                                                  |
-| `kubescape`          | configuration scans when `scan.scanners.kubescape.enabled`; skipped with a warning when missing |
-| `docker` with buildx | `build` of image entries (not needed for manifests entries)                                     |
+| Tool                 | Needed by                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `cosign` v3+         | `mirror validate` (provenance verification), `mirror sync` (provenance verification and signing), `build` (signing; not `--dry-run`) |
+| `osv-scanner` v2     | image scans when `scan.scanners.osv.enabled`                                                                                         |
+| `grype`              | image scans when `scan.scanners.grype.enabled`                                                                                       |
+| `kubescape`          | configuration scans when `scan.scanners.kubescape.enabled`; skipped with a warning when missing                                      |
+| `docker` with buildx | `build` of image entries (not needed for manifests entries)                                                                          |
 
 Helm is not needed: chart pulls, renders and pushes use the helm SDK, pinned so rendered output stays byte-stable.
 

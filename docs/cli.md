@@ -263,9 +263,9 @@ signing: # the default signing block
 scan: # scanner roster + the defaults every entry inherits (below)
   scanners:
     osv: { enabled: true }
-mirror: # directory, workers, update.cooldownDays, sourceRegistryRewrites
+mirror: # directory, workers, update.cooldownDays, sourceRegistryRewrites, policy
   update: { cooldownDays: 3 }
-build: {} # see supply-chain/build.md
+build: {} # see supply-chain/build.md; build.policy restricts base images
 dev: {} # the dev command flags, by name
 ```
 
@@ -278,6 +278,12 @@ Both files are gone. A `mirror.yaml` left at a mirror root fails every `mirror` 
 - From `mirror.yaml`, drop `apiVersion` and `kind`; keep `registries`, `signing` and `scan` at the top level; move
   `update` and `sourceRegistryRewrites` under `mirror:`.
 - Rename `scan.allowlistMaxDays` to `scan.allowlist.maxDays` and `scan.allowlistNewDays` to `scan.allowlist.newDays`.
+
+### Source policy
+
+`mirror.policy` and `build.policy` restrict where each command may pull from. Unlike every other key, a policy block
+marked `enforced: true` does not merge away: it is evaluated as written in the layer that declares it, so a more
+preferred layer can tighten it but never loosen or delete it. See [Restricting sources](supply-chain/source-policy.md).
 
 ### Scanning policy
 

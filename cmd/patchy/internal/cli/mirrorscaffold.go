@@ -142,7 +142,7 @@ images:
   # Every locked image must match a rule; first match wins. Replace the
   # catch-all below with real provenance rules where upstream signs.
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 # publish:
 #   # Override the default publish path (<chartNamespace>/<name>), applied

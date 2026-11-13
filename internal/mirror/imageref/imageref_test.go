@@ -111,30 +111,48 @@ func TestRewrite(t *testing.T) {
 	}
 }
 
-func TestGlobMatch(t *testing.T) {
+func TestPathMatch(t *testing.T) {
 	tests := []struct {
 		pattern, value string
 		want           bool
 	}{
+		{"ghcr.io/fluxcd/*", "ghcr.io/fluxcd/source-controller", true},
 		{"ghcr.io/fluxcd/*", "ghcr.io/fluxcd/source-controller:v1.9.3", true},
-		{"ghcr.io/fluxcd/*", "ghcr.io/other/thing:v1", false},
-		// '*' crosses slashes, matching bash case semantics.
-		{"ghcr.io/*", "ghcr.io/a/b/c:v1", true},
-		{"ghcr.io/actions/actions-runner:*", "ghcr.io/actions/actions-runner:2.320.0", true},
-		{"ghcr.io/actions/actions-runner:*", "ghcr.io/actions/actions-runner-controller:2.320.0", false},
-		{"oci://ghcr.io/x/y:*", "oci://ghcr.io/x/y:v1.2.3", true},
-		{"*", "anything/at/all", true},
+		// '*' stays within one segment.
+		{"ghcr.io/fluxcd/*", "ghcr.io/fluxcd/team/app", false},
+		{"ghcr.io/*", "ghcr.io/a/b/c", false},
+		{"ghcr.io/acme*", "ghcr.io/acme-evil", true},
+		{"ghcr.io/acme*/app", "ghcr.io/acme/evil/app", false},
+		{"*", "anything/at/all", false},
+		{"*", "docker.io", true},
+		// '**' crosses segments.
+		{"ghcr.io/**", "ghcr.io/a/b/c", true},
+		{"ghcr.io/**", "ghcr.io/a", true},
+		{"ghcr.io/**", "ghcr.io", false},
+		{"**", "anything/at/all", true},
+		{"ghcr.io/fluxcd/**", "ghcr.io/fluxcd-evil/app", false},
+		// '**/' at a segment start also matches zero segments.
+		{"ghcr.io/**/app", "ghcr.io/app", true},
+		{"ghcr.io/**/app", "ghcr.io/a/b/app", true},
+		{"ghcr.io/**/app", "ghcr.io/a/b/other", false},
+		{"**/app", "app", true},
+		{"**/app", "ghcr.io/x/app", true},
+		// Mid-segment '**' does not get the zero-segment form.
+		{"foo**/bar", "foobar", false},
+		{"foo**/bar", "foo/bar", true},
+		{"foo**/bar", "foo-x/y/bar", true},
+		{"oci://ghcr.io/**", "oci://ghcr.io/acme/charts/app", true},
+		{"https://charts.jetstack.io/*", "https://charts.jetstack.io/cert-manager", true},
+		{"a?c", "abc", true},
+		{"a?c", "a/c", false},
 		{"exact", "exact", true},
 		{"exact", "exact2", false},
-		{"a?c", "abc", true},
-		{"a?c", "ac", false},
-		{"**foo*", "prefix-foo-suffix", true},
 		{"", "", true},
 		{"", "x", false},
 	}
 	for _, tt := range tests {
-		if got := GlobMatch(tt.pattern, tt.value); got != tt.want {
-			t.Errorf("GlobMatch(%q, %q) = %v, want %v", tt.pattern, tt.value, got, tt.want)
+		if got := PathMatch(tt.pattern, tt.value); got != tt.want {
+			t.Errorf("PathMatch(%q, %q) = %v, want %v", tt.pattern, tt.value, got, tt.want)
 		}
 	}
 }

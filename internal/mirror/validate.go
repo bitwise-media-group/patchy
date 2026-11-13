@@ -6,6 +6,7 @@ package mirror
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,6 +61,13 @@ func (e *Engine) Validate(ctx context.Context, entry spec.Entry, only []string) 
 
 	if run[StageRegen] {
 		diffs, err := e.validateRegen(ctx, entry)
+		var policyErr *PolicyError
+		if errors.As(err, &policyErr) {
+			// A rejected source is the entry's failure, not the engine's:
+			// record it so --all can keep going.
+			result.Err = err.Error()
+			return result, nil
+		}
 		if err != nil {
 			return nil, err
 		}

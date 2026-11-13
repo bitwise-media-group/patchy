@@ -63,6 +63,11 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 	m := entry.Chart
 	facts := &Facts{}
 
+	if err := e.enforcePolicy(entry.Name, "vendor",
+		policySource{spec.SourceChart, spec.ChartSource(m.Chart.Repo, m.Chart.Name)}); err != nil {
+		return nil, err
+	}
+
 	// Vendor: pull the pinned tgz and extract it.
 	e.notef(entry.Name, "vendor", "vendoring %s %s", m.Chart.Name, m.Chart.Version)
 	tgz, sha, err := e.puller.Pull(ctx, m.Chart.Repo, m.Chart.Name, m.Chart.Version)
@@ -142,6 +147,9 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 		e.notef(entry.Name, "discover", "excluded: %s", ref)
 	}
 
+	if err := e.enforcePolicy(entry.Name, "discover", imageSources(result.Images)...); err != nil {
+		return nil, err
+	}
 	images, err := e.resolveImages(ctx, entry.Name, result.Images, e.committedImageDigests(entry))
 	if err != nil {
 		return nil, err
@@ -305,6 +313,9 @@ func (e *Engine) committedArtifactDigest(entry spec.Entry, ref, version string) 
 // regenerateArtifact resolves an artifact entry's pinned version.
 func (e *Engine) regenerateArtifact(ctx context.Context, entry spec.Entry) (*spec.ArtifactLock, error) {
 	a := entry.Artifact.Artifact
+	if err := e.enforcePolicy(entry.Name, "resolve", policySource{spec.SourceArtifact, a.Ref}); err != nil {
+		return nil, err
+	}
 	source := a.Ref + ":" + a.Version
 	digest, platforms, err := e.resolveDigest(ctx, entry.Name, source,
 		e.committedArtifactDigest(entry, a.Ref, a.Version))

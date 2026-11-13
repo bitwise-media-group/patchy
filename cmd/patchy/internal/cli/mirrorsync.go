@@ -30,6 +30,11 @@ func newMirrorSyncCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 			"tag is never replaced), copy every locked image by digest, and sign everything\n" +
 			"published that does not already carry a valid mirror signature — using that\n" +
 			"registry's signing block when it has one, else the global default.\n\n" +
+			"Before a chart, image or artifact is first pushed or signed, its upstream\n" +
+			"provenance is verified per its verifyUpstream rule — once per run however many\n" +
+			"registries it publishes to, and never for a copy already current and signed\n" +
+			"everywhere — so nothing reaches a registry unverified even when validate\n" +
+			"never ran. --dry-run reports what it would verify without calling cosign.\n\n" +
 			"--registry restricts publishing to the named registries (repeatable or\n" +
 			"comma-separated); the default is all of them.\n\n" +
 			"sync is read-only on the working tree — every write goes to a registry —\n" +

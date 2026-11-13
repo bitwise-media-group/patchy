@@ -91,7 +91,7 @@ type Images struct {
 	// Extra adds images helm rendering cannot see. {appVersion} expands
 	// from the vendored Chart.yaml.
 	Extra []ExtraImage `yaml:"extra"`
-	// Exclude drops discovered references matching a glob pattern.
+	// Exclude drops discovered references matching a path glob pattern.
 	Exclude []ExcludePattern `yaml:"exclude"`
 	// AllowEmpty accepts a chart that renders no images (CRD-only charts).
 	AllowEmpty bool `yaml:"allowEmpty"`
@@ -142,7 +142,10 @@ type ExtraImage struct {
 	Reason string `yaml:"reason"`
 }
 
-// ExcludePattern drops discovered references matching a glob.
+// ExcludePattern drops discovered references matching a path glob: '*'
+// matches within one '/'-separated segment, '**' across segments (so
+// "ghcr.io/acme/**" drops everything under ghcr.io/acme). Patterns match
+// the normalized, tagged reference.
 type ExcludePattern struct {
 	Pattern string `yaml:"pattern"`
 }
@@ -187,7 +190,9 @@ func (r VerifyRule) EffectiveProvider() string {
 
 // ImageVerifyRule is a VerifyRule scoped to images matching a glob.
 type ImageVerifyRule struct {
-	// Match is a glob over canonical source references.
+	// Match is a path glob over canonical source references ('*' within
+	// one '/'-separated segment, '**' across segments; "**" is the
+	// catch-all).
 	Match      string `yaml:"match"`
 	VerifyRule `yaml:",inline"`
 }
@@ -200,7 +205,10 @@ type OCIRefs struct {
 }
 
 // OCIRefAllow permits one non-mirror oci:// reference pattern, with the
-// reason it may bypass the mirror.
+// reason it may bypass the mirror. Pattern is a path glob over the whole
+// reference, scheme and tag included ('*' matches within one
+// '/'-separated segment, '**' across segments):
+// oci://ghcr.io/acme/policies/* or oci://ghcr.io/acme/**.
 type OCIRefAllow struct {
 	Pattern string `yaml:"pattern"`
 	Reason  string `yaml:"reason"`

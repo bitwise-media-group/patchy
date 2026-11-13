@@ -103,40 +103,61 @@ func Rewrite(ref string, rewrites map[string]string) string {
 	return ref
 }
 
-// GlobMatch reports whether value matches a shell-style glob pattern as a
-// bash case statement would: '*' matches any run of characters including
-// '/', '?' matches exactly one. No other metacharacters are supported.
-func GlobMatch(pattern, value string) bool {
-	return globMatch(pattern, value)
+// PathMatch reports whether value matches a path-aware glob pattern: '*'
+// matches any run of characters within one '/'-separated segment, '**'
+// matches any run including '/', and '?' matches exactly one character
+// other than '/'. A "**/" that begins a segment also matches zero
+// segments, so "ghcr.io/**/app" matches both ghcr.io/app and
+// ghcr.io/a/b/app. No other metacharacters are supported.
+//
+// It is the one glob dialect of every reference pattern list — images.exclude,
+// images.verifyUpstream match, ociRefs.allow and the source policies — so a
+// segment boundary always holds ("ghcr.io/acme/*" never reaches into
+// ghcr.io/acme/team/app).
+func PathMatch(pattern, value string) bool {
+	return pathMatch(pattern, value, true)
 }
 
-func globMatch(pattern, value string) bool {
+// pathMatch is PathMatch's body; segStart reports whether pattern begins at
+// a segment boundary (the start, or just after a '/').
+func pathMatch(pattern, value string, segStart bool) bool {
 	for {
 		if pattern == "" {
 			return value == ""
 		}
-		switch pattern[0] {
-		case '*':
-			// Collapse consecutive stars, then try every split point.
-			pattern = strings.TrimLeft(pattern, "*")
-			if pattern == "" {
+		switch {
+		case strings.HasPrefix(pattern, "**"):
+			rest := strings.TrimLeft(pattern, "*")
+			if segStart && strings.HasPrefix(rest, "/") && pathMatch(rest[1:], value, true) {
 				return true
 			}
 			for i := 0; i <= len(value); i++ {
-				if globMatch(pattern, value[i:]) {
+				if pathMatch(rest, value[i:], i > 0 && value[i-1] == '/') {
 					return true
 				}
 			}
 			return false
-		case '?':
-			if value == "" {
+		case pattern[0] == '*':
+			rest := pattern[1:]
+			for i := 0; i <= len(value); i++ {
+				if pathMatch(rest, value[i:], false) {
+					return true
+				}
+				if i < len(value) && value[i] == '/' {
+					return false
+				}
+			}
+			return false
+		case pattern[0] == '?':
+			if value == "" || value[0] == '/' {
 				return false
 			}
-			pattern, value = pattern[1:], value[1:]
+			pattern, value, segStart = pattern[1:], value[1:], false
 		default:
 			if value == "" || pattern[0] != value[0] {
 				return false
 			}
+			segStart = pattern[0] == '/'
 			pattern, value = pattern[1:], value[1:]
 		}
 	}

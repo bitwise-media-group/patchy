@@ -218,6 +218,22 @@ The report has one row per (entry, registry, tag): `ENTRY`, `REGISTRY`, `REF`, `
 digest and the scan summary. `-o markdown` gives one section per entry with its digest, a scan line, a bullet per
 target, and a fenced block listing any blocking findings, ready for a job summary.
 
+## Restricting base images
+
+`build.policy` limits the registries a build may take images from. It covers every image a Dockerfile pulls (`FROM`,
+`COPY --from`, `RUN --mount` `from=`, and the `# syntax=` frontend), expanded from the entry's `args`, and it is checked
+before buildx runs:
+
+```yaml
+build:
+  policy:
+    images:
+      allow: ["registry.example.com/images/**"]
+```
+
+It is independent of `mirror.policy`. See [Restricting sources](source-policy.md), including `enforced: true` for a
+policy a project's own config cannot loosen.
+
 ## Dry runs
 
 `--dry-run` builds and scans everything and reports `would-push` for every target, but never contacts a registry. That

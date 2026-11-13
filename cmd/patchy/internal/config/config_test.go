@@ -448,3 +448,102 @@ func TestLoadedPath(t *testing.T) {
 		t.Errorf("Path(absolute) = %q", got)
 	}
 }
+
+// TestPolicyEnforcement: an enforced policy is evaluated as written in its
+// own layer, so a more preferred layer can tighten it but neither loosen,
+// downgrade nor delete it; an unenforced one merges like any other key.
+func TestPolicyEnforcement(t *testing.T) {
+	const toolchain = `registries: [{name: r, url: r.example/x}]
+mirror:
+  policy:
+    enforced: true
+    images:
+      allow: ["registry.k8s.io/**"]
+build:
+  policy:
+    images:
+      allow: ["registry.example.com/**"]
+`
+	tests := []struct {
+		name    string
+		project string
+		// mirrorDenied / buildDenied: blocking verdicts for the probes.
+		mirrorDenied, buildDenied bool
+		mirrorSource              string
+	}{
+		{name: "toolchain only", mirrorDenied: true, buildDenied: true,
+			mirrorSource: ".mise/patchy.yaml, enforced"},
+		{name: "loosening an enforced policy has no effect", project: `mirror:
+  policy:
+    enforced: false
+    mode: warn
+    images:
+      allow: ["**"]
+build:
+  policy:
+    images:
+      allow: ["**"]
+`, mirrorDenied: true, buildDenied: false, mirrorSource: ".mise/patchy.yaml, enforced"},
+		{name: "null cannot delete an enforced policy", project: "mirror:\n  policy: null\nbuild:\n  policy: null\n",
+			mirrorDenied: true, buildDenied: false, mirrorSource: ".mise/patchy.yaml, enforced"},
+		{name: "tightening applies on top", project: `mirror:
+  policy:
+    images:
+      deny: ["registry.k8s.io/pause"]
+`, mirrorDenied: true, buildDenied: true, mirrorSource: ".mise/patchy.yaml, enforced"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRoots(t)
+			r.write(".mise/patchy.yaml", toolchain)
+			if tt.project != "" {
+				r.write("patchy.yaml", tt.project)
+			}
+			f := r.load().File
+			mc, err := f.MirrorConfig()
+			if err != nil {
+				t.Fatalf("MirrorConfig: %v", err)
+			}
+			bc, _, err := f.BuildPlanConfig()
+			if err != nil {
+				t.Fatalf("BuildPlanConfig: %v", err)
+			}
+			v := mc.Policy.Check("image", "ghcr.io/acme/app:v1")
+			if got := v != nil && v.Blocking(); got != tt.mirrorDenied {
+				t.Errorf("mirror denied = %v (%v), want %v", got, v, tt.mirrorDenied)
+			}
+			if v != nil && v.Source != tt.mirrorSource {
+				t.Errorf("mirror violation source = %q, want %q", v.Source, tt.mirrorSource)
+			}
+			bv := bc.Policy.Check("image", "ghcr.io/acme/base:v1")
+			if got := bv != nil && bv.Blocking(); got != tt.buildDenied {
+				t.Errorf("build denied = %v (%v), want %v", got, bv, tt.buildDenied)
+			}
+			pv := mc.Policy.Check("image", "registry.k8s.io/pause:3.10")
+			if wantDenied := tt.name == "tightening applies on top"; (pv != nil) != wantDenied {
+				t.Errorf("pause verdict = %v, want denied %v", pv, wantDenied)
+			}
+		})
+	}
+}
+
+func TestPolicyValidationNamesTheLayer(t *testing.T) {
+	r := newRoots(t)
+	r.write(".mise/patchy.yaml", `registries: [{name: r, url: r.example/x}]
+mirror:
+  policy:
+    enforced: true
+    images:
+      allow: ["nginx"]
+`)
+	_, err := r.load().File.MirrorConfig()
+	if err == nil || !strings.Contains(err.Error(), "policy (.mise/patchy.yaml, enforced): images.allow[0]") {
+		t.Errorf("MirrorConfig = %v, want the enforced layer named", err)
+	}
+
+	bad := newRoots(t)
+	bad.write("patchy.yaml", "mirror:\n  policy:\n    images:\n      permit: []\n")
+	if _, err := Load(bad.opts()); err == nil || !strings.Contains(err.Error(), "permit") {
+		t.Errorf("Load = %v, want the unknown key rejected", err)
+	}
+}

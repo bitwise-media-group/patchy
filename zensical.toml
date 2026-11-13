@@ -83,6 +83,7 @@ nav = [
     { "Mirroring charts and images" = "supply-chain/mirror.md" },
     { "Building images and manifests" = "supply-chain/build.md" },
     { "Scanning and allowlists" = "supply-chain/scanning.md" },
+    { "Restricting sources" = "supply-chain/source-policy.md" },
   ] },
   { "Extending" = "extending.md" },
 ]

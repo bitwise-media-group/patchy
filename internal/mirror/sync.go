@@ -70,6 +70,15 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 	if err != nil {
 		return nil, err
 	}
+	// Gate before any pull or push: a source the policy rejects never
+	// reaches a registry, even from a lock committed before the policy.
+	if err := e.enforcePolicy(entry.Name, "sync", committedSources(entry)...); err != nil {
+		return nil, err
+	}
+	// Upstream provenance is checked before anything is pushed or signed
+	// (and only then): sync never vouches for what validate's verify stage
+	// was skipped for.
+	gate := e.newUpstreamGate(entry, opts.DryRun)
 	result := &SyncResult{Name: entry.Name, Kind: entry.Kind}
 	if entry.Kind == spec.KindArtifact {
 		lock, err := spec.LoadArtifactLock(entry.LockPath())
@@ -83,7 +92,7 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 				return nil, fmt.Errorf("%s: lock is stale for registry %q; run upgrade", entry.Name, reg.Name)
 			}
 			rec, err := e.syncImage(ctx, entry.Name, source, lock.Artifact.Digest, target,
-				reg.EffectiveSigning(&e.global.Signing), opts.DryRun)
+				reg.EffectiveSigning(&e.global.Signing), opts.DryRun, func() error { return gate.own(ctx) })
 			if err != nil {
 				return nil, err
 			}
@@ -93,7 +102,7 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 		return result, nil
 	}
 
-	recs, err := e.syncChart(ctx, entry, regs, opts.DryRun)
+	recs, err := e.syncChart(ctx, entry, regs, opts.DryRun, gate)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +119,7 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 				return nil, fmt.Errorf("%s: lock is stale for registry %q; run upgrade", entry.Name, reg.Name)
 			}
 			rec, err := e.syncImage(ctx, entry.Name, img.Source, img.Digest, target,
-				reg.EffectiveSigning(&e.global.Signing), opts.DryRun)
+				reg.EffectiveSigning(&e.global.Signing), opts.DryRun, func() error { return gate.image(ctx, img) })
 			if err != nil {
 				return nil, err
 			}
@@ -126,7 +135,7 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 // vendor) — once — then per registry push unless the tag exists and ensure
 // the mirror signature.
 func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Registry,
-	dryRun bool) ([]SyncRecord, error) {
+	dryRun bool, gate *upstreamGate) ([]SyncRecord, error) {
 	m := entry.Chart
 	lock, err := spec.LoadImagesLock(entry.LockPath())
 	if err != nil {
@@ -171,7 +180,7 @@ func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Re
 
 	var records []SyncRecord
 	for _, reg := range regs {
-		rec, err := e.syncChartToRegistry(ctx, entry, reg, tgz, dryRun)
+		rec, err := e.syncChartToRegistry(ctx, entry, reg, tgz, dryRun, func() error { return gate.own(ctx) })
 		if err != nil {
 			return nil, err
 		}
@@ -181,8 +190,9 @@ func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Re
 }
 
 // syncChartToRegistry converges the verified chart tgz at one registry.
+// verifyUpstream runs before the chart is pushed or signed there.
 func (e *Engine) syncChartToRegistry(ctx context.Context, entry spec.Entry, reg spec.Registry,
-	tgz []byte, dryRun bool) (SyncRecord, error) {
+	tgz []byte, dryRun bool, verifyUpstream func() error) (SyncRecord, error) {
 	m := entry.Chart
 	target := fmt.Sprintf("%s/%s:%s", reg.URL, chartRepo(reg, entry), m.Chart.Version)
 	rec := SyncRecord{Registry: reg.Name, Ref: target}
@@ -197,11 +207,17 @@ func (e *Engine) syncChartToRegistry(ctx context.Context, entry spec.Entry, reg 
 		rec.Digest = digest
 		e.notef(entry.Name, "sync", "chart version already published (%s)", digest)
 	case dryRun:
+		if err := verifyUpstream(); err != nil {
+			return SyncRecord{}, err
+		}
 		rec.Action = ActionPushed
 		rec.Signed = true
 		e.notef(entry.Name, "sync", "would push and sign %s", target)
 		return rec, nil
 	default:
+		if err := verifyUpstream(); err != nil {
+			return SyncRecord{}, err
+		}
 		e.notef(entry.Name, "sync", "pushing %s %s to %s", m.Chart.Name, m.Chart.Version, target)
 		digest, err = e.pushChart(tgz, target)
 		if err != nil {
@@ -212,7 +228,7 @@ func (e *Engine) syncChartToRegistry(ctx context.Context, entry spec.Entry, reg 
 	}
 
 	signed, err := e.ensureSigned(ctx, entry.Name, repoOf(target)+"@"+rec.Digest,
-		reg.EffectiveSigning(&e.global.Signing), false, dryRun)
+		reg.EffectiveSigning(&e.global.Signing), false, dryRun, verifyUpstream)
 	if err != nil {
 		return SyncRecord{}, err
 	}
@@ -232,9 +248,10 @@ func repoOf(ref string) string {
 
 // syncImage converges one image or artifact copy: skip when the target
 // already matches the lock digest and carries a valid mirror signature;
-// otherwise copy by digest, re-assert the digest, and sign.
+// otherwise verify upstream provenance, copy by digest, re-assert the
+// digest, and sign.
 func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, target string,
-	signing *spec.Signing, dryRun bool) (SyncRecord, error) {
+	signing *spec.Signing, dryRun bool, verifyUpstream func() error) (SyncRecord, error) {
 	rec := SyncRecord{Ref: target, Digest: digest}
 	srcRef, err := imageref.Parse(source)
 	if err != nil {
@@ -252,6 +269,9 @@ func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, targe
 		return rec, nil
 	}
 
+	if err := verifyUpstream(); err != nil {
+		return SyncRecord{}, err
+	}
 	rec.Action = ActionPushed
 	if dryRun {
 		e.notef(entryName, "sync", "would copy %s -> %s", source, target)
@@ -272,7 +292,7 @@ func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, targe
 	if after != digest {
 		return SyncRecord{}, fmt.Errorf("%s: digest changed while copying %s (%s != %s)", entryName, source, after, digest)
 	}
-	signed, err := e.ensureSigned(ctx, entryName, targetDigestRef, signing, true, false)
+	signed, err := e.ensureSigned(ctx, entryName, targetDigestRef, signing, true, false, verifyUpstream)
 	if err != nil {
 		return SyncRecord{}, err
 	}
@@ -292,12 +312,16 @@ func (e *Engine) mirrorSignatureValid(ctx context.Context, ref string, signing *
 }
 
 // ensureSigned signs ref unless it already carries a valid mirror
-// signature. Returns whether a signature was created (or, dry run, would
-// be).
+// signature, running verifyUpstream first: signing vouches for the copy,
+// so it never happens for unverified upstream content. Returns whether a
+// signature was created (or, dry run, would be).
 func (e *Engine) ensureSigned(ctx context.Context, entryName, ref string,
-	signing *spec.Signing, recursive, dryRun bool) (bool, error) {
+	signing *spec.Signing, recursive, dryRun bool, verifyUpstream func() error) (bool, error) {
 	if e.mirrorSignatureValid(ctx, ref, signing) {
 		return false, nil
+	}
+	if err := verifyUpstream(); err != nil {
+		return false, err
 	}
 	if dryRun {
 		e.notef(entryName, "sync", "would sign %s", ref)

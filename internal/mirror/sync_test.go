@@ -466,7 +466,7 @@ images:
     - match: "example.test/apps/*"
       provider: cosign-key
       key: `+pubPath+`
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/demo

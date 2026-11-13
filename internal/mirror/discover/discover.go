@@ -26,7 +26,8 @@ type Input struct {
 	// Extra are the manifest- and sidecar-declared images rendering
 	// cannot see.
 	Extra []spec.ExtraImage
-	// Exclude drops discovered references matching these globs.
+	// Exclude drops discovered references matching these path globs
+	// (imageref.PathMatch: '*' stays within a segment, '**' crosses them).
 	Exclude []spec.ExcludePattern
 	// AllowEmpty accepts a chart that renders no images.
 	AllowEmpty bool
@@ -84,7 +85,7 @@ func Discover(in Input) (Result, error) {
 // excludedBy returns the first matching exclude glob, or "".
 func excludedBy(ref string, excludes []spec.ExcludePattern) string {
 	for _, e := range excludes {
-		if e.Pattern != "" && imageref.GlobMatch(e.Pattern, ref) {
+		if e.Pattern != "" && imageref.PathMatch(e.Pattern, ref) {
 			return e.Pattern
 		}
 	}

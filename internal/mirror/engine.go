@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/bitwise-media-group/patchy/internal/mirror/helmchart"
@@ -74,6 +75,9 @@ type Engine struct {
 	pushChart     func(tgz []byte, ref string) (string, error)
 	tools         scan.ToolRunner
 	imageScanners []scan.ImageScanner
+	// policyWarned dedupes warn-mode source-policy narration across the
+	// stages that check the same source.
+	policyWarned sync.Map
 }
 
 // New builds an Engine.

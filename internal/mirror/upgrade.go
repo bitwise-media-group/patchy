@@ -267,6 +267,9 @@ func (e *Engine) deriveDistribution(ctx context.Context, entry spec.Entry, vendo
 		return nil, fmt.Errorf("%s: no vendored appVersion to expand the artifact ref with: %w", entry.Name, err)
 	}
 	artifact := strings.ReplaceAll(dm.Artifact, "{appVersion}", appVersion)
+	if err := e.enforcePolicy(entry.Name, "discover", policySource{spec.SourceArtifact, artifact}); err != nil {
+		return nil, err
+	}
 	pullRef := e.rewrite(strings.TrimPrefix(artifact, "oci://"))
 
 	e.notef(entry.Name, "discover", "pulling distribution manifests %s", artifact)

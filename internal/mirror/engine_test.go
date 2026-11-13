@@ -232,7 +232,7 @@ chart:
   valuesFiles: [values/discovery.yaml]
 images:
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/%[1]s
@@ -433,7 +433,7 @@ images:
       versionConstraint: ">=2.320.0 <3.0.0"
       valuesPath: .image
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/demo
@@ -487,7 +487,7 @@ images:
     - image: %[2]s
       valuesPath: .image.tag
   verifyUpstream:
-    - match: "*"
+    - match: "**"
       provider: none
 publish:
   chartRepo: charts/demo

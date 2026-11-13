@@ -35,11 +35,25 @@ func (e *Engine) Lint(entry spec.Entry) ([]string, error) {
 	} else {
 		e.lintArtifact(entry, fail)
 	}
+	e.lintSourcePolicy(entry, fail)
 	policy := e.lintScan(entry, fail)
 	if err := lintAllowlist(entry, policy, e.now(), fail); err != nil {
 		return nil, err
 	}
 	return issues, nil
+}
+
+// lintSourcePolicy checks every committed source against the config's
+// source policy offline: blocking violations are lint issues, warn-mode
+// ones narrate.
+func (e *Engine) lintSourcePolicy(entry spec.Entry, fail func(string, ...any)) {
+	for _, v := range e.policyViolations(committedSources(entry)) {
+		if v.Blocking() {
+			fail("%s", v)
+		} else {
+			e.warnPolicy(entry.Name, StageLint, v)
+		}
+	}
 }
 
 // lintScan validates the entry's scan block — the same shape for both
@@ -101,19 +115,26 @@ func (e *Engine) lintChart(entry spec.Entry, fail func(string, ...any)) {
 		}
 	}
 
-	// Every locked image must be coverable: at least one rule, all valid.
-	if len(m.Images.VerifyUpstream) == 0 {
+	lintImageVerifyRules(m.Images.VerifyUpstream, fail)
+	e.lintOCIRefs(entry, fail)
+}
+
+// lintImageVerifyRules checks that every locked image is coverable: at
+// least one rule, each with a pattern that can match and a valid provider.
+func lintImageVerifyRules(rules []spec.ImageVerifyRule, fail func(string, ...any)) {
+	if len(rules) == 0 {
 		fail("images.verifyUpstream must declare at least one rule (use provider: none to document a gap)")
 	}
-	for i, rule := range m.Images.VerifyUpstream {
+	for i, rule := range rules {
 		prefix := fmt.Sprintf("images.verifyUpstream[%d]", i)
-		if rule.Match == "" {
+		switch rule.Match {
+		case "":
 			fail("%s missing match pattern", prefix)
+		case "*":
+			fail("%s match \"*\" matches a single path segment and so no image; use \"**\" for a catch-all", prefix)
 		}
 		lintProvider(prefix, rule.VerifyRule, fail)
 	}
-
-	e.lintOCIRefs(entry, fail)
 }
 
 // lintProvider validates one verifyUpstream rule's provider shape.
@@ -154,8 +175,13 @@ func (e *Engine) lintOCIRefs(entry spec.Entry, fail func(string, ...any)) {
 	}
 	allow := entry.Chart.OCIRefs.Allow
 	for i, a := range allow {
-		if a.Pattern == "" {
+		switch {
+		case a.Pattern == "":
 			fail("ociRefs.allow[%d] missing pattern", i)
+		case a.Pattern == "*":
+			fail("ociRefs.allow[%d] pattern \"*\" matches a single path segment and so nothing; use \"**\"", i)
+		case !strings.HasPrefix(a.Pattern, "oci://") && strings.Trim(a.Pattern, "*") != "":
+			fail("ociRefs.allow[%d] pattern %q must start with oci:// (it matches the whole reference)", i, a.Pattern)
 		}
 		if a.Reason == "" {
 			fail("ociRefs.allow[%d] missing reason (why may this bypass the mirror?)", i)
@@ -167,7 +193,7 @@ func (e *Engine) lintOCIRefs(entry spec.Entry, fail func(string, ...any)) {
 		}
 		allowed := false
 		for _, a := range allow {
-			if a.Pattern != "" && imageref.GlobMatch(a.Pattern, ref) {
+			if a.Pattern != "" && imageref.PathMatch(a.Pattern, ref) {
 				allowed = true
 				break
 			}
@@ -180,10 +206,12 @@ func (e *Engine) lintOCIRefs(entry spec.Entry, fail func(string, ...any)) {
 }
 
 // insideMirror reports whether an oci:// ref lives under any configured
-// registry.
+// registry: the registry URL must end at a path boundary, so a registry at
+// host/mirror does not vouch for host/mirror-evil/x.
 func (e *Engine) insideMirror(ref string) bool {
 	for _, reg := range e.global.Registries {
-		if strings.HasPrefix(ref, "oci://"+reg.URL) {
+		rest, ok := strings.CutPrefix(ref, "oci://"+strings.TrimSuffix(reg.URL, "/"))
+		if ok && (rest == "" || strings.ContainsRune("/:@", rune(rest[0]))) {
 			return true
 		}
 	}

@@ -36,6 +36,10 @@ type Spec struct {
 	Tags      []string    `yaml:"tags"`
 	Images    []Image     `yaml:"images"`
 	Manifests []Manifests `yaml:"manifests"`
+	// Policy restricts the registries image builds may pull from. The CLI
+	// resolves it (with every enforced layer's) into spec.Config.Policy,
+	// which is what the engine enforces; this field is only its YAML home.
+	Policy *spec.BuildPolicy `yaml:"policy"`
 }
 
 // Image is one Dockerfile build.

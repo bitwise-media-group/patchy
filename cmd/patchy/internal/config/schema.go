@@ -31,7 +31,26 @@ type File struct {
 	Mirror Mirror     `yaml:"mirror"`
 	Build  build.Spec `yaml:"build"`
 	Dev    Dev        `yaml:"dev"`
+
+	// enforced are the policy blocks individual layers pinned with
+	// `enforced: true`, as written in those files (Load fills it). They
+	// are evaluated beside the merged block, so no later layer can loosen
+	// or delete them.
+	enforced []enforcedPolicy
 }
+
+// enforcedPolicy is one layer's pinned policy blocks.
+type enforcedPolicy struct {
+	source string
+	mirror *spec.MirrorPolicy
+	build  *spec.BuildPolicy
+}
+
+// mergedPolicySource labels the merged config's policy layer in messages.
+const mergedPolicySource = "patchy config"
+
+// enforcedSource labels an enforced layer's policy in messages.
+func enforcedSource(path string) string { return path + ", enforced" }
 
 // Mirror is the mirror: block.
 type Mirror struct {
@@ -45,6 +64,9 @@ type Mirror struct {
 	// SourceRegistryRewrites reroutes upstream pulls (e.g. through a
 	// pull-through cache); recorded sources keep the canonical path.
 	SourceRegistryRewrites map[string]string `yaml:"sourceRegistryRewrites"`
+	// Policy restricts the upstream sources mirror may pull charts,
+	// images and artifacts from.
+	Policy *spec.MirrorPolicy `yaml:"policy"`
 }
 
 // Dev is the dev: block: one key per dev-command flag. The CLI reads the
@@ -74,6 +96,7 @@ func (f *File) MirrorConfig() (*spec.Config, error) {
 		Update:                 f.Mirror.Update,
 		Scan:                   f.Scan,
 		SourceRegistryRewrites: f.Mirror.SourceRegistryRewrites,
+		Policy:                 f.mirrorPolicy(),
 	}
 	if err := c.Resolve(); err != nil {
 		return nil, fmt.Errorf("patchy config: %w", err)
@@ -101,6 +124,7 @@ func (f *File) buildConfig(resolve func(*spec.Config) error) (*spec.Config, *bui
 		Registries: slices.Clone(f.Registries),
 		Signing:    f.Signing,
 		Scan:       f.Scan,
+		Policy:     f.buildPolicy(),
 	}
 	if err := resolve(c); err != nil {
 		return nil, nil, fmt.Errorf("patchy config: %w", err)
@@ -110,6 +134,48 @@ func (f *File) buildConfig(resolve func(*spec.Config) error) (*spec.Config, *bui
 		return nil, nil, fmt.Errorf("patchy config: %w", err)
 	}
 	return c, &s, nil
+}
+
+// mirrorPolicy assembles the mirror's source policy: every enforced
+// layer's block as written in its file (least preferred first), then the
+// merged block. A source must pass them all.
+func (f *File) mirrorPolicy() spec.SourcePolicy {
+	var p spec.SourcePolicy
+	for _, e := range f.enforced {
+		if e.mirror != nil {
+			p.Layers = append(p.Layers, e.mirror.Layer(enforcedSource(e.source)))
+		}
+	}
+	if f.Mirror.Policy != nil {
+		p.Layers = append(p.Layers, f.Mirror.Policy.Layer(mergedPolicySource))
+	}
+	return p
+}
+
+// buildPolicy is mirrorPolicy for the build: block.
+func (f *File) buildPolicy() spec.SourcePolicy {
+	var p spec.SourcePolicy
+	for _, e := range f.enforced {
+		if e.build != nil {
+			p.Layers = append(p.Layers, e.build.Layer(enforcedSource(e.source)))
+		}
+	}
+	if f.Build.Policy != nil {
+		p.Layers = append(p.Layers, f.Build.Policy.Layer(mergedPolicySource))
+	}
+	return p
+}
+
+// enforcedPolicies extracts a layer's pinned policy blocks, if any.
+func enforcedPolicies(source string, layer *File) (enforcedPolicy, bool) {
+	e := enforcedPolicy{source: source}
+	if p := layer.Mirror.Policy; p != nil && p.Enforced {
+		e.mirror = p
+	}
+	if p := layer.Build.Policy; p != nil && p.Enforced {
+		e.build = p
+	}
+	return e, e.mirror != nil || e.build != nil
 }
 
 // decodeFile strictly decodes a generic map into File: unknown keys are

@@ -34,27 +34,27 @@ components:
 images:
     # x-release-please-start-version
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/source-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/context-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/investigation-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/remediation-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/evaluation-controller
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/status-server
-      newTag: v0.12.4
+      newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/egress-broker
-      newTag: v0.12.4
+      newTag: v0.13.0
     # x-release-please-end
 
 patches:

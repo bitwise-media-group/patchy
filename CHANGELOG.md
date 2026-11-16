@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.13.0](https://github.com/bitwise-media-group/patchy/compare/v0.12.4...v0.13.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* images.exclude, images.verifyUpstream match and ociRefs.allow patterns are now path globs: `*` matches within one `/`-separated segment and `**` across segments. A pattern such as `ghcr.io/acme/*` that relied on `*` crossing `/` must become `ghcr.io/acme/**`, and the verifyUpstream catch-all `match: "*"` (which `mirror add` scaffolded) must become `match: "**"`; lint rejects a lone `*` in both verifyUpstream and ociRefs.allow. ociRefs.allow patterns must start with oci:// (or be `**`).
+
+### Features
+
+* **mirror:** name the binary carrying each allowlisted finding ([7c400d7](https://github.com/bitwise-media-group/patchy/commit/7c400d74f1c53cd0d519ce0ab9c2785beedc2992))
+* restrict mirror and build sources with a source policy ([bdfac9d](https://github.com/bitwise-media-group/patchy/commit/bdfac9db4131e2dea30efcb21c584844cf481f17))
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#642](https://github.com/bitwise-media-group/patchy/issues/642)) ([cf13d1e](https://github.com/bitwise-media-group/patchy/commit/cf13d1e1f139306e1cc7511664acd17c6c5b746b))
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.0 ([#626](https://github.com/bitwise-media-group/patchy/issues/626)) ([3e78fd0](https://github.com/bitwise-media-group/patchy/commit/3e78fd06b7a378a15f9789115c2431fb68707594))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.17 ([#625](https://github.com/bitwise-media-group/patchy/issues/625)) ([0ce3f1d](https://github.com/bitwise-media-group/patchy/commit/0ce3f1da0403715a8c72b156ac6abdefcbb2ecc6))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/configservice to v1.75.0 ([#646](https://github.com/bitwise-media-group/patchy/issues/646)) ([fd97562](https://github.com/bitwise-media-group/patchy/commit/fd97562ccde826c973905e6565d3b5e05db085b3))
+* **deps:** update module github.com/aws/smithy-go to v1.28.9 ([#566](https://github.com/bitwise-media-group/patchy/issues/566)) ([3acabe8](https://github.com/bitwise-media-group/patchy/commit/3acabe86e687bf6c519533625174a586edc45677))
+* **deps:** update module golang.org/x/term to v0.48.0 ([#627](https://github.com/bitwise-media-group/patchy/issues/627)) ([e7ba7a1](https://github.com/bitwise-media-group/patchy/commit/e7ba7a1e59b82fa59c45f2b97d7efeab979518ea))
+* **deps:** update module google.golang.org/api to v0.312.0 ([#643](https://github.com/bitwise-media-group/patchy/issues/643)) ([aaba42f](https://github.com/bitwise-media-group/patchy/commit/aaba42f172906fda4191732f2e1a5b17bfe6cf84))
+* **deps:** update module google.golang.org/api to v0.313.0 ([#648](https://github.com/bitwise-media-group/patchy/issues/648)) ([f50714e](https://github.com/bitwise-media-group/patchy/commit/f50714ed719e3507ba4dedc9e01557be4cbe5325))
+* **deps:** update module google.golang.org/api to v0.314.0 ([#653](https://github.com/bitwise-media-group/patchy/issues/653)) ([5646423](https://github.com/bitwise-media-group/patchy/commit/5646423de2c39773a11893e4783c79a0e0a2a2d1))
+* **deps:** update module helm.sh/helm/v4 to v4.3.2 ([#656](https://github.com/bitwise-media-group/patchy/issues/656)) ([f111c5e](https://github.com/bitwise-media-group/patchy/commit/f111c5eab60e18f66865c1be7e1289379803c705))
+
 ## [0.12.4](https://github.com/bitwise-media-group/patchy/compare/v0.12.3...v0.12.4) (2026-11-12)
 
 

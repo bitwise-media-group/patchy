@@ -47,6 +47,6 @@ go = "1.27.4"
 # to — is already pinned by the shared toolchain.
 "aqua:google/osv-scanner" = "2.7.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.23.0"
-"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "v0.25.2"
+"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "v0.25.3"
 "go:golang.org/x/perf/cmd/benchstat" = "0.0.0-20260709024250-82a0b07e230d"
 "aqua:mikefarah/yq" = "4.54.3"

@@ -133,7 +133,7 @@ version = "1.8.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
 
 [[tools."go:sigs.k8s.io/controller-runtime/tools/setup-envtest"]]
-version = "0.25.2"
+version = "0.25.3"
 backend = "go:sigs.k8s.io/controller-runtime/tools/setup-envtest"
 
 [[tools."go:sigs.k8s.io/controller-tools/cmd/controller-gen"]]

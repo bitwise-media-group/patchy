@@ -47,8 +47,8 @@ every tool it called and what came back. While a run is in flight the section st
 stored record.
 
 What makes that possible is that the agent pod normalises its own CLI's output — claude's content blocks and codex's
-items both become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside
-the `PATCHY-EVENT:` stage result. The owning controller reads that log once when the Job finishes and writes the
+items both become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside the
+`PATCHY-EVENT:` stage result. The owning controller reads that log once when the Job finishes and writes the
 conversation to a ConfigMap owner-referenced to the run. Since a run is owned by its Finding, the
 [finding TTL](configuration/remediation-controller.md) cascade deletes the transcript with everything else: a
 conversation is retained exactly as long as the finding it explains, and no longer.

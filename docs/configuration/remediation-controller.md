@@ -61,17 +61,19 @@ The budget has three levels:
 
 The model suggestion is still clamped: the spawner holds it to the allowlist and resolves the harness that runs it (the
 model's provider decides the runner image and credential). `--remediate-model` is the canonical fallback when the
-report's suggestion is missing or off the allowlist; its harness is derived from it.
+report's suggestion is missing or off the allowlist; its harness is derived from it. Both flags accept family aliases
+(`anthropic/claude-opus`), resolved to concrete ids once at startup; a report that suggests an alias is resolved the
+same way before the allowlist check — see [Model ids and aliases](investigation-controller.md#model-ids-and-aliases).
 
-| Flag                            | Env                                  | Default                     | Purpose                                          |
-| ------------------------------- | ------------------------------------ | --------------------------- | ------------------------------------------------ |
-| `--model-allowlist`             | `PATCHY_MODEL_ALLOWLIST`             | canonical ids               | Canonical model ids remediation may run          |
-| `--remediate-model`             | `PATCHY_REMEDIATE_MODEL`             | `anthropic/claude-sonnet-5` | Canonical default when the report requests none  |
-| `--remediate-timeout`           | `PATCHY_REMEDIATE_TIMEOUT`           | `45m`                       | Wall-clock limit for the remediation stage       |
-| `--remediate-max-turns`         | `PATCHY_REMEDIATE_MAX_TURNS`         | `80`                        | Turns every run gets; approval threshold above   |
-| `--remediate-token-budget`      | `PATCHY_REMEDIATE_TOKEN_BUDGET`      | `400000`                    | Output tokens every run gets; approval threshold |
-| `--remediate-max-turns-hard`    | `PATCHY_REMEDIATE_MAX_TURNS_HARD`    | `240`                       | Most turns an approval can grant                 |
-| `--remediate-token-budget-hard` | `PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` | `1200000`                   | Most output tokens an approval can grant         |
+| Flag                            | Env                                  | Default                   | Purpose                                          |
+| ------------------------------- | ------------------------------------ | ------------------------- | ------------------------------------------------ |
+| `--model-allowlist`             | `PATCHY_MODEL_ALLOWLIST`             | Sonnet + Opus aliases     | Model ids or family aliases remediation may run  |
+| `--remediate-model`             | `PATCHY_REMEDIATE_MODEL`             | `anthropic/claude-sonnet` | Default model when the report requests none      |
+| `--remediate-timeout`           | `PATCHY_REMEDIATE_TIMEOUT`           | `45m`                     | Wall-clock limit for the remediation stage       |
+| `--remediate-max-turns`         | `PATCHY_REMEDIATE_MAX_TURNS`         | `80`                      | Turns every run gets; approval threshold above   |
+| `--remediate-token-budget`      | `PATCHY_REMEDIATE_TOKEN_BUDGET`      | `400000`                  | Output tokens every run gets; approval threshold |
+| `--remediate-max-turns-hard`    | `PATCHY_REMEDIATE_MAX_TURNS_HARD`    | `240`                     | Most turns an approval can grant                 |
+| `--remediate-token-budget-hard` | `PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` | `1200000`                 | Most output tokens an approval can grant         |
 
 Token budgets are enforced live — the runner watches the harness's streamed usage events and kills the process group
 when the cumulative output-token count is exceeded; the harness CLI has no such flag itself.

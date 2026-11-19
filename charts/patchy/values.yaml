@@ -667,16 +667,22 @@ agent:
     # level and never a limit: a low estimate cannot starve a fix. The model
     # suggestion IS still clamped to the allowlist. Models are canonical,
     # provider-qualified ids; the harness that runs a model is derived from it.
-    modelAllowlist: anthropic/claude-sonnet-5,anthropic/claude-opus-5
+    # A family alias (anthropic/claude-sonnet, anthropic/claude-opus, ...)
+    # resolves at controller startup to the newest version patchy registers,
+    # so the defaults follow new releases without a values change; pin a
+    # concrete id (anthropic/claude-sonnet-5-5) to hold a version. A
+    # well-formed but unregistered version (anthropic/claude-opus-6) also
+    # runs: on the claude harness only, unpriced until registered.
+    modelAllowlist: anthropic/claude-sonnet,anthropic/claude-opus
     investigate:
-        model: anthropic/claude-sonnet-5
+        model: anthropic/claude-sonnet
         timeout: 15m
         maxTurns: 25
         tokenBudget: 150000
     remediate:
         # The default model when the investigation report's suggestion is
         # missing or off the allowlist.
-        model: anthropic/claude-sonnet-5
+        model: anthropic/claude-sonnet
         timeout: 45m
         # Unattended: what a fix gets with nobody watching.
         auto:

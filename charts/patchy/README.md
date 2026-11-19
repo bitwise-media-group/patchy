@@ -154,9 +154,10 @@ The genuinely shared settings stay global:
 - `webhook.*` — the single external entry point (`host`, plus one of `ingress` / `httpRoute`) in front of the
   integration-controller; a provider has one webhook URL, so exposure is a chart-level concern.
 - `agent.*` — the sandbox: namespace, service account, `jobDeadline`/`jobTTL`, and the two stages' limits:
-  `modelAllowlist` (canonical, provider-qualified model ids), `investigate.*` (absolute), `remediate.*` (`auto.*` is
-  what an unattended fix gets and the line past which an estimate needs approval, `manual.*` the most an approval can
-  grant; `model` is the fallback when the report's choice is off the allowlist).
+  `modelAllowlist` (canonical, provider-qualified model ids or family aliases such as `anthropic/claude-opus`),
+  `investigate.*` (absolute), `remediate.*` (`auto.*` is what an unattended fix gets and the line past which an estimate
+  needs approval, `manual.*` the most an approval can grant; `model` is the fallback when the report's choice is off the
+  allowlist).
 - `agent.runners.<harness>` — the per-harness runner fleet: `enabled`, the runner `image` (default
   `<prefix>/<harness>-agent-runner`; pinning its digest is one knob, unlike kustomize's two), and — for the non-brokered
   codex/copilot — the credential `secret`/`secretKey`/`secretEnv` and egress `hosts`/`dnsPatterns`. The claude runner is

@@ -58,27 +58,50 @@ supports it, refusing to start otherwise.
 | `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                           |
 | `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                    |
 | `--job-ttl`                       | `PATCHY_JOB_TTL`                       | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                |
-| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | canonical ids          | Canonical model ids the investigation may request for remediation (comma-separated)                                         |
+| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases  | Canonical model ids or family aliases the investigation may request for remediation (comma-separated)                       |
 
 ## Stage flags
 
 The investigation stage's limits are **absolute** — the stage runs on exactly these. Its model is a canonical,
-provider-qualified id (e.g. `anthropic/claude-sonnet-5`); the harness that runs it is derived from the model. The two
-`remediate` ceilings exist here because this controller clamps what the investigation report requests before it ever
-reaches the queue.
+provider-qualified id (e.g. `anthropic/claude-sonnet-5-5`) or a family alias (`anthropic/claude-sonnet`); the harness
+that runs it is derived from the model. See [Model ids and aliases](#model-ids-and-aliases). The two `remediate`
+ceilings exist here because this controller clamps what the investigation report requests before it ever reaches the
+queue.
 
-| Flag                         | Env                               | Default                     | Purpose                                             |
-| ---------------------------- | --------------------------------- | --------------------------- | --------------------------------------------------- |
-| `--investigate-model`        | `PATCHY_INVESTIGATE_MODEL`        | `anthropic/claude-sonnet-5` | Canonical model id the analysis stage runs on       |
-| `--investigate-timeout`      | `PATCHY_INVESTIGATE_TIMEOUT`      | `15m`                       | Wall-clock limit for the analysis stage             |
-| `--investigate-max-turns`    | `PATCHY_INVESTIGATE_MAX_TURNS`    | `25`                        | Agent turns allowed for the analysis stage          |
-| `--investigate-token-budget` | `PATCHY_INVESTIGATE_TOKEN_BUDGET` | `150000`                    | Output-token budget for the analysis stage          |
-| `--remediate-max-turns`      | `PATCHY_REMEDIATE_MAX_TURNS`      | `80`                        | Ceiling on the report's suggested remediation turns |
-| `--remediate-token-budget`   | `PATCHY_REMEDIATE_TOKEN_BUDGET`   | `400000`                    | Ceiling on the suggested remediation budget         |
+| Flag                         | Env                               | Default                   | Purpose                                             |
+| ---------------------------- | --------------------------------- | ------------------------- | --------------------------------------------------- |
+| `--investigate-model`        | `PATCHY_INVESTIGATE_MODEL`        | `anthropic/claude-sonnet` | Canonical model id or family alias for the analysis |
+| `--investigate-timeout`      | `PATCHY_INVESTIGATE_TIMEOUT`      | `15m`                     | Wall-clock limit for the analysis stage             |
+| `--investigate-max-turns`    | `PATCHY_INVESTIGATE_MAX_TURNS`    | `25`                      | Agent turns allowed for the analysis stage          |
+| `--investigate-token-budget` | `PATCHY_INVESTIGATE_TOKEN_BUDGET` | `150000`                  | Output-token budget for the analysis stage          |
+| `--remediate-max-turns`      | `PATCHY_REMEDIATE_MAX_TURNS`      | `80`                      | Ceiling on the report's suggested remediation turns |
+| `--remediate-token-budget`   | `PATCHY_REMEDIATE_TOKEN_BUDGET`   | `400000`                  | Ceiling on the suggested remediation budget         |
 
 The stage flags are re-serialized into `PATCHY_*` environment variables injected into every investigation pod
 ([agent-runner](agent-runner.md) reads them), so this controller's flags are the single operator-facing configuration
 point for the analysis stage.
+
+## Model ids and aliases
+
+Every model flag (`--model-allowlist`, `--investigate-model`, and the remediation controller's `--remediate-model`)
+accepts an id in one of three forms, resolved once at controller startup:
+
+| Form          | Example                       | Resolves to                                                                       |
+| ------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| Registered id | `anthropic/claude-sonnet-5-5` | That model, exactly                                                               |
+| Family alias  | `anthropic/claude-sonnet`     | The newest version of that family patchy registers (today Sonnet 5.5, Opus 5.5)   |
+| Pattern id    | `anthropic/claude-opus-6`     | An Anthropic version patchy has not registered yet: claude harness only, unpriced |
+
+Only the **concrete** id flows downstream: the pod environment, the investigation prompt's model list, CRD status and
+the rollups all record a version, never an alias, so statistics and pricing stay per-version. The shipped defaults are
+aliases, so an upgrade of patchy that registers a newer model moves them with no configuration change; pin a concrete id
+to hold a version.
+
+A pattern id lets a new Anthropic release run before patchy ships an entry for it. It must be well-formed
+(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only (copilot does not get it), and has no
+token pricing until registered — the claude CLI reports its own cost, so run costs are still recorded. The controller
+logs a warning naming every such id at startup. An alias whose family patchy does not know, or an id of neither shape,
+is a startup error.
 
 ## Verdict routing
 

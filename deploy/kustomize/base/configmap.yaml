@@ -144,9 +144,16 @@ data:
     # ---- the agent stages ---------------------------------------------------
     # The job controllers pass these through to every agent pod, where
     # agentrun.FromEnv reads them. Models are canonical, provider-qualified ids
-    # (e.g. anthropic/claude-sonnet-5); the harness that runs a model is
+    # (e.g. anthropic/claude-sonnet-5-5); the harness that runs a model is
     # derived from it, so an OpenAI model routes to the codex runner and an
     # Anthropic model to the claude runner.
+    #
+    # A family alias (anthropic/claude-sonnet, anthropic/claude-opus, ...)
+    # resolves at controller startup to the newest version patchy registers,
+    # and only that concrete id reaches the pods, the CRDs and the rollups —
+    # pin a concrete id to hold a version across upgrades. A well-formed but
+    # unregistered version (anthropic/claude-opus-6) also runs: on the claude
+    # harness only, and unpriced until patchy registers it.
     #
     # The INVESTIGATE_* limits are absolute — that stage runs on exactly
     # these.
@@ -174,14 +181,14 @@ data:
     # The token budgets are enforced by the runner watching the harness's
     # streamed usage events and killing the process group when the cumulative
     # output-token count is exceeded — the CLI has no such flag itself.
-    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet-5,anthropic/claude-opus-5
+    PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet,anthropic/claude-opus
 
-    PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet-5
+    PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet
     PATCHY_INVESTIGATE_TIMEOUT: 15m
     PATCHY_INVESTIGATE_MAX_TURNS: "25"
     PATCHY_INVESTIGATE_TOKEN_BUDGET: "150000"
 
-    PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet-5
+    PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet
     PATCHY_REMEDIATE_TIMEOUT: 45m
     PATCHY_REMEDIATE_AUTO_MAX_TURNS: "80"
     PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET: "400000"

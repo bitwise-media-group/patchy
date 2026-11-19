@@ -17,9 +17,9 @@ import (
 const (
 	// DefaultAlias is the default stage model (the analysis and the fallback
 	// remediation model).
-	DefaultAlias = "anthropic/claude-sonnet-5"
+	DefaultAlias = "anthropic/claude-sonnet"
 	// DefaultAllowlist is the default remediation model allowlist.
-	DefaultAllowlist = "anthropic/claude-sonnet-5,anthropic/claude-opus-5"
+	DefaultAllowlist = "anthropic/claude-sonnet,anthropic/claude-opus"
 )
 
 // claudeIDPattern matches a vendor-bare Anthropic id of the current naming

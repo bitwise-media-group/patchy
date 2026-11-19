@@ -24,7 +24,7 @@ can smuggle a credential in.
 | Read token (single repo, archive download)          | Minted on demand, never stored                                                      | source-controller only                                                                                                     |
 | Write token (single repo, push + PR)                | Minted on demand, never stored                                                      | remediation-controller only                                                                                                |
 | Claude model credential (API key or cloud identity) | `patchy-anthropic` Secret, **release ns** — or the broker's cloud workload identity | The egress broker only — **never an agent pod**                                                                            |
-| Codex / copilot model credential                    | `patchy-openai` / `patchy-copilot`, agent ns                                        | Those harnesses' agent containers — the only secret value in a non-brokered pod (both runners ship disabled)               |
+| Codex model credential                              | `patchy-openai`, agent ns                                                           | The codex agent container — the only secret value in a non-brokered pod (the runner ships disabled)                        |
 
 All GitHub side effects — issue projection, alert dismissal, branch push, pull requests — happen controller-side with
 short-lived, per-repository scoped tokens. An agent that reaches `github.com` reaches it as an anonymous member of the
@@ -61,14 +61,14 @@ for DNS, the artifact port (9790) to source-controller, the broker port (8080) t
 the cluster's own ranges and the cloud metadata endpoint (`169.254.169.254`) excluded — adjust
 `agent.networkPolicy.clusterCIDRs` (Helm) or the `except:` CIDRs in `base/networkpolicy.yaml` (kustomize) to your
 cluster's pod/service/node CIDRs. A **claude** pod uses only the first three: DNS, the artifact server, and the broker —
-its entire egress is cluster-local. The 443 rule exists for the non-brokered runners (codex/copilot, both shipped
+its entire egress is cluster-local. The 443 rule exists for the non-brokered runner (codex, shipped
 disabled), and be honest about what it is: **a plain NetworkPolicy is L3/L4 and cannot match a hostname**, so "TCP 443"
 means every HTTPS host on the internet, not just the model vendor's.
 
 Pinning egress to hostnames takes one of three optional layers, selected by `agent.networkPolicy.mode` (Helm) or by the
 matching kustomize component. Brokered claude needs none of them — it has **no external hosts to allowlist** (its Cilium
 policy is cluster-only with no `toFQDNs`, its GKE FQDN policy is skipped, its Istio ServiceEntry set is empty) — so the
-hostname layers exist for the codex/copilot runners' model hosts. **No GitHub hosts appear anywhere in any of them** —
+hostname layers exist for the codex runner's model hosts. **No GitHub hosts appear anywhere in any of them** —
 the pod never talks to a forge, so there is nothing to allow.
 
 - **Cilium** (`mode: cilium`, or the kustomize `components/cilium` — what the prod overlay uses) — one

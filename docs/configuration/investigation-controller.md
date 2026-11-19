@@ -36,7 +36,6 @@ supports it, refusing to start otherwise.
 | --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--claude-agent-image`            | `PATCHY_CLAUDE_AGENT_IMAGE`            | —                      | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                        |
 | `--codex-agent-image`             | `PATCHY_CODEX_AGENT_IMAGE`             | —                      | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                           |
-| `--copilot-agent-image`           | `PATCHY_COPILOT_AGENT_IMAGE`           | —                      | copilot-agent-runner image (bundles the copilot CLI); unset disables the copilot runner                                     |
 | `--fake-agent-image`              | `PATCHY_FAKE_AGENT_IMAGE`              | —                      | fake agent image for dev/e2e (replays fixtures, no credential)                                                              |
 | `--harnesses`                     | `PATCHY_HARNESSES`                     | — (auto)               | Restrict enabled harnesses to this comma list; empty = any harness whose credential exists                                  |
 | `--broker-url`                    | `PATCHY_BROKER_URL`                    | —                      | The [egress broker](egress-broker.md)'s base URL — **required** when a claude runner is configured (claude runs proxy-only) |
@@ -51,9 +50,6 @@ supports it, refusing to start otherwise.
 | `--codex-secret`                  | `PATCHY_CODEX_SECRET`                  | `patchy-openai`        | Secret (agent namespace) holding the OpenAI credential                                                                      |
 | `--codex-secret-key`              | `PATCHY_CODEX_SECRET_KEY`              | `api-key`              | Key within the OpenAI credential Secret                                                                                     |
 | `--codex-secret-env`              | `PATCHY_CODEX_SECRET_ENV`              | `OPENAI_API_KEY`       | Env var it is injected as: `OPENAI_API_KEY`, or `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` for a ChatGPT-plan workspace token   |
-| `--copilot-secret`                | `PATCHY_COPILOT_SECRET`                | `patchy-copilot`       | Secret (agent namespace) holding the GitHub Copilot credential — a GitHub token, not a model API key                        |
-| `--copilot-secret-key`            | `PATCHY_COPILOT_SECRET_KEY`            | `token`                | Key within the GitHub Copilot credential Secret                                                                             |
-| `--copilot-secret-env`            | `PATCHY_COPILOT_SECRET_ENV`            | `COPILOT_GITHUB_TOKEN` | Env var it is injected as: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`                                            |
 | `--agent-namespace`               | `PATCHY_AGENT_NAMESPACE`               | `patchy-agents`        | Namespace the agent Jobs run in                                                                                             |
 | `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                           |
 | `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                    |
@@ -98,7 +94,7 @@ aliases, so an upgrade of patchy that registers a newer model moves them with no
 to hold a version.
 
 A pattern id lets a new Anthropic release run before patchy ships an entry for it. It must be well-formed
-(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only (copilot does not get it), and has no
+(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only, and has no
 token pricing until registered — the claude CLI reports its own cost, so run costs are still recorded. The controller
 logs a warning naming every such id at startup. An alias whose family patchy does not know, or an id of neither shape,
 is a startup error.

@@ -40,7 +40,7 @@ Ten binaries, one module. "Not monolithic" means separate binaries/deployments w
 - `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
   Kubernetes API; a claude pod holds no credential at all (model traffic goes through the egress broker,
-  authenticated by a projected SA token read fresh per stage), a codex/copilot pod only its model key.
+  authenticated by a projected SA token read fresh per stage), a codex pod only its model key.
 - `cmd/egress-broker` — the egress credential broker (NOT a controller: no reconcilers, no leases): the reverse
   proxy all claude model traffic goes through, one route per provider (anthropic — key or `claude setup-token`
   bearer via `--anthropic-auth` — plus bedrock SigV4, vertex OAuth, foundry key/entra). Validates caller

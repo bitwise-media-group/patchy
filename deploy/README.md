@@ -29,9 +29,8 @@ deploy/
 ```
 
 The Dockerfiles live at the repo root: `Dockerfile.controller` (all controllers, ARG `TARGET`) and one per-harness agent
-image — `Dockerfile.claude-agent-runner` (agent-runner + git + claude CLI), `Dockerfile.codex-agent-runner`
-(agent-runner + git + codex CLI) and `Dockerfile.copilot-agent-runner` (agent-runner + git + copilot CLI). A Job runs
-the image of the harness resolved for its model.
+image — `Dockerfile.claude-agent-runner` (agent-runner + git + claude CLI) and `Dockerfile.codex-agent-runner`
+(agent-runner + git + codex CLI). A Job runs the image of the harness resolved for its model.
 
 ## What gets deployed where
 
@@ -40,7 +39,7 @@ Two namespaces, and the split between them is the security boundary.
 | Namespace       | Workload                                                                                                                                                                                                                                                                                                                                                       | Credentials it holds                                                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `patchy`        | `integration-controller` (the only internet-facing workload), `source-controller`, `context-controller`, `investigation-controller`, `remediation-controller`, `evaluation-controller` (optional; the evolve-facing evaluation API — front its Service with your ingress when used), `egress-broker` (the reverse proxy all claude model traffic goes through) | reads the GitHub Secret referenced by your Integration/Forge CRs; the broker holds the claude model credential (or cloud workload identity) |
-| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the three job-launching controllers                                                                                                                                                                                                                                                                              | nothing for claude Jobs (an identity token only); a non-brokered codex/copilot Job carries its one model key                                |
+| `patchy-agents` | ephemeral agent `Job`s, created at runtime by the three job-launching controllers                                                                                                                                                                                                                                                                              | nothing for claude Jobs (an identity token only); a non-brokered codex Job carries its one model key                                        |
 
 The **evaluation controller** is optional: it executes remote skill evaluations submitted by
 [evolve](https://github.com/bitwise-media-group/evolve) through the same agent-Job machinery (see
@@ -157,9 +156,7 @@ is unusable. `PATCHY_ANTHROPIC_AUTH=token` sends a `claude setup-token` OAuth to
 and the bedrock/vertex/foundry providers need no Secret at all — the broker signs with its cloud workload identity
 (annotate the `patchy-egress-broker` ServiceAccount). Enable the codex runner and it needs `patchy-openai` (an OpenAI
 key) in **patchy-agents**, wired into the pod by `internal/jobs`, and the controllers refuse to start if an enabled
-non-brokered harness's credential is missing; the copilot runner needs `patchy-copilot`, which holds a **GitHub token**
-rather than a model API key — the one credential class no other agent pod carries, so enable that runner deliberately
-and scope the token to Copilot alone. A fake-harness run (dev) needs no model credential at all.
+non-brokered harness's credential is missing. A fake-harness run (dev) needs no model credential at all.
 
 The pipeline is then switched on with two custom resources referencing that Secret — an `Integration` (webhook
 validation, alert ingestion, issue projection) and a `Forge` (repository read for the artifact, write for the push +
@@ -205,7 +202,7 @@ agent that reaches `github.com` reaches it as an anonymous member of the public.
 
 **2. NetworkPolicy — the floor.** `patchy-agents` is default-deny in both directions. Egress is re-permitted for DNS,
 the artifact port (9790) to source-controller, the broker port (8080) to the egress broker — the whole of a claude pod's
-egress, all cluster-local — and TCP 443 (the non-brokered codex/copilot runners' model APIs) with the cluster's own
+egress, all cluster-local — and TCP 443 (the non-brokered codex runner's model API) with the cluster's own
 ranges and the cloud metadata endpoint (169.254.169.254) excluded. **A plain NetworkPolicy is L3/L4 and cannot match a
 hostname**, so "TCP 443" means every HTTPS host on the internet, not just the model vendor's. Adjust the `except:` CIDRs
 in `base/networkpolicy.yaml` to your cluster's pod/service/node CIDRs.
@@ -269,12 +266,12 @@ Three things to know about dev:
   not evidence of a working sandbox.
 - **The fake harness needs no model credential.** The dev overlay sets `PATCHY_HARNESSES: fake`, which restricts the
   enabled set to the fake runner — it carries no Secret, so `internal/jobs` wires no model key into its Jobs and dev
-  runs with zero real credentials. The claude/codex/copilot runners configured in the base are simply not enabled.
+  runs with zero real credentials. The claude/codex runners configured in the base are simply not enabled.
 
 ### prod
 
 DESIGN.md's real intervals (1h accumulation, 1h minimum age, the 14-day finding TTL), the claude harness (add codex by
-enabling its runner and supplying `patchy-openai`, or copilot with `patchy-copilot`), the Cilium FQDN policies,
+enabling its runner and supplying `patchy-openai`), the Cilium FQDN policies,
 production-sized requests/limits, and **release-pinned images**: every image in `overlays/prod/kustomization.yaml` and
 `PATCHY_CLAUDE_AGENT_IMAGE` in `overlays/prod/configmap-patch.yaml` names the `vX.Y.Z` tag of the release they ship in
 (release-please bumps them in each release PR), so apply the overlay from a release tag. For immutable pins, add a

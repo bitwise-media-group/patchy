@@ -46,8 +46,8 @@ Each run's investigation and remediation tab carries the agent's turn-by-turn co
 every tool it called and what came back. While a run is in flight the section streams live; afterwards it replays the
 stored record.
 
-What makes that possible is that the agent pod normalises its own CLI's output — claude's content blocks, codex's items,
-copilot's messages all become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside
+What makes that possible is that the agent pod normalises its own CLI's output — claude's content blocks and codex's
+items both become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside
 the `PATCHY-EVENT:` stage result. The owning controller reads that log once when the Job finishes and writes the
 conversation to a ConfigMap owner-referenced to the run. Since a run is owned by its Finding, the
 [finding TTL](configuration/remediation-controller.md) cascade deletes the transcript with everything else: a

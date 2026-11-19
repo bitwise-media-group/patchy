@@ -321,8 +321,8 @@ spec:
           ports:
               - protocol: TCP
                 port: 8080
-        # TCP 443, and nothing else: the non-brokered runners' model APIs
-        # (codex/copilot). Explicitly excluded: the cluster-internal
+        # TCP 443, and nothing else: the non-brokered runner's model API
+        # (codex). Explicitly excluded: the cluster-internal
         # ranges, so an agent cannot reach the API server, kubelet, or
         # another workload. Adjust the except: blocks to your cluster's
         # pod/service/node CIDRs.

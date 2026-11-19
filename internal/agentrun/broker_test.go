@@ -33,7 +33,6 @@ func TestCliModel(t *testing.T) {
 		{"unmapped model falls back to the registry", "anthropic/claude-opus-5", "claude",
 			map[string]string{"anthropic/claude-sonnet-5": "us.anthropic.claude-sonnet-5"},
 			"claude-opus-5"},
-		{"copilot point release is dotted", "anthropic/claude-opus-5-5", "copilot", nil, "claude-opus-5.5"},
 		{"pattern-tier id runs on claude as its bare id", "anthropic/claude-opus-6", "claude", nil, "claude-opus-6"},
 		{"unknown id falls back to the bare id", "anthropic/claude-next-99", "claude", nil, "claude-next-99"},
 		{"unqualified unknown id passes through", "mystery", "claude", nil, "mystery"},

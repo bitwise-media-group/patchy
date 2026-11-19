@@ -144,10 +144,7 @@
                         "ANTHROPIC_AUTH_TOKEN",
                         "OPENAI_API_KEY",
                         "CODEX_API_KEY",
-                        "CODEX_ACCESS_TOKEN",
-                        "COPILOT_GITHUB_TOKEN",
-                        "GH_TOKEN",
-                        "GITHUB_TOKEN"
+                        "CODEX_ACCESS_TOKEN"
                     ]
                 },
                 "hosts": {
@@ -970,23 +967,6 @@
                             }
                         },
                         "codex": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": [
-                                "enabled",
-                                "image"
-                            ],
-                            "properties": {
-                                "enabled": {
-                                    "type": "boolean"
-                                },
-                                "image": {
-                                    "type": "string",
-                                    "minLength": 1
-                                }
-                            }
-                        },
-                        "copilot": {
                             "type": "object",
                             "additionalProperties": false,
                             "required": [

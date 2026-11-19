@@ -75,13 +75,13 @@ in as webhook signals, never by re-parsing issue state.
 
 The agent execution harness is adapted from evolve (harness builds argv, runner executes, harness parses stdout), as is
 the model construct: a registry of canonical, provider-qualified model ids (`anthropic/claude-sonnet-5`,
-`openai/gpt-5.3-codex`), each associating the harnesses that can run it with a preferred one. Claude (Anthropic models),
-Codex (OpenAI models) and Copilot (both vendors', as every model's fallback rather than any model's preference) are the
-built-in harnesses; the harness that runs a model is derived from the model, so the
-investigation may choose a remediation model from any provider and the remediation controller routes it to the matching
-harness — its own runner image, credential, and egress policy. Which harnesses are enabled is configuration, defaulting
-to any whose credential is supplied. The finding handoff, both prompts, and both report contracts are templated and
-consistent across the estate.
+`openai/gpt-5.3-codex`), each associating the harnesses that can run it with a preferred one. patchy supports
+first-party coding agents only — each model runs on its vendor's own CLI: Claude (Anthropic models) and Codex (OpenAI
+models) are the built-in harnesses; the harness that runs a model is derived from the model, so the investigation may
+choose a remediation model from any provider and the remediation controller routes it to the matching harness — its
+own runner image, credential, and egress policy. Which harnesses are enabled is configuration, defaulting to any whose
+credential is supplied. The finding handoff, both prompts, and both report contracts are templated and consistent
+across the estate.
 
 ### Components
 
@@ -111,7 +111,7 @@ consistent across the estate.
   a forge write credential), and the rollup/TTL loop.
 - **agent-runner** — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`), reports
   as `PATCHY-EVENT:` JSONL on stdout. Never talks to GitHub or the Kubernetes API; a claude pod holds no
-  credential at all (model traffic authenticates at the egress broker), a codex/copilot pod only its model key.
+  credential at all (model traffic authenticates at the egress broker), a codex pod only its model key.
 - **egress-broker** — the egress credential broker: the reverse proxy all claude model traffic goes through
   (Anthropic, Amazon Bedrock, GCP Vertex AI, Microsoft Foundry). Validates each agent pod's audience-bound
   projected ServiceAccount token via TokenReview, then injects or signs the model credential outbound — the one
@@ -137,8 +137,8 @@ tarball from source-controller over the cluster network; claude model traffic go
 broker, authenticated by an audience-bound projected ServiceAccount token — an identity document, not a
 capability — so the broker (a trusted Deployment) is where the model credential or cloud workload identity
 lives, and claude egress collapses to DNS + the artifact server + the broker, all cluster-local. The optional
-non-brokered runners (codex/copilot) still carry their one model key, with NetworkPolicies (plus optional
-Cilium FQDN / Istio allowlists) restricting their egress to their model APIs. All GitHub side effects — issue
+non-brokered runner (codex) still carries its one model key, with NetworkPolicies (plus optional
+Cilium FQDN / Istio allowlists) restricting its egress to its model API. All GitHub side effects — issue
 projection, alert dismissal, branch push, pull requests — happen controller-side with short-lived,
 per-repository scoped tokens.
 

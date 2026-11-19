@@ -205,51 +205,6 @@ func TestCodexScanTurns(t *testing.T) {
 	}
 }
 
-func TestCopilotScanTurns(t *testing.T) {
-	tests := []struct {
-		name string
-		line string
-		want []transcript.Turn
-	}{
-		{
-			name: "session banner",
-			line: `{"type":"session.start","sessionId":"s1"}`,
-			want: []transcript.Turn{
-				{Role: transcript.RoleSystem, Kind: transcript.KindNotice, Text: "session s1 started"},
-			},
-		},
-		{
-			name: "assistant message",
-			line: `{"type":"assistant.message","data":{"content":"Looking."}}`,
-			want: []transcript.Turn{
-				{Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: "Looking."},
-			},
-		},
-		{
-			name: "session error",
-			line: `{"type":"session.error","data":{"message":"denied"}}`,
-			want: []transcript.Turn{
-				{Role: transcript.RoleSystem, Kind: transcript.KindNotice, Text: "error: denied"},
-			},
-		},
-		{name: "usage carries no turn", line: `{"type":"assistant.usage","data":{"outputTokens":5}}`},
-	}
-
-	c := NewCopilot()
-	for _, tt := range tests {
-		got := c.ScanTurns([]byte(tt.line))
-		if len(got) != len(tt.want) {
-			t.Errorf("%s: got %d turns, want %d: %+v", tt.name, len(got), len(tt.want), got)
-			continue
-		}
-		for i := range tt.want {
-			if got[i].Role != tt.want[i].Role || got[i].Kind != tt.want[i].Kind || got[i].Text != tt.want[i].Text {
-				t.Errorf("%s: turn %d = %+v, want %+v", tt.name, i, got[i], tt.want[i])
-			}
-		}
-	}
-}
-
 func TestEveryBuiltinHarnessScansTurns(t *testing.T) {
 	// A harness that silently lacks the capability produces no transcript at
 	// all, which is a hard failure to notice in production.

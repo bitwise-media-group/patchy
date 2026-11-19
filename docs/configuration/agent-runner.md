@@ -1,12 +1,12 @@
 # agent-runner
 
 The in-pod coding-agent runtime: one stage per Job — `investigate` or `remediate` — via the harness CLI its runner image
-bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image, `copilot -p` in the
-copilot-agent-runner image). It never talks to GitHub or the Kubernetes API, and it has no flags — configuration is
-exclusively `PATCHY_*` environment variables, injected into the Job pod by the job controllers. A claude pod holds **no
-credential of any kind**: its model traffic goes through the [egress broker](egress-broker.md), authenticated by a
-projected ServiceAccount token; a codex or copilot pod holds the one model key of its harness. Results leave the pod as
-a `PATCHY-EVENT:` JSONL stream on stdout (which is why all patchy logging goes to stderr).
+bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image). It never talks
+to GitHub or the Kubernetes API, and it has no flags — configuration is exclusively `PATCHY_*` environment variables,
+injected into the Job pod by the job controllers. A claude pod holds **no credential of any kind**: its model traffic
+goes through the [egress broker](egress-broker.md), authenticated by a projected ServiceAccount token; a codex pod holds
+the one model key of its harness. Results leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why all
+patchy logging goes to stderr).
 
 You normally never configure the agent-runner directly: the
 [investigation-controller](investigation-controller.md#stage-flags) and
@@ -80,21 +80,13 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | claude  | **None.** The broker caller token (an identity document, not a capability) is the pod's only secret material; the model credential lives with the [egress broker](egress-broker.md) |
 | codex   | `OPENAI_API_KEY` via `secretKeyRef` (`--codex-secret`; `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` when `--codex-secret-env` names one)                                                  |
-| copilot | `COPILOT_GITHUB_TOKEN` via `secretKeyRef` (`--copilot-secret`) — a GitHub token, not a model API key; `GH_TOKEN` / `GITHUB_TOKEN` when `--copilot-secret-env` names one             |
 | fake    | None — the fixture replay authenticates nothing                                                                                                                                     |
 
 At most **one** credential reaches a given pod: the Job wires the `secretKeyRef` of the harness it runs, so a codex Job
 carries only the OpenAI credential. The agent container's environment passes through to the harness CLI child process,
-so an injected key — or the brokered gateway environment — is inherited by `claude` (or `codex`, or `copilot`)
+so an injected key — or the brokered gateway environment — is inherited by `claude` (or `codex`)
 automatically. The broker caller token is registered with the transcript scrubber the same way credential values are, so
 a tool result that dumps the environment cannot leak it into a persisted transcript.
-
-The copilot rows are the exception to "no forge credential ever reaches the pod": the Copilot CLI authenticates with a
-GitHub token, so a copilot Job does carry one. It is a model credential by role, not a forge one — the runner passes
-`--disable-builtin-mcps`, so no tool in the session speaks the GitHub API, and the harness's egress policy admits only
-`api.github.com` (the token exchange) and the `*.githubcopilot.com` inference endpoints. patchy's own forge traffic is
-still controller-side only. Scope the token to Copilot with no repository permissions, and note the copilot runner ships
-disabled for exactly this reason.
 
 ## The event stream
 

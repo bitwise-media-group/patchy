@@ -57,28 +57,18 @@ To let the investigation choose OpenAI models for remediation, enable the codex 
 kubectl -n patchy-agents create secret generic patchy-openai --from-literal=api-key="$OPENAI_API_KEY"
 ```
 
-The copilot runner (`agent.runners.copilot.enabled: true` / add `copilot` to `PATCHY_HARNESSES`) is the alternative to
-both: it brokers Anthropic **and** OpenAI models, so one credential covers every model in the registry. That credential
-is a GitHub token rather than a model API key, which is why it is off by default — scope it to Copilot with no
-repository permissions (the CLI rejects classic PATs; use a fine-grained token):
-
-```sh
-kubectl -n patchy-agents create secret generic patchy-copilot --from-literal=token="$COPILOT_GITHUB_TOKEN"
-```
-
 | Secret             | Namespace       | Keys                                                 | Consumed by                                                                                                                              |
 | ------------------ | --------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `patchy-github`    | `patchy`        | `appID` + `privateKey` (or `token`), `webhookSecret` | The `Integration`/`Forge` CRs' `spec.secretRef` — read on demand through the API, never mounted                                          |
 | `patchy-anthropic` | `patchy`        | `api-key`                                            | The egress broker only — never an agent pod (an API key, or a `claude setup-token` OAuth token with `egressBroker.anthropicAuth: token`) |
 | `patchy-openai`    | `patchy-agents` | `api-key`                                            | Codex runner Job pods (`OPENAI_API_KEY`) — only when the codex runner is enabled                                                         |
-| `patchy-copilot`   | `patchy-agents` | `token`                                              | Copilot runner Job pods (`COPILOT_GITHUB_TOKEN`) — only when the copilot runner is enabled                                               |
 
 A `token` key (a personal access token) is the dev-only fallback and wins over App auth when set. One GitHub Secret may
 serve both CRs, or you can split read and write identities across two GitHub Apps and two Secrets.
 
 !!! warning "Each enabled non-brokered harness needs its credential"
 
-    A codex or copilot harness is enabled only when its credential Secret exists in the agent namespace (the
+    The codex harness is enabled only when its credential Secret exists in the agent namespace (the
     controllers validate this at startup and refuse to start otherwise); the Job builder wires that credential into the
     pod via a `secretKeyRef`. The claude harness is different: it is enabled by configuration alone — its credential
     lives with the egress broker, whose readiness probe is where a missing key surfaces. The `fake` harness (dev only)

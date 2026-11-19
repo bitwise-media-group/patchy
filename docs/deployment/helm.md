@@ -139,7 +139,7 @@ Everything else a binary binds (see the [configuration reference](../configurati
 | `agent.modelAllowlist`                   | `anthropic/claude-sonnet,anthropic/claude-opus`     | Canonical model ids or family aliases the investigation may request for remediation                                                                                                                                   |
 | `agent.investigate.*`                    | `anthropic/claude-sonnet` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)                                                                                                                                    |
 | `agent.remediate.*`                      | `anthropic/claude-sonnet` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to                                                                                                                                |
-| `agent.runners.<harness>`                | claude enabled; codex, copilot disabled             | Per-harness `enabled`/`image`; codex/copilot add `secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`, claude a `provider` block instead (brokered)                                                                 |
+| `agent.runners.<harness>`                | claude enabled; codex disabled                      | Per-harness `enabled`/`image`; codex adds `secret`/`secretKey`/`secretEnv`/`hosts`/`dnsPatterns`, claude a `provider` block instead (brokered)                                                                        |
 | `agent.runners.claude.provider`          | `name: anthropic`                                   | Which model API the egress broker fronts: `anthropic`/`bedrock`/`vertex`/`foundry` + `region`/`regionPrefix`/`projectID`/`resource`/`modelMap`/`env`                                                                  |
 | `egressBroker.*`                         | deploys when a claude runner is enabled             | The [egress credential broker](../configuration/egress-broker.md): `anthropicSecret`, `anthropicAuth` (`key`/`token`), `foundrySecret`, `serviceAccount.annotations` (workload identity), `networkPolicy.extraEgress` |
 | `agent.networkPolicy.create`             | `true`                                              | Default-deny both directions + DNS + artifact + broker + TCP-443-only egress                                                                                                                                          |
@@ -225,7 +225,7 @@ Scope the cloud role to Invoke only: `bedrock:InvokeModel*`, `aiplatform.endpoin
     namespace, upgrade the chart (the broker lands), then delete the old Secret from the agent namespace. The
     `agent.runners.claude.secret*` values are ignored (a NOTES warning fires if they are still set); if the old
     `secretEnv` was `CLAUDE_CODE_OAUTH_TOKEN`, set `egressBroker.anthropicAuth: token` so the broker sends the OAuth
-    token as a bearer. Codex and copilot are unaffected.
+    token as a bearer. Codex is unaffected.
 
 ## Operational notes
 

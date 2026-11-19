@@ -28,8 +28,8 @@ components:
 # release's images — and Renovate leaves these alone (.github/renovate.json5):
 # they are this repo's own output, not a dependency. For immutable pins, add a
 # `digest:` (`crane digest ghcr.io/...:vX.Y.Z`) in your own overlay; a digest
-# beats the tag. Keep PATCHY_CLAUDE_AGENT_IMAGE (and PATCHY_CODEX_AGENT_IMAGE /
-# PATCHY_COPILOT_AGENT_IMAGE when enabled) in configmap-patch.yaml in step:
+# beats the tag. Keep PATCHY_CLAUDE_AGENT_IMAGE (and PATCHY_CODEX_AGENT_IMAGE
+# when enabled) in configmap-patch.yaml in step:
 # kustomize rewrites container images, not ConfigMap values.
 images:
     # x-release-please-start-version
@@ -48,8 +48,6 @@ images:
     - name: ghcr.io/bitwise-media-group/patchy/claude-agent-runner
       newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/codex-agent-runner
-      newTag: v0.13.0
-    - name: ghcr.io/bitwise-media-group/patchy/copilot-agent-runner
       newTag: v0.13.0
     - name: ghcr.io/bitwise-media-group/patchy/status-server
       newTag: v0.13.0

@@ -95,7 +95,7 @@ no tokens are spent; on [Colima](../deployment/colima.md) the whole loop is `mak
 | Symptom                                    | Likely cause                                                                                                                           |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Webhook deliveries show `401`              | Webhook secret mismatch between the App and `patchy-github`, or no Integration exists                                                  |
-| Agent pods `CreateContainerConfigError`    | A non-brokered runner's credential Secret missing in `patchy-agents` (`patchy-openai` / `patchy-copilot`)                              |
+| Agent pods `CreateContainerConfigError`    | A non-brokered runner's credential Secret missing in `patchy-agents` (`patchy-openai`)                                                 |
 | Claude runs failing with broker errors     | The egress broker is not ready — check its `/readyz` (missing `patchy-anthropic` in the release namespace, or unusable cloud identity) |
 | Findings stall at `Enhanced`               | Accumulation window or `--finding-min-age` not elapsed — check `kubectl describe finding` timestamps                                   |
 | `ForgeResolved: False`                     | No Forge matches the repository (`NoForgeMatch`), or two match equally (`Ambiguous`)                                                   |

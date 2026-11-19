@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
-	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/provider"
 )
@@ -69,7 +68,7 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 			// (with a migration notice), never validated against channels.
 			name: "claude tolerates a stale secret env",
 			args: []string{"--claude-agent-image", "claude:1", "--broker-url", "http://broker:8080",
-				"--claude-secret-env", "COPILOT_GITHUB_TOKEN"},
+				"--claude-secret-env", "OPENAI_API_KEY"},
 			wantEnv: map[string]string{"claude": ""},
 		},
 		{
@@ -88,31 +87,6 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 			args: []string{"--codex-agent-image", "codex:1",
 				"--codex-secret-env", "CODEX_API_KEY"},
 			wantEnv: map[string]string{"codex": "CODEX_API_KEY"},
-		},
-		{
-			name:    "copilot defaults to the copilot github token",
-			args:    []string{"--copilot-agent-image", "copilot:1"},
-			wantEnv: map[string]string{"copilot": "COPILOT_GITHUB_TOKEN"},
-		},
-		{
-			// copilot authenticates with a GitHub token, so the gh CLI's own
-			// variable names are legitimate channels for it — and only for it.
-			name: "copilot accepts the gh token",
-			args: []string{"--copilot-agent-image", "copilot:1",
-				"--copilot-secret-env", "GH_TOKEN"},
-			wantEnv: map[string]string{"copilot": "GH_TOKEN"},
-		},
-		{
-			name: "copilot accepts the github token",
-			args: []string{"--copilot-agent-image", "copilot:1",
-				"--copilot-secret-env", "GITHUB_TOKEN"},
-			wantEnv: map[string]string{"copilot": "GITHUB_TOKEN"},
-		},
-		{
-			name: "copilot rejects a model api key",
-			args: []string{"--copilot-agent-image", "copilot:1",
-				"--copilot-secret-env", "ANTHROPIC_API_KEY"},
-			wantErrs: []string{"--copilot-secret-env", "ANTHROPIC_API_KEY", "COPILOT_GITHUB_TOKEN"},
 		},
 		{
 			name: "codex rejects a claude channel",
@@ -291,29 +265,6 @@ func TestChartSecretEnvEnumMatchesHarnesses(t *testing.T) {
 	}
 }
 
-// TestRunnersCopilotCredentialDefaults pins the copilot runner's defaults. They
-// deliberately differ from the vendor-native runners: the Secret is named for
-// the harness rather than a vendor because the credential is a GitHub token,
-// and its key is "token" for the same reason.
-func TestRunnersCopilotCredentialDefaults(t *testing.T) {
-	runners, err := Runners(newOpts(t, "--copilot-agent-image", "copilot:1"))
-	if err != nil {
-		t.Fatalf("Runners: %v", err)
-	}
-	copilot := runners["copilot"]
-	want := jobs.Runner{
-		Image:     "copilot:1",
-		Secret:    "patchy-copilot",
-		SecretKey: "token",
-		SecretEnv: "COPILOT_GITHUB_TOKEN",
-	}
-	if copilot.Image != want.Image || copilot.Secret != want.Secret ||
-		copilot.SecretKey != want.SecretKey || copilot.SecretEnv != want.SecretEnv ||
-		copilot.Brokered || copilot.Env != nil {
-		t.Errorf("copilot runner = %+v, want %+v", copilot, want)
-	}
-}
-
 // TestResolveFoundryCoverage: foundry has no derivable model ids, so a model
 // the allowlist (or a stage default) lets claude run without a map entry must
 // fail at startup — the alternative is a mid-run failure with a deployment
@@ -435,11 +386,11 @@ func TestResolveBedrockAliasAndPattern(t *testing.T) {
 		[]string{"anthropic/claude-sonnet"}, "anthropic/claude-opus"); err != nil {
 		t.Fatalf("Resolve(raw aliases): %v", err)
 	}
-	if h, cliID, err := ResolveHarness("anthropic/claude-opus-6", []string{"claude", "copilot"}); err != nil ||
+	if h, cliID, err := ResolveHarness("anthropic/claude-opus-6", []string{"claude", "codex"}); err != nil ||
 		h != "claude" || cliID != "claude-opus-6" {
 		t.Errorf("ResolveHarness(pattern) = %q, %q, %v; want claude, claude-opus-6", h, cliID, err)
 	}
-	if _, _, err := ResolveHarness("anthropic/claude-opus-6", []string{"copilot"}); err == nil {
+	if _, _, err := ResolveHarness("anthropic/claude-opus-6", []string{"codex"}); err == nil {
 		t.Error("pattern model resolved without the claude harness enabled")
 	}
 }

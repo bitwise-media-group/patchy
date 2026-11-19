@@ -6,8 +6,8 @@ ServiceAccount token, and the broker injects or signs the real model credential 
 providers work: Amazon Bedrock, GCP Vertex AI, and Microsoft Foundry each get a route the claude CLI's documented
 gateway mode points at, with the broker holding the cloud identity that authenticates the provider-native requests.
 
-There is no in-pod credential mode for claude — claude-without-broker is not a configuration. The codex and copilot
-runners (both disabled by default) keep their in-pod Secret channels; brokering them is future work.
+There is no in-pod credential mode for claude — claude-without-broker is not a configuration. The codex runner
+(disabled by default) keeps its in-pod Secret channel; brokering it is future work.
 
 ## How a request flows
 
@@ -100,7 +100,7 @@ Invoke-class permissions only — the broker needs to call models, never to mana
 
 ## Known limitations
 
-- Codex and copilot remain in-pod-credentialed (both ship disabled); routing them through the broker is a follow-up.
+- Codex remains in-pod-credentialed (it ships disabled); routing it through the broker is a follow-up.
 - Per-job budget metering at the broker is future work — budgets are enforced in-pod from the harness's streamed usage.
 - Bedrock/Vertex runs may report no `total_cost_usd`; cost accounting then falls back to the registry's first-party
   rates, which approximates provider pricing.

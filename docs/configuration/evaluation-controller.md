@@ -39,7 +39,6 @@ The [shared flags](index.md#shared-flags-all-five-controllers) (`--listen-addr` 
 | `--internal-upload-token-file` | `PATCHY_INTERNAL_UPLOAD_TOKEN_FILE` | _(unset)_                     | Shared bearer token for the internal blob endpoint (defense-in-depth atop NetworkPolicy)   |
 | `--evolve-claude-image`        | `PATCHY_EVOLVE_CLAUDE_IMAGE`        | _(unset)_                     | evolve-runner image with the claude CLI; unset disables the claude evaluation runner       |
 | `--evolve-codex-image`         | `PATCHY_EVOLVE_CODEX_IMAGE`         | _(unset)_                     | evolve-runner image with the codex CLI                                                     |
-| `--evolve-copilot-image`       | `PATCHY_EVOLVE_COPILOT_IMAGE`       | _(unset)_                     | evolve-runner image with the copilot CLI                                                   |
 | `--evolve-fake-image`          | `PATCHY_EVOLVE_FAKE_IMAGE`          | _(unset)_                     | Fake evolve runner for dev/e2e (replays fixtures, no credential)                           |
 | `--harnesses`                  | `PATCHY_HARNESSES`                  | _(auto)_                      | Restrict enabled harnesses (default: any configured runner whose credential Secret exists) |
 

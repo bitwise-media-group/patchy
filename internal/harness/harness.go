@@ -114,8 +114,7 @@ type UsageScanner interface {
 // the status page replays. A harness without it simply produces no transcript.
 //
 // Each CLI's stream is shaped differently — claude nests content blocks under
-// an assistant message, codex flattens them into typed items, copilot emits one
-// event per message — so normalising here is the only place the difference can
+// an assistant message, codex flattens them into typed items — so normalising here is the only place the difference can
 // be absorbed once.
 type TurnScanner interface {
 	// ScanTurns returns the turns one stream line carries, in order, or nil
@@ -129,7 +128,7 @@ type TurnScanner interface {
 
 // All returns the builtin harness set.
 func All() []Harness {
-	return []Harness{NewClaude(), NewCodex(), NewCopilot(), NewFake()}
+	return []Harness{NewClaude(), NewCodex(), NewFake()}
 }
 
 // ByID returns the builtin harness with the given id, if any.

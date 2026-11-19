@@ -16,10 +16,7 @@ data:
     # from the model) the investigation may choose between. Only the claude
     # runner is enabled here; add `codex` to
     # PATCHY_HARNESSES and OpenAI models to the allowlist to let the
-    # investigation choose them. Adding `copilot` instead makes every
-    # allowlisted model runnable through one credential — but that credential is
-    # a GitHub token rather than a model API key, so read the note on
-    # PATCHY_COPILOT_SECRET in the base ConfigMap before enabling it in prod.
+    # investigation choose them.
     PATCHY_HARNESSES: claude
     PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet
     PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet
@@ -40,6 +37,5 @@ data:
     # kustomization.yaml's `images:` block — this string is copied verbatim
     # into every claude Job the controllers create, and kustomize does not
     # rewrite ConfigMap values. release-please bumps both. (Pin
-    # PATCHY_CODEX_AGENT_IMAGE / PATCHY_COPILOT_AGENT_IMAGE too when those
-    # runners are enabled.)
+    # PATCHY_CODEX_AGENT_IMAGE too when that runner is enabled.)
     PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.13.0 # x-release-please-version

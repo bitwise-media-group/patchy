@@ -115,56 +115,22 @@ func TestCodexModel(t *testing.T) {
 	}
 }
 
-// TestCopilotSupport pins Copilot's role in the registry: it brokers both
-// vendors, so every model it serves must name it as a supported harness, and
-// it must never be a model's Preferred — a vendor-native harness always wins
-// when both are enabled. It also guards the id divergence Supported exists to
-// record: Copilot spells Anthropic point releases with a dot. An empty
-// expectation means Copilot does not serve the model (Mythos: verified
-// organizations only).
-func TestCopilotSupport(t *testing.T) {
-	wantCLIID := map[string]string{
-		"anthropic/claude-haiku-5-5":  "claude-haiku-5.5",
-		"anthropic/claude-sonnet-5-5": "claude-sonnet-5.5",
-		"anthropic/claude-opus-5-5":   "claude-opus-5.5",
-		"anthropic/claude-fable-5-2":  "claude-fable-5.2",
-		"anthropic/claude-mythos-5-2": "",
-		"anthropic/claude-haiku-4-5":  "claude-haiku-4.5",
-		"anthropic/claude-sonnet-5":   "claude-sonnet-5",
-		"anthropic/claude-opus-5":     "claude-opus-5",
-		"anthropic/claude-fable-5":    "claude-fable-5",
-		"openai/gpt-5.3-codex":        "gpt-5.3-codex",
-		"openai/gpt-5.6-luna":         "gpt-5.6-luna",
-		"openai/gpt-5.6-terra":        "gpt-5.6-terra",
-		"openai/gpt-5.6-sol":          "gpt-5.6-sol",
-	}
-	models := builtins()
-	if len(models) != len(wantCLIID) {
-		t.Fatalf("registry has %d models, the copilot expectations cover %d — update both together",
-			len(models), len(wantCLIID))
-	}
-	for _, m := range models {
-		want, listed := wantCLIID[m.ID]
-		if !listed {
-			t.Errorf("model %q has no copilot expectation", m.ID)
-			continue
-		}
-		id, ok := m.CLIModelID(HarnessCopilot)
-		if want == "" {
-			if ok {
-				t.Errorf("model %q is supported by copilot as %q, want unsupported", m.ID, id)
-			}
-			continue
-		}
+// TestFirstPartyOnly pins the registry to first-party coding agents: every
+// model is supported by exactly its vendor's own harness and nothing else, so
+// no third-party broker can quietly widen which harness runs a model.
+func TestFirstPartyOnly(t *testing.T) {
+	native := map[string]string{ProviderAnthropic: HarnessClaude, ProviderOpenAI: HarnessCodex}
+	for _, m := range builtins() {
+		want, ok := native[m.ProviderID]
 		if !ok {
-			t.Errorf("model %q is not supported by copilot", m.ID)
+			t.Errorf("model %q has provider %q with no first-party harness", m.ID, m.ProviderID)
 			continue
 		}
-		if id != want {
-			t.Errorf("model %q copilot CLI id = %q, want %q", m.ID, id, want)
+		if m.Preferred != want {
+			t.Errorf("model %q Preferred = %q, want %q", m.ID, m.Preferred, want)
 		}
-		if m.Preferred == HarnessCopilot {
-			t.Errorf("model %q prefers copilot, want its vendor-native harness", m.ID)
+		if got := m.SupportedHarnessIDs(); len(got) != 1 || got[0] != want {
+			t.Errorf("model %q supported harnesses = %v, want [%s]", m.ID, got, want)
 		}
 	}
 }

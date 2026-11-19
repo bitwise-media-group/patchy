@@ -81,17 +81,13 @@ agent.runners.<harness>.image.
 {{- if $r.enabled }}
 {{- $enabled = append $enabled $id }}
 {{- $_ := set $data (printf "PATCHY_%s_AGENT_IMAGE" (upper $id)) (include "patchy.image" (dict "root" $ "binary" (printf "%s-agent-runner" $id) "image" $r.image)) }}
-{{- if eq $id "claude" }}
+{{- if has $id (splitList " " (include "patchy.brokeredHarnesses" $)) }}
 {{/*
-Claude is brokered: the broker URL + provider stamps replace the
-PATCHY_CLAUDE_SECRET* keys — no model credential exists in the agent
-namespace for claude anymore.
+Claude and codex are brokered: the broker URL + provider stamps replace the
+PATCHY_<HARNESS>_SECRET* keys — no model credential exists in the agent
+namespace anymore.
 */}}
-{{- $_ := include "patchy.claudeProviderData" (dict "root" $ "data" $data) }}
-{{- else if $r.secret }}
-{{- $_ := set $data (printf "PATCHY_%s_SECRET" (upper $id)) $r.secret }}
-{{- $_ := set $data (printf "PATCHY_%s_SECRET_KEY" (upper $id)) $r.secretKey }}
-{{- $_ := set $data (printf "PATCHY_%s_SECRET_ENV" (upper $id)) $r.secretEnv }}
+{{- $_ := include "patchy.providerData" (dict "root" $ "data" $data "id" $id) }}
 {{- end }}
 {{- end }}
 {{- end }}

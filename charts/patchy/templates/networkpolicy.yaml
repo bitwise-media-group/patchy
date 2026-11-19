@@ -206,9 +206,9 @@ spec:
               - protocol: TCP
                 port: 9790
         {{- if include "patchy.brokerEnabled" . }}
-        # The egress credential broker: ALL of a claude pod's model traffic.
-        # With claude brokered its pods need no other egress at all — not
-        # even api.anthropic.com.
+        # The egress credential broker: ALL of a claude or codex pod's model
+        # traffic. Brokered pods need no other egress at all — not even
+        # api.anthropic.com or api.openai.com.
         - to:
               - namespaceSelector:
                     matchLabels:

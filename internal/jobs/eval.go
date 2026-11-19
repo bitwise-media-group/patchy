@@ -225,15 +225,36 @@ func (c *Client) evalPrepareContainer(runner Runner, spec EvalSpec, res corev1.R
 
 // evalBrokeredCommand wraps evolve exec-unit so the caller token reaches the
 // CLI: eval pods run no patchy binary that could set the header per-request,
-// so the wrapper captures the projected token into ANTHROPIC_CUSTOM_HEADERS
-// once at start (the token TTL is sized past the deadline for exactly this).
-// /bin/sh is already an image requirement — the prepare script runs it. On the
-// first-party route it also exports the non-secret auth placeholder the CLI
-// needs before it will send anything (provider.BrokerAuthPlaceholder).
+// so the wrapper captures the projected token once at start (the token TTL is
+// sized past the deadline for exactly this). /bin/sh is already an image
+// requirement — the prepare script runs it.
+//
+// claude: the token goes into ANTHROPIC_CUSTOM_HEADERS, and on the
+// first-party route the wrapper also exports the non-secret auth placeholder
+// the CLI needs before it will send anything (provider.BrokerAuthPlaceholder).
+//
+// codex: the wrapper writes the rendered config.toml (the gateway env's
+// provider.CodexConfigEnv) where the CLI reads it, then exports the token and
+// placeholder under the env names that config's broker provider reads — the
+// same thing agentrun does per stage for finding runs.
 var evalBrokeredCommand = []string{"/bin/sh", "-c",
 	`export ANTHROPIC_CUSTOM_HEADERS="` + provider.BrokerTokenHeader + `: $(cat ` + brokerTokenPath +
 		`)"; [ -z "$ANTHROPIC_BASE_URL" ] || export ` + provider.BrokerAuthPlaceholderEnv + `=` +
 		provider.BrokerAuthPlaceholder + `; exec evolve exec-unit`}
+
+var evalBrokeredCodexCommand = []string{"/bin/sh", "-c",
+	`d="${CODEX_HOME:-$HOME/.codex}" && mkdir -p "$d" && printf '%s' "$` + provider.CodexConfigEnv +
+		`" > "$d/config.toml" && export ` + provider.BrokerTokenEnv + `="$(cat ` + brokerTokenPath + `)" ` +
+		provider.CodexPlaceholderKeyEnv + `=` + provider.BrokerAuthPlaceholder + ` && exec evolve exec-unit`}
+
+// evalBrokeredCommandFor picks the wrapper for a brokered runner: the codex
+// one when its gateway env carries a rendered codex config.
+func evalBrokeredCommandFor(runner Runner) []string {
+	if runner.Env[provider.CodexConfigEnv] != "" {
+		return evalBrokeredCodexCommand
+	}
+	return evalBrokeredCommand
+}
 
 // evalAgentContainer runs the in-pod evolve client. The pod IS the sandbox:
 // a non-brokered runner's only credential is the model key, injected through
@@ -257,7 +278,7 @@ func (c *Client) evalAgentContainer(runner Runner, res corev1.ResourceRequiremen
 	}
 	switch {
 	case runner.Brokered:
-		command = evalBrokeredCommand
+		command = evalBrokeredCommandFor(runner)
 		mounts = append(mounts, corev1.VolumeMount{Name: volBrokerToken, MountPath: brokerTokenDir, ReadOnly: true})
 	case runner.Secret != "":
 		env = append(env, corev1.EnvVar{

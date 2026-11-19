@@ -62,7 +62,8 @@ type Config struct {
 	// MaxRequestBytes caps a buffered request body (BufferBody routes).
 	MaxRequestBytes int64
 	// Upstreams is the route table, keyed by path prefix
-	// ("anthropic"/"bedrock"/"vertex"/"foundry").
+	// ("anthropic"/"bedrock"/"vertex"/"foundry" for claude,
+	// "openai"/"azure" for codex).
 	Upstreams map[string]Upstream
 }
 

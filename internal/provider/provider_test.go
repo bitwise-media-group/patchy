@@ -292,3 +292,105 @@ func TestModelMapCodec(t *testing.T) {
 		t.Error("empty canonical id accepted")
 	}
 }
+
+func TestValidateCodex(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{"openai ok", Config{Harness: model.HarnessCodex, Name: OpenAI, BrokerURL: broker}, ""},
+		{"azure ok", Config{Harness: model.HarnessCodex, Name: Azure, BrokerURL: broker}, ""},
+		{"claude provider", Config{Harness: model.HarnessCodex, Name: Anthropic, BrokerURL: broker},
+			"codex provider"},
+		{"no broker url", Config{Harness: model.HarnessCodex, Name: OpenAI}, "codex runs proxy-only"},
+		{"control character in url", Config{Harness: model.HarnessCodex, Name: OpenAI,
+			BrokerURL: broker + "\n[x]"}, "control character"},
+		{"codex credential extra env", Config{Harness: model.HarnessCodex, Name: OpenAI, BrokerURL: broker,
+			ExtraEnv: map[string]string{"CODEX_API_KEY": "sk"}}, "cannot be set here"},
+		{"codex config extra env", Config{Harness: model.HarnessCodex, Name: OpenAI, BrokerURL: broker,
+			ExtraEnv: map[string]string{CodexConfigEnv: "x"}}, "cannot be set here"},
+		{"fake cannot be brokered", Config{Harness: model.HarnessFake, Name: OpenAI, BrokerURL: broker},
+			"cannot be brokered"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() = %v, want error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestCodexEnv: a codex runner's gateway env is the rendered config.toml plus
+// the model map and passthrough — none of claude's env.
+func TestCodexEnv(t *testing.T) {
+	cfg := Config{Harness: model.HarnessCodex, Name: Azure, BrokerURL: broker + "/",
+		ExtraEnv: map[string]string{"HTTPS_PROXY": "http://proxy"}}
+	env := Env(cfg, map[string]string{"openai/gpt-5.3-codex": "codex-deploy"})
+	want := map[string]string{
+		CodexConfigEnv:     CodexConfig(cfg),
+		"PATCHY_MODEL_MAP": "openai/gpt-5.3-codex=codex-deploy",
+		"HTTPS_PROXY":      "http://proxy",
+	}
+	if !maps.Equal(env, want) {
+		t.Errorf("Env() = %v, want %v", env, want)
+	}
+}
+
+func TestCodexConfig(t *testing.T) {
+	got := CodexConfig(Config{Harness: model.HarnessCodex, Name: OpenAI, BrokerURL: broker + "/"})
+	for _, want := range []string{
+		`model_provider = "patchy-broker"`,
+		"check_for_update_on_startup = false",
+		"[analytics]\nenabled = false",
+		"[model_providers.patchy-broker]",
+		`base_url = "` + broker + `/openai/v1"`,
+		`wire_api = "responses"`,
+		`env_key = "` + CodexPlaceholderKeyEnv + `"`,
+		`env_http_headers = { "` + BrokerTokenHeader + `" = "` + BrokerTokenEnv + `" }`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("CodexConfig() missing %q:\n%s", want, got)
+		}
+	}
+	if got := tomlString(`a"b\c`); got != `"a\"b\\c"` {
+		t.Errorf("tomlString = %s", got)
+	}
+}
+
+// TestCodexEffectiveModelMapAndCoverage: openai needs no map (registry ids
+// are codex's ids); azure is operator-written and must cover every codex
+// model it will run, ignoring claude's.
+func TestCodexEffectiveModelMapAndCoverage(t *testing.T) {
+	models := model.Builtins()
+	required := []string{"openai/gpt-5.3-codex", "openai/gpt-5.6-sol", "anthropic/claude-sonnet-5-5"}
+
+	openai := Config{Harness: model.HarnessCodex, Name: OpenAI, BrokerURL: broker}
+	mm, err := EffectiveModelMap(openai, models)
+	if err != nil || len(mm) != 0 {
+		t.Fatalf("openai EffectiveModelMap = %v, %v; want empty", mm, err)
+	}
+	if err := ValidateCoverage(openai, models, mm, required); err != nil {
+		t.Errorf("openai coverage: %v", err)
+	}
+
+	azure := Config{Harness: model.HarnessCodex, Name: Azure, BrokerURL: broker,
+		ModelMap: map[string]string{"openai/gpt-5.3-codex": "codex-deploy"}}
+	mm, err = EffectiveModelMap(azure, models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ValidateCoverage(azure, models, mm, required)
+	if err == nil || !strings.Contains(err.Error(), "openai/gpt-5.6-sol") ||
+		strings.Contains(err.Error(), "claude") {
+		t.Errorf("azure coverage error = %v, want only the uncovered codex model", err)
+	}
+}

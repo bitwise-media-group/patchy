@@ -6,20 +6,16 @@
 # What this adds over base/networkpolicy.yaml: hostname matching. A plain
 # NetworkPolicy can only say "TCP 443 to the internet"; REGISTRY_ONLY makes
 # the sidecar drop any outbound connection whose destination is not in the
-# mesh registry, and the only registry entries visible to this namespace are
-# the api.anthropic.com ServiceEntry beside this file plus the patchy
-# namespace's Services (source-controller's artifact server). TLS is not
-# terminated — the proxy matches the SNI in the client hello against those
-# hosts and passes the bytes through or blackholes them.
+# mesh registry, and the only registry entries visible to the agent pods are
+# the patchy namespace's Services (source-controller's artifact server and the
+# egress broker). There is no ServiceEntry at all: every runner patchy ships
+# is brokered (claude, codex), so no agent pod has an external host to allow.
 #
-# WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
-#
-# One Sidecar per harness, scoped by the patchy.bitwisemedia.uk/harness label,
-# each permitting only its own model host (plus the patchy namespace's Services
-# for the artifact fetch) — so a claude pod cannot reach api.openai.com and a
-# codex pod cannot reach api.anthropic.com even though both ServiceEntries are
-# registered in the namespace. The codex Sidecar is inert until that runner is
-# enabled (no pod carries the label otherwise).
+# One Sidecar per harness, scoped by the patchy.bitwisemedia.uk/harness label.
+# A non-brokered runner added later would get a ServiceEntry for its model API
+# (exportTo: ".", MESH_EXTERNAL, TLS 443) listed in its own Sidecar only. The
+# codex Sidecar is inert until that runner is enabled (no pod carries the
+# label otherwise).
 #
 # WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
 #
@@ -77,6 +73,6 @@ spec:
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
+        # Brokered codex, like claude: only the patchy namespace's Services.
         - hosts:
-              - ./api.openai.com
               - patchy/*

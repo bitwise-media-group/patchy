@@ -105,8 +105,8 @@ agent names a model with — the allowlist, the stage defaults, the investigatio
 The harness that runs a model is then _derived_: `harness.ResolveModel` picks the model's preferred harness when it is
 enabled, so an OpenAI model routes to codex and an Anthropic model to claude. Every builtin model names exactly its
 vendor's harness; the set shape remains so a harness whose CLI ids diverge from the vendor's can be recorded without
-changing the type. Adding a model (or teaching an existing
-harness a new one) is a registry edit; adding a whole new provider is a new harness plus its registry entries.
+changing the type. Adding a model (or teaching an existing harness a new one) is a registry edit; adding a whole new
+provider is a new harness plus its registry entries.
 
 Ids resolve in three tiers (`model.Resolve`): an exact registered id; a **family alias** (`anthropic/claude-opus`),
 which resolves to the newest registered version of that family; and a **pattern** id — a well-formed
@@ -119,15 +119,15 @@ rollups still need their pricing. Every Anthropic builtin's bare id must parse a
 
 Each harness has its own **runner image** (`claude-agent-runner`, `codex-agent-runner`) bundling just that CLI, and its
 own egress network policy. The remediation controller resolves the investigation's chosen model to a harness _before_
-launching, so the Job runs the matching image under the matching policy. A claude pod holds no credential and reaches
-only cluster-local hosts — its model traffic goes through the egress broker, which injects the credential outbound —
-while a codex pod carries its one model key and reaches only `api.openai.com`. Which harnesses a deployment enables is
-configuration (`--harnesses`; codex additionally needs its credential Secret to exist); startup fails unless every
-allowlisted model has an enabled harness that can run it.
+launching, so the Job runs the matching image under the matching policy. Claude and codex pods alike hold no credential
+and reach only cluster-local hosts — their model traffic goes through the egress broker, which injects the credential
+outbound (claude via its CLI's base-URL env, codex via a rendered `config.toml` model provider). Which harnesses a
+deployment enables is configuration (`--harnesses`, or every harness whose runner image is set); startup fails unless
+every allowlisted model has an enabled harness that can run it.
 
 The `codex` harness runs `codex exec --json` with codex's own sandbox disabled — patchy confines the agent at the pod
-layer (no network beyond the model API, no credentials), so the CLI's kernel sandbox is redundant there. Codex has no
-equivalents for the tool allow/deny grammar or a turn ceiling; the wall-clock timeout and output-token budget are
+layer (no network beyond the egress broker, no credentials), so the CLI's kernel sandbox is redundant there. Codex has
+no equivalents for the tool allow/deny grammar or a turn ceiling; the wall-clock timeout and output-token budget are
 enforced by the runner as usual, though codex reports usage only per completed turn, so the budget cannot fire mid-turn.
 Codex reports token usage but not cost, so the rollup prices its tokens from the model registry's published rates.
 

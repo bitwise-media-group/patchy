@@ -218,3 +218,92 @@ func TestFromEnvResolvesModelAliases(t *testing.T) {
 		t.Errorf("ModelAllowlist = %v, want %v", cfg.ModelAllowlist, want)
 	}
 }
+
+// TestCodexBrokerEnv: a brokered codex stage writes the rendered config.toml
+// into CODEX_HOME and carries the fresh caller token and the placeholder
+// under the env names that config's provider reads — no claude env.
+func TestCodexBrokerEnv(t *testing.T) {
+	ws := newWorkspace(t)
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("codex-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	cfg := newConfig(t, ws, &out)
+	cfg.InvestigateHarness = model.HarnessCodex
+	cfg.BrokerTokenFile = tokenFile
+	cfg.CodexHome = filepath.Join(t.TempDir(), "codex-home")
+	cfg.CodexConfig = "model_provider = \"patchy-broker\"\n"
+	fx := &fakeExec{steps: []step{{ws: ws, stdout: "{}"}}}
+	agent := New(cfg, fx)
+	if err := agent.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(fx.specs) != 1 {
+		t.Fatalf("stages run = %d, want 1", len(fx.specs))
+	}
+	env := fx.specs[0].Env
+	for _, want := range []string{
+		provider.BrokerTokenEnv + "=codex-token",
+		provider.CodexPlaceholderKeyEnv + "=" + provider.BrokerAuthPlaceholder,
+	} {
+		if !slices.Contains(env, want) {
+			t.Errorf("stage env = %v, want it to contain %q", env, want)
+		}
+	}
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "ANTHROPIC_") {
+			t.Errorf("codex stage carries claude env %q", kv)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(cfg.CodexHome, "config.toml"))
+	if err != nil || string(raw) != cfg.CodexConfig {
+		t.Errorf("config.toml = %q, %v; want the rendered config", raw, err)
+	}
+	if !slices.Contains(agent.scrub, "codex-token") {
+		t.Errorf("scrub values = %v, want the raw token registered", agent.scrub)
+	}
+}
+
+// A brokered codex pod without its rendered config would send traffic to
+// codex's built-in provider (no route, no credential); fail the stage.
+func TestCodexBrokerEnvRequiresConfig(t *testing.T) {
+	ws := newWorkspace(t)
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("tok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	cfg := newConfig(t, ws, &out)
+	cfg.InvestigateHarness = model.HarnessCodex
+	cfg.BrokerTokenFile = tokenFile
+	fx := &fakeExec{}
+	if err := New(cfg, fx).Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	evs := events(t, out.String())
+	if len(evs) != 1 || evs[0].Investigation == nil ||
+		evs[0].Investigation.Outcome != envelope.OutcomeRuntimeError ||
+		!strings.Contains(evs[0].Investigation.Detail, "PATCHY_CODEX_CONFIG") {
+		t.Fatalf("events = %+v, want a runtime error naming PATCHY_CODEX_CONFIG", evs)
+	}
+}
+
+func TestFromEnvCodexHome(t *testing.T) {
+	env := map[string]string{
+		"PATCHY_REPO": "acme/shop", "PATCHY_FINDING": "f", "HOME": "/workspace",
+		"PATCHY_CODEX_CONFIG": "x = 1",
+	}
+	cfg, err := FromEnv(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CodexHome != "/workspace/.codex" || cfg.CodexConfig != "x = 1" {
+		t.Errorf("CodexHome, CodexConfig = %q, %q", cfg.CodexHome, cfg.CodexConfig)
+	}
+	env["CODEX_HOME"] = "/tmp/codex"
+	if cfg, _ = FromEnv(func(k string) string { return env[k] }); cfg.CodexHome != "/tmp/codex" {
+		t.Errorf("CodexHome = %q, want $CODEX_HOME", cfg.CodexHome)
+	}
+}

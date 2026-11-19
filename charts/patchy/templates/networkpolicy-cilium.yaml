@@ -4,16 +4,17 @@
 # Defence in depth for the agent sandbox on Cilium CNIs: FQDN matching on top
 # of the base "TCP 443 anywhere" NetworkPolicy. Requires Cilium with
 # DNS-based policy enabled (the DNS proxy). One policy is rendered per enabled
-# runner, selecting that harness's pods by their harness label, so a claude pod
-# may reach only api.anthropic.com and a codex pod only api.openai.com.
+# runner, selecting that harness's pods by their harness label. The brokered
+# runners (claude, codex) reach no external host at all — only the egress
+# broker; a non-brokered runner reaches only its own model API.
 #
 # Each runner's pods need exactly two destinations:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
 #     container's credential-less, digest-verified tarball fetch. No forge
 #     host appears in this policy at all — the pod never talks to GitHub.
-#   * the runner's own model API (agent.runners.<harness>.hosts): the agent
-#     container's harness CLI.
+#   * the egress broker (brokered runners) or the runner's own model API
+#     (agent.runners.<harness>.hosts): the agent container's harness CLI.
 #
 # If your CNI is not Cilium, leave this disabled; the base NetworkPolicy
 # still applies and is the floor. See deploy/kustomize/components/cilium.
@@ -33,6 +34,7 @@
 {{- if and .Values.agent.networkPolicy.create (eq (include "patchy.egressMode" .) "cilium") }}
 {{- $root := . }}
 {{- $clusterDNS := .Values.agent.networkPolicy.clusterDNSPatterns | default list }}
+{{- $brokered := splitList " " (include "patchy.brokeredHarnesses" .) }}
 {{- range $id, $r := .Values.agent.runners }}
 {{- if $r.enabled }}
 ---
@@ -82,12 +84,12 @@ spec:
                     - port: "9790"
                       protocol: TCP
 
-        {{- if eq $id "claude" }}
-        # Brokered claude: the agent container's ONLY destination is the
-        # egress credential broker — a cluster-local endpoint, so this policy
-        # carries no toFQDNs at all. The DNS rule above resolves only the
-        # cluster-local names (clusterDNSPatterns); no external name resolves
-        # from a claude pod, period.
+        {{- if has $id $brokered }}
+        # Brokered (claude, codex): the agent container's ONLY destination is
+        # the egress credential broker — a cluster-local endpoint, so this
+        # policy carries no toFQDNs at all. The DNS rule above resolves only
+        # the cluster-local names (clusterDNSPatterns); no external name
+        # resolves from a brokered pod, period.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: {{ $root.Release.Namespace }}

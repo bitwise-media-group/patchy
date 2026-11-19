@@ -110,10 +110,11 @@ across the estate.
   concurrency, aging against starvation), agent Job execution, changeset push + pull request (the only holder of
   a forge write credential), and the rollup/TTL loop.
 - **agent-runner** — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`), reports
-  as `PATCHY-EVENT:` JSONL on stdout. Never talks to GitHub or the Kubernetes API; a claude pod holds no
-  credential at all (model traffic authenticates at the egress broker), a codex pod only its model key.
-- **egress-broker** — the egress credential broker: the reverse proxy all claude model traffic goes through
-  (Anthropic, Amazon Bedrock, GCP Vertex AI, Microsoft Foundry). Validates each agent pod's audience-bound
+  as `PATCHY-EVENT:` JSONL on stdout. Never talks to GitHub or the Kubernetes API; a claude or codex pod
+  holds no credential at all (model traffic authenticates at the egress broker).
+- **egress-broker** — the egress credential broker: the reverse proxy all claude and codex model traffic goes
+  through (Anthropic, Amazon Bedrock, GCP Vertex AI, Microsoft Foundry for claude; OpenAI and Azure OpenAI for
+  codex). Validates each agent pod's audience-bound
   projected ServiceAccount token via TokenReview, then injects or signs the model credential outbound — the one
   place model credentials and cloud workload identity live. Not a controller: no reconcilers, no leases.
 
@@ -133,12 +134,10 @@ enforced by `SetPhase`.
 
 The agent pod is the least-trusted component and holds **no credential of any kind** — not even in the init
 container, and for the default (claude) runner not even a model key. The repository arrives as a digest-verified
-tarball from source-controller over the cluster network; claude model traffic goes through the egress credential
-broker, authenticated by an audience-bound projected ServiceAccount token — an identity document, not a
-capability — so the broker (a trusted Deployment) is where the model credential or cloud workload identity
-lives, and claude egress collapses to DNS + the artifact server + the broker, all cluster-local. The optional
-non-brokered runner (codex) still carries its one model key, with NetworkPolicies (plus optional
-Cilium FQDN / Istio allowlists) restricting its egress to its model API. All GitHub side effects — issue
+tarball from source-controller over the cluster network; claude and codex model traffic goes through the egress
+credential broker, authenticated by an audience-bound projected ServiceAccount token — an identity document, not
+a capability — so the broker (a trusted Deployment) is where the model credential or cloud workload identity
+lives, and agent egress collapses to DNS + the artifact server + the broker, all cluster-local. All GitHub side effects — issue
 projection, alert dismissal, branch push, pull requests — happen controller-side with short-lived,
 per-repository scoped tokens.
 
@@ -155,8 +154,8 @@ schedules units through the agent-Job machinery with bounded concurrency, parses
 stdout stream, stamps bounded summaries onto unit statuses, and stores each unit's opaque results entry in a
 per-unit ConfigMap that evolve reassembles into its local results files. Finished evaluations expire on a TTL.
 
-The isolation model is unchanged: no credential of any kind in the pod (brokered claude authenticates at the
-egress broker; the non-brokered runners carry only their model key), the workspace
+The isolation model is unchanged: no credential of any kind in the pod (brokered claude and codex authenticate
+at the egress broker), the workspace
 arrives as a digest-verified tarball, and the per-harness egress policies apply to evaluation Jobs exactly as
 to finding runs. Submitters authenticate with OIDC bearer tokens (`evolve login`, PKCE, no client secret) and
 are authorized by RBAC alone — native create/get/delete on the `evaluations` resource.

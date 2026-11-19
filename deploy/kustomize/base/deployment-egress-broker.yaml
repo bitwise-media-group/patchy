@@ -1,17 +1,20 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 ---
-# The egress credential broker: the reverse proxy ALL claude model traffic
-# goes through. Agent pods authenticate with an audience-bound projected
-# ServiceAccount token; the broker validates it via TokenReview and injects
-# or signs the model credential outbound (Anthropic API key, Bedrock SigV4,
-# Vertex OAuth, Foundry key/Entra). The model credential therefore lives
-# HERE, in the patchy namespace, and a claude agent pod holds no credential
-# of any kind. Not a controller: no reconcilers, no leases.
+# The egress credential broker: the reverse proxy ALL claude and codex model
+# traffic goes through. Agent pods authenticate with an audience-bound
+# projected ServiceAccount token; the broker validates it via TokenReview and
+# injects or signs the model credential outbound (Anthropic or OpenAI API
+# key, Bedrock SigV4, Vertex OAuth, Foundry / Azure OpenAI key or Entra). The
+# model credentials therefore live HERE, in the patchy namespace, and an
+# agent pod holds no credential of any kind. Not a controller: no
+# reconcilers, no leases.
 #
 # The base configures the anthropic provider (PATCHY_ANTHROPIC_API_KEY_FILE
-# in configmap.yaml + the patchy-anthropic Secret volume below). For
-# bedrock/vertex/foundry, overlay the PATCHY_* provider keys and annotate
+# in configmap.yaml + the patchy-anthropic Secret volume below) and mounts
+# the patchy-openai Secret optionally, so enabling codex's openai route is a
+# ConfigMap change (PATCHY_OPENAI_API_KEY_FILE). For bedrock/vertex/foundry/
+# azure, overlay the PATCHY_* provider keys and annotate
 # patchy-egress-broker's ServiceAccount with the cloud workload identity.
 apiVersion: apps/v1
 kind: Deployment
@@ -100,6 +103,9 @@ spec:
                       - name: anthropic
                         mountPath: /etc/patchy/anthropic
                         readOnly: true
+                      - name: openai
+                        mountPath: /etc/patchy/openai
+                        readOnly: true
             volumes:
                 - name: tmp
                   emptyDir: {}
@@ -111,4 +117,11 @@ spec:
                 - name: anthropic
                   secret:
                       secretName: patchy-anthropic
+                      optional: true
+                # The OpenAI API key for codex's openai route, same posture.
+                # Optional: inert until PATCHY_OPENAI_API_KEY_FILE enables
+                # the route (configmap.yaml).
+                - name: openai
+                  secret:
+                      secretName: patchy-openai
                       optional: true

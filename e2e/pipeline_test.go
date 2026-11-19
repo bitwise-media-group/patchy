@@ -59,8 +59,7 @@ const (
 )
 
 // runnerArgs configures both per-harness runner images on a job controller.
-// The codex credential Secret created in newCluster enables that harness; the
-// claude runner is brokered — enabled by configuration, requiring only the
+// Both runners are brokered — enabled by configuration, requiring only the
 // broker URL (nothing dials it here: no Job ever runs under envtest).
 var runnerArgs = []string{
 	"--claude-agent-image", "patchy/claude-agent-runner:e2e",
@@ -178,18 +177,10 @@ func startCluster(t *testing.T) *cluster {
 			t.Fatalf("create namespace %s: %v", ns, err)
 		}
 	}
-	// The per-harness model credentials the job controllers probe at startup
-	// to decide which harnesses are enabled: with both present, the claude and
-	// codex runners are both enabled, so a finding routes to whichever the
-	// chosen model belongs to.
-	for _, name := range []string{"patchy-anthropic", "patchy-openai"} {
-		if err := c.Create(context.Background(), &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: agentsNS},
-			StringData: map[string]string{"api-key": "e2e-model-key"},
-		}); err != nil {
-			t.Fatalf("create agent credential %s: %v", name, err)
-		}
-	}
+	// No model credential is created in the agent namespace: the claude and
+	// codex runners are both brokered — enabled by configuration — so a
+	// finding routes to whichever the chosen model belongs to, and an agent
+	// pod never holds a credential to find.
 	return cl
 }
 

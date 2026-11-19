@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package runnercfg wires the per-harness agent-runner fleet from controller
-// flags: the image and credential Secret for each harness, which harnesses a
+// flags: the image and brokered provider for each harness, which harnesses a
 // deployment enables, and the startup validation that every allowlisted model
 // can actually be run. Both job controllers (investigation, remediation) share
 // it so the flag surface and enablement rules never drift apart.
@@ -30,9 +30,9 @@ import (
 
 // RegisterFlags adds the per-harness runner flags shared by both job
 // controllers: an image per harness (unset = that runner is not configured),
-// its credential Secret name/key/env, and the harness restrict list. Mutually
+// the broker/provider flags, and the harness restrict list. Mutually
 // exclusive with RegisterEvolveFlags within one binary — both register the
-// shared credential flags.
+// shared flags.
 func RegisterFlags(f *pflag.FlagSet) {
 	f.String("claude-agent-image", "", "claude-agent-runner image (claude CLI); unset disables the claude runner")
 	f.String("codex-agent-image", "", "codex-agent-runner image (codex CLI); unset disables the codex runner")
@@ -43,8 +43,8 @@ func RegisterFlags(f *pflag.FlagSet) {
 
 // RegisterEvolveFlags adds the evolve-runner fleet flags for the evaluation
 // controller: an evolve-runner image per harness plus the same shared
-// credential Secret flags the finding runners use — one Secret per model
-// vendor in the agents namespace, whichever fleet exercises it.
+// broker/provider flags the finding runners use — one broker route per model
+// vendor, whichever fleet exercises it.
 func RegisterEvolveFlags(f *pflag.FlagSet) {
 	f.String("evolve-claude-image", "",
 		"evolve-runner image with the claude CLI; unset disables the claude evaluation runner")
@@ -55,12 +55,11 @@ func RegisterEvolveFlags(f *pflag.FlagSet) {
 	registerSharedFlags(f)
 }
 
-// registerSharedFlags adds the credential and restrict flags common to both
-// runner fleets, plus the broker/provider flags brokered claude runners are
-// configured with.
+// registerSharedFlags adds the broker/provider and restrict flags common to
+// both runner fleets: every model-calling runner (claude, codex) is brokered.
 func registerSharedFlags(f *pflag.FlagSet) {
 	f.String("broker-url", "",
-		"egress credential broker base URL (required for the claude runner; claude runs proxy-only)")
+		"egress credential broker base URL (required for the claude and codex runners; both run proxy-only)")
 	f.String("broker-token-audience", jobs.DefaultBrokerAudience,
 		"audience the agent pods' projected broker caller tokens are bound to")
 	f.String("claude-provider", provider.Anthropic,
@@ -74,51 +73,60 @@ func registerSharedFlags(f *pflag.FlagSet) {
 	f.String("claude-provider-env", "",
 		"extra NAME=value agent-pod env for the provider, comma separated (credential names rejected)")
 
-	// The --claude-secret* flags stay registered for back-compat, but the
-	// claude runner is brokered now and ignores them (a migration notice is
-	// logged when they are customized). Codex still uses its own.
-	f.String("claude-secret", "patchy-anthropic", "IGNORED: the claude model credential lives in the egress broker")
-	f.String("claude-secret-key", "api-key", "IGNORED: the claude model credential lives in the egress broker")
-	f.String("claude-secret-env", "ANTHROPIC_API_KEY",
-		"IGNORED: the claude model credential lives in the egress broker")
+	f.String("codex-provider", provider.OpenAI,
+		"model provider behind the broker for codex runs: "+strings.Join(provider.CodexNames, ", "))
+	f.String("codex-model-map", "",
+		"canonical=provider-id model overrides, comma separated (required for azure: deployment names)")
+	f.String("codex-provider-env", "",
+		"extra NAME=value agent-pod env for the codex provider, comma separated (credential names rejected)")
 
-	f.String("codex-secret", "patchy-openai", "Secret (agent namespace) holding the OpenAI credential")
-	f.String("codex-secret-key", "api-key", "key within the OpenAI credential Secret")
-	f.String("codex-secret-env", "OPENAI_API_KEY", secretEnvUsage("OpenAI", model.HarnessCodex))
+	// The --<harness>-secret* flags stay registered for back-compat, but
+	// both model-calling runners are brokered now and ignore them (a
+	// migration notice is logged when they are customized).
+	for _, s := range legacySecretFlags {
+		f.String(s.flag, s.def, "IGNORED: the "+s.harness+" model credential lives in the egress broker")
+	}
 
 	f.String("harnesses", "",
-		"restrict enabled harnesses to this comma list (default: any harness whose credential Secret exists)")
+		"restrict enabled harnesses to this comma list (default: every harness whose runner image is set)")
 }
 
+// legacySecretFlags are the pre-broker credential Secret flags, kept
+// registered (with their old defaults, so a customized value is detectable)
+// only to log a migration notice.
+var legacySecretFlags = []struct{ harness, flag, def string }{
+	{model.HarnessClaude, "claude-secret", "patchy-anthropic"},
+	{model.HarnessClaude, "claude-secret-key", "api-key"},
+	{model.HarnessClaude, "claude-secret-env", "ANTHROPIC_API_KEY"},
+	{model.HarnessCodex, "codex-secret", "patchy-openai"},
+	{model.HarnessCodex, "codex-secret-key", "api-key"},
+	{model.HarnessCodex, "codex-secret-env", "OPENAI_API_KEY"},
+}
+
+// brokeredHarnesses are the harnesses whose runners go through the egress
+// credential broker — every one that calls a model API.
+var brokeredHarnesses = []string{model.HarnessClaude, model.HarnessCodex}
+
 // Runners builds the configured runner fleet from the flags. A harness is a
-// candidate runner only when its image flag is set. The claude runner is
-// always brokered — its model traffic goes through the egress credential
-// broker and no credential enters the pod; codex keeps the Secret
-// channel, whose env var is validated against the harness's accepted
-// credential channels so a typo'd --codex-secret-env fails at startup rather
-// than in the pod. models are the canonical ids the fleet may run (the
-// CanonicalModels output): any pattern-tier id among them gets a derived
-// claude model-map entry alongside the registered models.
+// candidate runner only when its image flag is set. The claude and codex
+// runners are always brokered — their model traffic goes through the egress
+// credential broker and no credential enters the pod. models are the
+// canonical ids the fleet may run (the CanonicalModels output): any
+// pattern-tier id among them gets a derived claude model-map entry alongside
+// the registered models.
 func Runners(opts *cli.Options, models ...string) (map[string]jobs.Runner, error) {
 	runners := map[string]jobs.Runner{}
 
-	if img := opts.String("claude-agent-image"); img != "" {
-		r, err := claudeRunner(opts, img, models...)
+	for _, h := range brokeredHarnesses {
+		img := opts.String(h + "-agent-image")
+		if img == "" {
+			continue
+		}
+		r, err := brokeredRunner(opts, h, img, models...)
 		if err != nil {
 			return nil, err
 		}
-		runners[model.HarnessClaude] = r
-	}
-	if img := opts.String("codex-agent-image"); img != "" {
-		env := opts.String("codex-secret-env")
-		if !accepts(model.HarnessCodex, env) {
-			return nil, fmt.Errorf("--codex-secret-env %q is not a credential the codex harness accepts (one of %v)",
-				env, envKeys(model.HarnessCodex))
-		}
-		runners[model.HarnessCodex] = jobs.Runner{
-			Image: img, Secret: opts.String("codex-secret"),
-			SecretKey: opts.String("codex-secret-key"), SecretEnv: env,
-		}
+		runners[h] = r
 	}
 	if img := opts.String("fake-agent-image"); img != "" {
 		runners[model.HarnessFake] = jobs.Runner{Image: img} // no credential
@@ -132,36 +140,22 @@ func Runners(opts *cli.Options, models ...string) (map[string]jobs.Runner, error
 }
 
 // EvolveRunners builds the evolve-runner fleet from the flags, mirroring
-// Runners: a harness is a candidate only when its evolve image flag is set.
-// The claude evolve runner is brokered like its finding sibling; codex reuses
-// the shared --codex-secret flags, with the credential env var validated
-// against the harness's accepted channels.
+// Runners: a harness is a candidate only when its evolve image flag is set,
+// and the claude and codex evolve runners are brokered like their finding
+// siblings.
 func EvolveRunners(opts *cli.Options) (map[string]jobs.Runner, error) {
 	runners := map[string]jobs.Runner{}
 
-	if img := opts.String("evolve-claude-image"); img != "" {
-		r, err := claudeRunner(opts, img)
-		if err != nil {
-			return nil, err
-		}
-		runners[model.HarnessClaude] = r
-	}
-	// Flag names derive from the harness ids: evolve-<id>-image and
-	// <id>-secret{,-key,-env}.
-	for _, h := range []string{model.HarnessCodex} {
+	for _, h := range brokeredHarnesses {
 		img := opts.String("evolve-" + h + "-image")
 		if img == "" {
 			continue
 		}
-		env := opts.String(h + "-secret-env")
-		if !accepts(h, env) {
-			return nil, fmt.Errorf("--%s-secret-env %q is not a credential the %s harness accepts (one of %v)",
-				h, env, h, envKeys(h))
+		r, err := brokeredRunner(opts, h, img)
+		if err != nil {
+			return nil, err
 		}
-		runners[h] = jobs.Runner{
-			Image: img, Secret: opts.String(h + "-secret"),
-			SecretKey: opts.String(h + "-secret-key"), SecretEnv: env,
-		}
+		runners[h] = r
 	}
 	if img := opts.String("evolve-fake-image"); img != "" {
 		runners[model.HarnessFake] = jobs.Runner{Image: img} // no credential
@@ -174,14 +168,15 @@ func EvolveRunners(opts *cli.Options) (map[string]jobs.Runner, error) {
 	return runners, nil
 }
 
-// claudeRunner builds the brokered claude runner shared by both fleets: the
-// provider config from the flags, the derived model map, and the gateway env
-// the pod gets. --broker-url is required — claude-without-broker is not a
-// configuration. The legacy --claude-secret* flags are ignored; customizing
-// them earns a migration notice rather than an error. models adds
-// pattern-tier ids to the registry the map is derived over.
-func claudeRunner(opts *cli.Options, img string, models ...string) (jobs.Runner, error) {
-	pcfg, err := ClaudeProviderConfig(opts)
+// brokeredRunner builds the brokered runner for a harness, shared by both
+// fleets: the provider config from the flags, the derived model map, and the
+// gateway env the pod gets. --broker-url is required — a claude or codex
+// runner without the broker is not a configuration. The legacy
+// --<harness>-secret* flags are ignored; customizing them earns a migration
+// notice rather than an error. models adds pattern-tier ids to the registry
+// the map is derived over.
+func brokeredRunner(opts *cli.Options, harnessID, img string, models ...string) (jobs.Runner, error) {
+	pcfg, err := ProviderConfig(opts, harnessID)
 	if err != nil {
 		return jobs.Runner{}, err
 	}
@@ -189,38 +184,45 @@ func claudeRunner(opts *cli.Options, img string, models ...string) (jobs.Runner,
 	if err != nil {
 		return jobs.Runner{}, err
 	}
-	if opts.String("claude-secret") != "patchy-anthropic" ||
-		opts.String("claude-secret-key") != "api-key" ||
-		opts.String("claude-secret-env") != "ANTHROPIC_API_KEY" {
-		opts.Log.Warn("--claude-secret* is ignored: claude runs proxy-only and the model credential " +
-			"lives in the egress broker; move the Secret to the broker's namespace and drop these flags")
+	for _, s := range legacySecretFlags {
+		if s.harness == harnessID && opts.String(s.flag) != s.def {
+			opts.Log.Warn("--"+harnessID+"-secret* is ignored: "+harnessID+" runs proxy-only and the model "+
+				"credential lives in the egress broker; move the Secret to the broker's namespace and drop these flags",
+				"flag", s.flag)
+			break
+		}
 	}
 	return jobs.Runner{Image: img, Brokered: true, Env: provider.Env(pcfg, mm)}, nil
 }
 
-// ClaudeProviderConfig builds and validates the claude provider config from
-// the shared flags.
-func ClaudeProviderConfig(opts *cli.Options) (provider.Config, error) {
+// ProviderConfig builds and validates a brokered harness's provider config
+// from the shared flags: --broker-url plus the --<harness>-provider*,
+// --<harness>-model-map and --<harness>-provider-env flags (the region and
+// project-id flags exist for claude's cloud providers only).
+func ProviderConfig(opts *cli.Options, harnessID string) (provider.Config, error) {
 	if opts.String("broker-url") == "" {
-		return provider.Config{}, errors.New(
-			"--broker-url is required when a claude runner is configured (claude runs proxy-only)")
+		return provider.Config{}, fmt.Errorf(
+			"--broker-url is required when a %s runner is configured (%s runs proxy-only)", harnessID, harnessID)
 	}
-	mm, err := parseKVList(opts.String("claude-model-map"))
+	mm, err := parseKVList(opts.String(harnessID + "-model-map"))
 	if err != nil {
-		return provider.Config{}, fmt.Errorf("--claude-model-map: %w", err)
+		return provider.Config{}, fmt.Errorf("--%s-model-map: %w", harnessID, err)
 	}
-	extra, err := parseKVList(opts.String("claude-provider-env"))
+	extra, err := parseKVList(opts.String(harnessID + "-provider-env"))
 	if err != nil {
-		return provider.Config{}, fmt.Errorf("--claude-provider-env: %w", err)
+		return provider.Config{}, fmt.Errorf("--%s-provider-env: %w", harnessID, err)
 	}
 	cfg := provider.Config{
-		Name:         opts.String("claude-provider"),
-		BrokerURL:    opts.String("broker-url"),
-		Region:       opts.String("claude-provider-region"),
-		RegionPrefix: opts.String("claude-provider-region-prefix"),
-		ProjectID:    opts.String("claude-provider-project-id"),
-		ModelMap:     mm,
-		ExtraEnv:     extra,
+		Harness:   harnessID,
+		Name:      opts.String(harnessID + "-provider"),
+		BrokerURL: opts.String("broker-url"),
+		ModelMap:  mm,
+		ExtraEnv:  extra,
+	}
+	if harnessID == model.HarnessClaude {
+		cfg.Region = opts.String("claude-provider-region")
+		cfg.RegionPrefix = opts.String("claude-provider-region-prefix")
+		cfg.ProjectID = opts.String("claude-provider-project-id")
 	}
 	if err := cfg.Validate(); err != nil {
 		return provider.Config{}, err
@@ -300,9 +302,9 @@ func CanonicalModels(log *slog.Logger, allowlist []string, defaults ...string) (
 // Resolve probes the configured runners' credentials, computes the enabled
 // harness set, and validates coverage: the allowlist must be fully runnable,
 // every requiredModel (the investigate/remediate defaults, canonical ids)
-// must resolve to an enabled harness, and a brokered claude runner's model
-// map must cover every claude-resolving model — a foundry gap is a startup
-// error here, not a mid-run failure. It also probes the broker's readiness,
+// must resolve to an enabled harness, and each brokered runner's model map
+// must cover every model resolving to its harness — a foundry or azure gap
+// is a startup error here, not a mid-run failure. It also probes the broker's readiness,
 // non-fatally: the broker Deployment may simply not be up yet, and a
 // deployment-ordering deadlock would be worse than a warning. Returns the
 // sorted enabled harness ids.
@@ -336,8 +338,12 @@ func Resolve(ctx context.Context, opts *cli.Options, cs kubernetes.Interface, na
 			return nil, err
 		}
 	}
-	if r, ok := runners[model.HarnessClaude]; ok && r.Brokered {
-		pcfg, err := ClaudeProviderConfig(opts)
+	var brokerURL string
+	for _, h := range brokeredHarnesses {
+		if r, ok := runners[h]; !ok || !r.Brokered {
+			continue
+		}
+		pcfg, err := ProviderConfig(opts, h)
 		if err != nil {
 			return nil, err
 		}
@@ -348,7 +354,10 @@ func Resolve(ctx context.Context, opts *cli.Options, cs kubernetes.Interface, na
 		if err := provider.ValidateCoverage(pcfg, models, mm, required); err != nil {
 			return nil, err
 		}
-		probeBroker(ctx, pcfg.BrokerURL, opts.Log)
+		brokerURL = pcfg.BrokerURL
+	}
+	if brokerURL != "" {
+		probeBroker(ctx, brokerURL, opts.Log)
 	}
 	return enabled, nil
 }
@@ -367,7 +376,7 @@ func probeBroker(ctx context.Context, brokerURL string, log *slog.Logger) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Warn("egress broker not reachable yet; claude jobs will fail until it is",
+		log.Warn("egress broker not reachable yet; brokered (claude/codex) jobs will fail until it is",
 			"url", url, "error", err)
 		return
 	}
@@ -392,22 +401,4 @@ func ResolveHarness(canonical string, enabled []string) (harnessID, cliModelID s
 			canonical, m.SupportedHarnessIDs(), enabled)
 	}
 	return h, cliID, nil
-}
-
-// secretEnvUsage renders a --<harness>-secret-env help string from the
-// harness's own accepted channels, so the flag can never advertise a set that
-// the startup validation below disagrees with — the two drifted apart once
-// already, leaving the claude flag naming two of its three channels.
-func secretEnvUsage(vendor, harnessID string) string {
-	return fmt.Sprintf("env var the %s credential is injected as (one of %s)",
-		vendor, strings.Join(envKeys(harnessID), ", "))
-}
-
-func accepts(harnessID, env string) bool { return slices.Contains(envKeys(harnessID), env) }
-
-func envKeys(harnessID string) []string {
-	if h, ok := harness.ByID(harnessID); ok {
-		return h.EnvKeys()
-	}
-	return nil
 }

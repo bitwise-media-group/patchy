@@ -32,24 +32,43 @@ const (
 	BrokerAuthPlaceholder    = "patchy-egress-broker"
 )
 
-// Provider names — the model APIs a brokered claude runner can front.
+// Provider names — the model APIs a brokered runner can front. The first four
+// serve the claude harness, the last two the codex harness.
 const (
 	Anthropic = "anthropic"
 	Bedrock   = "bedrock"
 	Vertex    = "vertex"
 	Foundry   = "foundry"
+	OpenAI    = "openai"
+	Azure     = "azure"
 )
 
-// Names lists the valid provider names, in display order.
+// Names lists the valid claude provider names, in display order.
 var Names = []string{Anthropic, Bedrock, Vertex, Foundry}
 
-// Config describes one brokered claude runner's model provider.
+// CodexNames lists the valid codex provider names, in display order.
+var CodexNames = []string{OpenAI, Azure}
+
+// NamesFor lists the valid provider names for a harness.
+func NamesFor(harnessID string) []string {
+	if harnessID == model.HarnessCodex {
+		return CodexNames
+	}
+	return Names
+}
+
+// Config describes one brokered runner's model provider.
 type Config struct {
-	// Name is the provider: anthropic, bedrock, vertex, or foundry.
+	// Harness is the harness the runner drives: claude (the default when
+	// empty) or codex. It selects the valid provider names and how the
+	// gateway env is rendered.
+	Harness string
+	// Name is the provider: anthropic, bedrock, vertex, or foundry for
+	// claude; openai or azure for codex.
 	Name string
 	// BrokerURL is the egress broker's base URL; the per-provider route
-	// (/anthropic, /bedrock, ...) is appended. Required always — brokered is
-	// the only mode a claude runner has.
+	// (/anthropic, /bedrock, /openai, ...) is appended. Required always —
+	// brokered is the only mode a claude or codex runner has.
 	BrokerURL string
 	// Region is the provider region: required for bedrock (SigV4 scope and
 	// the AWS_REGION the CLI sends) and vertex (CLOUD_ML_REGION).
@@ -60,8 +79,9 @@ type Config struct {
 	// ProjectID is the GCP project Vertex requests bill to; vertex only.
 	ProjectID string
 	// ModelMap maps canonical model ids to provider-specific CLI ids,
-	// overriding the derived defaults. Foundry has no derivable defaults
-	// (deployment names are operator-chosen), so there it is the whole map.
+	// overriding the derived defaults. Foundry and Azure have no derivable
+	// defaults (deployment names are operator-chosen), so there it is the
+	// whole map.
 	ModelMap map[string]string
 	// ExtraEnv is operator passthrough into the agent pod's gateway env.
 	// Credential-named and patchy-owned keys are rejected.
@@ -89,15 +109,33 @@ var GatewayEnvNames = []string{
 	"AWS_REGION",
 	"PATCHY_BROKER_TOKEN_FILE",
 	"PATCHY_MODEL_MAP",
+	CodexConfigEnv,
+	BrokerTokenEnv,
+	CodexPlaceholderKeyEnv,
+}
+
+// harnessID is the harness this config serves, defaulting to claude.
+func (c Config) harnessID() string {
+	if c.Harness == "" {
+		return model.HarnessClaude
+	}
+	return c.Harness
 }
 
 // Validate rejects a config the gateway env cannot be built from.
 func (c Config) Validate() error {
-	if !slices.Contains(Names, c.Name) {
-		return fmt.Errorf("provider %q is not one of %s", c.Name, strings.Join(Names, ", "))
+	h := c.harnessID()
+	if h != model.HarnessClaude && h != model.HarnessCodex {
+		return fmt.Errorf("harness %q cannot be brokered", h)
+	}
+	if names := NamesFor(h); !slices.Contains(names, c.Name) {
+		return fmt.Errorf("%s provider %q is not one of %s", h, c.Name, strings.Join(names, ", "))
 	}
 	if c.BrokerURL == "" {
-		return fmt.Errorf("provider %s: broker URL is required (claude runs proxy-only)", c.Name)
+		return fmt.Errorf("provider %s: broker URL is required (%s runs proxy-only)", c.Name, h)
+	}
+	if err := checkTOMLSafe(c.BrokerURL); err != nil {
+		return fmt.Errorf("provider %s: broker URL: %w", c.Name, err)
 	}
 	if c.Name == Bedrock && c.Region == "" {
 		return fmt.Errorf("provider %s: region is required", c.Name)
@@ -115,7 +153,7 @@ func (c Config) Validate() error {
 }
 
 // forbiddenEnvNames is what ExtraEnv may not name: every gateway name this
-// package emits plus the claude harness's own credential channels — a
+// package emits plus every brokerable harness's own credential channels — a
 // credential belongs in the broker, never in the pod.
 func forbiddenEnvNames() map[string]bool {
 	out := map[string]bool{}
@@ -125,16 +163,29 @@ func forbiddenEnvNames() map[string]bool {
 	for _, k := range harness.NewClaude().EnvKeys() {
 		out[k] = true
 	}
+	for _, k := range harness.NewCodex().EnvKeys() {
+		out[k] = true
+	}
 	return out
 }
 
-// Env renders the agent-pod gateway environment for the provider: the
-// base-URL override pointing the claude CLI at the broker's provider route,
-// the skip-auth switches (the broker owns the credential), the provider's
-// own context vars, the rendered model map, and the ExtraEnv passthrough.
-// modelMap is the effective canonical→CLI-id map (EffectiveModelMap).
+// Env renders the agent-pod gateway environment for the provider: for
+// claude, the base-URL override pointing the CLI at the broker's provider
+// route, the skip-auth switches (the broker owns the credential) and the
+// provider's own context vars; for codex, the rendered config.toml
+// (CodexConfig). Either way it adds the rendered model map and the ExtraEnv
+// passthrough. modelMap is the effective canonical→CLI-id map
+// (EffectiveModelMap).
 func Env(c Config, modelMap map[string]string) map[string]string {
 	base := strings.TrimRight(c.BrokerURL, "/")
+	if c.harnessID() == model.HarnessCodex {
+		env := map[string]string{CodexConfigEnv: CodexConfig(c)}
+		if len(modelMap) > 0 {
+			env["PATCHY_MODEL_MAP"] = FormatModelMap(modelMap)
+		}
+		maps.Copy(env, c.ExtraEnv)
+		return env
+	}
 	env := map[string]string{
 		// The pod never talks to a version-check or telemetry endpoint; the
 		// broker is its only egress and only proxies model traffic.
@@ -168,11 +219,13 @@ func Env(c Config, modelMap map[string]string) map[string]string {
 
 // EffectiveModelMap resolves the canonical→CLI-id map the pod translates
 // with: a derived default per registry model the claude harness can run,
-// overridden by the operator's entries. Anthropic needs no translation (the
-// registry already carries claude's ids) and foundry has no derivable
-// defaults, so both return cfg.ModelMap exactly.
+// overridden by the operator's entries. The first-party providers (anthropic,
+// openai) need no translation — the registry already carries their CLIs' ids
+// — and foundry and azure have no derivable defaults, so all four return
+// cfg.ModelMap exactly.
 func EffectiveModelMap(c Config, models []model.Model) (map[string]string, error) {
-	if c.Name == Anthropic || c.Name == Foundry {
+	switch c.Name {
+	case Anthropic, Foundry, OpenAI, Azure:
 		return maps.Clone(c.ModelMap), nil
 	}
 	out := map[string]string{}
@@ -217,21 +270,22 @@ func bedrockPrefix(c Config) (string, error) {
 }
 
 // ValidateCoverage fails when a required canonical model (allowlist entries,
-// stage defaults) that the claude harness would run has no entry in the
-// effective map. Only foundry can under-cover — its map is entirely
-// operator-written — but the check is provider-agnostic so a future gap
-// surfaces at startup rather than mid-run.
+// stage defaults) that the config's harness would run has no entry in the
+// effective map. Only foundry and azure can under-cover — their maps are
+// entirely operator-written — but the check is provider-agnostic so a future
+// gap surfaces at startup rather than mid-run.
 func ValidateCoverage(c Config, models []model.Model, modelMap map[string]string, required []string) error {
-	if c.Name == Anthropic {
-		return nil // canonical ids are already claude's ids
+	if c.Name == Anthropic || c.Name == OpenAI {
+		return nil // canonical ids are already the first-party CLI's ids
 	}
+	h := c.harnessID()
 	var missing []string
 	for _, id := range slices.Sorted(slices.Values(required)) {
 		if id == "" {
 			continue
 		}
 		m, ok := model.Resolve(models, id)
-		if !ok || !m.Supports(model.HarnessClaude) {
+		if !ok || !m.Supports(h) {
 			continue // another harness's model; not this runner's problem
 		}
 		if _, ok := modelMap[m.ID]; !ok {

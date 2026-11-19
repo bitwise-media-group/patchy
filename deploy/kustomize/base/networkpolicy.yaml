@@ -308,9 +308,9 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
-        # The egress credential broker: ALL of a brokered (claude) pod's
-        # model traffic. A claude pod needs no other egress at all — not
-        # even api.anthropic.com.
+        # The egress credential broker: ALL of a brokered (claude, codex)
+        # pod's model traffic. A brokered pod needs no other egress at all —
+        # not even api.anthropic.com or api.openai.com.
         - to:
               - namespaceSelector:
                     matchLabels:
@@ -321,8 +321,10 @@ spec:
           ports:
               - protocol: TCP
                 port: 8080
-        # TCP 443, and nothing else: the non-brokered runner's model API
-        # (codex). Explicitly excluded: the cluster-internal
+        # TCP 443, and nothing else: the L3 floor for a non-brokered runner's
+        # model API. No runner patchy ships needs it — claude and codex are
+        # both brokered — and the hostname components (cilium, gke-fqdn)
+        # drop it. Explicitly excluded: the cluster-internal
         # ranges, so an agent cannot reach the API server, kubelet, or
         # another workload. Adjust the except: blocks to your cluster's
         # pod/service/node CIDRs.

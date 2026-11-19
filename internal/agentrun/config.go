@@ -62,6 +62,13 @@ type Config struct {
 	// authenticates to the egress broker with; empty on a non-brokered run.
 	// It is read fresh per stage — the kubelet rotates the projection.
 	BrokerTokenFile string
+	// CodexConfig is the config.toml a brokered codex run writes to
+	// CodexHome before each stage (provider.CodexConfig, carried as
+	// PATCHY_CODEX_CONFIG); empty on claude and non-brokered runs.
+	CodexConfig string
+	// CodexHome is where the codex CLI reads config.toml from:
+	// $CODEX_HOME, else $HOME/.codex — the CLI's own resolution.
+	CodexHome string
 	// ModelMap translates canonical model ids to the provider-specific CLI
 	// ids a brokered provider expects (Bedrock inference profiles, Foundry
 	// deployment names); consulted before the registry in cliModel.
@@ -181,6 +188,11 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		}
 	}
 	cfg.BrokerTokenFile = get("BROKER_TOKEN_FILE", "")
+	cfg.CodexConfig = get("CODEX_CONFIG", "")
+	cfg.CodexHome = getenv("CODEX_HOME")
+	if cfg.CodexHome == "" {
+		cfg.CodexHome = filepath.Join(getenv("HOME"), ".codex")
+	}
 
 	var errs []string
 	if raw := get("MODEL_MAP", ""); raw != "" {

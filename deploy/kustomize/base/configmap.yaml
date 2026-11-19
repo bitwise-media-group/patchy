@@ -119,12 +119,22 @@ data:
     # (+ PATCHY_FOUNDRY_AUTH / PATCHY_FOUNDRY_API_KEY_FILE) keys.
     PATCHY_ANTHROPIC_API_KEY_FILE: /etc/patchy/anthropic/api-key
     PATCHY_ANTHROPIC_AUTH: key
-    # Enable the codex runner by adding `codex` to PATCHY_HARNESSES and
-    # supplying the OpenAI credential Secret (patchy-openai):
+    # The codex runner is BROKERED exactly like claude: no credential enters
+    # a codex pod; its rendered config.toml points the CLI at the broker.
+    # Provider one of openai|azure; azure needs a PATCHY_CODEX_MODEL_MAP of
+    # canonical-id=deployment-name pairs. Enable it with three changes in an
+    # overlay: add `codex` to PATCHY_HARNESSES, uncomment
+    # PATCHY_OPENAI_API_KEY_FILE below (the broker's openai route), and
+    # create the patchy-openai Secret in the patchy namespace (see
+    # secrets.example.yaml). For azure set PATCHY_AZURE_RESOURCE plus
+    # PATCHY_AZURE_AUTH (key → PATCHY_AZURE_API_KEY_FILE and a mounted
+    # Secret; entra → the broker's workload identity) instead.
     PATCHY_CODEX_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/codex-agent-runner:latest
-    PATCHY_CODEX_SECRET: patchy-openai
-    PATCHY_CODEX_SECRET_KEY: api-key
-    PATCHY_CODEX_SECRET_ENV: OPENAI_API_KEY
+    PATCHY_CODEX_PROVIDER: openai
+    # Read only by egress-broker; matches the optional patchy-openai volume
+    # in deployment-egress-broker.yaml. Left off until codex is enabled: a
+    # configured route whose key file is missing fails the broker's /readyz.
+    # PATCHY_OPENAI_API_KEY_FILE: /etc/patchy/openai/api-key
     PATCHY_JOB_DEADLINE: 1h
     PATCHY_JOB_TTL: 1h
 
@@ -186,9 +196,9 @@ data:
     # The remote-evaluation engine (optional; only read by
     # evaluation-controller). The evolve-runner images are the counterpart of
     # the agent-runner images above: evolve + the harness CLI, shipped from
-    # the evolve repository and pinned by the operator. Credentials reuse the
-    # PATCHY_<HARNESS>_SECRET* keys above — one Secret per model vendor,
-    # whichever fleet exercises it.
+    # the evolve repository and pinned by the operator. Both are brokered and
+    # reuse the PATCHY_<HARNESS>_PROVIDER* keys above — one broker route per
+    # model vendor, whichever fleet exercises it.
     PATCHY_MAX_CONCURRENT_UNITS: "4"
     PATCHY_EVALUATION_TTL: 72h
     PATCHY_EVOLVE_CLAUDE_IMAGE: ghcr.io/bitwise-media-group/evolve-runner-claude:latest

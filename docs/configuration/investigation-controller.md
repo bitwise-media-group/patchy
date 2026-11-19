@@ -28,33 +28,34 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 
 Shared with the [remediation-controller](remediation-controller.md) — both job controllers build Jobs the same way, from
 a per-harness runner fleet. A runner is _configured_ when its image flag is set and _enabled_ when it is also in
-`--harnesses` (or, when that is empty, its credential Secret exists). The controller resolves each stage's model to a
-harness and runs the matching runner. At startup it validates that every allowlisted model has an enabled harness that
-supports it, refusing to start otherwise.
+`--harnesses` (or, when that is empty, always — both model-calling runners are brokered, so there is no credential to
+probe). The controller resolves each stage's model to a harness and runs the matching runner. At startup it validates
+that every allowlisted model has an enabled harness that supports it, refusing to start otherwise.
 
-| Flag                              | Env                                    | Default                | Purpose                                                                                                                     |
-| --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `--claude-agent-image`            | `PATCHY_CLAUDE_AGENT_IMAGE`            | —                      | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                        |
-| `--codex-agent-image`             | `PATCHY_CODEX_AGENT_IMAGE`             | —                      | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                           |
-| `--fake-agent-image`              | `PATCHY_FAKE_AGENT_IMAGE`              | —                      | fake agent image for dev/e2e (replays fixtures, no credential)                                                              |
-| `--harnesses`                     | `PATCHY_HARNESSES`                     | — (auto)               | Restrict enabled harnesses to this comma list; empty = any harness whose credential exists                                  |
-| `--broker-url`                    | `PATCHY_BROKER_URL`                    | —                      | The [egress broker](egress-broker.md)'s base URL — **required** when a claude runner is configured (claude runs proxy-only) |
-| `--broker-token-audience`         | `PATCHY_BROKER_TOKEN_AUDIENCE`         | `patchy-egress-broker` | Audience the agent pods' projected broker caller tokens are bound to (must match the broker's `--token-audience`)           |
-| `--claude-provider`               | `PATCHY_CLAUDE_PROVIDER`               | `anthropic`            | Model provider behind the broker: `anthropic`, `bedrock`, `vertex`, or `foundry`                                            |
-| `--claude-provider-region`        | `PATCHY_CLAUDE_PROVIDER_REGION`        | —                      | Provider region (required for bedrock and vertex)                                                                           |
-| `--claude-provider-region-prefix` | `PATCHY_CLAUDE_PROVIDER_REGION_PREFIX` | —                      | Bedrock inference-profile prefix override when it cannot be derived from the region (`us`/`eu`/`apac`)                      |
-| `--claude-provider-project-id`    | `PATCHY_CLAUDE_PROVIDER_PROJECT_ID`    | —                      | GCP project id (required for vertex)                                                                                        |
-| `--claude-model-map`              | `PATCHY_CLAUDE_MODEL_MAP`              | —                      | `canonical=provider-id` overrides, comma separated — **required** for foundry, whose deployment names cannot be derived     |
-| `--claude-provider-env`           | `PATCHY_CLAUDE_PROVIDER_ENV`           | —                      | Extra `NAME=value` agent-pod env for the provider, comma separated (credential names rejected)                              |
-| `--claude-secret{,-key,-env}`     | `PATCHY_CLAUDE_SECRET{,_KEY,_ENV}`     | (legacy)               | **Ignored** — claude is brokered and its pods hold no credential; customizing these logs a migration notice                 |
-| `--codex-secret`                  | `PATCHY_CODEX_SECRET`                  | `patchy-openai`        | Secret (agent namespace) holding the OpenAI credential                                                                      |
-| `--codex-secret-key`              | `PATCHY_CODEX_SECRET_KEY`              | `api-key`              | Key within the OpenAI credential Secret                                                                                     |
-| `--codex-secret-env`              | `PATCHY_CODEX_SECRET_ENV`              | `OPENAI_API_KEY`       | Env var it is injected as: `OPENAI_API_KEY`, or `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` for a ChatGPT-plan workspace token   |
-| `--agent-namespace`               | `PATCHY_AGENT_NAMESPACE`               | `patchy-agents`        | Namespace the agent Jobs run in                                                                                             |
-| `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                           |
-| `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                    |
-| `--job-ttl`                       | `PATCHY_JOB_TTL`                       | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                |
-| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases  | Canonical model ids or family aliases the investigation may request for remediation (comma-separated)                       |
+| Flag                              | Env                                    | Default                | Purpose                                                                                                                           |
+| --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `--claude-agent-image`            | `PATCHY_CLAUDE_AGENT_IMAGE`            | —                      | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                              |
+| `--codex-agent-image`             | `PATCHY_CODEX_AGENT_IMAGE`             | —                      | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                                 |
+| `--fake-agent-image`              | `PATCHY_FAKE_AGENT_IMAGE`              | —                      | fake agent image for dev/e2e (replays fixtures, no credential)                                                                    |
+| `--harnesses`                     | `PATCHY_HARNESSES`                     | — (auto)               | Restrict enabled harnesses to this comma list; empty = every harness whose runner image is set                                    |
+| `--broker-url`                    | `PATCHY_BROKER_URL`                    | —                      | The [egress broker](egress-broker.md)'s base URL — **required** when a claude or codex runner is configured (both run proxy-only) |
+| `--broker-token-audience`         | `PATCHY_BROKER_TOKEN_AUDIENCE`         | `patchy-egress-broker` | Audience the agent pods' projected broker caller tokens are bound to (must match the broker's `--token-audience`)                 |
+| `--claude-provider`               | `PATCHY_CLAUDE_PROVIDER`               | `anthropic`            | Claude model provider behind the broker: `anthropic`, `bedrock`, `vertex`, or `foundry`                                           |
+| `--claude-provider-region`        | `PATCHY_CLAUDE_PROVIDER_REGION`        | —                      | Provider region (required for bedrock and vertex)                                                                                 |
+| `--claude-provider-region-prefix` | `PATCHY_CLAUDE_PROVIDER_REGION_PREFIX` | —                      | Bedrock inference-profile prefix override when it cannot be derived from the region (`us`/`eu`/`apac`)                            |
+| `--claude-provider-project-id`    | `PATCHY_CLAUDE_PROVIDER_PROJECT_ID`    | —                      | GCP project id (required for vertex)                                                                                              |
+| `--claude-model-map`              | `PATCHY_CLAUDE_MODEL_MAP`              | —                      | `canonical=provider-id` overrides, comma separated — **required** for foundry, whose deployment names cannot be derived           |
+| `--claude-provider-env`           | `PATCHY_CLAUDE_PROVIDER_ENV`           | —                      | Extra `NAME=value` agent-pod env for the provider, comma separated (credential names rejected)                                    |
+| `--claude-secret{,-key,-env}`     | `PATCHY_CLAUDE_SECRET{,_KEY,_ENV}`     | (legacy)               | **Ignored** — claude is brokered and its pods hold no credential; customizing these logs a migration notice                       |
+| `--codex-provider`                | `PATCHY_CODEX_PROVIDER`                | `openai`               | Codex model provider behind the broker: `openai` or `azure`                                                                       |
+| `--codex-model-map`               | `PATCHY_CODEX_MODEL_MAP`               | —                      | `canonical=provider-id` overrides, comma separated — **required** for azure, whose deployment names cannot be derived             |
+| `--codex-provider-env`            | `PATCHY_CODEX_PROVIDER_ENV`            | —                      | Extra `NAME=value` agent-pod env for the codex provider, comma separated (credential names rejected)                              |
+| `--codex-secret{,-key,-env}`      | `PATCHY_CODEX_SECRET{,_KEY,_ENV}`      | (legacy)               | **Ignored** — codex is brokered and its pods hold no credential; customizing these logs a migration notice                        |
+| `--agent-namespace`               | `PATCHY_AGENT_NAMESPACE`               | `patchy-agents`        | Namespace the agent Jobs run in                                                                                                   |
+| `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                                 |
+| `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                          |
+| `--job-ttl`                       | `PATCHY_JOB_TTL`                       | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                      |
+| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases  | Canonical model ids or family aliases the investigation may request for remediation (comma-separated)                             |
 
 ## Stage flags
 
@@ -94,10 +95,9 @@ aliases, so an upgrade of patchy that registers a newer model moves them with no
 to hold a version.
 
 A pattern id lets a new Anthropic release run before patchy ships an entry for it. It must be well-formed
-(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only, and has no
-token pricing until registered — the claude CLI reports its own cost, so run costs are still recorded. The controller
-logs a warning naming every such id at startup. An alias whose family patchy does not know, or an id of neither shape,
-is a startup error.
+(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only, and has no token pricing until
+registered — the claude CLI reports its own cost, so run costs are still recorded. The controller logs a warning naming
+every such id at startup. An alias whose family patchy does not know, or an id of neither shape, is a startup error.
 
 ## Verdict routing
 

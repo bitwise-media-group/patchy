@@ -28,7 +28,6 @@ apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
 resources:
-    - serviceentry.yaml
     - sidecar.yaml
     - networkpolicy-istio.yaml
 

@@ -5,21 +5,23 @@
 #
 # What this adds over base/networkpolicy.yaml: FQDN matching. A plain
 # NetworkPolicy can only say "TCP 443 to the internet"; Cilium's DNS proxy
-# lets it say "TCP 443 to api.anthropic.com, and nothing else". Everything
+# lets it say "this name, and nothing else" — and for the brokered runners,
+# "no external name at all". Everything
 # else — a package registry the agent tries to reach, an exfil endpoint a
 # prompt-injected agent is talked into — is dropped.
 #
 # One policy per harness, each selecting that harness's pods by their
-# patchy.bitwisemedia.uk/harness label, so a codex pod may reach only
-# api.openai.com — and a claude pod nothing external at all: claude is
-# brokered, so its policy is cluster-only (DNS, the artifact server, the
-# egress broker) with no toFQDNs and no external names resolvable. The
-# non-brokered pods need exactly two destinations:
+# patchy.bitwisemedia.uk/harness label. Both runners are brokered, so each
+# policy is cluster-only with no toFQDNs and no external names resolvable:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
 #     container's credential-less, digest-verified tarball fetch. No forge
 #     host appears in this policy at all — the pod never talks to GitHub.
-#   * its own model API: the agent container's harness CLI.
+#   * the egress broker (in-cluster, port 8080): the agent container's
+#     harness CLI, whose model traffic the broker credentials and forwards.
+#
+# A non-brokered runner added later would instead get a toFQDNs rule for its
+# own model API on 443 (and that host in its DNS matchPatterns).
 #
 # The codex policy is inert until that runner is enabled (no pod carries the
 # label otherwise). Requires: Cilium with DNS-based policy
@@ -91,6 +93,8 @@ spec:
             app.kubernetes.io/managed-by: patchy
             patchy.bitwisemedia.uk/harness: codex
     egress:
+        # DNS, via Cilium's proxy. Brokered codex, like claude, resolves only
+        # cluster-local names — no external name resolves from its pods.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: kube-system
@@ -101,10 +105,11 @@ spec:
                       protocol: ANY
                 rules:
                     dns:
-                        - matchPattern: "*.openai.com"
                         - matchPattern: "*.patchy.svc.cluster.local"
                         - matchPattern: "*.svc.cluster.local"
 
+        # The INIT container's artifact fetch: source-controller's tarball
+        # server, in-cluster, credential-less, digest-verified.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: patchy
@@ -114,10 +119,13 @@ spec:
                     - port: "9790"
                       protocol: TCP
 
-        # The agent container: the codex harness's model API and nothing else.
-        - toFQDNs:
-              - matchName: api.openai.com
+        # The agent container: the egress credential broker, which fronts
+        # whichever model API is configured, and nothing else. No toFQDNs.
+        - toEndpoints:
+              - matchLabels:
+                    io.kubernetes.pod.namespace: patchy
+                    app.kubernetes.io/name: egress-broker
           toPorts:
               - ports:
-                    - port: "443"
+                    - port: "8080"
                       protocol: TCP

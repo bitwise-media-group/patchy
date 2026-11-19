@@ -30,10 +30,10 @@ Deploying the stack takes three steps, each with its own page:
 !!! tip "Hostname-level egress needs Cilium, GKE Dataplane V2 or Istio"
 
     The chart always renders baseline `NetworkPolicy` objects, but plain L3/L4 policies cannot match hostnames. The
-    default claude runner needs no hostname layer at all — its model traffic goes through the in-cluster egress
-    credential broker, so its egress is entirely cluster-local. For the non-brokered codex runner,
-    `agent.networkPolicy.mode` selects the dialect your infrastructure enforces — `cilium`, `gke` or `istio` — and
-    defaults to `auto`, which detects it from the cluster itself. There are deliberately no GitHub hosts in the
+    claude and codex runners need no hostname layer at all — their model traffic goes through the in-cluster egress
+    credential broker, so their egress is entirely cluster-local. Where a hostname layer is wanted (it drops the base
+    policy's broad 443 rule), `agent.networkPolicy.mode` selects the dialect your infrastructure enforces — `cilium`,
+    `gke` or `istio` — and defaults to `auto`, which detects it from the cluster itself. There are deliberately no GitHub hosts in the
     allowlist — the agent pod never talks to a forge. See the [isolation model](../deployment/isolation.md) for what
     each layer requires.
 

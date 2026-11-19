@@ -1,12 +1,11 @@
 # agent-runner
 
 The in-pod coding-agent runtime: one stage per Job — `investigate` or `remediate` — via the harness CLI its runner image
-bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image). It never talks
-to GitHub or the Kubernetes API, and it has no flags — configuration is exclusively `PATCHY_*` environment variables,
-injected into the Job pod by the job controllers. A claude pod holds **no credential of any kind**: its model traffic
-goes through the [egress broker](egress-broker.md), authenticated by a projected ServiceAccount token; a codex pod holds
-the one model key of its harness. Results leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why all
-patchy logging goes to stderr).
+bundles (`claude -p` in the claude-agent-runner image, `codex exec` in the codex-agent-runner image). It never talks to
+GitHub or the Kubernetes API, and it has no flags — configuration is exclusively `PATCHY_*` environment variables,
+injected into the Job pod by the job controllers. A claude or codex pod holds **no credential of any kind**: its model
+traffic goes through the [egress broker](egress-broker.md), authenticated by a projected ServiceAccount token. Results
+leave the pod as a `PATCHY-EVENT:` JSONL stream on stdout (which is why all patchy logging goes to stderr).
 
 You normally never configure the agent-runner directly: the
 [investigation-controller](investigation-controller.md#stage-flags) and
@@ -41,17 +40,22 @@ result. A hard cap below its ceiling is a configuration error and the runner ref
 to reality, rendered into the analysis prompt so the next estimate can correct for the observed skew. It is advisory —
 absent on a cold start, and the prompt then omits the section entirely.
 
-Brokered (claude) Jobs add two more:
+Brokered (claude, codex) Jobs add two more:
 
-| Env                        | Purpose                                                                                                                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PATCHY_BROKER_TOKEN_FILE` | Path of the projected ServiceAccount token (`/var/run/patchy/broker/token`); read fresh each stage — the kubelet rotates it — and sent to the broker as the `X-Patchy-Broker-Token` header  |
-| `PATCHY_MODEL_MAP`         | Comma-joined `canonical=provider-id` pairs; consulted before the registry when translating the stage model to the CLI's `--model` id (Bedrock inference profiles, Foundry deployment names) |
+| Env                        | Purpose                                                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PATCHY_BROKER_TOKEN_FILE` | Path of the projected ServiceAccount token (`/var/run/patchy/broker/token`); read fresh each stage — the kubelet rotates it — and sent to the broker as the `X-Patchy-Broker-Token` header        |
+| `PATCHY_MODEL_MAP`         | Comma-joined `canonical=provider-id` pairs; consulted before the registry when translating the stage model to the CLI's `--model` id (Bedrock inference profiles, Foundry/Azure deployment names) |
 
 The controllers also set the claude CLI's gateway environment on brokered Jobs — `ANTHROPIC_BASE_URL` or the
 `CLAUDE_CODE_USE_*` / `CLAUDE_CODE_SKIP_*_AUTH` / `ANTHROPIC_*_BASE_URL` switches, plus
-`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` — pointing every model request at the broker's provider route. All of these
-names are reserved in `internal/jobs`, so controller-global configuration can never shadow them.
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` — pointing every model request at the broker's provider route. On brokered
+codex Jobs the gateway environment is instead `PATCHY_CODEX_CONFIG`: a rendered codex `config.toml` declaring a
+`patchy-broker` model provider at the broker's route. Before each stage agent-runner writes it to
+`${CODEX_HOME:-$HOME/.codex}/config.toml` and hands the codex child `PATCHY_BROKER_TOKEN` (the projected token, read
+fresh) and `PATCHY_BROKER_API_KEY` (a fixed non-secret placeholder the broker strips) — the env names that provider
+reads its header and key from. A brokered codex stage without `PATCHY_CODEX_CONFIG` fails as a `runtime_error`. All of
+these names are reserved in `internal/jobs`, so controller-global configuration can never shadow them.
 
 Two knobs exist only here:
 
@@ -79,14 +83,13 @@ configuration can smuggle one in. The per-Job Secret carries only the handoff ma
 | Harness | In the pod                                                                                                                                                                          |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | claude  | **None.** The broker caller token (an identity document, not a capability) is the pod's only secret material; the model credential lives with the [egress broker](egress-broker.md) |
-| codex   | `OPENAI_API_KEY` via `secretKeyRef` (`--codex-secret`; `CODEX_API_KEY` / `CODEX_ACCESS_TOKEN` when `--codex-secret-env` names one)                                                  |
+| codex   | **None**, exactly as claude: the broker caller token only; the OpenAI / Azure OpenAI credential lives with the [egress broker](egress-broker.md)                                    |
 | fake    | None — the fixture replay authenticates nothing                                                                                                                                     |
 
-At most **one** credential reaches a given pod: the Job wires the `secretKeyRef` of the harness it runs, so a codex Job
-carries only the OpenAI credential. The agent container's environment passes through to the harness CLI child process,
-so an injected key — or the brokered gateway environment — is inherited by `claude` (or `codex`)
-automatically. The broker caller token is registered with the transcript scrubber the same way credential values are, so
-a tool result that dumps the environment cannot leak it into a persisted transcript.
+No model credential reaches any pod. The agent container's environment passes through to the harness CLI child process,
+so the brokered gateway environment is inherited by `claude` (or `codex`) automatically. The broker caller token is
+registered with the transcript scrubber the same way credential values are, so a tool result that dumps the environment
+cannot leak it into a persisted transcript.
 
 ## The event stream
 

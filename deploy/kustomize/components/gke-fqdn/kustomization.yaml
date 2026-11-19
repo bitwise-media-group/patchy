@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Optional component: FQDN egress policy for the agent sandbox, for GKE
+# Optional component: hostname-mode egress for the agent sandbox, for GKE
 # Dataplane V2 clusters. Enable it from an overlay with
 #
 #     components:
@@ -11,25 +11,34 @@
 # ../istio — the same allowlist, enforced in a different plane. Never combine
 # two of them.
 #
-# Besides adding the FQDNNetworkPolicies, this DROPS the base policy's
-# "TCP 443 to anywhere outside the cluster" egress rule. That is the whole
-# point of the component: network policies are ADDITIVE — a packet matching
-# ANY policy that selects the pod is allowed, and no policy can subtract from
-# another — so leaving the broad rule in place would union with the FQDN
-# allowlist and make it decorative. The rest of base/networkpolicy.yaml stays:
-# the namespace default-deny, DNS (which is also how Dataplane V2 learns the
-# addresses to program), and the artifact server, neither of which an
-# FQDNNetworkPolicy can express.
+# Every runner patchy ships is brokered (claude, codex): its pods reach no
+# external host at all, only DNS, source-controller's artifact server and the
+# egress broker — all of which base/networkpolicy.yaml grants. So this
+# component renders NO FQDNNetworkPolicy; a non-brokered runner added later
+# would get one here (networking.gke.io/v1alpha1, selecting its pods by the
+# patchy.bitwisemedia.uk/harness label, listing only its model API on 443).
+# It REQUIRES the cluster to be created or updated with
+# `--enable-fqdn-network-policy` only once such a policy exists.
+#
+# What it does do is DROP the base policy's "TCP 443 to anywhere outside the
+# cluster" egress rule. Network policies are ADDITIVE — a packet matching ANY
+# policy that selects the pod is allowed, and no policy can subtract from
+# another — so with the broad rule removed, a brokered pod's egress is
+# exactly DNS + the artifact server + the broker. The `test` op pins the
+# rule's position: if base/networkpolicy.yaml reorders its egress rules, the
+# build fails instead of silently removing the wrong one (an earlier revision
+# removed index 2 — the broker rule — after the broker rule was inserted
+# ahead of it, leaving the broad rule in place).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
-
-resources:
-    - fqdnnetworkpolicy.yaml
 
 patches:
     - target:
           kind: NetworkPolicy
           name: patchy-agents-egress
       patch: |
+          - op: test
+            path: /spec/egress/3/ports/0/port
+            value: 443
           - op: remove
-            path: /spec/egress/2
+            path: /spec/egress/3

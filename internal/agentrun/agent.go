@@ -39,7 +39,8 @@ type Agent struct {
 	newSessionID func() string
 	// scrub is literal secret values registered for transcript redaction
 	// beyond what the environment heuristic finds — the broker caller token,
-	// whose env var name (ANTHROPIC_CUSTOM_HEADERS) is not credential-shaped.
+	// whose env var names (ANTHROPIC_CUSTOM_HEADERS, PATCHY_BROKER_TOKEN)
+	// the heuristic does not flag.
 	scrub []string
 }
 
@@ -117,7 +118,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		ev.Detail = fmt.Sprintf("unknown harness %q", a.cfg.RemediateHarness)
 		return ev
 	}
-	env, err := a.brokerEnv()
+	env, err := a.brokerEnv(h)
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
 		ev.Detail = err.Error()
@@ -250,13 +251,15 @@ func (a *Agent) recorder(h harness.Harness) *transcript.Recorder {
 	return transcript.NewRecorder(a.cfg.transcriptLimits(), credentialValues(h, a.scrub...), a.emitTurn)
 }
 
-// brokerEnv builds the extra child environment of a brokered run: the
-// ANTHROPIC_CUSTOM_HEADERS entry carrying the projected caller token to the
-// egress broker. The token file is read fresh each stage — the kubelet
-// rotates the projection, and a long remediation must not present a token
-// captured at pod start. The raw token is registered for transcript
-// scrubbing before any stage output can echo it. Nil on non-brokered runs.
-func (a *Agent) brokerEnv() ([]string, error) {
+// brokerEnv builds the extra child environment of a brokered run, carrying
+// the projected caller token to the egress broker: for claude the
+// ANTHROPIC_CUSTOM_HEADERS entry, for codex the env var its rendered
+// config.toml reads the broker header from (written here, before the
+// stage). The token file is read fresh each stage — the kubelet rotates the
+// projection, and a long remediation must not present a token captured at
+// pod start. The raw token is registered for transcript scrubbing before any
+// stage output can echo it. Nil on non-brokered runs.
+func (a *Agent) brokerEnv(h harness.Harness) ([]string, error) {
 	if a.cfg.BrokerTokenFile == "" {
 		return nil, nil
 	}
@@ -269,6 +272,9 @@ func (a *Agent) brokerEnv() ([]string, error) {
 		return nil, fmt.Errorf("broker token file %s is empty", a.cfg.BrokerTokenFile)
 	}
 	a.scrub = append(a.scrub, token)
+	if h.ID() == model.HarnessCodex {
+		return a.codexBrokerEnv(token)
+	}
 	env := []string{"ANTHROPIC_CUSTOM_HEADERS=" + provider.BrokerTokenHeader + ": " + token}
 	// ANTHROPIC_BASE_URL is set (gateway-owned) only on the first-party
 	// route, the one route with no skip-auth switch.
@@ -278,11 +284,32 @@ func (a *Agent) brokerEnv() ([]string, error) {
 	return env, nil
 }
 
+// codexBrokerEnv writes the rendered config.toml — every stage, so a stage
+// that edited it cannot redirect the next — and returns the child env its
+// broker provider reads: the caller token for the broker header and the
+// non-secret placeholder the provider's env_key names.
+func (a *Agent) codexBrokerEnv(token string) ([]string, error) {
+	if a.cfg.CodexConfig == "" {
+		return nil, errors.New("brokered codex run has no PATCHY_CODEX_CONFIG")
+	}
+	if err := os.MkdirAll(a.cfg.CodexHome, 0o700); err != nil {
+		return nil, fmt.Errorf("codex home: %w", err)
+	}
+	path := filepath.Join(a.cfg.CodexHome, "config.toml")
+	if err := os.WriteFile(path, []byte(a.cfg.CodexConfig), 0o600); err != nil {
+		return nil, fmt.Errorf("codex config: %w", err)
+	}
+	return []string{
+		provider.BrokerTokenEnv + "=" + token,
+		provider.CodexPlaceholderKeyEnv + "=" + provider.BrokerAuthPlaceholder,
+	}, nil
+}
+
 // credentialValues returns the literal secret values to scrub from a
 // transcript: the harness's own credential variables, plus anything else in
 // the environment named like a credential, plus any explicitly registered
 // values (extra) whose env var names the heuristic cannot flag — the broker
-// caller token rides ANTHROPIC_CUSTOM_HEADERS. A tool result that dumps the
+// caller token rides ANTHROPIC_CUSTOM_HEADERS or PATCHY_BROKER_TOKEN. A tool result that dumps the
 // environment would otherwise put them in a ConfigMap the status page serves.
 //
 // The harness keys are the authoritative half — runnercfg validates the
@@ -384,7 +411,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		ev.Detail = err.Error()
 		return ev
 	}
-	env, err := a.brokerEnv()
+	env, err := a.brokerEnv(h)
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
 		ev.Detail = err.Error()

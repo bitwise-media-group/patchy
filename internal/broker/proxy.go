@@ -60,13 +60,16 @@ func newRoute(name string, u Upstream, log *slog.Logger) *route {
 
 // stripCallerHeaders removes the broker token and every credential-shaped
 // header the caller may have sent: the skip-auth CLI paths leave
-// Authorization empty, but nothing stops a compromised pod from setting one,
+// Authorization empty and the placeholder paths (claude's first-party route,
+// every codex route) fill it with a non-secret stand-in, but nothing stops a
+// compromised pod from setting a real one,
 // and a SigV4 signature must be computed over exactly the headers the broker
 // controls.
 func stripCallerHeaders(h http.Header) {
 	h.Del(TokenHeader)
 	h.Del("Authorization")
 	h.Del("X-Api-Key")
+	h.Del("Api-Key") // Azure OpenAI's key header
 	for name := range h {
 		if strings.HasPrefix(strings.ToLower(name), "x-amz-") {
 			h.Del(name)

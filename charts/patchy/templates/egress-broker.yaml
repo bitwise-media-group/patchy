@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 #
 # The egress credential broker, in one file (modeled on status-server.yaml):
-# the reverse proxy all claude model traffic goes through. Deploys exactly
-# when a claude runner is enabled — brokered is the only mode claude has, so
-# claude ⇒ broker and fake-only dev/e2e renders none of this. Agent pods
+# the reverse proxy all claude and codex model traffic goes through. Deploys
+# exactly when a claude or codex runner is enabled — brokered is the only
+# mode either has, so claude or codex ⇒ broker and fake-only dev/e2e renders
+# none of this. Each enabled harness contributes its provider's route
+# (agent.runners.<harness>.provider). Agent pods
 # authenticate with an audience-bound projected ServiceAccount token; the
 # broker validates it via TokenReview (its ONLY Kubernetes access — no Secret
 # API reads, no leases, no reconcilers) and injects or signs the model
@@ -13,10 +15,23 @@
 {{- if include "patchy.brokerEnabled" . }}
 {{- $vals := .Values.egressBroker }}
 {{- $name := "egress-broker" }}
+{{- $claudeOn := include "patchy.harnessEnabled" (dict "root" . "id" "claude") }}
+{{- $codexOn := include "patchy.harnessEnabled" (dict "root" . "id" "codex") }}
 {{- $provider := .Values.agent.runners.claude.provider | default dict }}
-{{- $providerName := $provider.name | default "anthropic" }}
+{{- $providerName := "" }}
+{{- if $claudeOn }}
+{{- $providerName = $provider.name | default "anthropic" }}
 {{- if not (has $providerName (list "anthropic" "bedrock" "vertex" "foundry")) }}
 {{- fail (printf "agent.runners.claude.provider.name: %q is not one of anthropic, bedrock, vertex, foundry" $providerName) }}
+{{- end }}
+{{- end }}
+{{- $codexProvider := .Values.agent.runners.codex.provider | default dict }}
+{{- $codexProviderName := "" }}
+{{- if $codexOn }}
+{{- $codexProviderName = $codexProvider.name | default "openai" }}
+{{- if not (has $codexProviderName (list "openai" "azure")) }}
+{{- fail (printf "agent.runners.codex.provider.name: %q is not one of openai, azure" $codexProviderName) }}
+{{- end }}
 {{- end }}
 {{- if $vals.serviceAccount.create }}
 ---
@@ -59,6 +74,17 @@ metadata:
 {{- $_ := set $data "PATCHY_FOUNDRY_API_KEY_FILE" "/etc/patchy/foundry/api-key" }}
 {{- else }}
 {{- $_ := set $data "PATCHY_FOUNDRY_AUTH" "entra" }}
+{{- end }}
+{{- end }}
+{{- if eq $codexProviderName "openai" }}
+{{- $_ := set $data "PATCHY_OPENAI_API_KEY_FILE" "/etc/patchy/openai/api-key" }}
+{{- else if eq $codexProviderName "azure" }}
+{{- $_ := set $data "PATCHY_AZURE_RESOURCE" (required "agent.runners.codex.provider.resource is required for azure" $codexProvider.resource) }}
+{{- if $vals.azureSecret }}
+{{- $_ := set $data "PATCHY_AZURE_AUTH" "key" }}
+{{- $_ := set $data "PATCHY_AZURE_API_KEY_FILE" "/etc/patchy/azure/api-key" }}
+{{- else }}
+{{- $_ := set $data "PATCHY_AZURE_AUTH" "entra" }}
 {{- end }}
 {{- end }}
 {{- range $k, $v := .Values.config.extra }}
@@ -209,6 +235,16 @@ spec:
                         mountPath: /etc/patchy/foundry
                         readOnly: true
                       {{- end }}
+                      {{- if eq $codexProviderName "openai" }}
+                      - name: openai
+                        mountPath: /etc/patchy/openai
+                        readOnly: true
+                      {{- end }}
+                      {{- if and (eq $codexProviderName "azure") $vals.azureSecret }}
+                      - name: azure
+                        mountPath: /etc/patchy/azure
+                        readOnly: true
+                      {{- end }}
             {{- with $vals.nodeSelector }}
             nodeSelector:
                 {{- toYaml . | nindent 16 }}
@@ -235,6 +271,16 @@ spec:
                 - name: foundry
                   secret:
                       secretName: {{ $vals.foundrySecret }}
+                {{- end }}
+                {{- if eq $codexProviderName "openai" }}
+                - name: openai
+                  secret:
+                      secretName: {{ $vals.openaiSecret }}
+                {{- end }}
+                {{- if and (eq $codexProviderName "azure") $vals.azureSecret }}
+                - name: azure
+                  secret:
+                      secretName: {{ $vals.azureSecret }}
                 {{- end }}
 ---
 apiVersion: v1

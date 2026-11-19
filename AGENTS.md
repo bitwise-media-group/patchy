@@ -39,15 +39,17 @@ Ten binaries, one module. "Not monolithic" means separate binaries/deployments w
   Jobs, changeset push + PR via the forge write seam (the only write credential), and hosts the rollup/TTL loop.
 - `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
   `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
-  Kubernetes API; a claude pod holds no credential at all (model traffic goes through the egress broker,
-  authenticated by a projected SA token read fresh per stage), a codex pod only its model key.
+  Kubernetes API; a claude or codex pod holds no credential at all (model traffic goes through the egress
+  broker, authenticated by a projected SA token read fresh per stage; codex reaches it through a rendered
+  `config.toml` model provider agent-runner writes before each stage).
 - `cmd/egress-broker` — the egress credential broker (NOT a controller: no reconcilers, no leases): the reverse
-  proxy all claude model traffic goes through, one route per provider (anthropic — key or `claude setup-token`
-  bearer via `--anthropic-auth` — plus bedrock SigV4, vertex OAuth, foundry key/entra). Validates caller
+  proxy all claude and codex model traffic goes through, one route per provider (anthropic — key or `claude
+  setup-token` bearer via `--anthropic-auth` — plus bedrock SigV4, vertex OAuth, foundry key/entra; for codex
+  openai bearer key and azure api-key/entra). Validates caller
   tokens via TokenReview (its only Kubernetes access), strips them, injects/signs the model credential
   outbound, streams SSE with idle keep-alive pings, audits one slog line per request. Engine in
-  `internal/broker`; deployed by the chart exactly when a claude runner is enabled (claude ⇒ broker;
-  proxy-only, no in-pod credential mode).
+  `internal/broker`; deployed by the chart exactly when a claude or codex runner is enabled (claude or codex ⇒
+  broker; proxy-only, no in-pod credential mode).
 - `cmd/evaluation-controller` — OPTIONAL (default-off in the chart): remote skill-evaluation execution for
   evolve. Hosts the bearer-authenticated HTTP API (`pkg/evaluation` wire contract: workspace upload streamed to
   source-controller's `:9791` blob endpoint, submission, snapshot, SSE monitoring, cancel; OIDC verify + SAR on
@@ -167,18 +169,20 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
 - `agentrun` — the in-pod stage flow (`investigate` | `remediate`); `report`/`envelope` are its contracts
   (frontmatter schemas in, JSONL events out); `agentresult` converts envelope results onto CR status.
 - `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here, and it STRENGTHENED with the
-  broker: a brokered (claude) pod holds no credential of any kind — its projected SA token (audience-bound,
-  agent container only, never the init) is an identity document, not a capability — while non-brokered runners
-  keep the one SecretKeyRef; the init container fetches the digest-verified artifact tarball, identity-free.
+  broker: a brokered (claude, codex) pod holds no credential of any kind — its projected SA token
+  (audience-bound, agent container only, never the init) is an identity document, not a capability; the
+  SecretKeyRef channel survives only in the generic Runner shape (no shipped runner uses it); the init
+  container fetches the digest-verified artifact tarball, identity-free.
   `reservedEnv` covers every credential channel plus the provider gateway names; `Runner.Env` is the per-runner
   gateway env (wins over `Config.Env`, can never name a credential). `eval.go` is the evaluation Job flavour
   (same posture; `evolve exec-unit` instead of `agent-runner` — wrapped in a capture-once token export when
   brokered — no git init, unit.json handoff); `ResultLines` is the envelope-agnostic log reader the evaluation
   collector decodes its own events from.
 - `broker`, `provider` — the egress-broker engine (TokenReview auth + verdict cache, per-route credential
-  strategies, SSE-safe reverse proxy, audit) and the pure logic of brokered claude runners (gateway env,
-  canonical→provider model-id maps with per-provider derived defaults, the `PATCHY_MODEL_MAP` codec both the
-  controllers and agentrun share). `provider.BrokerTokenHeader` is the one definition of the caller-token
+  strategies, SSE-safe reverse proxy, audit) and the pure logic of brokered claude and codex runners (claude
+  gateway env, the codex `config.toml` render carried as `PATCHY_CODEX_CONFIG`, canonical→provider model-id
+  maps with per-provider derived defaults, the `PATCHY_MODEL_MAP` codec both the controllers and agentrun
+  share). `provider.BrokerTokenHeader` is the one definition of the caller-token
   header.
 - `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from, plus the
   content-addressed workspace-blob side: sha256-named bundles (64-hex files beside the 32-hex repo tarballs),

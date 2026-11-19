@@ -15,16 +15,15 @@ The pipeline idles until two things exist:
        * the forge/provider credential (keys: appID + privateKey, or token,
          plus webhookSecret on Integration secrets) in namespace
          {{ .Release.Namespace }}, named by each CR's spec.secretRef.
-       * the model credentials. Claude's lives with the egress broker in
-         namespace {{ .Release.Namespace }} ({{ .Values.egressBroker.anthropicSecret }}, key api-key, when the
-         provider is anthropic; for bedrock/vertex/foundry-entra the broker
-         uses its workload identity instead — annotate
-         egressBroker.serviceAccount). The non-brokered runners each need a
-         Secret in namespace {{ .Values.agent.namespace }}
-         ({{- range $id, $r := .Values.agent.runners }}{{ if and $r.enabled $r.secret }} {{ $r.secret }} (key {{ $r.secretKey }}, as {{ $r.secretEnv }}){{ end }}{{- end }} — none needed when only claude is enabled).
-         A non-brokered harness is enabled only when its runner is enabled
-         AND its credential exists; claude is enabled by configuration, with
-         a missing broker credential surfacing at the broker's /readyz.
+       * the model credentials. They live with the egress broker in
+         namespace {{ .Release.Namespace }}, never in the agent sandbox:
+         claude's is {{ .Values.egressBroker.anthropicSecret }} (key api-key) when its provider is
+         anthropic; codex's is {{ .Values.egressBroker.openaiSecret }} (key api-key) when its provider
+         is openai{{ with .Values.egressBroker.azureSecret }}, or {{ . }} for azure by key{{ end }}. For
+         bedrock/vertex and foundry/azure via Entra the broker uses its
+         workload identity instead — annotate egressBroker.serviceAccount.
+         Brokered harnesses are enabled by configuration, with a missing
+         broker credential surfacing at the broker's /readyz.
          Every allowlisted model needs one enabled harness that supports it,
          or the controllers refuse to start.
      See deploy/kustomize/base/secrets.example.yaml in the patchy repository
@@ -38,6 +37,18 @@ no credential. Move the Anthropic credential to a Secret named
 Secret from {{ .Values.agent.namespace }}, and drop these values. If the old
 secretEnv was CLAUDE_CODE_OAUTH_TOKEN (a `claude setup-token` token), also
 set egressBroker.anthropicAuth=token so the broker sends it as a bearer.
+{{- end }}
+{{- $codex := .Values.agent.runners.codex }}
+{{- if or (index $codex "secret") (index $codex "secretKey") (index $codex "secretEnv") (index $codex "hosts") (index $codex "dnsPatterns") }}
+
+WARNING: agent.runners.codex.secret / secretKey / secretEnv / hosts /
+dnsPatterns are set but IGNORED — codex runs proxy-only through the egress
+broker and its pods hold no credential and reach no external host. Move the
+OpenAI API key to a Secret named `{{ .Values.egressBroker.openaiSecret }}` (key api-key) in namespace
+{{ .Release.Namespace }}, delete the old Secret from {{ .Values.agent.namespace }}, and drop these
+values. A ChatGPT-plan token (secretEnv CODEX_ACCESS_TOKEN / CODEX_API_KEY)
+cannot be brokered; use an OpenAI platform API key, or Azure OpenAI via
+agent.runners.codex.provider.
 {{- end }}
 {{- if not (and .Values.integrations .Values.forges) }}
 

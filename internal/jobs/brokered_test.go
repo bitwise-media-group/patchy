@@ -256,3 +256,52 @@ func TestBrokeredEvalDeadlinePastTokenCap(t *testing.T) {
 		t.Fatalf("CreateEval error = %v, want the 24h projection-cap rejection", err)
 	}
 }
+
+// TestBrokeredCodexEvalJobShape: a brokered codex eval pod gets the codex
+// wrapper — config.toml written from the gateway env, the token and the
+// placeholder exported under the names its provider reads — and none of
+// claude's header plumbing.
+func TestBrokeredCodexEvalJobShape(t *testing.T) {
+	cfg := brokeredConfig()
+	cfg.Runners["codex"] = Runner{
+		Image:    "ghcr.io/bitwise-media-group/evolve-runner-codex:1",
+		Brokered: true,
+		Env:      map[string]string{provider.CodexConfigEnv: "model_provider = \"patchy-broker\"\n"},
+	}
+	cs := fake.NewClientset()
+	name, err := New(cs, cfg, nil).CreateEval(context.Background(), EvalSpec{
+		Evaluation: "eval-1", Unit: "eval-1-u0", Index: 0, Harness: "codex",
+		UnitJSON:    []byte(`{}`),
+		ArtifactURL: "http://blobs/x", ArtifactDigest: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatalf("CreateEval: %v", err)
+	}
+	job, err := cs.BatchV1().Jobs(cfg.Namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	pod := job.Spec.Template.Spec
+	agent := pod.Containers[0]
+	if brokerVolume(pod) == nil {
+		t.Fatal("no projected broker-token volume on the codex eval pod")
+	}
+	cmd := strings.Join(agent.Command, " ")
+	for _, want := range []string{
+		`${CODEX_HOME:-$HOME/.codex}`,
+		`"$` + provider.CodexConfigEnv + `" > "$d/config.toml"`,
+		"export " + provider.BrokerTokenEnv + `="$(cat ` + brokerTokenPath + `)"`,
+		provider.CodexPlaceholderKeyEnv + "=" + provider.BrokerAuthPlaceholder,
+		"exec evolve exec-unit",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("codex eval command = %q, want it to contain %q", cmd, want)
+		}
+	}
+	if strings.Contains(cmd, "ANTHROPIC_") {
+		t.Errorf("codex eval command = %q carries claude env", cmd)
+	}
+	if got := envMap(agent)[provider.CodexConfigEnv].Value; got == "" {
+		t.Error("codex eval pod has no rendered config in its env")
+	}
+}

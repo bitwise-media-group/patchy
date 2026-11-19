@@ -49,7 +49,12 @@ func FoundryEntra(target *url.URL) (Upstream, error) {
 	if err != nil {
 		return Upstream{}, fmt.Errorf("broker: azure default credential: %w", err)
 	}
-	ts := &entraTokenSource{cred: cred}
+	return entraUpstream(target, &entraTokenSource{cred: cred}), nil
+}
+
+// entraUpstream attaches a cached Entra bearer to every request; shared by
+// the Foundry and Azure OpenAI routes, which take the same scope.
+func entraUpstream(target *url.URL, ts *entraTokenSource) Upstream {
 	return Upstream{
 		Target: target,
 		Credential: func(ctx context.Context, req *http.Request) error {
@@ -64,7 +69,7 @@ func FoundryEntra(target *url.URL) (Upstream, error) {
 			_, err := ts.token(ctx)
 			return err
 		},
-	}, nil
+	}
 }
 
 // entraTokenSource caches one Entra access token, refreshing it a safety

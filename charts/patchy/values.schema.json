@@ -161,7 +161,7 @@
                 },
                 "provider": {
                     "type": "object",
-                    "description": "Brokered-claude model provider: which API the egress broker fronts and how canonical model ids map onto it. Ignored for non-claude runners.",
+                    "description": "Brokered model provider: which API the egress broker fronts for this runner and how canonical model ids map onto it. claude: anthropic, bedrock, vertex, foundry; codex: openai, azure.",
                     "additionalProperties": false,
                     "properties": {
                         "name": {
@@ -170,7 +170,9 @@
                                 "anthropic",
                                 "bedrock",
                                 "vertex",
-                                "foundry"
+                                "foundry",
+                                "openai",
+                                "azure"
                             ]
                         },
                         "region": {
@@ -187,11 +189,11 @@
                         },
                         "resource": {
                             "type": "string",
-                            "description": "Microsoft Foundry resource name; required for foundry"
+                            "description": "Microsoft Foundry resource name (claude, provider foundry) or Azure OpenAI resource name (codex, provider azure); required for both"
                         },
                         "modelMap": {
                             "type": "object",
-                            "description": "Canonical model id -> provider-specific id overrides; required for foundry (deployment names)",
+                            "description": "Canonical model id -> provider-specific id overrides; required for foundry and azure (deployment names)",
                             "additionalProperties": {
                                 "type": "string"
                             }
@@ -1202,6 +1204,14 @@
                 "foundrySecret": {
                     "type": "string",
                     "description": "Secret (release namespace) holding the Foundry API key under api-key; empty selects Entra via the broker's workload identity"
+                },
+                "openaiSecret": {
+                    "type": "string",
+                    "description": "Secret (release namespace) holding the OpenAI platform API key under api-key, for codex provider openai; the broker is its only consumer"
+                },
+                "azureSecret": {
+                    "type": "string",
+                    "description": "Secret (release namespace) holding the Azure OpenAI API key under api-key, for codex provider azure; empty selects Entra via the broker's workload identity"
                 },
                 "resources": {
                     "type": "object"

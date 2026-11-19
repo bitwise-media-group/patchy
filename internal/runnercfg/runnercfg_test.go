@@ -4,9 +4,7 @@
 package runnercfg
 
 import (
-	"encoding/json"
 	"log/slog"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -39,75 +37,69 @@ func newOpts(t *testing.T, args ...string) *cli.Options {
 	return o
 }
 
-// TestRunnersSecretEnvValidation covers the startup gate on the credential
-// channel. It is the only thing standing between a typo'd --<harness>-secret-env
-// and a controller that runs happily until an agent pod comes up with its
-// credential in a variable the CLI never reads. The channels are per-harness,
-// so naming the other harness's variable must fail just as a nonsense one does.
-func TestRunnersSecretEnvValidation(t *testing.T) {
+// TestRunnersBrokered covers the startup gate on runner configuration: every
+// model-calling runner is brokered, so it configures only with a broker URL
+// and a provider its harness can front, carries no credential channel of any
+// kind, and tolerates the legacy --<harness>-secret* flags (ignored, with a
+// migration notice) rather than failing on them.
+func TestRunnersBrokered(t *testing.T) {
+	const broker = "http://broker:8080"
 	tests := []struct {
 		name     string
 		args     []string
-		wantEnv  map[string]string // harness -> resolved SecretEnv
-		wantErrs []string          // substrings; non-empty means Runners must fail
+		want     []string // configured runner ids
+		wantErrs []string // substrings; non-empty means Runners must fail
 	}{
 		{
-			// Claude is brokered: no credential channel at all, and the runner
-			// only configures with a broker URL.
-			name:    "claude is brokered with no secret env",
-			args:    []string{"--claude-agent-image", "claude:1", "--broker-url", "http://broker:8080"},
-			wantEnv: map[string]string{"claude": ""},
+			name: "claude is brokered",
+			args: []string{"--claude-agent-image", "claude:1", "--broker-url", broker},
+			want: []string{"claude"},
 		},
 		{
 			name:     "claude without a broker url is not a configuration",
 			args:     []string{"--claude-agent-image", "claude:1"},
-			wantErrs: []string{"--broker-url"},
+			wantErrs: []string{"--broker-url", "claude"},
 		},
 		{
-			// A stale --claude-secret-env survives startup: the flag is ignored
-			// (with a migration notice), never validated against channels.
-			name: "claude tolerates a stale secret env",
-			args: []string{"--claude-agent-image", "claude:1", "--broker-url", "http://broker:8080",
-				"--claude-secret-env", "OPENAI_API_KEY"},
-			wantEnv: map[string]string{"claude": ""},
+			name: "codex is brokered",
+			args: []string{"--codex-agent-image", "codex:1", "--broker-url", broker},
+			want: []string{"codex"},
 		},
 		{
-			name:    "codex defaults to the api key",
-			args:    []string{"--codex-agent-image", "codex:1"},
-			wantEnv: map[string]string{"codex": "OPENAI_API_KEY"},
+			name:     "codex without a broker url is not a configuration",
+			args:     []string{"--codex-agent-image", "codex:1"},
+			wantErrs: []string{"--broker-url", "codex"},
 		},
 		{
-			name: "codex accepts the chatgpt-plan access token",
-			args: []string{"--codex-agent-image", "codex:1",
-				"--codex-secret-env", "CODEX_ACCESS_TOKEN"},
-			wantEnv: map[string]string{"codex": "CODEX_ACCESS_TOKEN"},
+			name: "codex rejects a claude provider",
+			args: []string{"--codex-agent-image", "codex:1", "--broker-url", broker,
+				"--codex-provider", "bedrock"},
+			wantErrs: []string{"codex provider", "openai", "azure"},
 		},
 		{
-			name: "codex accepts the codex api key",
-			args: []string{"--codex-agent-image", "codex:1",
-				"--codex-secret-env", "CODEX_API_KEY"},
-			wantEnv: map[string]string{"codex": "CODEX_API_KEY"},
+			name: "claude rejects a codex provider",
+			args: []string{"--claude-agent-image", "claude:1", "--broker-url", broker,
+				"--claude-provider", "openai"},
+			wantErrs: []string{"claude provider", "anthropic"},
 		},
 		{
-			name: "codex rejects a claude channel",
-			args: []string{"--codex-agent-image", "codex:1",
-				"--codex-secret-env", "ANTHROPIC_API_KEY"},
-			wantErrs: []string{"--codex-secret-env", "ANTHROPIC_API_KEY", "CODEX_ACCESS_TOKEN"},
+			name: "codex rejects a credential in provider env",
+			args: []string{"--codex-agent-image", "codex:1", "--broker-url", broker,
+				"--codex-provider-env", "OPENAI_API_KEY=sk"},
+			wantErrs: []string{"OPENAI_API_KEY", "cannot be set here"},
 		},
 		{
-			// The error must enumerate the accepted channels; a bare rejection
-			// leaves the operator guessing at the spelling.
-			name: "codex rejects a typo and lists the alternatives",
-			args: []string{"--codex-agent-image", "codex:1",
-				"--codex-secret-env", "CODEX_TOKEN"},
-			wantErrs: []string{"--codex-secret-env", "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"},
+			// Stale secret flags survive startup: ignored, never validated.
+			name: "stale secret flags are tolerated",
+			args: []string{"--claude-agent-image", "claude:1", "--codex-agent-image", "codex:1",
+				"--broker-url", broker,
+				"--claude-secret-env", "OPENAI_API_KEY", "--codex-secret-env", "CODEX_TOKEN"},
+			want: []string{"claude", "codex"},
 		},
 		{
-			// The fake runner carries no credential, so there is no channel to
-			// validate and a stale --codex-secret-env must not fail startup.
-			name:    "fake runner needs no credential",
-			args:    []string{"--fake-agent-image", "fake:1", "--codex-secret-env", "CODEX_TOKEN"},
-			wantEnv: map[string]string{"fake": ""},
+			name: "fake runner needs no broker",
+			args: []string{"--fake-agent-image", "fake:1"},
+			want: []string{"fake"},
 		},
 		{
 			name:     "no image configures no runner",
@@ -135,133 +127,103 @@ func TestRunnersSecretEnvValidation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Runners: %v", err)
 			}
-			if len(runners) != len(tt.wantEnv) {
-				t.Errorf("configured runners = %v, want %v", keys(runners), keys(tt.wantEnv))
+			if got := keys(runners); !slices.Equal(got, tt.want) {
+				t.Errorf("configured runners = %v, want %v", got, tt.want)
 			}
-			for id, wantEnv := range tt.wantEnv {
-				r, ok := runners[id]
-				if !ok {
-					t.Fatalf("runner %q not configured", id)
+			for id, r := range runners {
+				if r.Secret != "" || r.SecretEnv != "" {
+					t.Errorf("%s runner carries a Secret channel: %+v", id, r)
 				}
-				if r.SecretEnv != wantEnv {
-					t.Errorf("%s SecretEnv = %q, want %q", id, r.SecretEnv, wantEnv)
+				if brokered := id != model.HarnessFake; r.Brokered != brokered {
+					t.Errorf("%s Brokered = %v, want %v", id, r.Brokered, brokered)
 				}
 			}
 		})
 	}
 }
 
-// TestRunnersCredentialWiring: the Secret name and key ride the same flags as
-// the env var, so a validated channel is only half the credential. Claude is
-// brokered — no Secret reference of any kind — while codex keeps its channel.
-func TestRunnersCredentialWiring(t *testing.T) {
+// TestRunnersGatewayEnv: each brokered runner's gateway env points its CLI at
+// its own broker route — claude through the base-URL override, codex through
+// the rendered config.toml's custom provider.
+func TestRunnersGatewayEnv(t *testing.T) {
 	runners, err := Runners(newOpts(t,
 		"--claude-agent-image", "claude:1",
-		"--broker-url", "http://broker:8080",
 		"--codex-agent-image", "codex:1",
-		"--codex-secret", "chatgpt-workspace",
-		"--codex-secret-key", "token",
-		"--codex-secret-env", "CODEX_ACCESS_TOKEN",
+		"--broker-url", "http://broker:8080",
+		"--codex-provider", "azure",
+		"--codex-model-map", "openai/gpt-5.3-codex=codex-deploy",
 	))
 	if err != nil {
 		t.Fatalf("Runners: %v", err)
 	}
 
 	claude := runners["claude"]
-	if !claude.Brokered || claude.Secret != "" || claude.SecretEnv != "" {
-		t.Errorf("claude runner = %+v, want brokered with no Secret channel", claude)
-	}
 	if got := claude.Env["ANTHROPIC_BASE_URL"]; got != "http://broker:8080/anthropic" {
 		t.Errorf("claude ANTHROPIC_BASE_URL = %q, want the broker's anthropic route", got)
 	}
+	if _, ok := claude.Env[provider.CodexConfigEnv]; ok {
+		t.Errorf("claude runner carries a codex config")
+	}
 
 	codex := runners["codex"]
-	want := map[string]string{
-		"image":     "codex:1",
-		"secret":    "chatgpt-workspace",
-		"secretKey": "token",
-		"secretEnv": "CODEX_ACCESS_TOKEN",
+	cfg := codex.Env[provider.CodexConfigEnv]
+	if !strings.Contains(cfg, `base_url = "http://broker:8080/azure/v1"`) {
+		t.Errorf("codex config does not point at the broker's azure route:\n%s", cfg)
 	}
-	got := map[string]string{
-		"image":     codex.Image,
-		"secret":    codex.Secret,
-		"secretKey": codex.SecretKey,
-		"secretEnv": codex.SecretEnv,
+	if got := codex.Env["PATCHY_MODEL_MAP"]; got != "openai/gpt-5.3-codex=codex-deploy" {
+		t.Errorf("codex PATCHY_MODEL_MAP = %q, want the azure deployment map", got)
 	}
-	for k, w := range want {
-		if got[k] != w {
-			t.Errorf("codex %s = %q, want %q", k, got[k], w)
+	if _, ok := codex.Env["ANTHROPIC_BASE_URL"]; ok {
+		t.Errorf("codex runner carries claude gateway env")
+	}
+}
+
+// TestLegacySecretFlagsIgnored: the pre-broker credential flags stay
+// registered (a deployment still passing them must start) and say they are
+// ignored.
+func TestLegacySecretFlagsIgnored(t *testing.T) {
+	f := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(f)
+	for _, s := range legacySecretFlags {
+		flag := f.Lookup(s.flag)
+		if flag == nil {
+			t.Errorf("--%s is not registered", s.flag)
+			continue
+		}
+		if !strings.HasPrefix(flag.Usage, "IGNORED") {
+			t.Errorf("--%s usage %q does not say it is ignored", s.flag, flag.Usage)
 		}
 	}
 }
 
-// chartSecretEnvEnum is where the Helm chart constrains
-// agent.runners.<harness>.secretEnv.
-const chartSecretEnvEnum = "../../charts/patchy/values.schema.json"
-
-// TestChartSecretEnvEnumMatchesHarnesses guards the one copy of the credential
-// vocabulary that Go cannot reach: helm validates secretEnv against a hardcoded
-// enum in values.schema.json, while Runners validates the same field against
-// harness.EnvKeys. Nothing connected the two, and they drifted — the enum named
-// only OPENAI_API_KEY for codex, so a chart install using the CODEX_API_KEY or
-// CODEX_ACCESS_TOKEN channel that Runners accepts failed lint before it ever
-// reached a controller. Adding a channel to a harness must add it here.
-func TestChartSecretEnvEnumMatchesHarnesses(t *testing.T) {
-	raw, err := os.ReadFile(chartSecretEnvEnum)
+// TestResolveAzureCoverage: like foundry, azure deployment names cannot be
+// derived, so an OpenAI model codex would run without a map entry fails at
+// startup — while claude's models are not the codex runner's problem.
+func TestResolveAzureCoverage(t *testing.T) {
+	opts := newOpts(t,
+		"--claude-agent-image", "claude:1",
+		"--codex-agent-image", "codex:1",
+		"--broker-url", "http://127.0.0.1:1",
+		"--codex-provider", "azure",
+		"--codex-model-map", "openai/gpt-5.3-codex=codex-deploy",
+	)
+	runners, err := Runners(opts)
 	if err != nil {
-		t.Fatalf("read chart schema: %v", err)
+		t.Fatalf("Runners: %v", err)
 	}
-	var doc struct {
-		Definitions struct {
-			AgentRunner struct {
-				Properties struct {
-					SecretEnv struct {
-						Enum []string `json:"enum"`
-					} `json:"secretEnv"`
-				} `json:"properties"`
-			} `json:"agentRunner"`
-		} `json:"definitions"`
+	ctx, cs := t.Context(), fake.NewClientset()
+	_, err = Resolve(ctx, opts, cs, "patchy-agents", runners, nil,
+		[]string{"openai/gpt-5.3-codex", "openai/gpt-5.6-sol"}, "anthropic/claude-sonnet")
+	if err == nil || !strings.Contains(err.Error(), "openai/gpt-5.6-sol") {
+		t.Errorf("Resolve error = %v, want the uncovered model named", err)
 	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("parse chart schema: %v", err)
+	enabled, err := Resolve(ctx, opts, cs, "patchy-agents", runners, nil,
+		[]string{"openai/gpt-5.3-codex", "anthropic/claude-sonnet"}, "anthropic/claude-sonnet")
+	if err != nil {
+		t.Fatalf("Resolve with full coverage: %v", err)
 	}
-	got := doc.Definitions.AgentRunner.Properties.SecretEnv.Enum
-	if len(got) == 0 {
-		t.Fatalf("%s: no secretEnv enum found — did the schema shape change?", chartSecretEnvEnum)
-	}
-
-	// Every channel every harness accepts, in registry order. The fake harness
-	// carries no credential and contributes none.
-	var want []string
-	for _, id := range model.KnownHarnessIDs {
-		if id == model.HarnessFake {
-			continue
-		}
-		want = append(want, envKeys(id)...)
-	}
-
-	inEnum := make(map[string]bool, len(got))
-	for _, e := range got {
-		inEnum[e] = true
-	}
-	for _, env := range want {
-		if !inEnum[env] {
-			t.Errorf("%s: secretEnv enum is missing %q, a channel a harness accepts — "+
-				"a chart install using it fails lint even though Runners allows it",
-				chartSecretEnvEnum, env)
-		}
-	}
-	// The reverse direction: an enum entry no harness accepts would pass helm
-	// lint and then fail at controller startup.
-	accepted := make(map[string]bool, len(want))
-	for _, env := range want {
-		accepted[env] = true
-	}
-	for _, e := range got {
-		if !accepted[e] {
-			t.Errorf("%s: secretEnv enum offers %q, which no harness accepts — "+
-				"helm would accept a value the controller rejects at startup", chartSecretEnvEnum, e)
-		}
+	if !slices.Equal(enabled, []string{"claude", "codex"}) {
+		t.Errorf("enabled = %v, want claude and codex (brokered, no Secret probe)", enabled)
 	}
 }
 
@@ -402,35 +364,4 @@ func keys[V any](m map[string]V) []string {
 	}
 	slices.Sort(out)
 	return out
-}
-
-// TestSecretEnvFlagsMatchAcceptedChannels: the --<harness>-secret-env help is
-// generated from the harness's accepted channels, so it cannot advertise a set
-// the startup validation rejects, or omit one an operator is allowed to pick.
-// The default must itself be an accepted channel, or the flag would fail
-// validation when left alone.
-func TestSecretEnvFlagsMatchAcceptedChannels(t *testing.T) {
-	f := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	RegisterFlags(f)
-
-	// claude-secret-env is absent on purpose: the claude runner is brokered,
-	// the flag is ignored, and its usage says so instead of naming channels.
-	for _, tt := range []struct{ flag, harness string }{
-		{"codex-secret-env", model.HarnessCodex},
-	} {
-		t.Run(tt.flag, func(t *testing.T) {
-			flag := f.Lookup(tt.flag)
-			if flag == nil {
-				t.Fatalf("--%s is not registered", tt.flag)
-			}
-			for _, env := range envKeys(tt.harness) {
-				if !strings.Contains(flag.Usage, env) {
-					t.Errorf("usage %q omits accepted channel %q", flag.Usage, env)
-				}
-			}
-			if !accepts(tt.harness, flag.DefValue) {
-				t.Errorf("default %q is not an accepted channel %v", flag.DefValue, envKeys(tt.harness))
-			}
-		})
-	}
 }

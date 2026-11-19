@@ -24,7 +24,7 @@ can smuggle a credential in.
 | Read token (single repo, archive download)          | Minted on demand, never stored                                                      | source-controller only                                                                                                     |
 | Write token (single repo, push + PR)                | Minted on demand, never stored                                                      | remediation-controller only                                                                                                |
 | Claude model credential (API key or cloud identity) | `patchy-anthropic` Secret, **release ns** — or the broker's cloud workload identity | The egress broker only — **never an agent pod**                                                                            |
-| Codex model credential                              | `patchy-openai`, agent ns                                                           | The codex agent container — the only secret value in a non-brokered pod (the runner ships disabled)                        |
+| Codex model credential (API key or Entra identity)  | `patchy-openai` Secret, **release ns** — or the broker's Azure workload identity    | The egress broker only — **never an agent pod**                                                                            |
 
 All GitHub side effects — issue projection, alert dismissal, branch push, pull requests — happen controller-side with
 short-lived, per-repository scoped tokens. An agent that reaches `github.com` reaches it as an anonymous member of the
@@ -39,11 +39,11 @@ covering exactly what `internal/jobs` uses — create/get/list/watch/delete on `
 
 The agent ServiceAccount (`patchy-agent`) has **no Role whatsoever** and the pods run with
 `automountServiceAccountToken: false` — Kubernetes API access from the agent pod would let a prompt-injected agent read
-the very Secrets the isolation model depends on. A brokered (claude) pod does mount a **projected** ServiceAccount
-token, but one bound to the broker's audience (`patchy-egress-broker`): the API server rejects it as a Kubernetes API
-credential, and the broker — which validates it via `TokenReview` — is the only party that accepts it. The broker's own
-identity is equally narrow: `create tokenreviews` is its whole RBAC surface, with no Secret API access of any kind (its
-credential files arrive as mounted volumes).
+the very Secrets the isolation model depends on. A brokered (claude, codex) pod does mount a **projected**
+ServiceAccount token, but one bound to the broker's audience (`patchy-egress-broker`): the API server rejects it as a
+Kubernetes API credential, and the broker — which validates it via `TokenReview` — is the only party that accepts it.
+The broker's own identity is equally narrow: `create tokenreviews` is its whole RBAC surface, with no Secret API access
+of any kind (its credential files arrive as mounted volumes).
 
 ## Pod security
 
@@ -60,22 +60,23 @@ and agent Jobs — runs as non-root uid 65532 with a read-only root filesystem, 
 for DNS, the artifact port (9790) to source-controller, the broker port (8080) to the egress broker, and TCP 443 with
 the cluster's own ranges and the cloud metadata endpoint (`169.254.169.254`) excluded — adjust
 `agent.networkPolicy.clusterCIDRs` (Helm) or the `except:` CIDRs in `base/networkpolicy.yaml` (kustomize) to your
-cluster's pod/service/node CIDRs. A **claude** pod uses only the first three: DNS, the artifact server, and the broker —
-its entire egress is cluster-local. The 443 rule exists for the non-brokered runner (codex, shipped
-disabled), and be honest about what it is: **a plain NetworkPolicy is L3/L4 and cannot match a hostname**, so "TCP 443"
-means every HTTPS host on the internet, not just the model vendor's.
+cluster's pod/service/node CIDRs. A **claude** or **codex** pod uses only the first three: DNS, the artifact server, and
+the broker — its entire egress is cluster-local. No runner patchy ships needs the 443 rule any more; it remains the L3
+floor for a future non-brokered runner, and be honest about what it is: **a plain NetworkPolicy is L3/L4 and cannot
+match a hostname**, so "TCP 443" means every HTTPS host on the internet, not just the model vendor's.
 
 Pinning egress to hostnames takes one of three optional layers, selected by `agent.networkPolicy.mode` (Helm) or by the
-matching kustomize component. Brokered claude needs none of them — it has **no external hosts to allowlist** (its Cilium
-policy is cluster-only with no `toFQDNs`, its GKE FQDN policy is skipped, its Istio ServiceEntry set is empty) — so the
-hostname layers exist for the codex runner's model hosts. **No GitHub hosts appear anywhere in any of them** —
-the pod never talks to a forge, so there is nothing to allow.
+matching kustomize component. The brokered runners (claude, codex) need none of them — they have **no external hosts to
+allowlist** (their Cilium policies are cluster-only with no `toFQDNs`, their GKE FQDN policies are skipped, their Istio
+ServiceEntry set is empty) — so what the hostname layers contribute today is dropping the broad 443 rule (cilium, gke);
+their per-host machinery is there for a non-brokered runner. **No GitHub hosts appear anywhere in any of them** — the
+pod never talks to a forge, so there is nothing to allow.
 
 - **Cilium** (`mode: cilium`, or the kustomize `components/cilium` — what the prod overlay uses) — one
   `CiliumNetworkPolicy` per runner: `toFQDNs` naming that runner's model hosts, plus a DNS rule constraining what names
   the pod may resolve at all (the runner's `dnsPatterns` and `*.svc.cluster.local`, so the artifact fetch still
-  resolves). The claude policy is cluster-only — DNS, the artifact server, and the broker, with no `toFQDNs` and no
-  external names resolvable at all. Requires Cilium with the DNS proxy.
+  resolves). The claude and codex policies are cluster-only — DNS, the artifact server, and the broker, with no
+  `toFQDNs` and no external names resolvable at all. Requires Cilium with the DNS proxy.
 - **GKE Dataplane V2** (`mode: gke`, or `components/gke-fqdn`) — an `FQDNNetworkPolicy` (`networking.gke.io/v1alpha1`)
   naming the same host on 443. Dataplane V2 _is_ Cilium, but it has not honoured the `CiliumNetworkPolicy` CRD since
   1.21.5-gke.1300 and rejects every L7 rule, so the Cilium layer above is inert there — this is its equivalent, with
@@ -84,11 +85,11 @@ the pod never talks to a forge, so there is nothing to allow.
   express DNS or a ClusterIP destination, so DNS and the artifact fetch stay with the base policy — which also means it
   does **not** close the DNS exfiltration channel described below.
 - **Istio** (`mode: istio`, or `components/istio`) — the same allowlist as a `Sidecar` in `REGISTRY_ONLY` mode (exposing
-  only that runner's model ServiceEntry — none at all for claude — and the release namespace's Services, which covers
-  the artifact server and the broker), matched by SNI. Two hard requirements: **native sidecars** (Kubernetes ≥ 1.29 and
-  istiod with `ENABLE_NATIVE_SIDECARS=true` — a classic sidecar never terminates, hanging the Job, and blackholes the
-  init container's artifact fetch), and the **Istio CNI node agent** (the `restricted` PSS rejects `istio-init`'s
-  NET_ADMIN/NET_RAW).
+  only that runner's model ServiceEntry — none at all for claude or codex — and the release namespace's Services, which
+  covers the artifact server and the broker), matched by SNI. Two hard requirements: **native sidecars** (Kubernetes ≥
+  1.29 and istiod with `ENABLE_NATIVE_SIDECARS=true` — a classic sidecar never terminates, hanging the Job, and
+  blackholes the init container's artifact fetch), and the **Istio CNI node agent** (the `restricted` PSS rejects
+  `istio-init`'s NET_ADMIN/NET_RAW).
 
 The default, `mode: auto`, resolves this from the cluster's own API surface on every render against a live cluster, so
 one set of manifests can serve a GKE cluster and a Cilium cluster unmodified. It picks `gke` when the

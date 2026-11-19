@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"time"
@@ -60,6 +61,16 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 		"Foundry base URL (default: https://<foundry-resource>.services.ai.azure.com)")
 	f.String("foundry-auth", "key", "foundry credential mode: key (x-api-key from file) or entra (bearer)")
 	f.String("foundry-api-key-file", "", "mounted Secret file holding the Foundry API key (foundry-auth key)")
+
+	// The codex routes: OpenAI's Responses API, first-party or on Azure.
+	f.String("openai-api-key-file", "",
+		"mounted Secret file holding the OpenAI platform API key; set to enable the openai route")
+	f.String("openai-base-url", "https://api.openai.com", "OpenAI API base URL (codex appends /v1)")
+	f.String("azure-resource", "", "Azure OpenAI resource name; set to enable the azure route")
+	f.String("azure-base-url", "",
+		"Azure OpenAI base URL, codex appends /v1 (default: https://<azure-resource>.openai.azure.com/openai)")
+	f.String("azure-auth", "key", "azure credential mode: key (api-key from file) or entra (bearer)")
+	f.String("azure-api-key-file", "", "mounted Secret file holding the Azure OpenAI API key (azure-auth key)")
 	return cmd
 }
 
@@ -75,6 +86,8 @@ func upstreams(ctx context.Context, opts *cli.Options) (map[string]broker.Upstre
 		{"bedrock", bedrockUpstream},
 		{"vertex", vertexUpstream},
 		{"foundry", foundryUpstream},
+		{"openai", openAIUpstream},
+		{"azure", azureUpstream},
 	}
 	for _, b := range builders {
 		up, err := b.build(ctx, opts)
@@ -87,7 +100,7 @@ func upstreams(ctx context.Context, opts *cli.Options) (map[string]broker.Upstre
 	}
 	if len(routes) == 0 {
 		return nil, errors.New("no upstream configured (set at least one of --anthropic-api-key-file / " +
-			"--bedrock-region / --vertex-region / --foundry-resource)")
+			"--bedrock-region / --vertex-region / --foundry-resource / --openai-api-key-file / --azure-resource)")
 	}
 	return routes, nil
 }
@@ -154,33 +167,64 @@ func vertexUpstream(ctx context.Context, opts *cli.Options) (*broker.Upstream, e
 }
 
 func foundryUpstream(_ context.Context, opts *cli.Options) (*broker.Upstream, error) {
-	resource, raw := opts.String("foundry-resource"), opts.String("foundry-base-url")
+	return keyOrEntraUpstream(opts, "foundry", "https://%s.services.ai.azure.com",
+		broker.FoundryKey, broker.FoundryEntra)
+}
+
+func openAIUpstream(_ context.Context, opts *cli.Options) (*broker.Upstream, error) {
+	keyFile := opts.String("openai-api-key-file")
+	if keyFile == "" {
+		return nil, nil
+	}
+	target, err := broker.ParseTarget(opts.String("openai-base-url"))
+	if err != nil {
+		return nil, err
+	}
+	up := broker.OpenAI(target, keyFile)
+	return &up, nil
+}
+
+func azureUpstream(_ context.Context, opts *cli.Options) (*broker.Upstream, error) {
+	return keyOrEntraUpstream(opts, "azure", "https://%s.openai.azure.com/openai",
+		broker.AzureOpenAIKey, broker.AzureOpenAIEntra)
+}
+
+// keyOrEntraUpstream builds an Azure-hosted route (foundry, azure) from its
+// --<name>-resource / --<name>-base-url / --<name>-auth /
+// --<name>-api-key-file flags: disabled when neither the resource nor the
+// base URL is set; the base URL defaults from the resource via defaultURL;
+// the credential is a mounted key file (key) or the broker's ambient Entra
+// identity (entra).
+func keyOrEntraUpstream(opts *cli.Options, name, defaultURL string,
+	key func(*url.URL, string) broker.Upstream,
+	entra func(*url.URL) (broker.Upstream, error)) (*broker.Upstream, error) {
+	resource, raw := opts.String(name+"-resource"), opts.String(name+"-base-url")
 	if resource == "" && raw == "" {
 		return nil, nil
 	}
 	if raw == "" {
-		raw = fmt.Sprintf("https://%s.services.ai.azure.com", resource)
+		raw = fmt.Sprintf(defaultURL, resource)
 	}
 	target, err := broker.ParseTarget(raw)
 	if err != nil {
 		return nil, err
 	}
-	switch mode := opts.String("foundry-auth"); mode {
+	switch mode := opts.String(name + "-auth"); mode {
 	case "key":
-		keyFile := opts.String("foundry-api-key-file")
+		keyFile := opts.String(name + "-api-key-file")
 		if keyFile == "" {
-			return nil, errors.New("--foundry-auth key requires --foundry-api-key-file")
+			return nil, fmt.Errorf("--%s-auth key requires --%s-api-key-file", name, name)
 		}
-		up := broker.FoundryKey(target, keyFile)
+		up := key(target, keyFile)
 		return &up, nil
 	case "entra":
-		up, err := broker.FoundryEntra(target)
+		up, err := entra(target)
 		if err != nil {
 			return nil, err
 		}
 		return &up, nil
 	default:
-		return nil, fmt.Errorf("--foundry-auth %q is not key or entra", mode)
+		return nil, fmt.Errorf("--%s-auth %q is not key or entra", name, mode)
 	}
 }
 

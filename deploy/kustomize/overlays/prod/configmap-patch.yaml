@@ -16,7 +16,9 @@ data:
     # from the model) the investigation may choose between. Only the claude
     # runner is enabled here; add `codex` to
     # PATCHY_HARNESSES and OpenAI models to the allowlist to let the
-    # investigation choose them.
+    # investigation choose them — plus PATCHY_OPENAI_API_KEY_FILE and the
+    # patchy-openai Secret in the patchy namespace, for the broker's openai
+    # route (codex is brokered like claude; see base/configmap.yaml).
     PATCHY_HARNESSES: claude
     PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet
     PATCHY_REMEDIATE_MODEL: anthropic/claude-sonnet

@@ -516,3 +516,58 @@ func TestConfigValidation(t *testing.T) {
 		t.Error("relative target accepted")
 	}
 }
+
+// TestCodexRoutesInjectAndStrip: the codex CLI's custom provider sends the
+// non-secret placeholder as Authorization (its env_key) and may send any
+// api-key header; the broker must replace both with the mounted credential —
+// a bearer for OpenAI, the api-key header for Azure.
+func TestCodexRoutesInjectAndStrip(t *testing.T) {
+	var gotPath string
+	var gotHeader http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotHeader = r.URL.Path, r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	tests := []struct {
+		name     string
+		route    string
+		upstream Upstream
+		wantPath string
+		wantAuth string
+		wantKey  string
+	}{
+		{"openai", "openai", OpenAI(mustTarget(t, upstream.URL), keyFile(t, "sk-proj-123")),
+			"/v1/responses", "Bearer sk-proj-123", ""},
+		{"azure key", "azure", AzureOpenAIKey(mustTarget(t, upstream.URL+"/openai"), keyFile(t, "az-key")),
+			"/openai/v1/responses", "", "az-key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServer(t, Config{Upstreams: map[string]Upstream{tt.route: tt.upstream}}, nil)
+			req := httptest.NewRequest(http.MethodPost, "/"+tt.route+"/v1/responses", strings.NewReader(`{}`))
+			req.Header.Set(TokenHeader, "good")
+			req.Header.Set("Authorization", "Bearer patchy-egress-broker")
+			req.Header.Set("api-key", "caller-supplied")
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+			}
+			if gotPath != tt.wantPath {
+				t.Errorf("upstream path = %q, want %q", gotPath, tt.wantPath)
+			}
+			if v := gotHeader.Get("Authorization"); v != tt.wantAuth {
+				t.Errorf("Authorization = %q, want %q", v, tt.wantAuth)
+			}
+			if v := gotHeader.Get("api-key"); v != tt.wantKey {
+				t.Errorf("api-key = %q, want %q", v, tt.wantKey)
+			}
+			if v := gotHeader.Get(TokenHeader); v != "" {
+				t.Errorf("caller token forwarded upstream: %q", v)
+			}
+		})
+	}
+}

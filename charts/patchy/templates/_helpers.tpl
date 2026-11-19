@@ -108,14 +108,36 @@ app.kubernetes.io/managed-by: patchy
 {{- end }}
 
 {{/*
-Whether the egress credential broker deploys: exactly when a claude runner is
-enabled anywhere (findings or evaluations). There is deliberately no separate
-enabled knob — claude runs proxy-only, so claude ⇒ broker, and a fake-only
-dev/e2e values file renders none of it. Returns a non-empty string for yes.
+The harnesses whose runners are brokered — every one that calls a model API.
+Space-separated; consume with `has $id (splitList " " (include
+"patchy.brokeredHarnesses" .))`.
+*/}}
+{{- define "patchy.brokeredHarnesses" -}}
+claude codex
+{{- end }}
+
+{{/*
+Whether a harness's runner is enabled anywhere (findings or evaluations).
+Context: dict "root" $ "id" <harness>. Returns a non-empty string for yes.
+*/}}
+{{- define "patchy.harnessEnabled" -}}
+{{- $r := index .root.Values.agent.runners .id | default dict -}}
+{{- $e := index .root.Values.evaluationController.runners .id | default dict -}}
+{{- if or $r.enabled (and .root.Values.evaluationController.enabled $e.enabled) -}}
+yes
+{{- end -}}
+{{- end }}
+
+{{/*
+Whether the egress credential broker deploys: exactly when a brokered (claude
+or codex) runner is enabled anywhere (findings or evaluations). There is
+deliberately no separate enabled knob — both run proxy-only, so claude or
+codex ⇒ broker, and a fake-only dev/e2e values file renders none of it.
+Returns a non-empty string for yes.
 */}}
 {{- define "patchy.brokerEnabled" -}}
-{{- if or .Values.agent.runners.claude.enabled (and .Values.evaluationController.enabled .Values.evaluationController.runners.claude.enabled) -}}
-yes
+{{- range $id := splitList " " (include "patchy.brokeredHarnesses" .) -}}
+{{- include "patchy.harnessEnabled" (dict "root" $ "id" $id) -}}
 {{- end -}}
 {{- end }}
 
@@ -128,16 +150,26 @@ http://{{ include "patchy.fullname" . }}-egress-broker.{{ .Release.Namespace }}.
 {{- end }}
 
 {{/*
-Stamp the brokered-claude configuration into a controller's ConfigMap data
-dict: the broker URL and the PATCHY_CLAUDE_PROVIDER* keys the runnercfg flags
-bind. Context: dict "root" $ "data" <dict>. The PATCHY_CLAUDE_SECRET* keys
-are deliberately NOT stamped anymore — the claude model credential lives in
-the broker, not the agent namespace.
+Stamp a brokered harness's configuration into a controller's ConfigMap data
+dict: the broker URL and the PATCHY_<HARNESS>_PROVIDER*, _MODEL_MAP and
+_PROVIDER_ENV keys the runnercfg flags bind (region, regionPrefix and
+projectID are claude-only). Context: dict "root" $ "data" <dict> "id"
+<harness>. The PATCHY_<HARNESS>_SECRET* keys are deliberately NOT stamped —
+the model credentials live in the broker, not the agent namespace.
 */}}
-{{- define "patchy.claudeProviderData" -}}
-{{- $p := .root.Values.agent.runners.claude.provider | default dict -}}
+{{- define "patchy.providerData" -}}
+{{- $runner := index .root.Values.agent.runners .id | default dict -}}
+{{- $p := $runner.provider | default dict -}}
+{{- $up := upper .id -}}
 {{- $_ := set .data "PATCHY_BROKER_URL" (include "patchy.brokerURL" .root) -}}
-{{- $_ := set .data "PATCHY_CLAUDE_PROVIDER" ($p.name | default "anthropic") -}}
+{{- $_ := set .data (printf "PATCHY_%s_PROVIDER" $up) ($p.name | default (ternary "openai" "anthropic" (eq .id "codex"))) -}}
+{{- with $p.modelMap -}}
+{{- $_ := set $.data (printf "PATCHY_%s_MODEL_MAP" $up) (include "patchy.kvList" .) -}}
+{{- end -}}
+{{- with $p.env -}}
+{{- $_ := set $.data (printf "PATCHY_%s_PROVIDER_ENV" $up) (include "patchy.kvList" .) -}}
+{{- end -}}
+{{- if eq .id "claude" -}}
 {{- with $p.region -}}
 {{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_REGION" . -}}
 {{- end -}}
@@ -147,17 +179,13 @@ the broker, not the agent namespace.
 {{- with $p.projectID -}}
 {{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_PROJECT_ID" . -}}
 {{- end -}}
-{{- with $p.modelMap -}}
-{{- $_ := set $.data "PATCHY_CLAUDE_MODEL_MAP" (include "patchy.kvList" .) -}}
-{{- end -}}
-{{- with $p.env -}}
-{{- $_ := set $.data "PATCHY_CLAUDE_PROVIDER_ENV" (include "patchy.kvList" .) -}}
 {{- end -}}
 {{- end }}
 
 {{/*
 Render a map as the comma-joined key=value wire form the runnercfg flags
-parse (--claude-model-map, --claude-provider-env). Keys sort deterministically.
+parse (--<harness>-model-map, --<harness>-provider-env). Keys sort
+deterministically.
 */}}
 {{- define "patchy.kvList" -}}
 {{- $pairs := list -}}

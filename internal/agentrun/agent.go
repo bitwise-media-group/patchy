@@ -544,7 +544,7 @@ func (a *Agent) cliModel(canonical, harnessID string) string {
 	if id, ok := a.cfg.ModelMap[canonical]; ok {
 		return id
 	}
-	if m, ok := model.ModelByID(model.Builtins(), canonical); ok {
+	if m, ok := model.Lookup(canonical); ok {
 		if id, ok := m.CLIModelID(harnessID); ok {
 			return id
 		}

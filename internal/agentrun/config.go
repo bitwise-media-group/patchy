@@ -10,10 +10,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/provider"
 	"github.com/bitwise-media-group/patchy/internal/templates"
 	"github.com/bitwise-media-group/patchy/internal/transcript"
@@ -163,13 +165,18 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		Phase:              Phase(get("PHASE", string(PhaseInvestigate))),
 		InvestigateHarness: get("INVESTIGATE_HARNESS", "claude"),
 		RemediateHarness:   get("REMEDIATE_HARNESS", "claude"),
-		InvestigateModel:   get("INVESTIGATE_MODEL", "anthropic/claude-sonnet-5"),
-		RemediateModel:     get("REMEDIATE_MODEL", "anthropic/claude-sonnet-5"),
+		// The controllers resolve family aliases at startup and hand the pod
+		// concrete ids; Concrete covers a hand-set alias (and the default)
+		// so the prompt and the envelope only ever name a concrete version.
+		InvestigateModel: model.Concrete(get("INVESTIGATE_MODEL", model.DefaultAlias)),
+		RemediateModel:   model.Concrete(get("REMEDIATE_MODEL", model.DefaultAlias)),
 	}
 	if list := get("MODEL_ALLOWLIST", cfg.RemediateModel); list != "" {
 		for m := range strings.SplitSeq(list, ",") {
 			if m = strings.TrimSpace(m); m != "" {
-				cfg.ModelAllowlist = append(cfg.ModelAllowlist, m)
+				if m = model.Concrete(m); !slices.Contains(cfg.ModelAllowlist, m) {
+					cfg.ModelAllowlist = append(cfg.ModelAllowlist, m)
+				}
 			}
 		}
 	}

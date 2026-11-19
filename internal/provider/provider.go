@@ -230,12 +230,12 @@ func ValidateCoverage(c Config, models []model.Model, modelMap map[string]string
 		if id == "" {
 			continue
 		}
-		m, ok := model.ModelByID(models, id)
+		m, ok := model.Resolve(models, id)
 		if !ok || !m.Supports(model.HarnessClaude) {
 			continue // another harness's model; not this runner's problem
 		}
-		if _, ok := modelMap[id]; !ok {
-			missing = append(missing, id)
+		if _, ok := modelMap[m.ID]; !ok {
+			missing = append(missing, m.ID)
 		}
 	}
 	if len(missing) > 0 {

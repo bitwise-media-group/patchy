@@ -64,7 +64,11 @@ The job controllers (and the evaluation controller, via the shared flags) point 
 translation (Bedrock `us.anthropic.<model>` inference profiles, Vertex bare ids, Foundry deployment names) is rendered
 into `PATCHY_MODEL_MAP` and applied in-pod. Bedrock and Vertex ids are derived per registry model; **Foundry has no
 derivable ids**, so `--claude-model-map` must cover every claude-resolving allowlisted model and stage default — the
-controllers refuse to start otherwise, which turns a would-be mid-run failure into a startup error.
+controllers refuse to start otherwise, which turns a would-be mid-run failure into a startup error. The map is keyed by
+**concrete** ids: a family alias such as `anthropic/claude-sonnet` resolves at startup to the newest registered version
+(`anthropic/claude-sonnet-5-5`), and that is the key the map must carry. Bedrock and Vertex ids are derived for
+unregistered (pattern-tier) versions too, so `anthropic/claude-opus-6` on Bedrock maps to `us.anthropic.claude-opus-6`
+with no operator entry.
 
 ## Workload identity
 

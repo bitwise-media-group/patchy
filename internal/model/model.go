@@ -42,6 +42,10 @@ type Model struct {
 	OutputUSD      *float64          `json:"output_per_mtok"`
 	Supported      map[string]string `json:"supported"`
 	Preferred      string            `json:"preferred"`
+
+	// synthesized marks a pattern-tier model (see Resolve): not registered,
+	// claude harness only, unpriced. Reported by Synthesized.
+	synthesized bool
 }
 
 // Key is the canonical, provider-qualified id ("anthropic/claude-sonnet-5").

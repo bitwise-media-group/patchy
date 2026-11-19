@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/harness"
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/provider"
 )
 
@@ -32,6 +33,8 @@ func TestCliModel(t *testing.T) {
 		{"unmapped model falls back to the registry", "anthropic/claude-opus-5", "claude",
 			map[string]string{"anthropic/claude-sonnet-5": "us.anthropic.claude-sonnet-5"},
 			"claude-opus-5"},
+		{"copilot point release is dotted", "anthropic/claude-opus-5-5", "copilot", nil, "claude-opus-5.5"},
+		{"pattern-tier id runs on claude as its bare id", "anthropic/claude-opus-6", "claude", nil, "claude-opus-6"},
 		{"unknown id falls back to the bare id", "anthropic/claude-next-99", "claude", nil, "claude-next-99"},
 		{"unqualified unknown id passes through", "mystery", "claude", nil, "mystery"},
 	}
@@ -188,5 +191,31 @@ func TestFromEnvBrokerFields(t *testing.T) {
 	if _, err := FromEnv(func(k string) string { return env[k] }); err == nil ||
 		!strings.Contains(err.Error(), "PATCHY_MODEL_MAP") {
 		t.Errorf("FromEnv() error = %v, want a PATCHY_MODEL_MAP rejection", err)
+	}
+}
+
+// TestFromEnvResolvesModelAliases: hand-set aliases and the built-in default
+// resolve pod-side — the prompt and the envelope only ever name concrete
+// versions. Aliases that land on one version collapse.
+func TestFromEnvResolvesModelAliases(t *testing.T) {
+	env := map[string]string{
+		"PATCHY_REPO":              "acme/shop",
+		"PATCHY_FINDING":           "finding-1",
+		"PATCHY_INVESTIGATE_MODEL": "anthropic/claude-opus",
+		"PATCHY_MODEL_ALLOWLIST":   "anthropic/claude-sonnet,anthropic/claude-opus,anthropic/claude-opus-5-5",
+	}
+	cfg, err := FromEnv(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if cfg.InvestigateModel != "anthropic/claude-opus-5-5" {
+		t.Errorf("InvestigateModel = %q, want anthropic/claude-opus-5-5", cfg.InvestigateModel)
+	}
+	if want := model.Concrete(model.DefaultAlias); cfg.RemediateModel != want || model.IsAlias(cfg.RemediateModel) {
+		t.Errorf("default RemediateModel = %q, want the concrete %q", cfg.RemediateModel, want)
+	}
+	want := []string{"anthropic/claude-sonnet-5-5", "anthropic/claude-opus-5-5"}
+	if !slices.Equal(cfg.ModelAllowlist, want) {
+		t.Errorf("ModelAllowlist = %v, want %v", cfg.ModelAllowlist, want)
 	}
 }

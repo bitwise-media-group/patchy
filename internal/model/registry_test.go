@@ -56,6 +56,19 @@ func TestBuiltinInvariants(t *testing.T) {
 		if m.CachedInputUSD == nil {
 			t.Errorf("model %q: missing cached-input rate", m.ID)
 		}
+		// Family aliases order Anthropic builtins by parsing their bare id;
+		// one that did not parse would be invisible to its alias.
+		if m.ProviderID == ProviderAnthropic {
+			if _, _, _, ok := ParseClaudeID(m.BareID()); !ok {
+				t.Errorf("model %q: bare id does not parse as claude-<family>-<major>[-<minor>]", m.ID)
+			}
+			if id, ok := m.CLIModelID(HarnessClaude); !ok || id != m.BareID() {
+				t.Errorf("model %q: claude CLI id = %q (%v), want its bare id", m.ID, id, ok)
+			}
+		}
+		if Synthesized(m) {
+			t.Errorf("model %q: builtin marked synthesized", m.ID)
+		}
 	}
 }
 
@@ -102,21 +115,28 @@ func TestCodexModel(t *testing.T) {
 	}
 }
 
-// TestCopilotSupportsEveryModel pins Copilot's role in the registry: it brokers
-// both vendors, so every model must name it as a supported harness, and it must
-// never be a model's Preferred — a vendor-native harness always wins when both
-// are enabled. It also guards the id divergence Supported exists to record:
-// Copilot spells Anthropic point releases with a dot.
-func TestCopilotSupportsEveryModel(t *testing.T) {
+// TestCopilotSupport pins Copilot's role in the registry: it brokers both
+// vendors, so every model it serves must name it as a supported harness, and
+// it must never be a model's Preferred — a vendor-native harness always wins
+// when both are enabled. It also guards the id divergence Supported exists to
+// record: Copilot spells Anthropic point releases with a dot. An empty
+// expectation means Copilot does not serve the model (Mythos: verified
+// organizations only).
+func TestCopilotSupport(t *testing.T) {
 	wantCLIID := map[string]string{
-		"anthropic/claude-haiku-4-5": "claude-haiku-4.5",
-		"anthropic/claude-sonnet-5":  "claude-sonnet-5",
-		"anthropic/claude-opus-5":    "claude-opus-5",
-		"anthropic/claude-fable-5":   "claude-fable-5",
-		"openai/gpt-5.3-codex":       "gpt-5.3-codex",
-		"openai/gpt-5.6-luna":        "gpt-5.6-luna",
-		"openai/gpt-5.6-terra":       "gpt-5.6-terra",
-		"openai/gpt-5.6-sol":         "gpt-5.6-sol",
+		"anthropic/claude-haiku-5-5":  "claude-haiku-5.5",
+		"anthropic/claude-sonnet-5-5": "claude-sonnet-5.5",
+		"anthropic/claude-opus-5-5":   "claude-opus-5.5",
+		"anthropic/claude-fable-5-2":  "claude-fable-5.2",
+		"anthropic/claude-mythos-5-2": "",
+		"anthropic/claude-haiku-4-5":  "claude-haiku-4.5",
+		"anthropic/claude-sonnet-5":   "claude-sonnet-5",
+		"anthropic/claude-opus-5":     "claude-opus-5",
+		"anthropic/claude-fable-5":    "claude-fable-5",
+		"openai/gpt-5.3-codex":        "gpt-5.3-codex",
+		"openai/gpt-5.6-luna":         "gpt-5.6-luna",
+		"openai/gpt-5.6-terra":        "gpt-5.6-terra",
+		"openai/gpt-5.6-sol":          "gpt-5.6-sol",
 	}
 	models := builtins()
 	if len(models) != len(wantCLIID) {
@@ -124,12 +144,23 @@ func TestCopilotSupportsEveryModel(t *testing.T) {
 			len(models), len(wantCLIID))
 	}
 	for _, m := range models {
+		want, listed := wantCLIID[m.ID]
+		if !listed {
+			t.Errorf("model %q has no copilot expectation", m.ID)
+			continue
+		}
 		id, ok := m.CLIModelID(HarnessCopilot)
+		if want == "" {
+			if ok {
+				t.Errorf("model %q is supported by copilot as %q, want unsupported", m.ID, id)
+			}
+			continue
+		}
 		if !ok {
 			t.Errorf("model %q is not supported by copilot", m.ID)
 			continue
 		}
-		if want := wantCLIID[m.ID]; id != want {
+		if id != want {
 			t.Errorf("model %q copilot CLI id = %q, want %q", m.ID, id, want)
 		}
 		if m.Preferred == HarnessCopilot {

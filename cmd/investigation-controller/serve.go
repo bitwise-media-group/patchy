@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
@@ -50,11 +53,12 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
-	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-5",
-		"canonical model ids the investigation may request for remediation")
+	f.String("model-allowlist", model.DefaultAllowlist,
+		"canonical model ids or family aliases the investigation may request for remediation "+
+			"(an alias such as anthropic/claude-opus resolves to the newest registered version at startup)")
 
-	f.String("investigate-model", "anthropic/claude-sonnet-5",
-		"canonical model id the analysis stage runs on (its harness is derived)")
+	f.String("investigate-model", model.DefaultAlias,
+		"canonical model id or family alias the analysis stage runs on (its harness is derived)")
 	f.Duration("investigate-timeout", 15*time.Minute, "wall-clock limit for the analysis stage")
 	f.Int("investigate-max-turns", 25, "agent turns allowed for the analysis stage")
 	f.Int("investigate-token-budget", 150000, "output-token budget for the analysis stage")
@@ -71,10 +75,12 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 }
 
 // agentEnv is the PATCHY_* configuration every investigation pod receives.
-// The per-Job harness and model are carried on the Job spec, not here.
-func agentEnv(opts *cli.Options) map[string]string {
+// The per-Job harness and model are carried on the Job spec, not here. The
+// allowlist is the canonical (concrete-id) form, so the analysis prompt lists
+// concrete versions.
+func agentEnv(opts *cli.Options, allowlist []string) map[string]string {
 	return map[string]string{
-		"PATCHY_MODEL_ALLOWLIST": opts.String("model-allowlist"),
+		"PATCHY_MODEL_ALLOWLIST": strings.Join(allowlist, ","),
 
 		"PATCHY_INVESTIGATE_TIMEOUT":      opts.Duration("investigate-timeout").String(),
 		"PATCHY_INVESTIGATE_MAX_TURNS":    fmt.Sprint(opts.Int("investigate-max-turns")),
@@ -107,7 +113,13 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if namespace == "" {
 		return errors.New("namespace is required (--namespace or POD_NAMESPACE)")
 	}
-	runners, err := runnercfg.Runners(opts)
+	allowlist, defaults, err := runnercfg.CanonicalModels(log,
+		runnercfg.SplitList(opts.String("model-allowlist")), opts.String("investigate-model"))
+	if err != nil {
+		return err
+	}
+	investigateModel := defaults[0]
+	runners, err := runnercfg.Runners(opts, append(slices.Clone(allowlist), investigateModel)...)
 	if err != nil {
 		return err
 	}
@@ -135,9 +147,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 
 	agentNS := opts.String("agent-namespace")
-	investigateModel := opts.String("investigate-model")
 	enabled, err := runnercfg.Resolve(ctx, opts, cs, agentNS, runners,
-		runnercfg.Restrict(opts), runnercfg.SplitList(opts.String("model-allowlist")), investigateModel)
+		runnercfg.Restrict(opts), allowlist, investigateModel)
 	if err != nil {
 		return err
 	}
@@ -146,7 +157,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 	log.LogAttrs(ctx, slog.LevelInfo, "harnesses enabled",
-		slog.Any("enabled", enabled), slog.String("investigate_harness", investigateHarness))
+		slog.Any("enabled", enabled), slog.String("investigate_harness", investigateHarness),
+		slog.String("investigate_model", investigateModel), slog.Any("model_allowlist", allowlist))
 
 	runner := jobs.New(cs, jobs.Config{
 		Namespace:      agentNS,
@@ -154,7 +166,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Deadline:       opts.Duration("job-deadline"),
 		TTL:            opts.Duration("job-ttl"),
 		Runners:        runners,
-		Env:            agentEnv(opts),
+		Env:            agentEnv(opts, allowlist),
 		BrokerAudience: opts.String("broker-token-audience"),
 	}, log)
 

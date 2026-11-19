@@ -205,6 +205,34 @@ func TestEffectiveModelMap(t *testing.T) {
 	})
 }
 
+// TestEffectiveModelMapSynthesized: a pattern-tier model passed in through
+// model.WithResolved gets derived Bedrock and Vertex ids like a registered one.
+func TestEffectiveModelMapSynthesized(t *testing.T) {
+	models := model.Builtins()
+	withNew := model.WithResolved(models, "anthropic/claude-opus-6")
+	bedrock, err := EffectiveModelMap(Config{Name: Bedrock, BrokerURL: broker, Region: "us-east-1"}, withNew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id := bedrock["anthropic/claude-opus-6"]; id != "us.anthropic.claude-opus-6" {
+		t.Errorf("bedrock synthesized id = %q", id)
+	}
+	vertex, err := EffectiveModelMap(Config{
+		Name: Vertex, BrokerURL: broker, Region: "global", ProjectID: "p",
+	}, withNew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id := vertex["anthropic/claude-opus-6"]; id != "claude-opus-6" {
+		t.Errorf("vertex synthesized id = %q", id)
+	}
+	// Not passed in: the registry alone knows nothing of it.
+	plain, _ := EffectiveModelMap(Config{Name: Bedrock, BrokerURL: broker, Region: "us-east-1"}, models)
+	if _, ok := plain["anthropic/claude-opus-6"]; ok {
+		t.Error("unregistered model mapped without being passed in")
+	}
+}
+
 func TestValidateCoverage(t *testing.T) {
 	models := model.Builtins()
 	cfg := Config{Name: Foundry, BrokerURL: broker}
@@ -216,6 +244,13 @@ func TestValidateCoverage(t *testing.T) {
 	err := ValidateCoverage(cfg, models, mm, []string{"anthropic/claude-sonnet-5", "anthropic/claude-opus-5"})
 	if err == nil || !strings.Contains(err.Error(), "anthropic/claude-opus-5") {
 		t.Errorf("uncovered model accepted: %v", err)
+	}
+	// An alias is checked under the concrete id it resolves to — a Foundry
+	// map keyed by the alias does not cover it.
+	err = ValidateCoverage(cfg, models, map[string]string{"anthropic/claude-sonnet": "x"},
+		[]string{"anthropic/claude-sonnet"})
+	if err == nil || !strings.Contains(err.Error(), "anthropic/claude-sonnet-5-5") {
+		t.Errorf("alias coverage error = %v, want the concrete id named", err)
 	}
 	// A model another harness runs is not this runner's problem.
 	if err := ValidateCoverage(cfg, models, mm, []string{"openai/gpt-5.3-codex"}); err != nil {

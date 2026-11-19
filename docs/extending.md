@@ -99,7 +99,7 @@ OpenAI models) and `copilot` (the GitHub Copilot CLI, which brokers both vendors
 and `fake` replays recorded stream fixtures for tests and the dev overlay.
 
 **Models are associated with harnesses, not chosen alongside them.** `internal/model` is a registry of canonical,
-provider-qualified model ids (`anthropic/claude-sonnet-5`, `openai/gpt-5.3-codex`); each model records the harnesses
+provider-qualified model ids (`anthropic/claude-sonnet-5-5`, `openai/gpt-5.3-codex`); each model records the harnesses
 that can run it (with the CLI-specific model id each expects) and a preferred harness. Everything an operator or the
 agent names a model with — the allowlist, the stage defaults, the investigation report's `model:` — is a canonical id.
 The harness that runs a model is then _derived_: `harness.ResolveModel` picks the model's preferred harness when it is
@@ -107,6 +107,15 @@ enabled, so an OpenAI model routes to codex and an Anthropic model to claude. `c
 _set_ of harnesses rather than one: it can run every model in the registry, but it is no model's preferred harness, so
 it only picks up work when a model's vendor-native harness is not enabled. Adding a model (or teaching an existing
 harness a new one) is a registry edit; adding a whole new provider is a new harness plus its registry entries.
+
+Ids resolve in three tiers (`model.Resolve`): an exact registered id; a **family alias** (`anthropic/claude-opus`),
+which resolves to the newest registered version of that family; and a **pattern** id — a well-formed
+`anthropic/claude-<family>-<major>[-<minor>]` with no registry entry — which is synthesized as a claude-harness-only,
+unpriced model so a new Anthropic release runs before it is registered. The controllers canonicalize the allowlist and
+stage defaults once at startup (`model.Canonicalize`), so only concrete ids reach pods, CRDs and rollups. Registering a
+new model therefore also moves every alias that names its family; keep superseded entries, since stored findings and
+rollups still need their pricing. Every Anthropic builtin's bare id must parse as `claude-<family>-<major>[-<minor>]`
+(the registry tests enforce it), or its alias cannot order it.
 
 Each harness has its own **runner image** (`claude-agent-runner`, `codex-agent-runner`, `copilot-agent-runner`) bundling
 just that CLI, its own credential Secret, and its own egress network policy. The remediation controller resolves the

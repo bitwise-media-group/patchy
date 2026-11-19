@@ -106,12 +106,14 @@ func registerSharedFlags(f *pflag.FlagSet) {
 // broker and no credential enters the pod; codex/copilot keep the Secret
 // channel, whose env var is validated against the harness's accepted
 // credential channels so a typo'd --codex-secret-env fails at startup rather
-// than in the pod.
-func Runners(opts *cli.Options) (map[string]jobs.Runner, error) {
+// than in the pod. models are the canonical ids the fleet may run (the
+// CanonicalModels output): any pattern-tier id among them gets a derived
+// claude model-map entry alongside the registered models.
+func Runners(opts *cli.Options, models ...string) (map[string]jobs.Runner, error) {
 	runners := map[string]jobs.Runner{}
 
 	if img := opts.String("claude-agent-image"); img != "" {
-		r, err := claudeRunner(opts, img)
+		r, err := claudeRunner(opts, img, models...)
 		if err != nil {
 			return nil, err
 		}
@@ -197,13 +199,14 @@ func EvolveRunners(opts *cli.Options) (map[string]jobs.Runner, error) {
 // provider config from the flags, the derived model map, and the gateway env
 // the pod gets. --broker-url is required — claude-without-broker is not a
 // configuration. The legacy --claude-secret* flags are ignored; customizing
-// them earns a migration notice rather than an error.
-func claudeRunner(opts *cli.Options, img string) (jobs.Runner, error) {
+// them earns a migration notice rather than an error. models adds
+// pattern-tier ids to the registry the map is derived over.
+func claudeRunner(opts *cli.Options, img string, models ...string) (jobs.Runner, error) {
 	pcfg, err := ClaudeProviderConfig(opts)
 	if err != nil {
 		return jobs.Runner{}, err
 	}
-	mm, err := provider.EffectiveModelMap(pcfg, model.Builtins())
+	mm, err := provider.EffectiveModelMap(pcfg, model.WithResolved(model.Builtins(), models...))
 	if err != nil {
 		return jobs.Runner{}, err
 	}
@@ -277,6 +280,44 @@ func SplitList(s string) []string {
 	return out
 }
 
+// CanonicalModels resolves the configured model ids once, at startup: the
+// allowlist and each stage default map to concrete canonical ids (family
+// aliases become the newest registered version; see model.Resolve), so only
+// concrete ids flow downstream into pod env, CRD status and rollups. The
+// allowlist is deduplicated; defaults keep their positions (an empty default
+// stays empty). An unknown alias family or a malformed id is an error. Each
+// pattern-tier id — a well-formed Anthropic version patchy has not
+// registered — is logged once as a warning: it runs on claude only and is
+// unpriced until registered.
+func CanonicalModels(log *slog.Logger, allowlist []string, defaults ...string) (allow, defs []string, err error) {
+	allow, err = model.Canonicalize(allowlist)
+	if err != nil {
+		return nil, nil, fmt.Errorf("model allowlist: %w", err)
+	}
+	defs = make([]string, len(defaults))
+	for i, id := range defaults {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		c, err := model.Canonicalize([]string{id})
+		if err != nil {
+			return nil, nil, err
+		}
+		defs[i] = c[0]
+	}
+	var unpriced []string
+	for _, id := range append(slices.Clone(allow), defs...) {
+		if m, ok := model.Lookup(id); ok && model.Synthesized(m) && !slices.Contains(unpriced, id) {
+			unpriced = append(unpriced, id)
+		}
+	}
+	if len(unpriced) > 0 && log != nil {
+		log.Warn("models not in the registry: running them on the claude harness only, unpriced until registered",
+			"models", unpriced)
+	}
+	return allow, defs, nil
+}
+
 // Resolve probes the configured runners' credentials, computes the enabled
 // harness set, and validates coverage: the allowlist must be fully runnable,
 // every requiredModel (the investigate/remediate defaults, canonical ids)
@@ -295,14 +336,23 @@ func Resolve(ctx context.Context, opts *cli.Options, cs kubernetes.Interface, na
 	if len(enabled) == 0 {
 		return nil, errors.New("no harness enabled: no configured runner has its credential Secret in the agent namespace")
 	}
+	// Canonicalize again (idempotent on CanonicalModels output) so a caller
+	// passing raw aliases still validates and covers the concrete ids.
+	allowlist, err = model.Canonicalize(allowlist)
+	if err != nil {
+		return nil, fmt.Errorf("model allowlist: %w", err)
+	}
+	requiredModels, err = model.Canonicalize(requiredModels)
+	if err != nil {
+		return nil, err
+	}
+	required := append(slices.Clone(allowlist), requiredModels...)
+	models := model.WithResolved(model.Builtins(), required...)
 	set := harness.EnabledSet(enabled)
-	if err := harness.ValidateAllowlist(model.Builtins(), allowlist, set); err != nil {
+	if err := harness.ValidateAllowlist(models, allowlist, set); err != nil {
 		return nil, fmt.Errorf("model allowlist: %w", err)
 	}
 	for _, id := range requiredModels {
-		if id == "" {
-			continue
-		}
 		if _, _, err := ResolveHarness(id, enabled); err != nil {
 			return nil, err
 		}
@@ -312,12 +362,11 @@ func Resolve(ctx context.Context, opts *cli.Options, cs kubernetes.Interface, na
 		if err != nil {
 			return nil, err
 		}
-		mm, err := provider.EffectiveModelMap(pcfg, model.Builtins())
+		mm, err := provider.EffectiveModelMap(pcfg, models)
 		if err != nil {
 			return nil, err
 		}
-		required := append(slices.Clone(allowlist), requiredModels...)
-		if err := provider.ValidateCoverage(pcfg, model.Builtins(), mm, required); err != nil {
+		if err := provider.ValidateCoverage(pcfg, models, mm, required); err != nil {
 			return nil, err
 		}
 		probeBroker(ctx, pcfg.BrokerURL, opts.Log)
@@ -350,10 +399,11 @@ func probeBroker(ctx context.Context, brokerURL string, log *slog.Logger) {
 	}
 }
 
-// ResolveHarness resolves a canonical model id to its harness and CLI model-id
-// given the enabled set, erroring when the model is unknown or unrunnable.
+// ResolveHarness resolves a model id (model.Lookup: exact, alias or pattern)
+// to its harness and CLI model-id given the enabled set, erroring when the
+// model is unknown or unrunnable.
 func ResolveHarness(canonical string, enabled []string) (harnessID, cliModelID string, err error) {
-	m, ok := model.ModelByID(model.Builtins(), canonical)
+	m, ok := model.Lookup(canonical)
 	if !ok {
 		return "", "", fmt.Errorf("model %q is not in the model registry", canonical)
 	}

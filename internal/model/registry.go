@@ -35,7 +35,8 @@ func Providers() []Provider {
 // (Claude Code drives Anthropic models, Codex drives OpenAI models), so each
 // model names its vendor's harness as Preferred; Copilot is the exception the
 // map shape was built for — it brokers both vendors, so it appears as a second
-// supported entry on every model rather than as any model's preferred harness.
+// supported entry on (nearly) every model rather than as any model's preferred
+// harness.
 //
 // Copilot's ids diverge from the vendors' own where the vendor uses a dashed
 // point release (claude-haiku-4-5 is claude-haiku-4.5 on Copilot), which is
@@ -45,7 +46,49 @@ func Providers() []Provider {
 // which models exist.
 func builtins() []Model {
 	return []Model{
-		// Anthropic — driven by Claude Code, all also by Copilot.
+		// Anthropic — driven by Claude Code, all but Mythos also by Copilot.
+		// Superseded versions stay registered: Findings, Investigations and
+		// rollups record the concrete id a run used, and pricing those needs
+		// the entry. The family aliases (anthropic/claude-opus, ...) resolve
+		// to the newest version registered here — see resolve.go.
+		//
+		// Model is flat-rate. Haiku 5.5 prices prompts over 100K tokens at
+		// $0.50/$2.50 (cache reads $0.05); the base tier is registered, so a
+		// long-prompt Haiku 5.5 run that falls back to this pricing is
+		// under-counted. The claude CLI reports its own cost, so in practice
+		// only the copilot harness reaches that fallback.
+		{
+			ID: "anthropic/claude-haiku-5-5", ProviderID: ProviderAnthropic, Name: "Claude Haiku 5.5",
+			InputUSD: usd(0.10), CachedInputUSD: usd(0.01), OutputUSD: usd(0.50),
+			Supported: map[string]string{HarnessClaude: "claude-haiku-5-5", HarnessCopilot: "claude-haiku-5.5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-sonnet-5-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5.5",
+			InputUSD: usd(2.00), CachedInputUSD: usd(0.10), OutputUSD: usd(10.00),
+			Supported: map[string]string{HarnessClaude: "claude-sonnet-5-5", HarnessCopilot: "claude-sonnet-5.5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-opus-5-5", ProviderID: ProviderAnthropic, Name: "Claude Opus 5.5",
+			InputUSD: usd(4.00), CachedInputUSD: usd(0.20), OutputUSD: usd(20.00),
+			Supported: map[string]string{HarnessClaude: "claude-opus-5-5", HarnessCopilot: "claude-opus-5.5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-fable-5-2", ProviderID: ProviderAnthropic, Name: "Claude Fable 5.2",
+			InputUSD: usd(8.00), CachedInputUSD: usd(0.20), OutputUSD: usd(40.00),
+			Supported: map[string]string{HarnessClaude: "claude-fable-5-2", HarnessCopilot: "claude-fable-5.2"},
+			Preferred: HarnessClaude,
+		},
+		// Mythos is available to verified organizations only, and Copilot does
+		// not serve it: claude harness only.
+		{
+			ID: "anthropic/claude-mythos-5-2", ProviderID: ProviderAnthropic, Name: "Claude Mythos 5.2",
+			InputUSD: usd(8.00), CachedInputUSD: usd(0.20), OutputUSD: usd(40.00),
+			Supported: map[string]string{HarnessClaude: "claude-mythos-5-2"},
+			Preferred: HarnessClaude,
+		},
 		{
 			ID: "anthropic/claude-haiku-4-5", ProviderID: ProviderAnthropic, Name: "Claude Haiku 4.5",
 			InputUSD: usd(1.00), CachedInputUSD: usd(0.10), OutputUSD: usd(5.00),
@@ -131,7 +174,9 @@ func AllModels(overrides map[string][]Model) []Model {
 // default set patchy resolves models against.
 func Builtins() []Model { return builtins() }
 
-// ModelByID returns the model with the given canonical id from models, if any.
+// ModelByID returns the model with exactly the given canonical id from models,
+// if any. It does no alias or pattern resolution; consumers validating a
+// configured or reported id use Resolve / Lookup instead.
 func ModelByID(models []Model, id string) (Model, bool) {
 	for _, m := range models {
 		if m.ID == id {

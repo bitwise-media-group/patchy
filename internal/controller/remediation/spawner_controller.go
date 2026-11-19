@@ -70,14 +70,16 @@ const (
 // allowlist and resolves the harness that runs it, stamping both onto the
 // bound parameters. When the suggestion is missing, off the allowlist, or has
 // no enabled harness, it falls back to the controller default (validated
-// runnable at startup). The turn/token grant is resolved separately, by
+// runnable at startup). The allowlist and default arrive canonical (concrete
+// ids, aliases resolved at startup); the suggestion is resolved the same way
+// first, so a report that names a family alias still matches. The turn/token grant is resolved separately, by
 // resolveGrant — the model is a choice to be validated, the budget is not.
 func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alpha1.AgentParameters {
 	enabled := harness.EnabledSet(r.Enabled)
-	if params.Model != "" && slices.Contains(r.Allowlist, params.Model) {
-		if m, ok := model.ModelByID(model.Builtins(), params.Model); ok {
+	if params.Model != "" {
+		if m, ok := model.Lookup(params.Model); ok && slices.Contains(r.Allowlist, m.ID) {
 			if h, _, ok := harness.ResolveModel(m, enabled); ok {
-				params.Harness = h
+				params.Model, params.Harness = m.ID, h
 				return params
 			}
 		}
@@ -87,7 +89,7 @@ func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alp
 			"suggested", params.Model, "default", r.DefaultModel)
 	}
 	params.Model = r.DefaultModel
-	if m, ok := model.ModelByID(model.Builtins(), r.DefaultModel); ok {
+	if m, ok := model.Lookup(r.DefaultModel); ok {
 		if h, _, ok := harness.ResolveModel(m, enabled); ok {
 			params.Harness = h
 		}

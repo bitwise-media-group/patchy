@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,6 +21,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/priority"
 	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
@@ -58,10 +60,12 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
 
-	f.String("model-allowlist", "anthropic/claude-sonnet-5,anthropic/claude-opus-5",
-		"canonical model ids remediation may run (the investigation's choice is clamped to this)")
-	f.String("remediate-model", "anthropic/claude-sonnet-5",
-		"canonical default model when the report's suggestion is missing or unusable (its harness is derived)")
+	f.String("model-allowlist", model.DefaultAllowlist,
+		"canonical model ids or family aliases remediation may run (the investigation's choice is clamped to this; "+
+			"an alias such as anthropic/claude-opus resolves to the newest registered version at startup)")
+	f.String("remediate-model", model.DefaultAlias,
+		"canonical model id or family alias used when the report's suggestion is missing or unusable "+
+			"(its harness is derived)")
 	f.Duration("remediate-timeout", 45*time.Minute, "wall-clock limit for the remediation stage")
 	f.Int("remediate-auto-max-turns", 80,
 		"agent turns spent on an unattended fix, and the line past which an estimate needs approval")
@@ -108,7 +112,13 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if namespace == "" {
 		return errors.New("namespace is required (--namespace or POD_NAMESPACE)")
 	}
-	runners, err := runnercfg.Runners(opts)
+	allowlist, defaults, err := runnercfg.CanonicalModels(log,
+		runnercfg.SplitList(opts.String("model-allowlist")), opts.String("remediate-model"))
+	if err != nil {
+		return err
+	}
+	remediateModel := defaults[0]
+	runners, err := runnercfg.Runners(opts, append(slices.Clone(allowlist), remediateModel)...)
 	if err != nil {
 		return err
 	}
@@ -136,14 +146,13 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 
 	agentNS := opts.String("agent-namespace")
-	remediateModel := opts.String("remediate-model")
-	allowlist := runnercfg.SplitList(opts.String("model-allowlist"))
 	enabled, err := runnercfg.Resolve(ctx, opts, cs, agentNS, runners, runnercfg.Restrict(opts), allowlist, remediateModel)
 	if err != nil {
 		return err
 	}
 	log.LogAttrs(ctx, slog.LevelInfo, "harnesses enabled",
-		slog.Any("enabled", enabled), slog.String("default_remediate_model", remediateModel))
+		slog.Any("enabled", enabled), slog.String("default_remediate_model", remediateModel),
+		slog.Any("model_allowlist", allowlist))
 
 	runner := jobs.New(cs, jobs.Config{
 		Namespace:      agentNS,

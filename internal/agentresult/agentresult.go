@@ -67,7 +67,9 @@ func stageCost(st *envelope.Stage) float64 {
 	if st.Usage.CostUSD > 0 {
 		return st.Usage.CostUSD
 	}
-	m, ok := model.ModelByID(model.Builtins(), st.Model)
+	// A pattern-tier (synthesized) model carries no pricing and prices to
+	// zero below; it only ever runs on claude, which reports its own cost.
+	m, ok := model.Lookup(st.Model)
 	if !ok {
 		return 0
 	}

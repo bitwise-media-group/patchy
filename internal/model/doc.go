@@ -13,4 +13,18 @@
 // needs, and Preferred names the default driver. The harness package layers
 // resolution (ResolveModel/ValidateAllowlist) on top, filtering by which
 // harnesses are enabled in a given deployment.
+//
+// Model ids resolve in three tiers (Resolve / Lookup):
+//
+//   - exact: a registered canonical id ("anthropic/claude-opus-5-5");
+//   - alias: a family alias with no version ("anthropic/claude-opus") resolves
+//     to the newest registered version of that family. Controllers resolve
+//     aliases once at startup (Canonicalize), so only the concrete id flows
+//     downstream — pod env, CRD status, rollups — and stats and pricing stay
+//     per-version;
+//   - pattern: a well-formed but unregistered Anthropic version id
+//     ("anthropic/claude-opus-6") is synthesized as a claude-harness-only,
+//     unpriced model, so a new Anthropic release runs before patchy registers
+//     it. The claude CLI reports its own cost, so the missing rates matter
+//     only for display until the model is registered.
 package model

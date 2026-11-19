@@ -5,6 +5,7 @@ package runnercfg
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/model"
+	"github.com/bitwise-media-group/patchy/internal/provider"
 )
 
 // newOpts builds the flag surface a controller binary presents and resolves
@@ -347,6 +349,98 @@ func TestResolveFoundryCoverage(t *testing.T) {
 	// namespace — enablement is configuration, the broker holds the key.
 	if !slices.Contains(enabled, "claude") {
 		t.Errorf("enabled = %v, want claude (brokered, no Secret probe)", enabled)
+	}
+}
+
+// TestCanonicalModels: aliases validate and come back concrete, duplicates
+// collapse, an unregistered-but-well-formed version is kept (and warned
+// about), and a bad alias fails startup.
+func TestCanonicalModels(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+
+	allow, defs, err := CanonicalModels(log,
+		[]string{"anthropic/claude-sonnet", "anthropic/claude-opus", "anthropic/claude-opus-5-5"},
+		"anthropic/claude-sonnet", "")
+	if err != nil {
+		t.Fatalf("CanonicalModels(defaults): %v", err)
+	}
+	if want := []string{"anthropic/claude-sonnet-5-5", "anthropic/claude-opus-5-5"}; !slices.Equal(allow, want) {
+		t.Errorf("allowlist = %v, want %v", allow, want)
+	}
+	if want := []string{"anthropic/claude-sonnet-5-5", ""}; !slices.Equal(defs, want) {
+		t.Errorf("defaults = %v, want %v", defs, want)
+	}
+	if strings.Contains(logs.String(), "not in the registry") {
+		t.Errorf("registered models warned about: %s", logs.String())
+	}
+
+	allow, _, err = CanonicalModels(log, []string{"anthropic/claude-opus", "anthropic/claude-opus-6"})
+	if err != nil {
+		t.Fatalf("CanonicalModels(pattern): %v", err)
+	}
+	if want := []string{"anthropic/claude-opus-5-5", "anthropic/claude-opus-6"}; !slices.Equal(allow, want) {
+		t.Errorf("allowlist = %v, want %v", allow, want)
+	}
+	if !strings.Contains(logs.String(), "anthropic/claude-opus-6") {
+		t.Errorf("no warning naming the unpriced model: %q", logs.String())
+	}
+
+	if _, _, err := CanonicalModels(log, []string{"anthropic/claude-nosuch"}); err == nil {
+		t.Error("unknown alias family accepted")
+	}
+	if _, _, err := CanonicalModels(log, nil, "openai/not-a-model"); err == nil {
+		t.Error("unknown default accepted")
+	}
+}
+
+// TestResolveBedrockAliasAndPattern is the startup smoke path: an alias plus
+// an unregistered version on Bedrock resolve, validate, and both land in the
+// pod's PATCHY_MODEL_MAP with derived inference-profile ids.
+func TestResolveBedrockAliasAndPattern(t *testing.T) {
+	opts := newOpts(t,
+		"--claude-agent-image", "claude:1",
+		"--broker-url", "http://127.0.0.1:1",
+		"--claude-provider", "bedrock",
+		"--claude-provider-region", "us-east-1",
+	)
+	allow, defs, err := CanonicalModels(nil,
+		[]string{"anthropic/claude-opus", "anthropic/claude-opus-6"}, "anthropic/claude-sonnet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runners, err := Runners(opts, append(slices.Clone(allow), defs...)...)
+	if err != nil {
+		t.Fatalf("Runners: %v", err)
+	}
+	mm, err := provider.ParseModelMap(runners[model.HarnessClaude].Env["PATCHY_MODEL_MAP"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{
+		"anthropic/claude-opus-5-5":   "us.anthropic.claude-opus-5-5",
+		"anthropic/claude-opus-6":     "us.anthropic.claude-opus-6",
+		"anthropic/claude-sonnet-5-5": "us.anthropic.claude-sonnet-5-5",
+	} {
+		if mm[id] != want {
+			t.Errorf("PATCHY_MODEL_MAP[%s] = %q, want %q", id, mm[id], want)
+		}
+	}
+	if _, err := Resolve(t.Context(), opts, fake.NewClientset(), "patchy-agents", runners, nil,
+		allow, defs...); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	// Raw aliases straight into Resolve validate too.
+	if _, err := Resolve(t.Context(), opts, fake.NewClientset(), "patchy-agents", runners, nil,
+		[]string{"anthropic/claude-sonnet"}, "anthropic/claude-opus"); err != nil {
+		t.Fatalf("Resolve(raw aliases): %v", err)
+	}
+	if h, cliID, err := ResolveHarness("anthropic/claude-opus-6", []string{"claude", "copilot"}); err != nil ||
+		h != "claude" || cliID != "claude-opus-6" {
+		t.Errorf("ResolveHarness(pattern) = %q, %q, %v; want claude, claude-opus-6", h, cliID, err)
+	}
+	if _, _, err := ResolveHarness("anthropic/claude-opus-6", []string{"copilot"}); err == nil {
+		t.Error("pattern model resolved without the claude harness enabled")
 	}
 }
 

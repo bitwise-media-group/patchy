@@ -47,8 +47,9 @@ func ResolveModel(m model.Model, enabled map[string]bool) (harnessID, cliModelID
 	return "", "", false
 }
 
-// ValidateAllowlist checks that every allowlist entry is a known canonical
-// model id that resolves to an enabled harness. It returns a joined error
+// ValidateAllowlist checks that every allowlist entry resolves (model.Resolve:
+// exact, family alias, or a well-formed Anthropic version id) to a model that
+// an enabled harness can run. It returns a joined error
 // naming every unknown id and every id no enabled harness can run, or nil when
 // the allowlist is fully covered.
 func ValidateAllowlist(models []model.Model, allowlist []string, enabled map[string]bool) error {
@@ -58,7 +59,7 @@ func ValidateAllowlist(models []model.Model, allowlist []string, enabled map[str
 		if id == "" {
 			continue
 		}
-		m, found := model.ModelByID(models, id)
+		m, found := model.Resolve(models, id)
 		if !found {
 			errs = append(errs, fmt.Errorf("unknown model %q (not in the model registry)", id))
 			continue

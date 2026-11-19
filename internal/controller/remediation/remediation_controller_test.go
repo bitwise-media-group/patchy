@@ -227,6 +227,29 @@ func TestSpawnerResolvesCrossProviderHarness(t *testing.T) {
 	}
 }
 
+// TestSpawnerResolvesAliasSuggestion: the allowlist arrives concrete (aliases
+// resolved at controller startup), so a report that suggests a family alias
+// must be resolved before the allowlist check — and the Remediation records
+// the concrete id, never the alias.
+func TestSpawnerResolvesAliasSuggestion(t *testing.T) {
+	inv := invChild()
+	inv.Status.RemediationParameters.Model = "anthropic/claude-opus"
+	r, c := newSpawner(t, queuedFinding(v1alpha1.PhaseQueued), inv)
+	r.Allowlist = []string{"anthropic/claude-sonnet-5-5", "anthropic/claude-opus-5-5"}
+	r.DefaultModel = "anthropic/claude-sonnet-5-5"
+	spawnOnce(t, r)
+
+	var rem v1alpha1.Remediation
+	key := types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1-rem-1"}
+	if err := c.Get(t.Context(), key, &rem); err != nil {
+		t.Fatalf("Remediation not created: %v", err)
+	}
+	if rem.Spec.Parameters.Model != "anthropic/claude-opus-5-5" || rem.Spec.Parameters.Harness != "claude" {
+		t.Errorf("resolved params = %q/%q, want anthropic/claude-opus-5-5 on claude",
+			rem.Spec.Parameters.Model, rem.Spec.Parameters.Harness)
+	}
+}
+
 // TestSpawnerFallsBackWhenModelNotAllowlisted: a suggestion off the allowlist
 // is replaced by the controller default and its harness.
 func TestSpawnerFallsBackWhenModelNotAllowlisted(t *testing.T) {

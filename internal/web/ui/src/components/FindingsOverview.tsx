@@ -1,0 +1,145 @@
+// The top of the findings page: a sentence saying how much is in progress
+// and what needs a person (each clause filters the list to it), then the
+// lifecycle rail — every phase with its live count, a filter toggle each.
+// The rail is eight cells on a wide screen and four by two on a phone.
+
+import type { ComponentChildren } from "preact";
+import type { FindingSummary, Phase } from "../types";
+import { PHASE_ORDER, TERMINAL_PHASES } from "../types";
+import { PHASE_TITLES, formatCount } from "../format";
+import { phaseCounts } from "../filters";
+
+const CLOSED: Phase[] = ["Failed", "Dismissed", "HandedOff"];
+
+const CLOSED_TONE: Record<string, string> = {
+  Failed: "bg-red",
+  Dismissed: "bg-soil",
+  HandedOff: "bg-amber",
+};
+
+function plural(n: number, one: string, many: string) {
+  return `${formatCount(n)} ${n === 1 ? one : many}`;
+}
+
+export function FindingsOverview({
+  findings,
+  selected,
+  onToggle,
+  onOnly,
+}: {
+  findings: FindingSummary[];
+  selected: Set<Phase>;
+  onToggle: (phase: Phase) => void;
+  // Replace the phase filter with exactly this phase.
+  onOnly: (phase: Phase) => void;
+}) {
+  const { counts, suspended } = phaseCounts(findings);
+  const open = findings.filter((f) => f.phase && !TERMINAL_PHASES.has(f.phase)).length;
+  const running = findings.filter((f) => f.activeRun).length;
+  const awaiting = counts.get("AwaitingApproval") ?? 0;
+  const failed = counts.get("Failed") ?? 0;
+
+  const clause = (n: number, text: string, phase: Phase) => (
+    <button
+      type="button"
+      class="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-amber underline decoration-2 underline-offset-4 hover:decoration-[3px]"
+      onClick={() => onOnly(phase)}
+    >
+      {formatCount(n)} {text}
+    </button>
+  );
+
+  const attention: ComponentChildren[] = [];
+  if (awaiting) attention.push(clause(awaiting, awaiting === 1 ? "is waiting for approval" : "are waiting for approval", "AwaitingApproval"));
+  if (failed) attention.push(clause(failed, failed === 1 ? "has failed" : "have failed", "Failed"));
+
+  return (
+    <section aria-labelledby="findings-headline">
+      <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">Findings</h1>
+      {findings.length === 0 ? (
+        <p id="findings-headline" class="mt-2 mb-0 max-w-[60ch] text-[15px] text-muted">
+          No findings yet. They appear here when a scanner reports an alert to one of your integrations.
+        </p>
+      ) : (
+        <>
+          <p id="findings-headline" class="mt-3 mb-0 max-w-[48ch] text-[22px] leading-snug font-bold text-balance text-fg max-sm:text-[19px]">
+            {plural(open, "finding", "findings")} in progress.{" "}
+            {attention.length > 0 ? (
+              <span>
+                {attention.length === 2 ? (
+                  <>
+                    {attention[0]} and {attention[1]}.
+                  </>
+                ) : (
+                  <>{attention[0]}.</>
+                )}
+              </span>
+            ) : (
+              <span class="text-muted">Nothing needs a person right now.</span>
+            )}
+          </p>
+          {running > 0 ? (
+            <p class="mt-2 mb-0 flex items-center gap-2 text-[14px] text-ink">
+              <span class="ps-live-dot" aria-hidden="true" />
+              {running === 1 ? "An agent is working on one of them now." : `Agents are working on ${formatCount(running)} of them now.`}
+            </p>
+          ) : null}
+        </>
+      )}
+
+      <div class="mt-5 rounded-[10px] border border-line bg-surface p-2">
+        <ol class="m-0 grid list-none grid-cols-8 gap-1 p-0 max-lg:grid-cols-4" aria-label="Phases, in order. Select one to filter the list.">
+          {PHASE_ORDER.map((phase) => {
+            const n = counts.get(phase) ?? 0;
+            const on = selected.has(phase);
+            return (
+              <li key={phase} class="min-w-0">
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onToggle(phase)}
+                  class={`flex h-full w-full cursor-pointer flex-col items-start gap-1.5 rounded-lg border-0 px-2.5 pt-2.5 pb-3 text-left transition-colors ${
+                    on
+                      ? "bg-[color-mix(in_oklab,var(--patchy-green)_12%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--patchy-green)_45%,transparent)]"
+                      : "bg-transparent hover:bg-surface-2"
+                  }`}
+                >
+                  <span class={`block h-1 w-full rounded-full ${n ? (phase === "AwaitingApproval" ? "bg-amber" : "bg-turf") : "bg-line"}`} aria-hidden="true" />
+                  <span class={`font-mono text-[22px] leading-none font-bold ${n ? "text-fg" : "text-faint"}`}>{formatCount(n)}</span>
+                  <span class={`text-[13px] leading-tight ${n ? "text-fg" : "text-muted"}`}>{PHASE_TITLES[phase]}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <div class="mt-1 flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-line px-1.5 pt-2">
+          <span class="mr-1.5 text-[13px] text-muted max-sm:w-full max-sm:px-1 max-sm:pb-0.5">Closed without a change</span>
+          {CLOSED.map((phase) => {
+            const n = counts.get(phase) ?? 0;
+            const on = selected.has(phase);
+            return (
+              <button
+                key={phase}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onToggle(phase)}
+                class={`inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border-0 px-2.5 text-[13px] ${
+                  on
+                    ? "bg-[color-mix(in_oklab,var(--patchy-green)_12%,transparent)] text-fg shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--patchy-green)_45%,transparent)]"
+                    : "bg-transparent text-fg hover:bg-surface-2"
+                }`}
+              >
+                <span class={`size-2 rounded-full ${n ? CLOSED_TONE[phase] : "bg-line-2"}`} aria-hidden="true" />
+                {PHASE_TITLES[phase]}
+                <span class="font-mono text-muted">{formatCount(n)}</span>
+              </button>
+            );
+          })}
+          {suspended > 0 ? (
+            <span class="ml-auto px-1.5 text-[13px] text-amber">{plural(suspended, "finding", "findings")} suspended</span>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}

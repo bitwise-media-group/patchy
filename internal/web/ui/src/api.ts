@@ -12,8 +12,12 @@ import type {
   Dataset,
   Finding,
   OfflineDataset,
+  RepositoryPage,
+  RepositoryQuery,
+  Rollup,
   TranscriptTurn,
 } from "./types";
+import { queryRepositoriesLocal, summarizeRollups } from "./rollups";
 import { availableActions, retryTarget } from "./actions";
 import { mockConfig } from "./mock/config";
 import { mockDataset, mockTranscript } from "./mock/findings";
@@ -104,13 +108,24 @@ function demoPostAction(name: string, verb: ActionVerb, persona: Persona): void 
 
 // ---- public surface ------------------------------------------------------
 
+// offlineRollups is the full rollup list the offline modes carry; the live
+// server never sends it whole.
+function offlineRollups(): Rollup[] {
+  const mode = dataMode();
+  const data = mode === "snapshot" ? window.__PATCHY_STATUS_SNAPSHOT__!.dataset : demoDataset();
+  return data.rollups ?? [];
+}
+
+// fetchFindings is the findings list. Like the server's, it carries no
+// rollups: the metrics page loads its own summary.
 export async function fetchFindings(persona: Persona = DEFAULT_PERSONA): Promise<Dataset> {
   const mode = dataMode();
-  if (mode === "snapshot") return window.__PATCHY_STATUS_SNAPSHOT__!.dataset;
+  if (mode === "snapshot") return { ...window.__PATCHY_STATUS_SNAPSHOT__!.dataset, rollups: undefined };
   if (mode === "demo") {
     const data = demoDataset();
     return {
       ...data,
+      rollups: undefined,
       findings: data.findings.map((f: Finding) => ({ ...f, userActions: [...persona.grants] })),
     };
   }
@@ -144,13 +159,30 @@ export async function fetchFinding(
   return (await res.json()) as Finding;
 }
 
-// fetchRollups is the always-public statistics projection: the same dataset
-// shape with findings empty. Used as the fallback when the findings surface
+// fetchRollups is the always-public metrics summary: the total, model and
+// harness shards, the top repositories, and how many repositories exist.
+// Also the fallback dataset (namespace, version) when the findings surface
 // is behind authentication the user has not (or cannot) satisfy.
 export async function fetchRollups(): Promise<Dataset> {
   const mode = dataMode();
-  if (mode !== "live") return fetchFindings();
+  if (mode !== "live") {
+    const base = await fetchFindings();
+    return { ...base, findings: [], user: undefined, ...summarizeRollups(offlineRollups()) };
+  }
   return request<Dataset>("/api/rollups");
+}
+
+// queryRepositories pages, searches and aggregates repository shards
+// server-side (GET /api/rollups/repositories); the offline modes answer the
+// same query from their full local list.
+export async function queryRepositories(q: RepositoryQuery, signal?: AbortSignal): Promise<RepositoryPage> {
+  if (dataMode() !== "live") return queryRepositoriesLocal(offlineRollups(), q);
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) {
+    if (v === undefined || v === "" || v === false) continue;
+    params.set(k, v === true ? "1" : String(v));
+  }
+  return request<RepositoryPage>(`/api/rollups/repositories?${params}`, { signal });
 }
 
 export async function postAction(

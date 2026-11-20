@@ -1,6 +1,6 @@
 // Formatting helpers. Absent figures render as "—", never as false zeros.
 
-import type { Phase, Usage } from "./types";
+import type { Level, Phase, Recommendation, Usage } from "./types";
 
 export const DASH = "—";
 
@@ -20,6 +20,35 @@ export const PHASE_LABELS: Record<Phase, string> = {
   HandedOff: "handed-off",
 };
 
+// PHASE_TITLES are the reading labels for prose and navigation, where the
+// label vocabulary above would read as code.
+export const PHASE_TITLES: Record<Phase, string> = {
+  Opened: "Opened",
+  Enhanced: "Enhanced",
+  Investigating: "Investigating",
+  AwaitingApproval: "Awaiting approval",
+  Queued: "Queued",
+  Remediating: "Remediating",
+  InReview: "In review",
+  Remediated: "Remediated",
+  Failed: "Failed",
+  Dismissed: "Dismissed",
+  HandedOff: "Handed off",
+};
+
+export const SEVERITY_TITLES: Record<Level, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+export const VERDICT_TITLES: Record<Recommendation, string> = {
+  remediate: "Remediate",
+  ignore: "Ignore",
+  manual: "Needs a person",
+};
+
 export function formatDate(iso?: string): string {
   if (!iso) return DASH;
   const d = new Date(iso);
@@ -31,6 +60,14 @@ export function formatDate(iso?: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// formatDay renders a calendar date without the time ("3 May 2025").
+export function formatDay(iso?: string): string {
+  if (!iso) return DASH;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return DASH;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 // formatAgo renders a compact relative time ("3h ago", "12d ago").
@@ -72,9 +109,10 @@ export function formatMicroUSD(micro?: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-// formatTokens abbreviates token sums ("1.2M", "84k").
+// formatTokens abbreviates token sums ("21.5B", "1.2M", "84k").
 export function formatTokens(tokens?: number): string {
   if (tokens === undefined) return DASH;
+  if (tokens >= 1_000_000_000) return `${(tokens / 1_000_000_000).toFixed(1)}B`;
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
   return String(tokens);

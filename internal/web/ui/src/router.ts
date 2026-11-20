@@ -3,11 +3,14 @@
 //
 //   #/                    findings list
 //   #/finding/{name}      finding detail (optional /{tab})
-//   #/rollups             rollups, optional /{scope}
+//   #/metrics             metrics, optionally sliced: /{kind}/{key}, where
+//                         kind is repository | model | harness | match (an
+//                         aggregate of every repository matching key).
+//                         #/rollups/… is the old name and still resolves.
 //   #/config              configuration, optional /{section}
 
 import { useEffect, useState } from "preact/hooks";
-import type { ScopeType } from "./types";
+import type { RollupSlice, SliceKind } from "./rollups";
 
 export type TabId = "overview" | "alerts" | "timeline" | "investigation" | "remediation";
 
@@ -16,11 +19,11 @@ export type ConfigSection = "forges" | "integrations" | "enhancers";
 export type Route =
   | { view: "list" }
   | { view: "detail"; name: string; tab: TabId }
-  | { view: "rollups"; scope: ScopeType }
+  | { view: "metrics"; slice: RollupSlice | null }
   | { view: "config"; section: ConfigSection };
 
 const TABS: TabId[] = ["overview", "alerts", "timeline", "investigation", "remediation"];
-const SCOPES: ScopeType[] = ["total", "repository", "harness", "model"];
+const SLICE_KINDS: SliceKind[] = ["repository", "model", "harness", "match"];
 const SECTIONS: ConfigSection[] = ["forges", "integrations", "enhancers"];
 
 export function parseRoute(hash: string): Route {
@@ -29,9 +32,14 @@ export function parseRoute(hash: string): Route {
     const tab = TABS.includes(parts[2] as TabId) ? (parts[2] as TabId) : "overview";
     return { view: "detail", name: parts[1], tab };
   }
-  if (parts[0] === "rollups") {
-    const scope = SCOPES.includes(parts[1] as ScopeType) ? (parts[1] as ScopeType) : "total";
-    return { view: "rollups", scope };
+  if (parts[0] === "metrics" || parts[0] === "rollups") {
+    // Repository keys contain "/", so a key arrives as one encoded segment;
+    // the pre-filter scope links (#/rollups/repository) land on the
+    // unsliced view.
+    const kind = parts[1] as SliceKind;
+    const key = parts.slice(2).join("/");
+    const slice = SLICE_KINDS.includes(kind) && key !== "" ? { kind, key } : null;
+    return { view: "metrics", slice };
   }
   if (parts[0] === "config") {
     const section = SECTIONS.includes(parts[1] as ConfigSection)
@@ -51,8 +59,8 @@ export function hrefForFinding(name: string, tab?: TabId): string {
   return tab && tab !== "overview" ? `${base}/${tab}` : base;
 }
 
-export function hrefForRollups(scope?: ScopeType): string {
-  return scope && scope !== "total" ? `#/rollups/${scope}` : "#/rollups";
+export function hrefForMetrics(slice?: RollupSlice | null): string {
+  return slice ? `#/metrics/${slice.kind}/${encodeURIComponent(slice.key)}` : "#/metrics";
 }
 
 export function hrefForConfig(section?: ConfigSection): string {

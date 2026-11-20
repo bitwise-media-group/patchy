@@ -395,10 +395,11 @@ export interface DatasetUser {
   integrationActions?: IntegrationVerb[];
 }
 
-// Dataset is the payload behind GET /api/findings (trimmed summaries) and
-// GET /api/rollups (findings empty, no user — the always-public statistics
-// surface). One flat list per concern; all filtering, sorting, and
-// derivation is client-side so the server stays a thin read-only projection.
+// Dataset is the payload behind GET /api/findings (trimmed summaries, no
+// rollups) and GET /api/rollups (the always-public metrics summary: findings
+// empty, no user). The summary carries the total, model and harness shards
+// and only the top repositories; the rest page through
+// GET /api/rollups/repositories (RepositoryPage).
 export interface Dataset {
   generatedAt: string;
   namespace?: string;
@@ -406,6 +407,41 @@ export interface Dataset {
   user?: DatasetUser;
   findings: FindingSummary[];
   rollups?: Rollup[];
+  // How many repository shards exist in all (summary only).
+  repositoryCount?: number;
+}
+
+// RepositorySort orders GET /api/rollups/repositories. "relevance" is the
+// type-ahead ranking and needs q.
+export type RepositorySort =
+  | "relevance"
+  | "findings"
+  | "remediated"
+  | "failed"
+  | "spend"
+  | "costPerRemediation"
+  | "name";
+
+// RepositoryQuery is the query string of GET /api/rollups/repositories
+// (internal/web/rollupquery.go).
+export interface RepositoryQuery {
+  q?: string; // case-insensitive name match
+  key?: string; // one exact repository (adds rank)
+  sort?: RepositorySort;
+  order?: "asc" | "desc";
+  offset?: number;
+  limit?: number; // server caps at 100
+  aggregate?: boolean; // sum every match into `aggregate`
+}
+
+// RepositoryPage is one page of repository shards.
+export interface RepositoryPage {
+  total: number; // matches
+  of: number; // repository shards in all
+  offset: number;
+  repositories: Rollup[];
+  aggregate?: Rollup;
+  rank?: number; // 1-based by findings, for a key lookup
 }
 
 // OfflineDataset is a Dataset whose findings are full: what the demo kit and

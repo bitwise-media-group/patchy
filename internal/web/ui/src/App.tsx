@@ -20,12 +20,11 @@ import { emptySelection, filterFindings, repoOptions, sortFindings, type Selecti
 import { useRoute } from "./router";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
 import { ConfigView } from "./components/ConfigView";
-import { FilterBar } from "./components/FilterBar";
 import { FindingDetail, MissingFinding } from "./components/FindingDetail";
 import { FindingsTable } from "./components/FindingsTable";
-import { PhasePipeline } from "./components/PhasePipeline";
-import { RollupsView } from "./components/RollupsView";
-import { StatTiles } from "./components/StatTiles";
+import { FindingsOverview } from "./components/FindingsOverview";
+import { FindingsFilter } from "./components/FindingsFilter";
+import { MetricsView } from "./components/MetricsView";
 import { Toasts, type ToastItem } from "./components/Toast";
 import { TopBar } from "./components/TopBar";
 import { useBodyThemeMode } from "./components/ThemeToggle";
@@ -39,7 +38,7 @@ export function App() {
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   // findingsBlocked is set when /api/findings said 401 ("unauthenticated")
-  // or 403 (the denial message); rollups keep rendering either way.
+  // or 403 (the denial message); metrics keep rendering either way.
   const [findingsBlocked, setFindingsBlocked] = useState<string | null>(null);
   const [authError] = useState<string | null>(() => readAuthError());
   const [persona, setPersona] = useState<Persona>(DEFAULT_PERSONA);
@@ -64,7 +63,7 @@ export function App() {
       if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
         setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
         // The statistics surface is public regardless; fall back to it so
-        // the rollups view keeps working.
+        // the metrics view keeps working.
         try {
           setDataset(await fetchRollups());
           setError(null);
@@ -257,7 +256,7 @@ export function App() {
   const repos = useMemo(() => repoOptions(findings), [findings]);
 
   const panel = (title: string, detail: string, actions?: ComponentChildren) => (
-    <div class="mx-auto my-20 max-w-[460px] rounded-xl border border-line-2 bg-surface p-7 text-center shadow-card">
+    <div class="mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card">
       <h1 class="mx-0 mt-0 mb-2 text-[19px] tracking-tight">{title}</h1>
       <p class="mx-0 mt-0 mb-4.5 text-muted">{detail}</p>
       {authError ? <p class="mx-0 mt-0 mb-4.5 text-[13px] text-red">{authError}</p> : null}
@@ -292,7 +291,7 @@ export function App() {
       return panel(
         "Sign-in is not configured",
         "Findings require authentication, and this server has no sign-in configured. " +
-          "Rollup statistics remain available from the Rollups view.",
+          "Metrics remain available without signing in.",
       );
     }
     return panel(
@@ -305,14 +304,15 @@ export function App() {
   };
 
   let body;
-  if (findingsBlocked !== null && route.view !== "rollups") {
+  if (findingsBlocked !== null && route.view !== "metrics") {
     body = authPanel();
+  } else if (route.view === "metrics") {
+    // Loads its own data, independent of the findings dataset.
+    body = <MetricsView slice={route.slice} />;
   } else if (error && !dataset) {
     body = panel("Cannot reach the status API", error);
   } else if (!dataset) {
     body = <div class="px-5 py-11 text-center text-muted">Loading…</div>;
-  } else if (route.view === "rollups") {
-    body = <RollupsView rollups={dataset.rollups ?? []} scope={route.scope} />;
   } else if (route.view === "config") {
     body = (
       <ConfigView
@@ -344,16 +344,34 @@ export function App() {
   } else {
     body = (
       <>
-        <StatTiles findings={findings} />
-        <PhasePipeline findings={findings} selected={selection.phases} onToggle={togglePhase} />
-        <FilterBar selection={selection} repos={repos} onChange={setSelection} />
-        <FindingsTable findings={visible} />
+        <FindingsOverview
+          findings={findings}
+          selected={selection.phases}
+          onToggle={togglePhase}
+          onOnly={(phase) => setSelection((sel) => ({ ...sel, phases: new Set([phase]) }))}
+        />
+        <div class="mt-4">
+          <FindingsFilter findings={findings} repos={repos} selection={selection} onChange={setSelection} />
+        </div>
+        <FindingsTable findings={visible} total={findings.length} onClear={() => setSelection(emptySelection())} />
       </>
     );
   }
 
   return (
     <>
+      {/* Not href="#main": the hash is the router, so the link focuses
+          main itself instead of navigating. */}
+      <a
+        class="ps-skip"
+        href={location.hash || "#/"}
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <TopBar
         dataset={dataset}
         mode={mode}
@@ -366,7 +384,9 @@ export function App() {
         adminBusy={adminBusy}
         onAdmin={(verb) => void onAdmin(verb)}
       />
-      <main class="mx-auto w-[min(1240px,calc(100%-40px))] pt-6 pb-20 max-sm:w-[calc(100%-28px)]">{body}</main>
+      <main id="main" tabIndex={-1} class="mx-auto w-[min(1240px,calc(100%-40px))] pt-7 pb-20 outline-none max-sm:w-[calc(100%-32px)]">
+        {body}
+      </main>
       <Toasts toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </>
   );

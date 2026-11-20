@@ -16,16 +16,6 @@ export function emptySelection(): Selection {
   return { phases: new Set(), severities: new Set(), verdicts: new Set(), repo: "", search: "" };
 }
 
-export function hasActiveFilters(sel: Selection): boolean {
-  return (
-    sel.phases.size > 0 ||
-    sel.severities.size > 0 ||
-    sel.verdicts.size > 0 ||
-    sel.repo !== "" ||
-    sel.search.trim() !== ""
-  );
-}
-
 export function repoOptions(findings: FindingSummary[]): string[] {
   const repos = new Set<string>();
   for (const f of findings) {

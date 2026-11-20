@@ -4,6 +4,7 @@
 // deterministic; relative times are computed at render.
 
 import type { Finding, OfflineDataset, Rollup, TranscriptTurn } from "../types";
+import { withScale } from "./scale";
 
 const findings: Finding[] = [
   {
@@ -966,7 +967,7 @@ export function mockDataset(): OfflineDataset {
       namespace: "patchy",
       version: "v0.7.2",
       findings,
-      rollups,
+      rollups: withScale(rollups),
     }),
   ) as OfflineDataset;
 }

@@ -313,8 +313,8 @@ Not on camera · run through before the room
     Remediation also _requests_ its own model / turns / budget in the investigation report; those are **clamped** to
     operator ceilings and a model allowlist. A false positive never opens that second stage.
 
-    On the **Rollups** tab (public wallboard-friendly aggregates): per-stage **token / cost / duration**, verdict mix,
-    terminal phases. Point at an `ignore` share and investigation-stage cost vs remediation-stage cost:
+    On the **Metrics** view (public wallboard-friendly aggregates): the outcome mix, per-stage **token / cost / duration**,
+    verdict mix, filterable to one repository, model or harness. Point at an `ignore` share and investigation-stage cost vs remediation-stage cost:
 
     > Every false positive we stop at investigation is a remediation run we never pay for — and a PR reviewers never
     > context-switch for.

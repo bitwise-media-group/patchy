@@ -14,9 +14,11 @@ reads and writes the identical custom resources, so the two surfaces never disag
 The screenshots below show the [canned dev data](deployment/dev-fake.md#canned-status-page-data) — every finding
 deliberately suspended, hence the `suspended` pill on each row.
 
-- **Findings** — stat tiles, the eleven-phase lifecycle rail with live counts (click a phase to filter),
-  severity/verdict/repository/text filters, and the board: severity, phase (with a live-dot while an agent run is active
-  and a `suspended` pill), confidence, verdict, and age per finding.
+- **Findings** — a one-line summary of what is in progress and what needs a person (each part filters the list to it),
+  the eleven-phase lifecycle rail with live counts (select a phase to filter), the same type-ahead filter as Metrics
+  (free text, severity, phase, verdict and repository, each applied filter a removable chip; <kbd>/</kbd> focuses it), and
+  the list: severity, phase (with a live-dot while an agent run is active and a `suspended` pill), confidence, verdict,
+  and age per finding. On narrow screens rows stack and the navigation folds into a menu.
 
   ![The findings board](assets/images/status-findings.jpg)
 
@@ -28,16 +30,21 @@ deliberately suspended, hence the `suspended` pill on each row.
 
   ![A finding awaiting approval, with the action bar](assets/images/status-finding-detail.jpg)
 
-- **Rollups** — all-time statistics by total, repository, harness, and model scope: terminal-phase and verdict mixes,
-  per-stage token/cost/duration aggregates, and the monthly trend. **This view is public** — it renders without signing
-  in.
+- **Metrics** — all-time statistics from the `FindingRollup` shards: how findings ended, verdict mix, per-stage
+  token/cost/duration aggregates, the monthly trend, and ranked repository, model and harness tables. One filter slices
+  the whole view: type to find a repository (built for organisations with tens of thousands), a model, a harness, or
+  pick **All repositories matching "…"** to see the combined figures for every repository whose name contains a term.
+  Press <kbd>/</kbd> to focus the filter. Each slice has its own link (`#/metrics/repository/<owner%2Frepo>`); old
+  `#/rollups` links still resolve. **This view is public** — it renders without signing in.
 
-  ![The rollup statistics](assets/images/status-rollups.jpg)
+  ![The metrics view](assets/images/status-rollups.jpg)
 
-- **Config** — the namespace's configured Integrations, Forges, and derived context enhancers: provider, capabilities,
+- **Configuration** — one page that opens with a health summary (anything not ready, failing or in conflict is listed
+  and links to its card) and the flow from integrations to enhancers to forges, then the namespace's configured
+  Integrations, Forges, and derived context enhancers: provider, capabilities,
   credential Secret names (names only, never contents), readiness, the failed-delivery sweep's last outcome, and the
   [manual backfill](integrations/sources/github.md#the-manual-backfill) trigger with its last run's report. The nav link
-  renders only for users granted `get` on `integrations` — unlike rollups this view is **never public**, and it is
+  renders only for users granted `get` on `integrations` — unlike metrics this view is **never public**, and it is
   read-only apart from the backfill trigger: the resources themselves are managed in the cluster.
 
 ## Agent conversations

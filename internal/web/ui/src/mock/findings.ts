@@ -368,7 +368,7 @@ const findings: Finding[] = [
           "internet-facing": "true",
           project: "x-feeds-9c21",
         },
-        markdown: "Runs in `prod/feeds` (public ingress). Feed sources are user-suppliable — treat parser input as hostile.",
+        markdown: "Runs in `prod/feeds` (public ingress). Feed sources are user-suppliable, so treat parser input as hostile.",
         appliedAt: "2026-07-15T12:50:31Z",
       },
     ],
@@ -386,7 +386,7 @@ const findings: Finding[] = [
       report:
         "## Summary\n\nThe XML feed parser resolves external entities, so a crafted podcast feed can read local files " +
         "(`file:///etc/passwd`) and exfiltrate them via the enclosure URL.\n\n## Reachability\n\nFeed URLs are " +
-        "user-suppliable through the import form — the parser input is attacker-controlled end to end.\n\n" +
+        "user-suppliable through the import form, so the parser input is attacker-controlled end to end.\n\n" +
         "## Recommendation\n\nDisable DTD processing on the shared `xml.NewDecoder` wrapper; no feature depends on entities.",
       harness: "claude-code",
       model: "claude-sonnet-5",

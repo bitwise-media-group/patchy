@@ -56,7 +56,7 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
                   <span class="font-mono">{formatTokens(inv.estimate.tokenBudget)}</span>
                   <span class="text-muted"> output tokens</span>
                   <small class="mt-0.5 block text-[12px] text-muted">
-                    A prediction, not a limit — the remediation tab shows what the run was granted and spent.
+                    A prediction, not a limit. The remediation tab shows what the run was granted and spent.
                   </small>
                 </dd>
               </div>
@@ -69,7 +69,7 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
           <div class="ps-note">
             <Icon name="alertTriangle" size={15} />
             <span>
-              Held for approval — {inv.holdReasons.map(holdText).join("; ")}.
+              Held for approval: {inv.holdReasons.map(holdText).join("; ")}.
             </span>
           </div>
         ) : null}

@@ -4,7 +4,7 @@
 // whole row, so the pull-request link inside stays a separate, valid link.
 
 import type { FindingSummary } from "../types";
-import { confidencePercent, formatAgo, formatConfidence, formatCount } from "../format";
+import { confidencePercent, DASH, formatAgo, formatConfidence, formatCount } from "../format";
 import { hrefForFinding } from "../router";
 import { shortName } from "../rollups";
 import { Icon } from "./icons";
@@ -78,7 +78,7 @@ function FindingRow({ finding }: { finding: FindingSummary }) {
               </span>
             </span>
           ) : (
-            <span class="font-mono text-[12.5px] text-faint max-lg:hidden">—</span>
+            <span class="font-mono text-[12.5px] text-faint max-lg:hidden">{DASH}</span>
           )}
         </div>
         <div class={finding.investigation?.recommendation ? "" : "max-lg:hidden"}>

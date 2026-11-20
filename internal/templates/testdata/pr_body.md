@@ -4,5 +4,5 @@ remediation report here
 
 ---
 
-_This pull request was opened automatically by patchy from the remediation report above. Review and merge it like any
-other change; the tracked issue moves to remediated when this merges._
+_patchy opened this pull request automatically from the remediation report above. Review and merge it like any other
+change. When it merges, the tracking issue moves to remediated._

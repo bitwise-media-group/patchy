@@ -16,7 +16,7 @@ export function RemediationTab({ finding }: { finding: Finding }) {
         <div class="ps-note ps-note--green mt-0">
           <Icon name="shieldCheck" size={15} />
           Remediation complete
-          {pr?.mergedAt ? ` — PR #${pr.number} merged ${formatDate(pr.mergedAt)}.` : "."}
+          {pr?.mergedAt ? `: PR #${pr.number} merged ${formatDate(pr.mergedAt)}.` : "."}
           {pr?.url ? (
             <a href={pr.url} target="_blank" rel="noreferrer">
               View pull request <Icon name="externalLink" size={11} />

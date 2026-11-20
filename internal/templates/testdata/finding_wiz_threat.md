@@ -29,7 +29,7 @@ A service account key was used from an unusual location.
 
 ### MITRE ATT&CK
 
-Tactics: `TA0001` — techniques: `T1078`
+Tactics: `TA0001`. Techniques: `T1078`
 
 ### Cloud accounts
 
@@ -37,6 +37,6 @@ Tactics: `TA0001` — techniques: `T1078`
 
 
 ---
-*Threat `t-0001`, reported by Wiz Defend. Runtime detections route to a
-human for response; patchy tracks them but does not auto-remediate live
-threats.*
+*Threat `t-0001`, reported by Wiz Defend. Runtime detections go to a
+human for response. patchy tracks them but does not fix live threats
+automatically.*

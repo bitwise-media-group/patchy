@@ -21,8 +21,8 @@ Sanitize all user input.
 
 ### Alerts
 
-- [`7`](https://github.com/acme/shop/security/code-scanning/7) — `src/render.js:42`
+- [`7`](https://github.com/acme/shop/security/code-scanning/7), `src/render.js:42`
 
 
 ---
-*This issue is a read-only projection of the `finding-abc123def0-1` Finding; patchy re-renders it as the finding progresses.*
+*This issue is a read-only view of the `finding-abc123def0-1` Finding. patchy updates it as the finding progresses.*

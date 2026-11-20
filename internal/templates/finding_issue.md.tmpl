@@ -27,11 +27,11 @@
 ### Alerts
 
 {{ range .Spec.Alerts -}}
-- [`{{ .ID }}`]({{ .URL }}){{ range .Locations }} — `{{ .Path }}{{ if .StartLine }}:{{ .StartLine }}{{ end }}`{{ end }}
+- [`{{ .ID }}`]({{ .URL }}){{ range .Locations }}, `{{ .Path }}{{ if .StartLine }}:{{ .StartLine }}{{ end }}`{{ end }}
 {{ end -}}
 {{- if .Spec.OverflowAlerts }}
 …and {{ .Spec.OverflowAlerts }} more alert(s) beyond the tracking cap.
 {{- end }}
 
 ---
-*This issue is a read-only projection of the `{{ .Name }}` Finding; patchy re-renders it as the finding progresses.*
+*This issue is a read-only view of the `{{ .Name }}` Finding. patchy updates it as the finding progresses.*

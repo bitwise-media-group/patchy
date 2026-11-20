@@ -54,7 +54,7 @@ export function SidebarMeta({ finding }: { finding: Finding }) {
             </div>
           </dl>
         ) : (
-          <span class="text-faint">None — this finding cannot be auto-remediated.</span>
+          <span class="text-faint">None. This finding cannot be remediated automatically.</span>
         )}
       </Card>
 

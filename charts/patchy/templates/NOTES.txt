@@ -21,7 +21,7 @@ The pipeline idles until two things exist:
          anthropic; codex's is {{ .Values.egressBroker.openaiSecret }} (key api-key) when its provider
          is openai{{ with .Values.egressBroker.azureSecret }}, or {{ . }} for azure by key{{ end }}. For
          bedrock/vertex and foundry/azure via Entra the broker uses its
-         workload identity instead — annotate egressBroker.serviceAccount.
+         workload identity instead. Annotate egressBroker.serviceAccount.
          Brokered harnesses are enabled by configuration, with a missing
          broker credential surfacing at the broker's /readyz.
          Every allowlisted model needs one enabled harness that supports it,
@@ -31,7 +31,7 @@ The pipeline idles until two things exist:
 {{- if or (index .Values.agent.runners.claude "secret") (index .Values.agent.runners.claude "secretKey") (index .Values.agent.runners.claude "secretEnv") }}
 
 WARNING: agent.runners.claude.secret / secretKey / secretEnv are set but
-IGNORED — claude runs proxy-only through the egress broker and its pods hold
+IGNORED: claude runs proxy-only through the egress broker and its pods hold
 no credential. Move the Anthropic credential to a Secret named
 `{{ .Values.egressBroker.anthropicSecret }}` (key api-key) in namespace {{ .Release.Namespace }}, delete the old
 Secret from {{ .Values.agent.namespace }}, and drop these values. If the old
@@ -42,7 +42,7 @@ set egressBroker.anthropicAuth=token so the broker sends it as a bearer.
 {{- if or (index $codex "secret") (index $codex "secretKey") (index $codex "secretEnv") (index $codex "hosts") (index $codex "dnsPatterns") }}
 
 WARNING: agent.runners.codex.secret / secretKey / secretEnv / hosts /
-dnsPatterns are set but IGNORED — codex runs proxy-only through the egress
+dnsPatterns are set but IGNORED: codex runs proxy-only through the egress
 broker and its pods hold no credential and reach no external host. Move the
 OpenAI API key to a Secret named `{{ .Values.egressBroker.openaiSecret }}` (key api-key) in namespace
 {{ .Release.Namespace }}, delete the old Secret from {{ .Values.agent.namespace }}, and drop these
@@ -52,7 +52,7 @@ agent.runners.codex.provider.
 {{- end }}
 {{- if not (and .Values.integrations .Values.forges) }}
 
-NOTE: {{ if not .Values.integrations }}`integrations` is empty{{ if not .Values.forges }} and {{ end }}{{ end }}{{ if not .Values.forges }}`forges` is empty{{ end }} — no findings will be
+NOTE: {{ if not .Values.integrations }}`integrations` is empty{{ if not .Values.forges }} and {{ end }}{{ end }}{{ if not .Values.forges }}`forges` is empty{{ end }}, so no findings will be
 ingested{{ if not .Values.forges }} and no repository can be cloned{{ end }} until the missing CR(s) exist.
 {{- end }}
 
@@ -69,27 +69,27 @@ matching Integration's webhookSecret.
 No webhook entry point is enabled. Expose the integration-controller (the
 only internet-facing component; it validates each delivery against the
 matching Integration's webhookSecret) with webhook.host plus
-webhook.ingress.enabled or webhook.httpRoute.enabled — or bring your own
+webhook.ingress.enabled or webhook.httpRoute.enabled (or bring your own
 routing to the {{ include "patchy.fullname" . }}-integration-controller
-Service — then point the GitHub App's single webhook URL at
+Service). Then point the GitHub App's single webhook URL at
 https://<host>/github/webhooks.
 {{- end }}
 {{- $egressMode := include "patchy.egressMode" . }}
 {{- if eq $egressMode "none" }}
 
-NOTE: the agent sandbox currently has no hostname-level egress policy — the
-base NetworkPolicy allows TCP 443 to anywhere, and credential absence (the
-agent pod holds no forge credential; the repository arrives as a
-digest-verified tarball from source-controller's artifact server) is the
-control.
+NOTE: the agent sandbox currently has no hostname-level egress policy. The
+base NetworkPolicy allows TCP 443 to anywhere, so the protection is that the
+agent pod holds no credential: no forge credential, and no model credential
+(the egress broker adds it). The repository arrives as a digest-verified
+tarball from source-controller's artifact server.
 
 agent.networkPolicy.mode is {{ .Values.agent.networkPolicy.mode | default "auto" }}, and no enforceable dialect was found.
 For defence in depth, one of:
 
-  * GKE Dataplane V2 — recreate or update the cluster with
+  * GKE Dataplane V2: recreate or update the cluster with
     --enable-fqdn-network-policy, then re-reconcile; mode auto picks it up.
-  * Cilium — needs DNS-based policy (the DNS proxy); auto picks it up.
-  * Istio — set mode: istio (never auto-selected: it needs native sidecars
+  * Cilium: needs DNS-based policy (the DNS proxy); auto picks it up.
+  * Istio: set mode: istio (never auto-selected, because it needs native sidecars
     and namespace injection, which CRD presence does not imply).
 
 Note that auto can only see the cluster when Helm renders against one; an
@@ -97,10 +97,10 @@ off-cluster `helm template` always reports none.
 {{- else }}
 
 Agent sandbox egress: hostname-enforced via mode {{ $egressMode }}{{ if include "patchy.broadEgress" . }}, but the base
-policy's broad "TCP 443 to anywhere" rule is STILL IN PLACE — network policies
-are additive, so the allowlist is not actually constraining egress. That is
+policy's broad "TCP 443 to anywhere" rule is STILL IN PLACE. Network policies
+are additive, so the allowlist does not constrain egress yet. That is
 what agent.networkPolicy.broadEgress={{ .Values.agent.networkPolicy.broadEgress | default "auto" }} asks for; set it to `auto` once the mode
-is soaked{{ else }} — each runner reaches only its own model API{{ end }}.
+is soaked{{ else }}. Each runner reaches only its own model API{{ end }}.
 {{- end }}
 
 For the pod-security labels on {{ .Release.Namespace }} (the chart only

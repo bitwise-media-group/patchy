@@ -53,14 +53,14 @@
 ### MITRE ATT&CK
 
 Tactic: `{{ .MitreTactic }}`
-{{- if .MitreTechniques }} — techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- if .MitreTechniques }}. Techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
 {{- end }}
 {{- end }}
 {{- with .Compliances }}
 
 ### Compliance
 {{ range . }}
-- **{{ .Standard }}{{ if .Version }} {{ .Version }}{{ end }}** — {{ join .IDs ", " }}
+- **{{ .Standard }}{{ if .Version }} {{ .Version }}{{ end }}**: {{ join .IDs ", " }}
 {{- end }}
 {{- end }}
 {{- with .Properties }}

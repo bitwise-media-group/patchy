@@ -2,7 +2,7 @@
 
 import type { Level, Phase, Recommendation, Usage } from "./types";
 
-export const DASH = "—";
+export const DASH = "–";
 
 // PHASE_LABELS: mono-friendly lowercase labels matching the projected
 // GitHub label vocabulary (security-finding: awaiting-approval, …).

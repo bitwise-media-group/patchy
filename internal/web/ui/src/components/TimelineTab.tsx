@@ -23,7 +23,7 @@ const TERMINAL_TONE: Partial<Record<Phase, Entry["tone"]>> = {
 // RECOVERY_DETAIL annotates a terminal phase the finding has since left —
 // each terminal is revivable by exactly one human signal (transitions.go).
 const RECOVERY_DETAIL: Partial<Record<Phase, string>> = {
-  Failed: "recovered — retried by a human",
+  Failed: "recovered: retried by a human",
   HandedOff: "revived by approval",
   Dismissed: "reopened",
 };
@@ -57,7 +57,7 @@ function entries(finding: Finding): Entry[] {
     out.push({
       key: "approval",
       title: "approved",
-      detail: `by ${finding.approval.by}${finding.approval.note ? ` — ${finding.approval.note}` : ""}`,
+      detail: `by ${finding.approval.by}${finding.approval.note ? `: ${finding.approval.note}` : ""}`,
       at: finding.approval.at,
       tone: "green",
     });
@@ -96,7 +96,7 @@ export function TimelineTab({ finding }: { finding: Finding }) {
       </div>
       {finding.suspend ? (
         <p class="ps-note">
-          <Icon name="pause" size={14} /> This finding is suspended — the pipeline will not advance until it is resumed.
+          <Icon name="pause" size={14} /> This finding is suspended. The pipeline will not advance until it is resumed.
         </p>
       ) : null}
     </div>

@@ -35,7 +35,7 @@ export function AlertsTab({ finding }: { finding: Finding }) {
       {finding.overflowAlerts ? (
         <p class="text-[12px] text-faint">
           +{finding.overflowAlerts} more alert{finding.overflowAlerts === 1 ? "" : "s"} folded into this finding (cap
-          reached) — see the tracking issue for the full list.
+          reached). See the tracking issue for the full list.
         </p>
       ) : null}
     </div>

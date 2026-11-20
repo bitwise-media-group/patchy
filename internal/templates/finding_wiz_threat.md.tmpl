@@ -54,7 +54,7 @@
 ### MITRE ATT&CK
 
 Tactics: {{ range $i, $t := .MitreTactics }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
-{{- if .MitreTechniques }} — techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
+{{- if .MitreTechniques }}. Techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }}`{{ end }}
 {{- end }}
 {{- else if .MitreTechniques }}
 
@@ -71,6 +71,6 @@ Techniques: {{ range $i, $t := .MitreTechniques }}{{ if $i }}, {{ end }}`{{ $t }
 {{- end }}
 
 ---
-*Threat `{{ .ID }}`, reported by Wiz Defend. Runtime detections route to a
-human for response; patchy tracks them but does not auto-remediate live
-threats.*
+*Threat `{{ .ID }}`, reported by Wiz Defend. Runtime detections go to a
+human for response. patchy tracks them but does not fix live threats
+automatically.*

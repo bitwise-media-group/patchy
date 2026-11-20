@@ -4,7 +4,7 @@
 
 import type { ComponentChildren } from "preact";
 import type { Level, Phase, Rating, Recommendation } from "../types";
-import { PHASE_LABELS } from "../format";
+import { DASH, PHASE_LABELS } from "../format";
 
 export type Tone =
   | "green"
@@ -87,7 +87,7 @@ const RATING_TONE: Record<Rating, Tone> = {
 };
 
 export function RatingPill({ rating }: { rating?: Rating }) {
-  if (!rating) return <Pill tone="neutral">—</Pill>;
+  if (!rating) return <Pill tone="neutral">{DASH}</Pill>;
   return <Pill tone={RATING_TONE[rating]}>{rating}</Pill>;
 }
 
@@ -98,6 +98,6 @@ const VERDICT_TONE: Record<Recommendation, Tone> = {
 };
 
 export function VerdictPill({ verdict }: { verdict?: Recommendation }) {
-  if (!verdict) return <span class="text-faint">—</span>;
+  if (!verdict) return <span class="text-faint">{DASH}</span>;
   return <Pill tone={VERDICT_TONE[verdict]}>{verdict}</Pill>;
 }

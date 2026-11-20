@@ -28,11 +28,11 @@ Remove allUsers from the bucket IAM policy.
 
 ### MITRE ATT&CK
 
-Tactic: `IMPACT` — techniques: `T1485`, `T1486`
+Tactic: `IMPACT`. Techniques: `T1485`, `T1486`
 
 ### Compliance
 
-- **cis 1.3** — 5.1, 5.2
+- **cis 1.3**: 5.1, 5.2
 
 ### Detector properties
 

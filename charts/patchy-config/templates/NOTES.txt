@@ -1,10 +1,10 @@
-patchy-config {{ .Chart.Version }} — {{ len .Values.integrations }} Integration(s), {{ len .Values.forges }} Forge(s) rendered into {{ .Release.Namespace }}.
+patchy-config {{ .Chart.Version }}: {{ len .Values.integrations }} Integration(s), {{ len .Values.forges }} Forge(s) rendered into {{ .Release.Namespace }}.
 {{- if and (not .Values.integrations) (not .Values.forges) }}
 
 Nothing was rendered: both `integrations` and `forges` are empty. The patchy
 controllers idle until at least one of each exists.
 {{- end }}
 
-The CRs reference Secrets you create out of band (spec.secretRef — appID +
+The CRs reference Secrets you create out of band (spec.secretRef: appID +
 privateKey or token, plus webhookSecret for Integrations). Ensure this release
 shares a namespace with the patchy release whose controllers reconcile them.

@@ -17,7 +17,7 @@ export function MissingFinding({ name }: { name: string }) {
   return (
     <div class="mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card">
       <p class="m-0">
-        Finding <span class="ps-mono-tag">{name}</span> is no longer present — completed findings expire on a TTL.
+        Finding <span class="ps-mono-tag">{name}</span> is no longer present. Completed findings expire on a TTL.
       </p>
       <a class="mt-3.5 inline-flex items-center gap-1.5 font-semibold text-ink no-underline" href={hrefForList()}>
         <Icon name="arrowLeft" size={14} /> Back to findings
@@ -49,7 +49,7 @@ export function FindingDetail({
           <Icon name="shieldCheck" size={14} />
           Remediation complete
           {finding.pullRequest?.mergedAt
-            ? ` — PR #${finding.pullRequest.number} merged ${formatDate(finding.pullRequest.mergedAt)}.`
+            ? `: PR #${finding.pullRequest.number} merged ${formatDate(finding.pullRequest.mergedAt)}.`
             : "."}
           {finding.pullRequest?.url ? (
             <a href={finding.pullRequest.url} target="_blank" rel="noreferrer">

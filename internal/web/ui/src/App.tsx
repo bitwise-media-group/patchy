@@ -143,7 +143,7 @@ export function App() {
       try {
         await postBackfill(integration, repos, persona);
         pushToast(
-          `Backfill requested on ${integration} — the controller lists open alerts on its next reconcile.`,
+          `Backfill requested on ${integration}. The controller lists open alerts on its next reconcile.`,
           "green",
         );
         await loadConfig();
@@ -213,7 +213,7 @@ export function App() {
         await postAdmin(verb);
         pushToast(
           verb === "replay"
-            ? "Replay requested — the integration will redeliver the webhook log shortly."
+            ? "Replay requested. The integration will redeliver the webhook log shortly."
             : "All pipeline data deleted.",
           "green",
         );

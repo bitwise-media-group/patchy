@@ -63,7 +63,9 @@ in the base (`base/crds/`, controller-gen output).
 
 Each controller runs as a **single replica** with `strategy: Recreate`. The binaries do run leader election (a
 coordination Lease per controller). That guards against a bad rollout racing two replicas. The deployment model is still
-one replica per controller, so do not scale these up.
+one replica per controller, so do not scale these up. The status server and the egress broker hold no state and no
+lease, so they use `RollingUpdate` (`maxUnavailable: 0`): the new pod is ready before the old one stops. They still run
+one replica.
 
 Every controller talks to the Kubernetes API. So every controller identity mounts its token and gets a verb-by-verb
 `Role` in `patchy` (see `base/rbac.yaml`). The three job-launching controllers (investigation, remediation, evaluation)

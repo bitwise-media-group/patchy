@@ -57,5 +57,6 @@ Deploying the stack takes three steps, each with its own page:
 | `agent-runner`             | Ephemeral Job per attempt | In-pod coding-agent runtime: investigate or remediate with `claude -p` or `codex exec`         |
 
 The optional [evaluation-controller](../concepts/evaluation.md) is off by default. Every Deployment runs a single
-replica (`replicas: 1` with `strategy: Recreate`). The controllers' leader-election Lease protects against a broken
-rollout. It does not let you scale. Do not scale the Deployments.
+replica. The controllers use `strategy: Recreate`, and their leader-election Lease protects against a broken rollout. It
+does not let you scale. The status server and the egress broker use `RollingUpdate`, so they stay up during an upgrade.
+Do not scale the Deployments.

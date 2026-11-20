@@ -219,8 +219,10 @@ the values for every provider, with examples, and the migration from releases be
 
 !!! warning "Singletons only"
 
-    Every Deployment the chart renders is `replicas: 1` with `strategy: Recreate`. The controllers' leader-election
-    Lease protects against a botched rollout. It is not a scaling mechanism. Do not scale the Deployments.
+    Every Deployment the chart renders is `replicas: 1`. The controllers use `strategy: Recreate`, and their
+    leader-election Lease protects against a botched rollout. It is not a scaling mechanism. The status server and
+    the egress broker hold no state, so they use `RollingUpdate` and stay up during an upgrade. Do not scale the
+    Deployments.
 
 - `helm uninstall` deletes the agent namespace, which kills any running agent Job. With `crds.keep` it never deletes the
   CRDs, so the Findings and the all-time FindingRollup statistics survive a reinstall.

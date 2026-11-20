@@ -153,8 +153,15 @@ metadata:
     {{- end }}
 spec:
     replicas: 1
+    # Rolling, unlike the controllers: the broker is a stateless proxy with no
+    # leader lease. The new pod becomes ready before the old one stops, so
+    # agents always have a broker to call. A response still streaming from
+    # the old pod is cut when it shuts down (10s drain).
     strategy:
-        type: Recreate
+        type: RollingUpdate
+        rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
     selector:
         matchLabels:
             {{- include "patchy.selectorLabels" (dict "root" . "name" $name) | nindent 12 }}

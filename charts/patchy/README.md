@@ -33,11 +33,12 @@ pipeline controllers split the work:
 | **investigation-controller** | The gate and the analysis scheduler: launches analysis agent Jobs and applies the verdict's phase transition                                                                                 |
 | **remediation-controller**   | Queue admission, the remediation agent Jobs, push/PR, and the rollup/TTL loop                                                                                                                |
 
-Every Deployment runs as a singleton (`replicas: 1` + `Recreate`); the controllers also take a leader-election Lease as
-protection during rollouts. They mount their service-account tokens. [`templates/rbac.yaml`](templates/rbac.yaml) lists,
-verb by verb, what each identity may do. Services exist only for what something dials: the integration-controller's
-:8080 (the webhook), the source-controller's :9790 (the artifact endpoint), and the status server, egress broker and
-evaluation controller on :8080. Every other port is a kubelet-probed :8081.
+Every Deployment runs as a singleton (`replicas: 1`). The controllers use `Recreate` and also take a leader-election
+Lease as protection during rollouts; the status server and egress broker use `RollingUpdate`. They mount their
+service-account tokens. [`templates/rbac.yaml`](templates/rbac.yaml) lists, verb by verb, what each identity may do.
+Services exist only for what something dials: the integration-controller's :8080 (the webhook), the source-controller's
+:9790 (the artifact endpoint), and the status server, egress broker and evaluation controller on :8080. Every other port
+is a kubelet-probed :8081.
 
 The CRDs render as templates gated by `crds.install`. They live in `templates/crds/` instead of the chart's install-only
 `crds/` directory, so `helm upgrade` keeps them current. When `crds.keep` is true, the chart stamps
@@ -193,8 +194,10 @@ Settings that several components share stay global:
   per-object annotations win key by key.
 - `crds.install` / `crds.keep`: CRD lifecycle.
 
-Do not scale the Deployments. Each must run as a single instance, so they hardcode `replicas: 1` with
-`strategy: Recreate`. The leader-election Lease protects against a broken rollout. It does not let you scale.
+Do not scale the Deployments. Each must run as a single instance, so they hardcode `replicas: 1`. The controllers use
+`strategy: Recreate`, and their leader-election Lease protects against a broken rollout. It does not let you scale. The
+status server and egress broker use `RollingUpdate` with `maxUnavailable: 0`, so a second pod exists only briefly during
+an upgrade.
 
 ## Publishing
 

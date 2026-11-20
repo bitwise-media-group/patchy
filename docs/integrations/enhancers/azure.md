@@ -3,8 +3,8 @@
 Patchy has no Azure scanner source — Azure findings arrive through [Wiz](../sources/wiz.md) (or a future source). What
 the `azure` Integration provides is the [context enhancer](index.md): it looks a finding's Azure resource up in Azure
 Resource Graph, carries its tags onto the finding, and resolves the owning repository from them. It is the Azure sibling
-of the [Cloud Asset Inventory](google-cai.md) and [AWS resource-tags](aws.md) enhancers, and like every enhancer it keys
-purely on the finding's cloud resource, not on where the finding came from.
+of the [Google Cloud Asset Inventory](google-cai.md) and [AWS resource-tags](aws.md) enhancers, and like every enhancer
+it keys purely on the finding's cloud resource, not on where the finding came from.
 
 ## One inventory, one question
 

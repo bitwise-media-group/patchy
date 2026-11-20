@@ -168,7 +168,7 @@ integrationController:
     # the namespace's Findings in an informer cache (~1-2KiB per lean
     # finding, more with large alert snippets), so a brownfield estate of
     # hundreds of thousands of findings needs limits in the gigabytes. The
-    # defaults suit thousands, not millions — see docs/dev/benchmarks.md.
+    # defaults suit thousands, not millions — see docs/contributing/benchmarks.md.
     resources:
         requests:
             cpu: 50m

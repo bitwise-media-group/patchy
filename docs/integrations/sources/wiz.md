@@ -3,7 +3,7 @@
 Patchy ingests two Wiz feeds and triages them alongside code-scanning alerts and SCC findings: **Wiz Issues** (cloud
 misconfigurations and toxic combinations, source `wiz-issues`) and **Wiz Defend** (runtime threat detections, source
 `wiz-defend`). Both are cloud findings — about a **resource**, not a file — so they arrive repo-less and lean on the
-[context enhancers](../enhancers/index.md) — [Cloud Asset Inventory](../enhancers/google-cai.md) for Google Cloud
+[context enhancers](../enhancers/index.md) — [Google Cloud Asset Inventory](../enhancers/google-cai.md) for Google Cloud
 resources, [AWS resource tags](../enhancers/aws.md) for AWS ones, [Azure resource tags](../enhancers/azure.md) for Azure
 ones — to resolve a repository from the resource's ownership labels or tags. A Wiz estate typically runs several
 Integrations side by side: `wiz` to source findings, `google-cloud` with `cloudAssetInventory` and/or `aws`/`azure` with

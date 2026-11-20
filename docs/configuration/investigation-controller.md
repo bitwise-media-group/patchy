@@ -7,12 +7,12 @@ in severity order, parses the `PATCHY-EVENT:` stream, stamps the results, and ro
 
 ```sh
 investigation-controller serve --namespace patchy \
-  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.9.0 # match your installed release
+  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:vX.Y.Z # match your installed release
 ```
 
 ## Pipeline flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers), plus:
+The [shared flags](index.md#shared-flags), plus:
 
 | Flag                              | Env                                    | Default | Purpose                                             |
 | --------------------------------- | -------------------------------------- | ------- | --------------------------------------------------- |
@@ -59,11 +59,10 @@ that every allowlisted model has an enabled harness that supports it, refusing t
 
 ## Stage flags
 
-The investigation stage's limits are **absolute** — the stage runs on exactly these. Its model is a canonical,
-provider-qualified id (e.g. `anthropic/claude-sonnet-5-5`) or a family alias (`anthropic/claude-sonnet`); the harness
-that runs it is derived from the model. See [Model ids and aliases](#model-ids-and-aliases). The two `remediate`
-ceilings exist here because this controller clamps what the investigation report requests before it ever reaches the
-queue.
+The investigation stage's limits are **absolute**: the stage runs on exactly these. Its model is a canonical,
+provider-qualified id (e.g. `anthropic/claude-sonnet-5-5`) or a family alias (`anthropic/claude-sonnet`), and the
+harness that runs it is derived from the model; see
+[Model ids and aliases](../deployment/models.md#model-ids-and-aliases).
 
 | Flag                         | Env                               | Default                   | Purpose                                             |
 | ---------------------------- | --------------------------------- | ------------------------- | --------------------------------------------------- |
@@ -71,46 +70,21 @@ queue.
 | `--investigate-timeout`      | `PATCHY_INVESTIGATE_TIMEOUT`      | `15m`                     | Wall-clock limit for the analysis stage             |
 | `--investigate-max-turns`    | `PATCHY_INVESTIGATE_MAX_TURNS`    | `25`                      | Agent turns allowed for the analysis stage          |
 | `--investigate-token-budget` | `PATCHY_INVESTIGATE_TOKEN_BUDGET` | `150000`                  | Output-token budget for the analysis stage          |
-| `--remediate-max-turns`      | `PATCHY_REMEDIATE_MAX_TURNS`      | `80`                      | Ceiling on the report's suggested remediation turns |
-| `--remediate-token-budget`   | `PATCHY_REMEDIATE_TOKEN_BUDGET`   | `400000`                  | Ceiling on the suggested remediation budget         |
+
+The controller also takes the four remediation budget flags, `--remediate-{auto,manual}-{max-turns,token-budget}`
+(`PATCHY_REMEDIATE_{AUTO,MANUAL}_*`; defaults 80 / 400000 and 240 / 1200000). Here they only feed the analysis prompt,
+telling the agent what an estimate buys unattended and what a human can approve. They never clamp anything, and they
+must match the remediation-controller's values. See
+[The remediation budget](../deployment/models.md#the-remediation-budget).
 
 The stage flags are re-serialized into `PATCHY_*` environment variables injected into every investigation pod
 ([agent-runner](agent-runner.md) reads them), so this controller's flags are the single operator-facing configuration
 point for the analysis stage.
 
-## Model ids and aliases
-
-Every model flag (`--model-allowlist`, `--investigate-model`, and the remediation controller's `--remediate-model`)
-accepts an id in one of three forms, resolved once at controller startup:
-
-| Form          | Example                       | Resolves to                                                                       |
-| ------------- | ----------------------------- | --------------------------------------------------------------------------------- |
-| Registered id | `anthropic/claude-sonnet-5-5` | That model, exactly                                                               |
-| Family alias  | `anthropic/claude-sonnet`     | The newest version of that family patchy registers (today Sonnet 5.5, Opus 5.5)   |
-| Pattern id    | `anthropic/claude-opus-6`     | An Anthropic version patchy has not registered yet: claude harness only, unpriced |
-
-Only the **concrete** id flows downstream: the pod environment, the investigation prompt's model list, CRD status and
-the rollups all record a version, never an alias, so statistics and pricing stay per-version. The shipped defaults are
-aliases, so an upgrade of patchy that registers a newer model moves them with no configuration change; pin a concrete id
-to hold a version.
-
-A pattern id lets a new Anthropic release run before patchy ships an entry for it. It must be well-formed
-(`anthropic/claude-<family>-<major>[-<minor>]`), runs on the claude harness only, and has no token pricing until
-registered — the claude CLI reports its own cost, so run costs are still recorded. The controller logs a warning naming
-every such id at startup. An alias whose family patchy does not know, or an id of neither shape, is a startup error.
-
 ## Verdict routing
 
-When the analysis Job completes, the controller stamps the summary onto `Finding.status.investigation`, sets the
-scheduling priority, and moves the phase:
-
-| Report says                                                 | Finding moves to                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------- |
-| `ignore` (false positive)                                   | `Dismissed` — alerts dismissed, issue closed            |
-| `manual`                                                    | `HandedOff` — owners take over; `/approve` can revive   |
-| `remediate`, confidence < threshold or breaking-change hold | `AwaitingApproval`                                      |
-| `remediate`, confidence ≥ threshold                         | `Queued`                                                |
-| Stage outcome not `ok`                                      | `Enhanced` (retry) while attempts remain, then `Failed` |
-
-A partial report is never trusted: outcomes other than `ok` (`runtime_error`, `timeout`, `budget_exceeded`,
-`report_missing`, `report_invalid`) always retry or fail — they never route on whatever frontmatter survived.
+When the analysis Job completes, the controller writes the summary to `Finding.status.investigation`, sets the
+scheduling priority, and routes the finding on the verdict: `Dismissed`, `HandedOff`, `AwaitingApproval`, `Queued`, or a
+retry back to `Enhanced` and eventually `Failed`. The full table lives in
+[Verdict routing](../concepts/lifecycle.md#verdict-routing); `--confidence-threshold` and `--max-attempts` above are the
+knobs.

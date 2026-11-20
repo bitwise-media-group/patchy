@@ -96,9 +96,9 @@ A build policy governs image pulls only. `ADD <url>` and network access from `RU
 
 ## Enforcing a policy
 
-The patchy config is [layered](../cli.md#configuration): normally a more preferred layer replaces a list wholesale and
-deletes a key with `null`. A policy shipped from a shared location, such as the toolchain's `.mise/patchy.yaml`, would
-then be one line away from being switched off by a project's own `patchy.yaml`.
+The patchy config is [layered](configuration.md): normally a more preferred layer replaces a list wholesale and deletes
+a key with `null`. A policy shipped from a shared location, such as the toolchain's `.mise/patchy.yaml`, would then be
+one line away from being switched off by a project's own `patchy.yaml`.
 
 `enforced: true` pins a policy block to the layer that declares it. patchy evaluates that block **as written in its own
 file**, alongside the merged result, and a source must pass both. A more preferred layer can therefore still tighten the

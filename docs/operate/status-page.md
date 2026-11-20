@@ -1,26 +1,43 @@
 # The status page
 
 Patchy's human surface beyond the tracking issues: a web dashboard served by the
-[status-server](configuration/status-server.md) showing every `Finding` in the namespace, the two human gates
-(`AwaitingApproval` holds and `HandedOff` revival), and the all-time `FindingRollup` statistics. The page is a single
-embedded artifact — one self-contained HTML file compiled into the binary — with live updates: the server watches the
-Finding and FindingRollup resources and nudges open browsers over Server-Sent Events to refetch.
+[status-server](../configuration/status-server.md) showing every `Finding` in the namespace, the two human gates
+(`AwaitingApproval` holds and `HandedOff` revival), and the all-time metrics from the `FindingRollup` objects. The page
+is a single embedded artifact — one self-contained HTML file compiled into the binary — with live updates: the server
+watches the Finding and FindingRollup resources and nudges open browsers over Server-Sent Events to refetch.
 
 The same findings, the same actions and the same RBAC are available from a terminal via the [patchy CLI](cli.md) — it
 reads and writes the identical custom resources, so the two surfaces never disagree about state.
 
+## The top bar
+
+The bar across every view holds, left to right:
+
+- the patchy mark and the view links (**Findings**, **Metrics**, and **Configuration** for users who may see it), the
+  current view underlined;
+- the data mode: **Live** with a pulsing dot while the SSE stream is connected, **Snapshot** when it is not, or **Demo
+  data** when the page runs on its built-in mock data;
+- the Kubernetes namespace the page is showing;
+- in demo mode only, a **Preview as** switcher (viewer, approver, operator) that shows the page as each RBAC tier sees
+  it;
+- the signed-in name, which opens the [user menu](#the-user-menu);
+- the light and dark theme toggle. The choice is remembered in the browser.
+
+On narrow screens all of it folds into one menu button.
+
 ## Views
 
-The screenshots below show the [canned dev data](deployment/dev-fake.md#canned-status-page-data) — every finding
+The screenshots below show the [canned dev data](../deployment/dev-fake.md#canned-status-page-data) — every finding
 deliberately suspended, hence the `suspended` pill on each row.
 
 - **Findings** — a one-line summary of what is in progress and what needs a person (each part filters the list to it),
   the eleven-phase lifecycle rail with live counts (select a phase to filter), the same type-ahead filter as Metrics
-  (free text, severity, phase, verdict and repository, each applied filter a removable chip; <kbd>/</kbd> focuses it), and
-  the list: severity, phase (with a live-dot while an agent run is active and a `suspended` pill), confidence, verdict,
-  and age per finding. On narrow screens rows stack and the navigation folds into a menu.
+  (free text, severity, phase, verdict and repository, each applied filter a removable chip; <kbd>/</kbd> focuses it),
+  and the list: severity, phase (with a live-dot while an agent run is active and a `suspended` pill), confidence,
+  verdict, and age per finding. On narrow screens rows stack and the navigation folds into a menu.
 
-  ![The findings board](assets/images/status-findings.jpg)
+  ![The findings board](../assets/images/status-findings.jpg#only-dark)
+  ![The findings board](../assets/images/status-findings-light.jpg#only-light)
 
 - **Finding detail** — the advisory header with status and severity, tabs (Overview · Alerts · Timeline · Investigation
   · Remediation), the metadata sidebar (owners, repository, source, tracking issue, advisories, dates), and the action
@@ -28,24 +45,26 @@ deliberately suspended, hence the `suspended` pill on each row.
   hand-off routes. The investigation and remediation tabs each end in a **Conversation** section — see
   [Agent conversations](#agent-conversations).
 
-  ![A finding awaiting approval, with the action bar](assets/images/status-finding-detail.jpg)
+  ![A finding awaiting approval, with the action bar](../assets/images/status-finding-detail.jpg#only-dark)
+  ![A finding awaiting approval, with the action bar](../assets/images/status-finding-detail-light.jpg#only-light)
 
-- **Metrics** — all-time statistics from the `FindingRollup` shards: how findings ended, verdict mix, per-stage
+- **Metrics** — all-time statistics from the `FindingRollup` objects: how findings ended, verdict mix, per-stage
   token/cost/duration aggregates, the monthly trend, and ranked repository, model and harness tables. One filter slices
   the whole view: type to find a repository (built for organisations with tens of thousands), a model, a harness, or
   pick **All repositories matching "…"** to see the combined figures for every repository whose name contains a term.
   Press <kbd>/</kbd> to focus the filter. Each slice has its own link (`#/metrics/repository/<owner%2Frepo>`); old
   `#/rollups` links still resolve. It needs `get` on `findingrollups`.
 
-  ![The metrics view](assets/images/status-rollups.jpg)
+  ![The metrics view](../assets/images/status-metrics.jpg#only-dark)
+  ![The metrics view](../assets/images/status-metrics-light.jpg#only-light)
 
 - **Configuration** — one page that opens with a health summary (anything not ready, failing or in conflict is listed
   and links to its card) and the flow from integrations to enhancers to forges, then the namespace's configured
-  Integrations, Forges, and derived context enhancers: provider, capabilities,
-  credential Secret names (names only, never contents), readiness, the failed-delivery sweep's last outcome, and the
-  [manual backfill](integrations/sources/github.md#the-manual-backfill) trigger with its last run's report. The nav link
-  renders only for users granted `get` on `integrations` — and it is
-  read-only apart from the backfill trigger: the resources themselves are managed in the cluster.
+  Integrations, Forges, and derived context enhancers: provider, capabilities, credential Secret names (names only,
+  never contents), readiness, the failed-delivery sweep's last outcome, and the
+  [manual backfill](../integrations/sources/github.md#the-manual-backfill) trigger with its last run's report. The nav
+  link renders only for users granted `get` on `integrations` — and it is read-only apart from the backfill trigger: the
+  resources themselves are managed in the cluster.
 
 ## Agent conversations
 
@@ -57,7 +76,7 @@ What makes that possible is that the agent pod normalises its own CLI's output �
 items both become the same turn vocabulary — and emits it on stdout under a `PATCHY-TURN:` prefix, alongside the
 `PATCHY-EVENT:` stage result. The owning controller reads that log once when the Job finishes and writes the
 conversation to a ConfigMap owner-referenced to the run. Since a run is owned by its Finding, the
-[finding TTL](configuration/remediation-controller.md) cascade deletes the transcript with everything else: a
+[finding TTL](../configuration/remediation-controller.md) cascade deletes the transcript with everything else: a
 conversation is retained exactly as long as the finding it explains, and no longer.
 
 A few behaviours are worth knowing:
@@ -105,43 +124,33 @@ One action lives on Integrations rather than findings — the configuration view
 | ------------ | ---------------------------------------------------- | ---------------------------------- |
 | **Backfill** | a github Integration with code scanning, unsuspended | `spec.backfill` on the Integration |
 
-The status server never moves a phase. Approving records the approval; the remediation-controller's spawner then drives
-`AwaitingApproval → Queued` (or revives `HandedOff → Queued` when the approval is newer than the finding's completion)
-exactly as it does for a `/approve` issue comment — the state machine's one-writer-per-edge rule holds no matter which
-surface the human used.
-
-**Retry** recovers a `Failed` finding to the state immediately before the failure: a failed investigation reverts to
-`Enhanced` (the gate opens the next attempt), a failed remediation — or a pull request closed without merging — re-
-queues to `Queued` (the spawner creates the next attempt). Each edge keeps its single writer: the investigation gate
-drives `Failed → Enhanced`, the remediation spawner `Failed → Queued`. A retry is consumed by the recovery itself; if
-the finding fails again, another retry is required.
-
-**Expedite** marks the finding urgent for its whole lifetime: the investigation gate skips the accumulation window and
-minimum-age wait, and both schedulers rank the finding's runs ahead of all non-expedited work. It does not bypass an
-`AwaitingApproval` hold — that remains approve's job.
+The status server never moves a phase. It writes the spec field, and the controller that owns the edge makes the
+transition, exactly as it does for a `/approve` issue comment or `patchy approve`. What each action then does to the
+finding (which state a retry recovers to, what expedite skips) is in
+[Human actions](../concepts/lifecycle.md#human-actions).
 
 ## The user menu
 
 The signed-in name in the top bar drops a menu holding sign-out and two demo actions — **Replay deliveries** (RBAC verb
 `replay`) and **Reset all data** (verb `reset`), both custom verbs on `integrations.patchy.bitwisemedia.uk` — each
 hidden without its grant. Together they re-run the entire pipeline from ingestion; what they write and when to grant
-them is covered in [Demo tooling](deployment/dev-fake.md#the-demo-loop-replay-and-reset).
+them is covered in [Demo mode](../deployment/dev-fake.md#the-demo-loop-replay-and-reset).
 
 ## Access model
 
 Two tiers, on purpose:
 
-1. **Nothing is public.** Without an [auth configuration](configuration/status-server.md) the page shows "sign-in is
+1. **Nothing is public.** Without an [auth configuration](../configuration/status-server.md) the page shows "sign-in is
    not configured" and no data leaves the cluster. Auth mode `none` is the one exception — authentication explicitly
    disabled, everything open (development only).
 2. **Every view requires sign-in + RBAC.** Metrics need `get` on `findingrollups` — repository names and per-repository
-   spend are not for anyone who can reach the page. A signed-in user sees findings
-   only if RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` /
-   `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The configuration view has its own
-   gate — native `get` on `integrations` — and its backfill trigger its own verb (`backfill` on
-   `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent conversations are finding content and ride
-   the same `get findings` gate. The change-notification stream (`/events`) carries no content, only the fact that
-   something changed, but needs any one of the read grants:
+   spend are not for anyone who can reach the page. A signed-in user sees findings only if RBAC grants `get` on
+   `findings`, and each action button only with the matching custom verb (`approve` / `retry` / `expedite` / `suspend` /
+   `resume` on `findings.patchy.bitwisemedia.uk`). The configuration view has its own gate — native `get` on
+   `integrations` — and its backfill trigger its own verb (`backfill` on `integrations.patchy.bitwisemedia.uk`, beside
+   `replay` and `reset`). Agent conversations are finding content and ride the same `get findings` gate. The
+   change-notification stream (`/events`) carries no content, only the fact that something changed, but needs any one of
+   the read grants:
 
 ```yaml
 rules:
@@ -170,4 +179,4 @@ kubectl -n patchy port-forward svc/patchy-status-server 8080:8080
 ```
 
 Want the page populated without running the pipeline? The dev overlay ships
-[canned data](deployment/dev-fake.md#canned-status-page-data) — one finding per lifecycle phase plus rollup statistics.
+[canned data](../deployment/dev-fake.md#canned-status-page-data) — one finding per lifecycle phase plus metrics.

@@ -1,9 +1,18 @@
 # Extending
 
-Patchy ships GHAS/CodeQL, Google Cloud Security Command Center and Wiz support plus a placeholder context enhancer, but
-both ends of the pipeline are plugin seams. The public interfaces live under `pkg/` — the only packages whose signatures
-are stable for external reuse — and the built-in implementations under `internal/ghas`, `internal/scc`, `internal/wiz`
-and `internal/enhancers` are reference implementations of the same interfaces.
+Patchy ships GitHub code scanning, Google Cloud Security Command Center, Wiz and generic HTTP sources, and a chain of
+cloud and HTTP context enhancers, but both ends of the pipeline are plugin seams. The public interfaces live under
+`pkg/`, the only packages whose signatures are stable for external reuse:
+
+| Package          | What it defines                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `pkg/source`     | `source.Handler` (ingest), and the optional `source.Resolver` (verdict write-back) and `source.Lister` (backfill) |
+| `pkg/enhance`    | `enhance.Enhancer`, one context enhancer                                                                          |
+| `pkg/generic`    | The generic integration's HTTP wire types, importable by an external process                                      |
+| `pkg/evaluation` | The [remote evaluation](concepts/evaluation.md) contract evolve speaks; not a plugin seam                         |
+
+The built-in implementations under `internal/ghas`, `internal/scc`, `internal/wiz` and `internal/enhancers` are
+reference implementations of the same interfaces.
 
 There are two ways in. An **in-tree plugin** implements the Go interfaces below and is compiled into the controllers. An
 **external process** implements the [generic HTTP contract](integrations/sources/generic.md) instead — the same source,
@@ -20,6 +29,15 @@ Finding's description and the tracking issue's body. The built-in `ghas` handler
 `code_scanning_alert` deliveries; `gcp-scc` does it for Security Command Center notifications, which need no API call at
 all because the notification carries everything.
 
+The interface is small:
+
+```go
+type Handler interface {
+    ID() string // the source id, e.g. "ghas"; recorded as spec.source
+    Findings(ctx context.Context, eventType string, payload []byte) ([]Finding, error)
+}
+```
+
 The design intent is that SAST tools, dependency scanners, cloud posture tools, or even agentic reviewers plug in here
 without touching the accumulation, projection, or remediation machinery — the `Finding` schema is source-agnostic, and
 `spec.source` (projected as the `security-source` label) records where a finding came from.
@@ -30,11 +48,16 @@ repository is legal — it flows through triage and is handed to a human rather 
 later, from an enhancer. What is not legal is a finding naming neither: there would be nothing to accumulate it against,
 so ingest rejects it.
 
-A source may also implement `source.Resolver`, the optional write-back: telling the originating tool what patchy
-decided, so a finding dismissed here does not stay open there. `ghas` implements it by dismissing the code-scanning
-alert. The pipeline groups a finding's alerts by the source recorded on each one and hands each source only its own, so
-provenance is a fact carried from ingest rather than something inferred from the shape of an identifier. A source that
-implements no write-back is simply skipped — reading is a complete source.
+A source may also implement `source.Resolver` (`Resolve(ctx, alerts, verdict)`), the optional write-back: telling the
+originating tool what patchy decided, so a finding dismissed here does not stay open there. `ghas` implements it by
+dismissing the code-scanning alert. The pipeline groups a finding's alerts by the source recorded on each one and hands
+each source only its own, so provenance is a fact carried from ingest rather than something inferred from the shape of
+an identifier. A source that implements no write-back is simply skipped — reading is a complete source.
+
+A source that can list its tool's open alerts may implement `source.Lister`
+(`List(ctx, repos, yield) (complete bool, err error)`), which powers the
+[manual backfill](integrations/sources/github.md#the-manual-backfill): ingesting alerts that predate webhook coverage.
+`complete` reports whether the walk covered everything or stopped at its budget.
 
 ### Adding a provider webhook
 
@@ -48,11 +71,12 @@ GUID). Everything after authentication is the server's and identical for all of 
 
 ## Context enhancers (`pkg/enhance`)
 
-An enhancer adds organisational context to a freshly opened finding — ownership, tier, data classification, associated
-infrastructure — before the investigation decides a route. Enhancers run as a chain in the context-controller; each
-contributes an enrichment recorded on Finding status — semi-structured attributes (projected as `security-context`
-tracking labels) and free-form markdown (projected as a sticky tracking comment, one per enhancer) — and a failing
-enhancer logs and continues rather than blocking the pipeline.
+An enhancer implements `enhance.Enhancer`: an `ID()` and `Enhance(ctx, issue) (*Enrichment, error)`. It adds
+organisational context to a freshly opened finding — ownership, tier, data classification, associated infrastructure —
+before the investigation decides a route. Enhancers run as a chain in the context-controller; each contributes an
+enrichment recorded on Finding status — semi-structured attributes (projected as `security-context` tracking labels) and
+free-form markdown (projected as a sticky tracking comment, one per enhancer) — and a failing enhancer logs and
+continues rather than blocking the pipeline.
 
 An enhancer may also **resolve a repository** for a finding that arrived without one. That is the one enrichment written
 to spec rather than status, and it is written **once**: three separate mechanisms snapshot a finding's repository
@@ -70,8 +94,8 @@ Four implementations ship:
 
 - **Static file** — a YAML map from repository to owners and attributes
   ([format](configuration/context-controller.md#the-static-context-enhancer)), standing in for a real CMDB.
-- **Google Cloud labels** — reads `scm-repository-*` labels off the cloud resource a finding was raised against, via
-  Cloud Asset Inventory, and resolves the repository from them
+- **Google Cloud Asset Inventory** — reads `scm-repository-*` labels off the cloud resource a finding was raised
+  against, via Cloud Asset Inventory, and resolves the repository from them
   ([format](integrations/enhancers/index.md#the-ownership-labels)). Configured on the `google-cloud` Integration's
   `cloudAssetInventory` block and read per enhancement, it acts on any Google Cloud finding whichever source ingested
   it, and stands aside when no Integration enables it.
@@ -115,7 +139,9 @@ unpriced model so a new Anthropic release runs before it is registered. The cont
 stage defaults once at startup (`model.Canonicalize`), so only concrete ids reach pods, CRDs and rollups. Registering a
 new model therefore also moves every alias that names its family; keep superseded entries, since stored findings and
 rollups still need their pricing. Every Anthropic builtin's bare id must parse as `claude-<family>-<major>[-<minor>]`
-(the registry tests enforce it), or its alias cannot order it.
+(the registry tests enforce it), or its alias cannot order it. The shipped defaults are the alias
+`anthropic/claude-sonnet` for both stages and `anthropic/claude-sonnet,anthropic/claude-opus` for the allowlist; the
+operator view is in [Models and credentials](deployment/models.md).
 
 Each harness has its own **runner image** (`claude-agent-runner`, `codex-agent-runner`) bundling just that CLI, and its
 own egress network policy. The remediation controller resolves the investigation's chosen model to a harness _before_
@@ -135,15 +161,9 @@ Codex reports token usage but not cost, so the rollup prices its tokens from the
 
 - `pkg/` signatures must not reference `internal/` types — the seams stay importable.
 - Everything else is `internal/` and free to change between releases.
-- The custom resources are the state, and the [projected labels](labels.md#the-projected-labels) are a one-way rendering
-  of it: new sources and enhancers express state through the `Finding` schema, never by inventing parallel labels or
+- The custom resources are the state, and the [projected labels](concepts/issue-labels.md) are a one-way rendering of
+  it: new sources and enhancers express state through the `Finding` schema, never by inventing parallel labels or
   parsing issues.
 
-### Adding a field to FindingSpec
-
-The [`ValidatingAdmissionPolicy`](cli.md#permissions) has to enumerate the spec fields it freezes, because CEL cannot
-express "everything except these four". A new field would otherwise become writable by anyone holding `update`.
-`TestAdmissionPolicyCoversEveryFindingSpecField` in `internal/action` reflects over the Go type and fails if a field is
-unaccounted for — when it fires, add the field to the frozen-fields validation in **both**
-`deploy/kustomize/base/admission-policy.yaml` and `charts/patchy/templates/admission-policy.yaml`. The test checks both
-renderings; a Helm install left out of step would silently ship a policy that leaves the field writable.
+Contributors changing the `Finding` schema itself should read
+[Adding a field to FindingSpec](contributing/finding-fields.md) first.

@@ -13,13 +13,15 @@ hide:
 
 Timing assumes findings are already in flight or can be **Expedite**d — call out waits explicitly.
 
+_Last verified against v0.13._
+
 </div>
 
 !!! warning "Say early, say once more at the close"
 
-    **What we show live today is GitHub Advanced Security / CodeQL.** That is the first production source — not the only
-    source Patchy is designed to support. Ingestion is pluggable (`pkg/source`); the rest of the pipeline is
-    source-agnostic.
+    **What we show live is GitHub Advanced Security / CodeQL.** It is one of several sources that ship today, alongside
+    Google Cloud Security Command Center, Wiz and the generic HTTP integration for your own scanners. Ingestion is
+    pluggable (`pkg/source`); the rest of the pipeline is source-agnostic.
 
 ---
 
@@ -71,9 +73,9 @@ Not on camera · run through before the room
     accumulate, get context, get investigated by a sandboxed agent, and high-confidence fixes become pull requests
     for humans to merge.
 
-    **What we show today is GitHub Advanced Security / CodeQL** — that is the first production source:
-    `code_scanning_alert` webhooks into the integration-controller. **It is not the only source the system is built
-    for.** Ingestion goes through a **plugin seam** (`pkg/source`): each source normalizes alerts into the same
+    **What we show today is GitHub Advanced Security / CodeQL**: `code_scanning_alert` webhooks into the
+    integration-controller. **It is not the only source that ships.** Google Cloud SCC, Wiz and a generic HTTP
+    integration ingest the same way. Ingestion goes through a **plugin seam** (`pkg/source`): each source normalizes alerts into the same
     `Finding` model — advisories, severity, locations, repository identity. Accumulation, tracking-issue projection,
     context enhancement, investigation, verdict routing, and remediation are **source-agnostic**. Adding another
     scanner or platform means implementing a handler and wiring deliveries — not rewriting the pipeline.
@@ -154,9 +156,9 @@ Not on camera · run through before the room
     Within moments of the webhook, the same work shows up here: severity, phase, confidence (once investigated),
     verdict, age. Live updates over SSE — no refresh theater.
 
-    Click into a finding: Overview, Alerts, Timeline, Remediation. Sidebar links the tracking issue, owners,
+    Click into a finding: Overview, Alerts, Timeline, Investigation, Remediation. Sidebar links the tracking issue, owners,
     advisories, and **source**. The board is not “the CodeQL UI” — it’s the **multi-source pipeline view**. Today
-    every row may say GHAS; tomorrow the same columns can mix origins without a different product flow.
+    every row may say GHAS; with SCC or Wiz connected the same columns mix origins without a different product flow.
 
 ??? note "Optional · kubectl visible"
 
@@ -218,8 +220,8 @@ Not on camera · run through before the room
 !!! quote "Talk track"
 
     After accumulation closes and the finding is old enough (default **one hour** — our patience knob), the
-    **investigation-controller** admits it: pin the repository SHA once, create an immutable `Investigation`,
-    schedule a sandboxed agent Job.
+    **investigation-controller** admits it: it creates the `Repository` (the **source-controller** pins its SHA once and
+    serves the tarball), creates an immutable `Investigation`, and schedules a sandboxed agent Job.
 
     Isolation in one sentence: the agent pod has **no credential of any kind**, no Kubernetes API access, and no
     arbitrary internet — only a digest-verified tarball of the repo, with model traffic authenticated at the egress
@@ -294,7 +296,7 @@ Not on camera · run through before the room
 !!! example "On screen"
 
     Finding with recommendation **ignore** → phase **Dismissed**; GitHub code-scanning alert dismissed as false
-    positive (for the GHAS path); rollups if useful.
+    positive (for the GHAS path); the Metrics view if useful.
 
 !!! quote "Talk track"
 
@@ -305,13 +307,14 @@ Not on camera · run through before the room
 
     **This is the economic early exit.** Investigation is deliberately cheaper than remediation:
 
-| Stage       | Default ceilings (order of magnitude)                      |
-| ----------- | ---------------------------------------------------------- |
-| Investigate | ~**25** turns · **~150k** token budget · ~15m timeout      |
-| Remediate   | up to **80** turns · **~400k** token budget · ~45m timeout |
+| Stage       | Default budgets (order of magnitude)                             |
+| ----------- | ---------------------------------------------------------------- |
+| Investigate | ~**25** turns · **~150k** token budget · ~15m timeout            |
+| Remediate   | **80** turns · **~400k** tokens unattended (auto) · ~45m timeout |
 
-    Remediation also _requests_ its own model / turns / budget in the investigation report; those are **clamped** to
-    operator ceilings and a model allowlist. A false positive never opens that second stage.
+    The investigation report also suggests a model and _estimates_ turns and tokens for the fix. The model is held to
+    an allowlist; an estimate above the auto budget waits for a human approval, which can grant up to the manual
+    budget (240 turns, 1.2M tokens by default). A false positive never opens that second stage.
 
     On the **Metrics** view (wallboard-friendly aggregates): the outcome mix, per-stage **token / cost / duration**,
     verdict mix, filterable to one repository, model or harness. Point at an `ignore` share and investigation-stage cost vs remediation-stage cost:
@@ -319,7 +322,7 @@ Not on camera · run through before the room
     > Every false positive we stop at investigation is a remediation run we never pay for — and a PR reviewers never
     > context-switch for.
 
-    Machine accounting also lives on the CRs (`Investigations`, `FindingRollups`); status rollups are the friendly
+    Machine accounting also lives on the CRs (`Investigations`, `FindingRollups`); the Metrics view is the friendly
     view of the same story.
 
 ??? note "Optional beat"
@@ -400,7 +403,7 @@ Not on camera · run through before the room
 
     The **scanner stays the scanner** — today CodeQL via GitHub Advanced Security, tomorrow whatever you plug into
     the source seam. Patchy is the **extensible triage and safe auto-remediation layer** on top: multi-source by
-    design, stateful, priority-aware, credential-isolated, and measurable in rollups.
+    design, stateful, priority-aware, credential-isolated, and measurable on the Metrics view.
 
 ---
 
@@ -418,7 +421,7 @@ Presenter cheat sheet · glance while talking
 |   1:30–4:00 | Push → CodeQL → dual surface         | Actions + Security + status | “This path today”          |
 |   4:00–5:30 | Context enhancement                  | `Opened → Enhanced`         | Source-agnostic stage      |
 |   5:30–8:30 | Investigation, 3 ratings, confidence | Investigating               | Same report for any source |
-|  8:30–10:30 | False positive early exit + cost     | Dismissed + Rollups         | Economic early exit        |
+|  8:30–10:30 | False positive early exit + cost     | Dismissed + Metrics         | Economic early exit        |
 | 10:30–13:00 | Remediation opens PRs                | PR `patchy/<finding>`       | Verify-don’t-trust         |
 | 13:00–14:30 | Manual + wrap                        | HandedOff / summary         | Restate extensibility      |
 
@@ -455,9 +458,9 @@ Optional · have ready, don’t force
 
 ??? question "Does Patchy replace CodeQL?"
 
-    No. CodeQL/GHAS is the **first** integrated source, not the product boundary. Patchy ingests findings through a
-    **source-agnostic** `Finding` model and a **plugin seam** (`pkg/source`); other scanners and platforms are meant
-    to be added as handlers without reworking accumulation, investigation, or remediation.
+    No. CodeQL/GHAS is one integrated source, not the product boundary. SCC, Wiz and a generic HTTP integration ship
+    too, and all of them feed a **source-agnostic** `Finding` model through a **plugin seam** (`pkg/source`); more
+    scanners are added as handlers without reworking accumulation, investigation, or remediation.
 
 ??? question "What does multi-source look like on the board?"
 
@@ -480,7 +483,7 @@ Optional · have ready, don’t force
 
 ??? question "How do we see spend?"
 
-    Rollups + OTel `patchy.stage.tokens` / `patchy.stage.cost`.
+    The Metrics view + OTel `patchy.stage.tokens` / `patchy.stage.cost`.
 
 ---
 
@@ -488,12 +491,13 @@ Optional · have ready, don’t force
 
 !!! warning ""
 
-    **GitHub Advanced Security CodeQL is the first source we ship and the path you’ll see in this demo — not the only
-    source Patchy is designed to support.**
+    **GitHub Advanced Security CodeQL is the path you’ll see in this demo — one of several sources Patchy ships, not the
+    only one.**
 
 ---
 
 ## Source material
 
-Drawn from Patchy product docs: `docs/how-it-works.md`, `docs/status-ui.md`, `docs/labels.md`,
-`docs/getting-started/verify.md`, `docs/extending.md`, and the investigation prompt contract (`internal/templates`).
+Drawn from Patchy product docs: `docs/concepts/how-it-works.md`, `docs/operate/status-page.md`,
+`docs/concepts/lifecycle.md`, `docs/getting-started/verify.md`, `docs/extending.md`, and the investigation prompt
+contract (`internal/templates`).

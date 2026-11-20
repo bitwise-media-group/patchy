@@ -90,10 +90,11 @@ data:
     # pod log for the live transcript.
     PATCHY_AGENT_NAMESPACE: patchy-agents
     PATCHY_AGENT_SERVICE_ACCOUNT: patchy-agent
-    # The per-harness runner fleet. A harness is enabled only when it is in
-    # PATCHY_HARNESSES AND its credential Secret exists; the model chosen for a
-    # stage decides which runner (image + credential + egress policy) the Job
-    # uses. Each runner image is ALSO pinned by the `images:` block in
+    # The per-harness runner fleet. A harness is enabled when it is in
+    # PATCHY_HARNESSES and its runner image is set; claude and codex are
+    # brokered, so no credential Secret is involved (the egress broker holds
+    # the model credential). The model chosen for a stage decides which runner
+    # (image + broker route + egress policy) the Job uses. Each runner image is ALSO pinned by the `images:` block in
     # kustomization.yaml for provenance, so overlays must keep the two in step
     # (the `images:` block does not rewrite these ConfigMap values).
     PATCHY_HARNESSES: claude

@@ -8,17 +8,23 @@ overlay-style patching; `deploy/README.md` in the repository is the full operato
 deploy/
 ├── kustomize/
 │   ├── base/                  # CRDs (rendered first), namespaces, serviceaccounts,
-│   │                          #   RBAC, the shared ConfigMap, five Deployments,
-│   │                          #   Services, network policies
+│   │                          #   RBAC, the shared ConfigMap, eight Deployments,
+│   │                          #   Services, network policies, the admission policy
 │   ├── components/cilium/     # optional FQDN egress (CiliumNetworkPolicy)
 │   ├── components/gke-fqdn/   # optional FQDN egress (GKE Dataplane V2 FQDNNetworkPolicy)
 │   ├── components/istio/      # optional Sidecar + ServiceEntry + netpol
 │   └── overlays/
 │       ├── dev/               # kind/colima: NodePort 30079, throwaway secrets + CRs,
 │       │                      #   2m windows, fake harness, fake CMDB
+│       ├── dev-fake/          # dev + an in-cluster fake GitHub: no credentials at all
 │       └── prod/              # release-pinned images + the cilium component
 └── README.md
 ```
+
+The base deploys one Deployment per component: integration-controller, source-controller, context-controller,
+investigation-controller, remediation-controller, evaluation-controller, status-server and egress-broker. Unlike the
+Helm chart, where it is off by default, the evaluation-controller is part of the base; delete it in an overlay if you
+never submit remote evaluations.
 
 Apply an overlay (render first with `kubectl kustomize` if you want to review):
 
@@ -35,7 +41,7 @@ GitHub App's webhook at the integration-controller.
 ## Configuration
 
 Everything is `PATCHY_*` environment in one ConfigMap (`base/configmap.yaml`), consumed with `envFrom`. A key a binary
-does not bind is inert, which is why one ConfigMap serves all five controllers — the
+does not bind is inert, which is why one ConfigMap serves every binary — the
 [configuration reference](../configuration/index.md) maps every key to its flag.
 
 !!! warning "The agent image is pinned in two places"
@@ -47,8 +53,8 @@ does not bind is inert, which is why one ConfigMap serves all five controllers �
 ## Human access: RBAC and the admission policy
 
 Two things consume the custom verbs `approve` / `retry` / `expedite` / `suspend` / `resume` on
-`findings.patchy.bitwisemedia.uk`: the [status page](../status-ui.md), which resolves them per signed-in user via
-SubjectAccessReview, and the [CLI](../cli.md), which acts as the user's own kubeconfig identity.
+`findings.patchy.bitwisemedia.uk`: the [status page](../operate/status-page.md), which resolves them per signed-in user
+via SubjectAccessReview, and the [CLI](../operate/cli.md), which acts as the user's own kubeconfig identity.
 
 Those two need different enforcement. The status page writes as its own ServiceAccount, so it can check the verb itself.
 The CLI writes as the user, so the API server authorizes it — and RBAC has no notion of a field, meaning `update` on
@@ -56,7 +62,7 @@ findings grants the _whole_ object. Granting a developer permission to suspend a
 severity or forge an approval.
 
 `base/admission-policy.yaml` closes that gap with a `ValidatingAdmissionPolicy` binding each spec field to its verb. It
-is part of the base, so both overlays get it. Because it runs in the API server's admission chain it applies to every
+is part of the base, so every overlay gets it. Because it runs in the API server's admission chain it applies to every
 client equally — `patchy`, `kubectl edit`, `kubectl patch`, server-side apply, raw `curl`. There is no path around it
 short of privileges that already exceed the grant being protected.
 

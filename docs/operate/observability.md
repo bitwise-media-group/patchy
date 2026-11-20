@@ -1,8 +1,9 @@
 # Observability
 
 Every binary logs structured `log/slog` to **stderr** — stdout is reserved, because the agent-runner's `PATCHY-EVENT:`
-stream lives there — and ships OpenTelemetry traces, metrics, and logs when an exporter is configured. Telemetry never
-blocks startup: if initialisation fails, the binary falls back to stderr-only logging and keeps serving.
+stream lives there. The controllers, the egress-broker and the status-server also ship OpenTelemetry traces, metrics,
+and logs when an exporter is configured; agent-runner and the `patchy` CLI export no telemetry. Telemetry never blocks
+startup: if initialisation fails, the binary falls back to stderr-only logging and keeps serving.
 
 The pipeline itself is observable without any of this: the custom resources **are** the state
 (`kubectl get patchy -n patchy`, `kubectl describe finding <name>` for conditions and the phase log), and the
@@ -10,7 +11,7 @@ The pipeline itself is observable without any of this: the custom resources **ar
 
 ## Modes
 
-Each controller resolves its telemetry mode at startup, in this order:
+Each server binary resolves its telemetry mode at startup, in this order:
 
 | Mode     | Selected when                    | Behavior                                                                                  |
 | -------- | -------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -53,9 +54,14 @@ Baggage propagators are installed. Logs are bridged — every `slog` record fans
 
 **Ingestion** (integration-controller):
 
-- `patchy.webhook.deliveries` — counter, attributed by event type and result. A rising `bad-signature` rate means the
-  App's webhook secret and the Integration's disagree; `queue-full` means GitHub is redelivering.
-- `patchy.webhook.delivery` — the span wrapping each delivery's handling.
+- `patchy.webhook.deliveries` — counter, attributed by `path` (the provider route), `event`, and `result`. The results
+  are `accepted`, `handled`, `duplicate`, `ping`, `unauthenticated`, `oversized`, `undecodable`, `missing-event`,
+  `queue-full` and `handler-error`. A rising `unauthenticated` rate means a sender's secret and the Integration's
+  disagree. `queue-full` means the controller's internal delivery queue was full: the sender got a `503` and the
+  delivery is lost unless it is redelivered (for GitHub, by the
+  [redelivery sweep](../integrations/sources/github.md#the-failed-delivery-sweep)).
+- `patchy.webhook.delivery` — the span wrapping each delivery's handling (`webhook.path`, `webhook.event`,
+  `webhook.delivery`).
 
 **Pipeline outcomes** (emitted at rollup time, exactly once per run/finding, aligned with the CR counters — anyone with
 an OTLP backend gets the same numbers the `FindingRollup` objects carry):
@@ -70,7 +76,12 @@ an OTLP backend gets the same numbers the `FindingRollup` objects carry):
 
 `repo` is the only high-cardinality attribute (~estate size); constrained backends can drop it with a metric view.
 
-**Probes:** `GET /healthz` / `GET /readyz` on every controller's `--health-addr` (`:8081`) feed the Deployments'
+**Agent execution** (`internal/runner`): `patchy.agent.exec.duration` (a histogram of one harness CLI invocation's
+wall-clock time), `patchy.agent.exec.timeout` (invocations that hit the stage timeout) and the `patchy.agent.exec` span.
+They are recorded inside agent-runner, which installs no telemetry providers, so in agent pods they are no-ops today.
+Use `patchy.stage.runs` and the run's status on its `Investigation` or `Remediation` instead.
+
+**Probes:** `GET /healthz` / `GET /readyz` on every server binary's `--health-addr` (`:8081`) feed the Deployments'
 liveness and readiness probes.
 
 ## Verbosity

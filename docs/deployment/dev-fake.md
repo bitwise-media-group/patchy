@@ -1,4 +1,4 @@
-# Demo tooling
+# Demo mode
 
 Three pieces exist purely to show patchy off — end to end, repeatably, and without real credentials: the **dev-fake
 overlay** (the whole pipeline against in-cluster fakes), the status page's **replay/reset demo loop**, and **canned
@@ -74,13 +74,19 @@ one) — and other routes (`ignore`, `manual`, an `await_approval` hold) are one
 
 ## The demo loop: replay and reset
 
-The [status page's](../status-ui.md#the-user-menu) user menu holds two namespace-wide actions, each behind its own
-custom RBAC verb and hidden without the grant:
+The [status page's](../operate/status-page.md#the-user-menu) user menu holds two namespace-wide actions, each behind its
+own custom RBAC verb and hidden without the grant:
 
-| Action                | Verb     | What happens                                                                                                                                                                                                                        |
-| --------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Replay deliveries** | `replay` | Writes `spec.replay` on the active Integrations; the integration-controller then redelivers the App webhook's delivery log — successes included — through the [redelivery sweep](webhook.md#missed-deliveries-the-redelivery-sweep) |
-| **Reset all data**    | `reset`  | Deletes every pipeline resource in the namespace — findings, investigation/remediation runs, pinned repositories, rollups. Configuration (Integrations, Forges) survives. Two clicks to confirm                                     |
+| Action                | Verb     | What happens                                                                                                                                                                                                                                                              |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Replay deliveries** | `replay` | Writes `spec.replay` on the active Integrations; the integration-controller then redelivers the App webhook's delivery log — successes included — through the [redelivery sweep](../integrations/sources/github.md#replaying-every-delivery)                              |
+| **Reset all data**    | `reset`  | Writes `spec.reset`; the integration-controller then deletes every pipeline resource in the namespace (findings, runs, pinned repositories, rollups) and drops the receiver's delivery dedup window. Configuration (Integrations, Forges) survives. Two clicks to confirm |
+
+!!! danger "Reset changes GitHub too"
+
+    Reset is not only a cluster wipe. Against a real GitHub it **permanently deletes** every finding's tracking issue
+    (which needs admin-level repository permission on the credential) and **reopens** the code-scanning alerts patchy
+    dismissed. Use it on demo repositories only.
 
 Reset then Replay re-runs the entire pipeline from ingestion — the demo loop. Grant these verbs sparingly; the
 `patchy-findings-admin` example tier in `rbac.users.example.yaml` bundles them with the operator verbs.
@@ -89,8 +95,8 @@ Reset then Replay re-runs the entire pipeline from ingestion — the demo loop. 
 
 The dev overlay ships representative canned data so the status page is worth looking at without running the pipeline:
 `deploy/kustomize/overlays/dev/findings-demo.yaml` carries one `Finding` per lifecycle phase (the
-[screenshots](../status-ui.md#views)) plus `FindingRollup` statistics for every scope. `kubectl apply -k` creates the
-objects but cannot write their status subresource, so seed the phases and rollup buckets with:
+[screenshots](../operate/status-page.md#views)) plus `FindingRollup` statistics for every scope. `kubectl apply -k`
+creates the objects but cannot write their status subresource, so seed the phases and rollup buckets with:
 
 ```sh
 mise run status-demo

@@ -32,9 +32,10 @@ analysis prompt). The **per-Job** `PATCHY_<STAGE>_HARNESS` and `PATCHY_<STAGE>_M
 id) are set by the controller from the harness and model it resolved for this Job — so the pod runs the harness its
 runner image was built for on the model the controller chose, and translates that canonical id to the CLI's own model
 id. The investigate limits are absolute. The remediate values are a floor and a backstop, not a clamp: every remediation
-runs on at least the ceiling whatever the investigation estimated, the per-Job `PATCHY_GRANTED_MAX_TURNS` /
-`PATCHY_GRANTED_TOKEN_BUDGET` raise that when a human approved a larger estimate, and the `_HARD` values bound the
-result. A hard cap below its ceiling is a configuration error and the runner refuses to start.
+runs on at least the `AUTO` budget whatever the investigation estimated, the per-Job `PATCHY_GRANTED_MAX_TURNS` /
+`PATCHY_GRANTED_TOKEN_BUDGET` raise that when a human approved a larger estimate, and the `MANUAL` values bound the
+result. A `MANUAL` value below its `AUTO` value is a configuration error, and the runner refuses to start. See
+[The remediation budget](../deployment/models.md#the-remediation-budget).
 
 `PATCHY_CALIBRATION` is the last per-Job variable: a JSON summary of how earlier estimates in this repository compared
 to reality, rendered into the analysis prompt so the next estimate can correct for the observed skew. It is advisory —
@@ -57,7 +58,7 @@ fresh) and `PATCHY_BROKER_API_KEY` (a fixed non-secret placeholder the broker st
 reads its header and key from. A brokered codex stage without `PATCHY_CODEX_CONFIG` fails as a `runtime_error`. All of
 these names are reserved in `internal/jobs`, so controller-global configuration can never shadow them.
 
-Two knobs exist only here:
+These knobs exist only here:
 
 | Env                                 | Default           | Purpose                                                             |
 | ----------------------------------- | ----------------- | ------------------------------------------------------------------- |

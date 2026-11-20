@@ -26,8 +26,13 @@ nav = [
     { "Install with Helm" = "getting-started/install.md" },
     { "Verify the pipeline" = "getting-started/verify.md" },
   ] },
-  { "How it works" = "how-it-works.md" },
-  { "State machine & labels" = "labels.md" },
+  { "Concepts" = [
+    { "How it works" = "concepts/how-it-works.md" },
+    { "Finding lifecycle" = "concepts/lifecycle.md" },
+    { "Issue labels" = "concepts/issue-labels.md" },
+    { "Isolation model" = "concepts/isolation.md" },
+    { "Remote evaluation" = "concepts/evaluation.md" },
+  ] },
   { "Integrations" = [
     { "Overview" = "integrations/index.md" },
     { "Finding sources" = [
@@ -38,7 +43,7 @@ nav = [
     ] },
     { "Context enhancers" = [
       { "Resolving a repository" = "integrations/enhancers/index.md" },
-      { "Google Cloud labels" = "integrations/enhancers/google-cai.md" },
+      { "Google Cloud Asset Inventory" = "integrations/enhancers/google-cai.md" },
       { "AWS resource tags" = "integrations/enhancers/aws.md" },
       { "Azure resource tags" = "integrations/enhancers/azure.md" },
       { "Generic (HTTP)" = "integrations/enhancers/generic.md" },
@@ -47,8 +52,23 @@ nav = [
       { "GitHub" = "integrations/forges/github.md" },
     ] },
   ] },
-  { "Configuration" = [
-    { "Overview" = "configuration/index.md" },
+  { "Deploy" = [
+    { "Helm charts" = "deployment/helm.md" },
+    { "Kustomize" = "deployment/kustomize.md" },
+    { "Webhook exposure" = "deployment/webhook.md" },
+    { "Models and credentials" = "deployment/models.md" },
+    { "Local dev on Colima" = "deployment/colima.md" },
+    { "Demo mode" = "deployment/dev-fake.md" },
+  ] },
+  { "Operate" = [
+    { "The status page" = "operate/status-page.md" },
+    { "The patchy CLI" = "operate/cli.md" },
+    { "Observability" = "operate/observability.md" },
+  ] },
+  # cli/patchy.md is the root of the generated per-command reference
+  # (`mise run docs`); every other cli/patchy_*.md page is reached from it.
+  { "Reference" = [
+    { "Configuration" = "configuration/index.md" },
     { "integration-controller" = "configuration/integration-controller.md" },
     { "source-controller" = "configuration/source-controller.md" },
     { "context-controller" = "configuration/context-controller.md" },
@@ -58,35 +78,33 @@ nav = [
     { "agent-runner" = "configuration/agent-runner.md" },
     { "egress-broker" = "configuration/egress-broker.md" },
     { "status-server" = "configuration/status-server.md" },
-  ] },
-  { "Deployment" = [
-    { "Helm charts" = "deployment/helm.md" },
-    { "Webhook exposure" = "deployment/webhook.md" },
-    { "Kustomize" = "deployment/kustomize.md" },
-    { "Local dev on Colima" = "deployment/colima.md" },
-    { "Demo tooling" = "deployment/dev-fake.md" },
-    { "Isolation model" = "deployment/isolation.md" },
-  ] },
-  { "Operations" = [
-    { "The status page" = "status-ui.md" },
-    { "Observability" = "observability.md" },
-    { "Benchmarks & load tests" = "dev/benchmarks.md" },
-  ] },
-  # cli/patchy.md is the root of the generated per-command reference
-  # (`mise run docs`); every other cli/patchy_*.md page is reached from it.
-  { "The patchy CLI" = [
-    { "Overview" = "cli.md" },
-    { "Command reference" = "cli/patchy.md" },
+    { "CLI commands" = "cli/patchy.md" },
   ] },
   { "Supply chain" = [
     { "Overview" = "supply-chain/index.md" },
+    { "Configuration" = "supply-chain/configuration.md" },
     { "Mirroring charts and images" = "supply-chain/mirror.md" },
     { "Building images and manifests" = "supply-chain/build.md" },
     { "Scanning and allowlists" = "supply-chain/scanning.md" },
     { "Restricting sources" = "supply-chain/source-policy.md" },
   ] },
   { "Extending" = "extending.md" },
+  { "Contributing" = [
+    { "Benchmarks and load tests" = "contributing/benchmarks.md" },
+    { "Adding a field to FindingSpec" = "contributing/finding-fields.md" },
+  ] },
 ]
+
+# Pages that moved keep their old URL as a redirect stub, so external links
+# and bookmarks still land. Keys are the old docs-relative source paths.
+[project.plugins.redirects.redirect_maps]
+"how-it-works.md" = "concepts/how-it-works.md"
+"labels.md" = "concepts/lifecycle.md"
+"deployment/isolation.md" = "concepts/isolation.md"
+"status-ui.md" = "operate/status-page.md"
+"cli.md" = "operate/cli.md"
+"observability.md" = "operate/observability.md"
+"dev/benchmarks.md" = "contributing/benchmarks.md"
 
 [project.theme]
 name = "material"

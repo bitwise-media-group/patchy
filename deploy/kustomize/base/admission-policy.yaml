@@ -126,7 +126,7 @@ spec:
         # four fields above and spec.related are legitimately mutable and CEL
         # cannot subtract keys from a struct. A field added to FindingSpec must
         # be added here too — the codegen drift check will not catch that, so it
-        # is called out in docs/cli.md.
+        # is called out in docs/operate/cli.md.
         #
         # spec.related is deliberately absent: relationship edges are documented
         # as human-writable (api/v1alpha1/finding_types.go), and carry no

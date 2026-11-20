@@ -3,7 +3,7 @@
 Patchy has no AWS scanner source — AWS findings arrive through [Wiz](../sources/wiz.md) (or a future source). What the
 `aws` Integration provides is the [context enhancer](index.md): it looks a finding's AWS resource up in an
 organization-level inventory, carries its tags onto the finding, and resolves the owning repository from them. It is the
-AWS sibling of the [Cloud Asset Inventory enhancer](google-cai.md), and like every enhancer it keys purely on the
+AWS sibling of the [Google Cloud Asset Inventory enhancer](google-cai.md), and like every enhancer it keys purely on the
 finding's cloud resource, not on where the finding came from.
 
 ## Two inventories, one question

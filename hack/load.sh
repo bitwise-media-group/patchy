@@ -7,7 +7,7 @@
 # construction — the tests skip without PATCHY_LOAD=1 — and sized by
 # PATCHY_LOAD_N (default 50000; a 10000 smoke run finishes much faster).
 # Numbers land under coverage/bench/ beside the Tier-1 records. See
-# docs/dev/benchmarks.md for the targets.
+# docs/contributing/benchmarks.md for the targets.
 set -eu
 
 KUBEBUILDER_ASSETS=$(setup-envtest use --bin-dir "${HOME}/.cache/kubebuilder-envtest" -p path)

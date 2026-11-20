@@ -12,7 +12,7 @@ context-controller serve --namespace patchy --static-context-file /etc/patchy/co
 
 ## Flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers), plus:
+The [shared flags](index.md#shared-flags), plus:
 
 | Flag                     | Env                           | Default | Purpose                                                                                                                                            |
 | ------------------------ | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -30,13 +30,13 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 - **Owners matter downstream** — the owners recorded on `status.owners` are who a `manual` or held finding is handed to
   when it routes to humans.
 
-## The Google Cloud labels enhancer
+## The Google Cloud Asset Inventory enhancer
 
 The `google-cloud-labels` enhancer resolves a cloud finding's repository (and project/type/location attributes) from the
 ownership labels on the resource itself, read through Cloud Asset Inventory. It takes **no flags**: its configuration is
 the `cloudAssetInventory` block on the `google-cloud` Integration, read from the cluster per enhancement — see
-[Google Cloud labels](../integrations/enhancers/google-cai.md#enabling-it). It acts on any finding whose cloud resource
-lives on Google Cloud, whichever source ingested it, and stands aside entirely when no Integration enables the
+[Google Cloud Asset Inventory](../integrations/enhancers/google-cai.md#enabling-it). It acts on any finding whose cloud
+resource lives on Google Cloud, whichever source ingested it, and stands aside entirely when no Integration enables the
 capability. The only deployment concern this controller keeps is the credential: workload identity with
 `roles/cloudasset.viewer` on the controller's ServiceAccount.
 

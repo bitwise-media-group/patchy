@@ -158,7 +158,7 @@ dir = "{{cwd}}"
 run = "./hack/helm-lint.sh"
 
 # Everything derived from the CLI's cobra command tree: the per-command
-# reference under docs/cli (nav'd from docs/cli.md) and the shell completions.
+# reference under docs/cli (nav'd from docs/operate/cli.md) and the shell completions.
 # Kept repo-local because the archetype leaves `docs` to the app — see the
 # comment at the head of .mise/archetypes/go/tasks.toml.
 #

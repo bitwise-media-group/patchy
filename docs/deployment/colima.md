@@ -57,7 +57,8 @@ make snapshot
 
 arch=arm64 # amd64 on Intel
 for app in integration-controller source-controller context-controller \
-           investigation-controller remediation-controller agent-runner; do
+           investigation-controller remediation-controller egress-broker \
+           claude-agent-runner codex-agent-runner status-server; do
   tag=$(docker images "ghcr.io/bitwise-media-group/patchy/$app" \
     --format '{{.Tag}}' | grep -- "-$arch$" | head -1)
   docker tag "ghcr.io/bitwise-media-group/patchy/$app:$tag" "patchy/$app:dev"
@@ -130,7 +131,7 @@ To use real GitHub App credentials instead, write `appID` + `privateKey` keys in
 To watch **every custom resource** progress without a GitHub token _or_ a model key, the `dev-fake` overlay replaces
 GitHub with the e2e suite's in-memory API (run in-cluster) and the model with a scripted agent —
 `PATCHY_OVERLAY=dev-fake make dev-colima` builds and deploys the fakes alongside everything above. The full walkthrough
-is on [Demo tooling](dev-fake.md#credential-less-end-to-end-the-dev-fake-overlay).
+is on [Demo mode](dev-fake.md#credential-less-end-to-end-the-dev-fake-overlay).
 
 ## Ingress for the integration-controller
 
@@ -197,7 +198,7 @@ with `--network-address` to give the VM a routable IP and point clients (and an 
 
 !!! warning "Closer to production, still not a sandbox"
 
-    k3s enforcing NetworkPolicy means the L3/L4 floor from the [isolation model](isolation.md) is real on Colima —
+    k3s enforcing NetworkPolicy means the L3/L4 floor from the [isolation model](../concepts/isolation.md) is real on Colima —
     an improvement over kind, where it silently does nothing. The FQDN layer still isn't there (no Cilium, no
     Istio), and the dev overlay ships throwaway credentials and the fake harness. Treat this as a faster inner
     loop, not a security-representative environment.

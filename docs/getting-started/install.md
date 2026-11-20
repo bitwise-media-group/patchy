@@ -1,9 +1,10 @@
 # Install with Helm
 
 Two charts are published to GHCR as OCI artifacts on every release: `patchy` installs the whole stack — the
-`patchy.bitwisemedia.uk` CRDs, five controller Deployments with their RBAC and ConfigMaps, the two Services, the agent
-namespace, and the baseline network policies — and `patchy-config` installs the `Integration`/`Forge` custom resources
-that switch the pipeline on, as a second release once the CRDs exist.
+`patchy.bitwisemedia.uk` CRDs, the controller, egress-broker and status-server Deployments with their RBAC, ConfigMaps
+and Services, the agent namespace, and the baseline network policies (see [Helm charts](../deployment/helm.md) for the
+full list) — and `patchy-config` installs the `Integration`/`Forge` custom resources that switch the pipeline on, as a
+second release once the CRDs exist.
 
 ## Create the namespaces
 
@@ -48,7 +49,7 @@ kubectl -n patchy create secret generic patchy-anthropic \
 ```
 
 Running claude against Amazon Bedrock, GCP Vertex AI, or Microsoft Foundry instead needs no Anthropic Secret at all —
-see the [provider recipes](../deployment/helm.md#model-providers-brokered-claude).
+see [Models and credentials](../deployment/models.md#provider-credentials).
 
 To let the investigation choose OpenAI models for remediation, enable the codex runner
 (`agent.runners.codex.enabled: true` / add `codex` to `PATCHY_HARNESSES` and set `PATCHY_OPENAI_API_KEY_FILE`) and
@@ -76,7 +77,7 @@ serve both CRs, or you can split read and write identities across two GitHub App
 
 There is deliberately **no** GitHub credential in the agent namespace — not even a per-Job one. The repository arrives
 as a digest-verified tarball from the source-controller's in-cluster artifact server. See the
-[isolation model](../deployment/isolation.md).
+[isolation model](../concepts/isolation.md).
 
 ## Install the chart
 
@@ -119,7 +120,7 @@ proxy; `noProxy` appends to that list. A [`spec.proxy` on a Forge](../integratio
 [GitHub Integration](../integrations/sources/github.md#egress-proxy) overrides the environment for that resource's
 traffic, and `config.extra` (per-controller: `<controller>.config.extra`) remains the escape hatch that wins over both
 derived keys. Reaching a proxy on a port like 3128 also needs `<controller>.networkPolicy.extraEgress` — see the
-[isolation model](../deployment/isolation.md#egress-proxies).
+[isolation model](../concepts/isolation.md#egress-proxies).
 
 ## Switch the pipeline on: the `patchy-config` chart
 

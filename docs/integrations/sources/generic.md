@@ -128,7 +128,7 @@ and re-POST rather than half a batch silently landing):
 - A finding names a `repo`, a `cloudResource`, or both — one with neither has nothing to accumulate against.
 - `alertId` or a positive `alertNumber` is required — the identity write-back and duplicate-merge key on.
 - Empty `advisories` fall back to `generic-rule:<ruleId>`, else `generic-alert:<id>`, so findings of the same rule still
-  fold together during [accumulation](../../how-it-works.md).
+  fold together during [accumulation](../../concepts/how-it-works.md).
 - Findings below the Integration's `minSeverity` are dropped silently, not rejected.
 
 Cloud findings arrive repo-less and lean on the [context enhancers](../enhancers/index.md) (or your own
@@ -184,8 +184,8 @@ patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findi
 ```
 
 Every `dev` flag also resolves from a `PATCHY_DEV_*` environment variable (`PATCHY_DEV_ENHANCE_URL`, …) and the `dev:`
-block of the [patchy configuration](../../cli.md#configuration) — `patchy.yaml` in the working directory, or a layer in
-`~/.config/patchy/` — with explicit flags winning over the environment and the environment over the file:
+block of the [patchy configuration](../../supply-chain/configuration.md) — `patchy.yaml` in the working directory, or a
+layer in `~/.config/patchy/` — with explicit flags winning over the environment and the environment over the file:
 
 ```yaml
 dev:

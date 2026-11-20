@@ -6,12 +6,12 @@ and the rollup/TTL loop, which makes it the one deleter of expired Findings.
 
 ```sh
 remediation-controller serve --namespace patchy \
-  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.9.0 # match your installed release
+  --claude-agent-image ghcr.io/bitwise-media-group/patchy/claude-agent-runner:vX.Y.Z # match your installed release
 ```
 
 ## Pipeline flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers), plus:
+The [shared flags](index.md#shared-flags), plus:
 
 | Flag                               | Env                                     | Default          | Purpose                                                                      |
 | ---------------------------------- | --------------------------------------- | ---------------- | ---------------------------------------------------------------------------- |
@@ -41,51 +41,43 @@ on an allowlisted model no enabled harness can run.
 
 ## Stage flags
 
-The investigation report requests its own model, turn count, and token budget for the fix — but the turn and token
-figures are an **estimate**, not a request that can be granted downward. They never shrink a run.
+The investigation report suggests a model for the fix and estimates its turns and output tokens. The estimate never
+shrinks a run: every remediation gets at least the **auto** budget, an estimate above it holds the finding for approval,
+and an approval grants the estimate up to the **manual** budget.
+[The remediation budget](../deployment/models.md#the-remediation-budget) explains the model in full.
 
-The budget has three levels:
+The model suggestion is clamped: the spawner holds it to the allowlist and resolves the harness that runs it (the
+model's provider decides the runner image and credential route). `--remediate-model` is the fallback when the report's
+suggestion is missing or off the allowlist. Both flags accept family aliases (`anthropic/claude-opus`), resolved to
+concrete ids once at startup; see [Model ids and aliases](../deployment/models.md#model-ids-and-aliases).
 
-- **Ceiling** (`--remediate-max-turns`, `--remediate-token-budget`) — what every remediation gets, whatever the
-  investigation predicted and including when it predicted nothing. It is also the **approval threshold**: an estimate
-  above it holds the finding in `AwaitingApproval` rather than queueing it.
-- **Hard cap** (`--remediate-max-turns-hard`, `--remediate-token-budget-hard`) — the absolute limit. Approving an
-  over-ceiling estimate _grants that estimate_, so the hard cap bounds what a single approval can authorize. It must be
-  at or above the ceiling; the runner refuses to start otherwise.
-- **Estimate** — advisory. Its only operational effect is the approval gate; everything else it does is reporting
-  (estimate against granted against actual on the run, and the skew averages in the rollups, which feed back into the
-  next investigation's prompt).
+| Flag                              | Env                                    | Default                   | Purpose                                                        |
+| --------------------------------- | -------------------------------------- | ------------------------- | -------------------------------------------------------------- |
+| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases     | Model ids or family aliases remediation may run                |
+| `--remediate-model`               | `PATCHY_REMEDIATE_MODEL`               | `anthropic/claude-sonnet` | Model used when the report's suggestion is missing or unusable |
+| `--remediate-timeout`             | `PATCHY_REMEDIATE_TIMEOUT`             | `45m`                     | Wall-clock limit for the remediation stage                     |
+| `--remediate-auto-max-turns`      | `PATCHY_REMEDIATE_AUTO_MAX_TURNS`      | `80`                      | Turns an unattended fix gets; estimates above need approval    |
+| `--remediate-auto-token-budget`   | `PATCHY_REMEDIATE_AUTO_TOKEN_BUDGET`   | `400000`                  | Output tokens an unattended fix gets; same approval line       |
+| `--remediate-manual-max-turns`    | `PATCHY_REMEDIATE_MANUAL_MAX_TURNS`    | `240`                     | Most turns one human approval can grant                        |
+| `--remediate-manual-token-budget` | `PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET` | `1200000`                 | Most output tokens one human approval can grant                |
 
-The model suggestion is still clamped: the spawner holds it to the allowlist and resolves the harness that runs it (the
-model's provider decides the runner image and credential). `--remediate-model` is the canonical fallback when the
-report's suggestion is missing or off the allowlist; its harness is derived from it. Both flags accept family aliases
-(`anthropic/claude-opus`), resolved to concrete ids once at startup; a report that suggests an alias is resolved the
-same way before the allowlist check — see [Model ids and aliases](investigation-controller.md#model-ids-and-aliases).
-
-| Flag                            | Env                                  | Default                   | Purpose                                          |
-| ------------------------------- | ------------------------------------ | ------------------------- | ------------------------------------------------ |
-| `--model-allowlist`             | `PATCHY_MODEL_ALLOWLIST`             | Sonnet + Opus aliases     | Model ids or family aliases remediation may run  |
-| `--remediate-model`             | `PATCHY_REMEDIATE_MODEL`             | `anthropic/claude-sonnet` | Default model when the report requests none      |
-| `--remediate-timeout`           | `PATCHY_REMEDIATE_TIMEOUT`           | `45m`                     | Wall-clock limit for the remediation stage       |
-| `--remediate-max-turns`         | `PATCHY_REMEDIATE_MAX_TURNS`         | `80`                      | Turns every run gets; approval threshold above   |
-| `--remediate-token-budget`      | `PATCHY_REMEDIATE_TOKEN_BUDGET`      | `400000`                  | Output tokens every run gets; approval threshold |
-| `--remediate-max-turns-hard`    | `PATCHY_REMEDIATE_MAX_TURNS_HARD`    | `240`                     | Most turns an approval can grant                 |
-| `--remediate-token-budget-hard` | `PATCHY_REMEDIATE_TOKEN_BUDGET_HARD` | `1200000`                 | Most output tokens an approval can grant         |
-
-Token budgets are enforced live — the runner watches the harness's streamed usage events and kills the process group
-when the cumulative output-token count is exceeded; the harness CLI has no such flag itself.
+The manual values must be at least the auto values; the runner refuses to start otherwise. Token budgets are enforced
+live: the runner watches the harness's streamed usage events and kills the process group once the cumulative
+output-token count is exceeded.
 
 ## Behavior
 
-- **Queue admission** — `AwaitingApproval → Queued` and `HandedOff → Queued` on an accepted `/approve` (`spec.approval`,
-  written by the integration-controller from the tracking comment webhook).
+- **Queue admission** — `AwaitingApproval → Queued` and `HandedOff → Queued` on an accepted `spec.approval`, whether a
+  `/approve` issue comment, the status page or `patchy approve` wrote it. `Failed → Queued` on a human retry of a failed
+  remediation. See [Human actions](../concepts/lifecycle.md#human-actions).
 - **Scheduling** — `Queued → Remediating` when a slot frees, highest effective priority first; waiting findings gain +1
   effective priority per `--priority-aging-interval` up to `--priority-aging-cap`, so low-priority work cannot starve.
   Each grant creates one immutable `Remediation` child and its agent Job.
 - **Verification, then push** — the agent's `commit.sh` must run cleanly and leave real commits; the controller then
   replays the changeset through the GitHub Git Data API (blob → tree → commit → ref) onto the `patchy/<finding>` branch
   with a scoped write token — no git binary, no clone — opens the pull request, and moves the finding to `InReview`. A
-  recoverable failure re-queues (`Remediating → Queued`) within `--max-attempts`; exhaustion is `Failed`.
-- **Rollups and the TTL** — on terminal-phase entry the stage statistics are aggregated exactly-once (finalizer-backed)
-  into the per-scope `FindingRollup` objects; completed findings older than `--finding-ttl` are deleted, and the rollups
-  remain the durable record.
+  recoverable failure re-queues (`Remediating → Queued`) within `--max-attempts`; exhaustion is `Failed`. An agent that
+  reports the finding is not safely fixable moves it to `HandedOff`.
+- **Rollup statistics and the TTL** — on terminal-phase entry the stage statistics are aggregated exactly-once
+  (finalizer-backed) into the per-scope `FindingRollup` objects; completed findings older than `--finding-ttl` are
+  deleted, and the rollups remain the durable record.

@@ -12,7 +12,7 @@ CLAUDE.md
 
 # Generated from the cobra command tree (mise run docs); same reasoning as the
 # fixtures above — a reformat would surface as drift on the next regeneration.
-# docs/cli.md, the hand-written page that navs to them, is deliberately not
+# docs/operate/cli.md, the hand-written page that navs to them, is deliberately not
 # covered.
 docs/cli/
 completions/

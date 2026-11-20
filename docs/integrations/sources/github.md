@@ -69,7 +69,7 @@ so accumulation still has a stable key. Alerts sharing an advisory family agains
 Three write paths, each gated differently:
 
 - **The tracking issue.** A Finding is projected to an issue: templated body, the
-  [projected labels](../../labels.md#the-projected-labels), enrichments and reports as comments, and open/closed state.
+  [projected labels](../../concepts/issue-labels.md), enrichments and reports as comments, and open/closed state.
   Strictly one-way — issue state is never parsed back into pipeline state, only the explicit signals below are.
 - **Alert dismissal.** An `ignore` verdict closes the code-scanning alert as a false positive. This is the write-back
   half of the `codeScanningAlerts` capability; the SCC analogue (muting) is
@@ -118,19 +118,32 @@ rather than as a failed run.
 
 ## The failed-delivery sweep
 
-GitHub does not retry a failed webhook delivery. Anything missed while the receiver was down, or while its queue was
-full, sits in the 30-day delivery log until someone redelivers it by hand.
+GitHub does not retry a failed webhook delivery. Anything missed while the receiver was down, its queue was full or its
+secret was wrong sits in the App's 30-day delivery log until someone redelivers it by hand. The sweep does that for you
+when it is enabled on the Integration:
 
 ```yaml
 spec:
+  interval: 10m # the sweep rides the reconcile interval
   github:
     redelivery:
       enabled: true
-      lookback: 24h # bounded by GitHub's 30-day retention
+      lookback: 24h # how far back each sweep scans (GitHub retains 30d)
 ```
 
-On each reconcile interval the controller lists recent deliveries and asks GitHub to redeliver those that never got a
-2xx. **App credentials are required** — the delivery log is App-scoped, so a PAT integration cannot sweep.
+Each sweep lists the App webhook's recent deliveries and asks GitHub to redeliver every delivery whose attempts within
+the lookback all failed, up to three attempts per delivery. **App credentials are required**: the delivery log is
+App-scoped, so a PAT integration cannot sweep. Duplicates are harmless, because the receiver deduplicates by delivery
+GUID and ingestion is idempotent. The outcome lands on `status.redelivery` (scan size, redeliveries requested,
+truncation, last error).
+
+### Replaying every delivery
+
+The status page's user menu offers **Replay deliveries** (RBAC verb `replay` on integrations). It writes `spec.replay`
+on the Integration, and on its next reconcile the controller redelivers _everything_ in the lookback window, including
+deliveries that already succeeded. Paired with **Reset all data** (verb `reset`), it re-runs the whole pipeline from
+ingestion, which is what a demo wants. See [Demo mode](../../deployment/dev-fake.md#the-demo-loop-replay-and-reset) for
+what Reset deletes.
 
 ## The manual backfill
 

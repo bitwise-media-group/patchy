@@ -11,7 +11,7 @@ source-controller serve --namespace patchy --artifact-addr :9790
 
 ## Flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers), plus:
+The [shared flags](index.md#shared-flags), plus:
 
 | Flag                   | Env                         | Default              | Purpose                                                                            |
 | ---------------------- | --------------------------- | -------------------- | ---------------------------------------------------------------------------------- |
@@ -19,6 +19,16 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 | `--artifact-base-url`  | `PATCHY_ARTIFACT_BASE_URL`  | in-cluster Service   | Base URL minted into Repository statuses for agent fetches                         |
 | `--artifact-dir`       | `PATCHY_ARTIFACT_DIR`       | `/data/artifacts`    | Directory the artifact tarballs are stored in                                      |
 | `--max-artifact-bytes` | `PATCHY_MAX_ARTIFACT_BYTES` | `1073741824` (1 GiB) | Largest repository tarball stored; larger repositories stall (`Stalled` condition) |
+
+The internal workspace endpoint is used only by the optional [evaluation-controller](evaluation-controller.md), which
+streams evolve's workspace bundles to it:
+
+| Flag                           | Env                                 | Default             | Purpose                                                                                     |
+| ------------------------------ | ----------------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
+| `--artifact-internal-addr`     | `PATCHY_ARTIFACT_INTERNAL_ADDR`     | _(unset: disabled)_ | Listen address of the internal workspace-upload endpoint; the deployments use `:9791`       |
+| `--internal-upload-token-file` | `PATCHY_INTERNAL_UPLOAD_TOKEN_FILE` | _(unset)_           | File holding a shared bearer token uploads must present (defence in depth on NetworkPolicy) |
+| `--max-workspace-bytes`        | `PATCHY_MAX_WORKSPACE_BYTES`        | `67108864` (64 MiB) | Largest workspace bundle accepted                                                           |
+| `--workspace-retention`        | `PATCHY_WORKSPACE_RETENTION`        | `168h` (7 days)     | Remove bundles not fetched for this long; `0` keeps them forever                            |
 
 `--artifact-base-url` only needs setting when the Service name differs from the default
 `http://patchy-source-controller.<namespace>.svc.cluster.local:<port>` — the deployments leave it unset.
@@ -35,3 +45,6 @@ The [shared flags](index.md#shared-flags-all-five-controllers), plus:
 - **Artifact server** — serves the stored tarballs on `--artifact-addr`. The Deployment stores them in an `emptyDir`:
   they are reproducible from the pinned SHA, so a pod restart just re-downloads. The Service is in-cluster only by
   design, and the NetworkPolicies restrict the port to the agent namespace.
+- **Workspace blobs** — when `--artifact-internal-addr` is set, the internal endpoint accepts sha256-named workspace
+  bundles, verifies each digest before caching it, and serves it back to agent pods from the artifact endpoint. A
+  retention sweep removes bundles nobody has fetched for `--workspace-retention`.

@@ -42,7 +42,7 @@ func (p *Printer) renderMarkdownBody(md string) string {
 	// that only a TUI event loop can service. WithEnvironmentConfig honours
 	// GLAMOUR_STYLE — the same variable glow and friends read, so a user who has
 	// set it once is already configured — and falls back to the dark theme.
-	// Users on a light terminal set GLAMOUR_STYLE=light; docs/cli.md says so.
+	// Users on a light terminal set GLAMOUR_STYLE=light; docs/operate/cli.md says so.
 	r, err := glamour.NewTermRenderer(
 		glamour.WithEnvironmentConfig(),
 		glamour.WithWordWrap(wrapWidth(p.out)),

@@ -1,7 +1,7 @@
 # Verify the pipeline
 
 With the chart installed, the `Integration`/`Forge` resources applied, and the webhook reachable, follow one finding all
-the way through. The [state machine](../labels.md) is the map; this page is the guided walk.
+the way through. The [state machine](../concepts/lifecycle.md) is the map; this page is the guided walk.
 
 ## 1. Check the controllers
 
@@ -11,7 +11,8 @@ kubectl -n patchy get integrations,forges     # both should show Ready
 kubectl -n patchy logs deploy/patchy-integration-controller
 ```
 
-The five controller pods should be `Running` and logging to stderr; each serves `GET /healthz` and `GET /readyz` on
+The pods should be `Running` and logging to stderr: the five pipeline controllers (integration, source, context,
+investigation, remediation), the egress-broker and the status-server. Each serves `GET /healthz` and `GET /readyz` on
 port 8081. `Ready: False` on the Integration or Forge means the referenced `patchy-github` Secret is missing or its
 credential failed validation — fix that before anything else. In the GitHub App's **Advanced → Recent Deliveries**, the
 `ping` delivery should show `204` — a `401` means the webhook secret in the App and in `patchy-github` disagree.
@@ -26,8 +27,8 @@ kubectl -n patchy get findings -w
 ```
 
 ```text
-NAME              REPO                SEVERITY   PRIORITY   PHASE    VERDICT   AGE
-ghas-cwe-89-1a2b  acme/payments-api   high                  Opened             8s
+NAME                  REPO                SEVERITY   PRIORITY   PHASE    VERDICT   AGE
+finding-7c41d09e2a-1  acme/payments-api   high                  Opened             8s
 ```
 
 The Finding is projected to a GitHub tracking issue carrying the trimmed label set (`security-source: ghas`,
@@ -82,7 +83,7 @@ No cluster webhook plumbing is needed to exercise the pipeline locally:
 
 ```sh
 make e2e          # envtest + real binaries, recorded webhook fixtures, in-memory GitHub
-mise run replay -- -secret-file dev.secret e2e/fixtures/webhooks/code_scanning_alert.created.json
+mise run replay -- -secret-file "$PWD/dev.secret" fixtures/webhooks/code_scanning_alert.created.json
 ```
 
 `replay` signs a recorded fixture with your webhook secret and delivers it to a running integration-controller (default

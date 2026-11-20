@@ -14,7 +14,7 @@ integration-controller serve --namespace patchy --accumulation-window 1h
 
 ## Flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers), plus:
+The [shared flags](index.md#shared-flags), plus:
 
 | Flag                       | Env                             | Default | Purpose                                                                                       |
 | -------------------------- | ------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
@@ -37,10 +37,15 @@ delivery addressed to another. All of them answer the same way:
 | `202`    | Accepted and queued (duplicates by delivery ID also get `202`) |
 | `204`    | `ping`                                                         |
 | `401`    | No Integration's webhook secret matched the signature          |
-| `503`    | The delivery queue is full — GitHub redelivers                 |
+| `503`    | The internal delivery queue is full; the delivery is dropped   |
 
-Bodies are capped at 25 MiB (GitHub's own limit) and the last 1024 delivery IDs are deduplicated. A lost delivery is
-never fatal: the reconcile loops are the retry mechanism, and the webhook path only carries ingestion and human signals.
+GitHub does not retry a `503` (or any failed delivery) on its own. Enable
+[`spec.github.redelivery`](../integrations/sources/github.md#the-failed-delivery-sweep) on the Integration to sweep the
+delivery log for anything that never got a `2xx`; other senders redeliver on their own terms.
+
+Bodies are capped at 25 MiB (GitHub's own limit). Delivery IDs are deduplicated over a window of the last 1024 IDs, each
+remembered for at most 5 minutes. A lost delivery never loses pipeline progress: the reconcile loops are the retry
+mechanism, and the webhook path only carries ingestion and human signals.
 
 ## Behavior
 
@@ -49,8 +54,8 @@ never fatal: the reconcile loops are the retry mechanism, and the webhook path o
   repository fold into the existing Finding until the accumulation window closes (the `AccumulationComplete` condition —
   accumulation runs concurrently with enhancement, so it is not a phase). Later alerts open a fresh Finding.
 - **Projection** — a Finding reconciler renders each Finding to its tracking issue: the templated body, the
-  [projected labels](../labels.md#the-projected-labels), enrichments and investigation reports as comments, and
-  open/closed state. One-way only.
+  [projected labels](../concepts/issue-labels.md), enrichments and investigation reports as comments, and open/closed
+  state. One-way only.
 - **Human signals** — issue close (`→ HandedOff`), issue reopen (`Dismissed → HandedOff`), accepted `/approve` comments
   (recorded on `spec.approval`), and `pull_request` webhooks on `patchy/<finding>` branches (`InReview → Remediated` on
   merge, `→ Failed` on unmerged close).

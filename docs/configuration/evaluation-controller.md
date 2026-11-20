@@ -17,13 +17,10 @@ events; the finished results entry is opaque payload stored in a per-unit Config
 
 ## Flags
 
-The [shared flags](index.md#shared-flags-all-five-controllers) (`--listen-addr` is the API's own address), plus:
+The [shared flags](index.md#shared-flags) (`--listen-addr` is the API's own address), plus:
 
 | Flag                           | Env                                 | Default                       | Purpose                                                                                   |
 | ------------------------------ | ----------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------- |
-| `--namespace`                  | `PATCHY_NAMESPACE`                  | `POD_NAMESPACE`               | Namespace the Evaluations live in                                                         |
-| `--kubeconfig`                 | `PATCHY_KUBECONFIG`                 | in-cluster                    | Kubeconfig path for running outside the cluster                                           |
-| `--health-addr`                | `PATCHY_HEALTH_ADDR`                | `:8081`                       | healthz/readyz probe listen address                                                       |
 | `--auth-config`                | `PATCHY_AUTH_CONFIG`                | _(required)_                  | Mounted authentication config (see below)                                                 |
 | `--max-concurrent-units`       | `PATCHY_MAX_CONCURRENT_UNITS`       | `4`                           | Evaluation units running at once, across all submissions                                  |
 | `--max-units-per-evaluation`   | `PATCHY_MAX_UNITS_PER_EVALUATION`   | `200`                         | Largest accepted submission, in units                                                     |

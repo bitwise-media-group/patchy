@@ -1,13 +1,23 @@
 # Helm charts
 
-The `patchy` chart (in-repo at `charts/patchy`) renders the full stack: the `patchy.bitwisemedia.uk` CRDs, five
-singleton controller Deployments — each with its own ConfigMap, ServiceAccount, and NetworkPolicy — the two Services
-(integration `:8080`, source `:9790`), and the agent namespace with its RBAC and sandbox policies. The companion
-`patchy-config` chart (`charts/patchy-config`) renders the `Integration`/`Forge` custom resources — a separate chart
-because Helm validates every manifest against the API server before applying anything, so the CRs cannot ride in the
-same first install as the CRDs they depend on. Both are published to `oci://ghcr.io/bitwise-media-group/patchy/charts/`
-on every release; release-please stamps `version` and `appVersion` 1:1 with the app, and the default image tag is
-`v<appVersion>` — chart `X.Y.Z` runs images `vX.Y.Z`.
+The `patchy` chart (in-repo at `charts/patchy`) renders the full stack: the `patchy.bitwisemedia.uk` CRDs, the agent
+namespace with its RBAC and sandbox policies, and one singleton Deployment per component, each with its own ConfigMap,
+ServiceAccount and NetworkPolicy:
+
+- the pipeline controllers: integration-controller, source-controller, context-controller, investigation-controller and
+  remediation-controller;
+- the [status-server](../configuration/status-server.md) (on by default, `statusServer.enabled`);
+- the [egress-broker](../configuration/egress-broker.md), whenever a claude or codex runner is enabled;
+- the optional [evaluation-controller](../configuration/evaluation-controller.md) (`evaluationController.enabled`, off
+  by default).
+
+Services exist for the components something dials: integration-controller (`:8080`, the webhook), source-controller
+(`:9790`, the artifact endpoint), status-server, egress-broker and evaluation-controller. The companion `patchy-config`
+chart (`charts/patchy-config`) renders the `Integration`/`Forge` custom resources — a separate chart because Helm
+validates every manifest against the API server before applying anything, so the CRs cannot ride in the same first
+install as the CRDs they depend on. Both are published to `oci://ghcr.io/bitwise-media-group/patchy/charts/` on every
+release; release-please stamps `version` and `appVersion` 1:1 with the app, and the default image tag is `v<appVersion>`
+— chart `X.Y.Z` runs images `vX.Y.Z`.
 
 ```sh
 helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy \
@@ -22,9 +32,9 @@ The chart requires Kubernetes ≥ 1.34 (the oldest line not yet end-of-life) and
 ## Human access: the admission policy
 
 Findings carry five custom RBAC verbs — `approve`, `retry`, `expedite`, `suspend`, `resume` — that let a grant say "this
-developer may approve findings, and nothing else". The [status page](../status-ui.md) honours them on its own because it
-writes as its ServiceAccount and asks first; the [CLI](../cli.md) writes as the user, so the API server authorizes it,
-and RBAC has no notion of a field: `update` on findings grants the whole object.
+developer may approve findings, and nothing else". The [status page](../operate/status-page.md) honours them on its own
+because it writes as its ServiceAccount and asks first; the [CLI](../operate/cli.md) writes as the user, so the API
+server authorizes it, and RBAC has no notion of a field: `update` on findings grants the whole object.
 
 `admissionPolicy.enabled` (default `true`) renders a `ValidatingAdmissionPolicy` that binds each human-writable spec
 field to its own verb, inside the API server's admission chain — so it holds for the CLI, `kubectl edit`,
@@ -108,11 +118,15 @@ everywhere they appear (env, container ports, probes, Services, NetworkPolicies)
 
 ### Per-controller blocks
 
-`integrationController`, `sourceController`, `contextController`, `investigationController`, and `remediationController`
-all share one shape: `image`, `config` (+ `config.extra`), `resources`, `podAnnotations`, `podLabels`, `nodeSelector`,
-`tolerations`, `affinity`, `serviceAccount.{create,name,annotations}`, and `networkPolicy.create`. A
-`service.{type,port,nodePort,annotations}` block exists only on the two controllers anything dials — integration
-(`:8080`, fronted by `webhook.*`; `NodePort` covers the kind/dev flow) and source (`:9790`, in-cluster only by design).
+`integrationController`, `sourceController`, `contextController`, `investigationController`, `remediationController`,
+`evaluationController`, `statusServer` and `egressBroker` share one shape: `image`, `config` (+ `config.extra`),
+`resources`, `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity`,
+`serviceAccount.{create,name,annotations}`, and `networkPolicy.create`. The components that call out of the cluster
+(integration-controller, context-controller and egress-broker) also take `networkPolicy.extraEgress`: verbatim egress
+rules appended to their policy, for an HTTP proxy port, a generic integration's endpoint or a cloud metadata address. A
+`service.{type,port,nodePort,annotations}` block exists on the components something dials: integration (`:8080`, fronted
+by `webhook.*`; `NodePort` covers the kind/dev flow), source (`:9790`, in-cluster only by design), the status server,
+the broker and the evaluation controller.
 
 The controller-specific `config` defaults:
 
@@ -138,7 +152,7 @@ Everything else a binary binds (see the [configuration reference](../configurati
 | `agent.jobDeadline` / `agent.jobTTL`     | `1h` / `1h`                                         | `activeDeadlineSeconds` / `ttlSecondsAfterFinished`                                                                                                                                                                              |
 | `agent.modelAllowlist`                   | `anthropic/claude-sonnet,anthropic/claude-opus`     | Canonical model ids or family aliases the investigation may request for remediation                                                                                                                                              |
 | `agent.investigate.*`                    | `anthropic/claude-sonnet` / `15m` / `25` / `150000` | model/timeout/maxTurns/tokenBudget — **absolute** (harness derived from the model)                                                                                                                                               |
-| `agent.remediate.*`                      | `anthropic/claude-sonnet` / `45m` / `80` / `400000` | Same shape; maxTurns/tokenBudget are **ceilings** the report's requests are clamped to                                                                                                                                           |
+| `agent.remediate.*`                      | `anthropic/claude-sonnet` / `45m`                   | `model`/`timeout`, plus `auto.{maxTurns,tokenBudget}` (80 / 400000) and `manual.{…}` (240 / 1200000) — see [the remediation budget](models.md#the-remediation-budget)                                                            |
 | `agent.runners.<harness>`                | claude enabled; codex disabled                      | Per-harness `enabled`/`image` plus a `provider` block — both are brokered, so no `secret*`/`hosts`/`dnsPatterns` (ignored with a NOTES warning)                                                                                  |
 | `agent.runners.claude.provider`          | `name: anthropic`                                   | Which model API the egress broker fronts: `anthropic`/`bedrock`/`vertex`/`foundry` + `region`/`regionPrefix`/`projectID`/`resource`/`modelMap`/`env`                                                                             |
 | `agent.runners.codex.provider`           | `name: openai`                                      | Codex's broker route: `openai`/`azure` + `resource` (azure)/`modelMap` (required for azure: deployment names)/`env`                                                                                                              |
@@ -159,85 +173,37 @@ render. Enabling both Cilium and Istio via the deprecated aliases fails the rend
 
 Because network policies are **additive**, an FQDN allowlist alongside the base policy's "443 to anywhere" rule
 constrains nothing; `broadEgress: auto` therefore drops that rule whenever a hostname mode is enforcing. See the
-[isolation model](isolation.md#network-egress-the-floor-and-the-fence) for what each layer requires and what it doesn't
-cover.
+[isolation model](../concepts/isolation.md#network-egress-the-floor-and-the-fence) for what each layer requires and what
+it doesn't cover.
 
-### Model providers (brokered claude)
+### The status page and evaluation API
 
-All claude model traffic goes through the [egress credential broker](../configuration/egress-broker.md), which deploys
-automatically whenever a claude runner is enabled. `agent.runners.claude.provider` picks the API it fronts:
+| Key                                                       | Default | Purpose                                                                                |
+| --------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------- |
+| `statusServer.enabled`                                    | `true`  | Render the [status page](../operate/status-page.md) and everything it needs            |
+| `statusServer.auth.{existingSecret,config}`               | unset   | The authentication config; with neither set the server serves nothing                  |
+| `statusServer.liveTranscripts`                            | `true`  | Stream running agents' conversations (grants pod and log reads in the agent namespace) |
+| `statusServer.host`, `.ingress.*`, `.httpRoute.*`         | off     | Expose the page on its own hostname, separate from `webhook.host`                      |
+| `statusServer.rbac.userRoles`                             | `false` | Render the example viewer, approver and operator ClusterRoles                          |
+| `evaluationController.enabled`                            | `false` | Run the optional [evaluation-controller](../configuration/evaluation-controller.md)    |
+| `evaluationController.auth.{existingSecret,config}`       | unset   | The API's OIDC config; **required** when enabled                                       |
+| `evaluationController.runners.{claude,codex}`             | claude  | Which evolve-runner images evaluation units run on                                     |
+| `evaluationController.workspaceRetention`                 | `168h`  | How long unused workspace bundles are kept                                             |
+| `evaluationController.host`, `.ingress.*`, `.httpRoute.*` | off     | Expose the API for evolve clients                                                      |
 
-```yaml
-# First-party Anthropic (the default): the API key lives with the broker in
-# the RELEASE namespace. anthropicAuth: token sends a `claude setup-token`
-# OAuth token as a bearer instead.
-egressBroker:
-  anthropicSecret: patchy-anthropic # key: api-key
+### Model providers
 
-# Amazon Bedrock: SigV4-signed with the broker's AWS identity (IRSA here).
-agent:
-  runners:
-    claude:
-      provider:
-        name: bedrock
-        region: us-east-1 # model ids derive as us.anthropic.<model>
-egressBroker:
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/patchy-broker
-
-# GCP Vertex AI: OAuth via GKE Workload Identity.
-agent:
-  runners:
-    claude:
-      provider:
-        name: vertex
-        region: europe-west1
-        projectID: my-project
-egressBroker:
-  serviceAccount:
-    annotations:
-      iam.gke.io/gcp-service-account: patchy-broker@my-project.iam.gserviceaccount.com
-
-# Microsoft Foundry: deployment names cannot be derived, so the model map is
-# mandatory and validated at controller startup against the allowlist. Key it
-# by CONCRETE ids: an alias in the allowlist (anthropic/claude-sonnet) is
-# checked under the version it resolves to (anthropic/claude-sonnet-5-5).
-agent:
-  runners:
-    claude:
-      provider:
-        name: foundry
-        resource: my-foundry
-        modelMap:
-          anthropic/claude-sonnet-5-5: my-sonnet-deployment
-          anthropic/claude-opus-5-5: my-opus-deployment
-egressBroker:
-  foundrySecret: patchy-foundry # omit for Entra via Azure Workload Identity
-```
-
-Scope the cloud role to Invoke only: `bedrock:InvokeModel*`, `aiplatform.endpoints.predict`, Cognitive Services User.
-
-!!! note "Migrating from a pre-broker release"
-
-    The claude model credential moves: it used to be `patchy-anthropic` in the **agent** namespace, wired into the pod;
-    now the broker is its only consumer and it lives in the **release** namespace. Create the Secret in the release
-    namespace, upgrade the chart (the broker lands), then delete the old Secret from the agent namespace. The
-    `agent.runners.claude.secret*` values are ignored (a NOTES warning fires if they are still set); if the old
-    `secretEnv` was `CLAUDE_CODE_OAUTH_TOKEN`, set `egressBroker.anthropicAuth: token` so the broker sends the OAuth
-    token as a bearer.
-
-    Codex followed in a later release, the same way: `patchy-openai` moves from the agent namespace to the release
-    namespace (`egressBroker.openaiSecret`), and `agent.runners.codex.secret*`/`hosts`/`dnsPatterns` are ignored with a
-    NOTES warning. A ChatGPT-plan token (`secretEnv: CODEX_ACCESS_TOKEN` / `CODEX_API_KEY`) cannot be brokered — switch
-    to an OpenAI platform API key, or to Azure OpenAI with `agent.runners.codex.provider.name: azure`.
+All claude and codex model traffic goes through the [egress broker](../configuration/egress-broker.md), which deploys
+whenever a claude or codex runner is enabled. `agent.runners.claude.provider` and `agent.runners.codex.provider` pick
+the API it fronts, and the `egressBroker.*` Secret values hold the credentials. [Models and credentials](models.md) has
+the values for every provider, with examples, and the migration from releases before the broker.
 
 ## Operational notes
 
 !!! warning "Singletons by design"
 
-    All five controllers are `replicas: 1` with `strategy: Recreate`; the leader-election Lease is insurance
-    against a botched rollout, not a scaling mechanism. Do not scale the Deployments.
+    Every Deployment the chart renders is `replicas: 1` with `strategy: Recreate`; the controllers' leader-election
+    Lease is insurance against a botched rollout, not a scaling mechanism. Do not scale the Deployments.
 
 - `helm uninstall` deletes the agent namespace (killing any running agent Job) but — with `crds.keep` — never the CRDs,
   so the Findings and the all-time FindingRollup statistics survive a reinstall.

@@ -1,4 +1,4 @@
-# Google Cloud labels
+# Google Cloud Asset Inventory
 
 The `google-cloud-labels` enhancer [resolves a repository](index.md) for findings about Google Cloud resources: it reads
 the ownership labels off the resource itself, through Cloud Asset Inventory, and carries the resource's project, type
@@ -45,8 +45,8 @@ spec:
       #   url: scm-repository-url
 ```
 
-The credential is workload identity with `roles/cloudasset.viewer` — read-only, and the only cloud credential anywhere
-in patchy. No key file exists, and the Integration still carries no `secretRef`:
+The credential is workload identity with `roles/cloudasset.viewer`, which is read-only. No key file exists, and the
+Integration still carries no `secretRef`:
 
 ```yaml
 contextController:

@@ -8,7 +8,7 @@ server. There is no patchy-specific auth, no separate endpoint to expose, and no
 what you can do is exactly what your RBAC allows.
 
 This page is the tour. For every command, flag and default, generated from the binary itself, see the
-[command reference](cli/patchy.md).
+[command reference](../cli/patchy.md).
 
 ## Install
 
@@ -81,9 +81,10 @@ mean the same thing.
 | `integration`   | `integrations`                              |
 | `forge`         | `forges`                                    |
 
-`get` takes one more: `all`, meaning every kind in the table above. It is the CLI's spelling of `kubectl get patchy`
-(every CRD declares the `patchy` category), and no other verb accepts it — there is nothing sensible to describe, review
-or approve collectively.
+`get` takes one more: `all`, meaning every kind in the table above, and no other verb accepts it — there is nothing
+sensible to describe, review or approve collectively. It is close to `kubectl get patchy` (every CRD declares the
+`patchy` category) but not identical: `kubectl get patchy` also lists the `Evaluation` and `EvaluationUnit` kinds of
+[remote evaluation](../concepts/evaluation.md), which the CLI has no nouns for.
 
 ## Global flags
 
@@ -203,7 +204,7 @@ any failed — one unavailable finding never stops the rest.
 ## Backfilling an integration
 
 One action acts on an Integration rather than a finding: the
-[manual backfill](integrations/sources/github.md#the-manual-backfill), which lists the provider's open alerts and
+[manual backfill](../integrations/sources/github.md#the-manual-backfill), which lists the provider's open alerts and
 ingests the ones that predate webhook coverage.
 
 ```sh
@@ -218,84 +219,14 @@ prefix is needed to reach the rest.
 
 ## Configuration
 
-The cluster-free command groups — `dev`, `mirror` and `build` — share one layered patchy configuration. It merges from
-up to seven locations, least to most preferred, so a system-wide or per-user default can be refined by a project:
-
-| #   | Location                         | Typical use                                     |
-| --- | -------------------------------- | ----------------------------------------------- |
-| 1   | `/etc/patchy/config.<ext>`       | machine-wide defaults (a CI image)              |
-| 2   | `~/.config/patchy/config.<ext>`  | your own defaults (a dev secret file)           |
-| 3   | `<workdir>/mise/patchy.<ext>`    | project config beside a `mise/` dir             |
-| 4   | `<workdir>/patchy/config.<ext>`  | project config in its own directory             |
-| 5   | `<workdir>/.mise/patchy.<ext>`   | project config beside a `.mise/` dir            |
-| 6   | `<workdir>/.patchy/config.<ext>` | hidden project config                           |
-| 7   | `<workdir>/patchy.<ext>`         | the plain project file (`mirror add` writes it) |
-
-`<ext>` is `yaml`, `yml`, `json` or `toml`, and `<workdir>` is the directory you run patchy in. Two formats at one
-location are ambiguous and refused; a file two locations resolve to is read once. Every command narrates the layers it
-loaded on stderr (`patchy: using ~/.config/patchy/config.toml, patchy.yaml`).
-
-The layers merge key by key: **maps merge recursively, lists and scalars are replaced whole** by the more specific
-layer, and an explicit `null` deletes an inherited key — the way a project drops, say, a signing block from `/etc`:
-
-```yaml
-signing: null # this project publishes with each registry's own signing block
-scan:
-  failOn: [CRITICAL] # replaces the inherited list; the rest of scan: still merges
-```
-
-Relative paths in any layer (`mirror.directory`, a build entry's `dockerfile`, `context` and `path`) resolve against the
-working directory, not the file that holds them. Keys are strict: a typo fails against the file that carries it
-(`~/.config/patchy/config.toml: 'build.images[0]' has invalid keys: dockerfil`). For the flag-backed keys (`dev.*`,
-`mirror.directory`, `mirror.workers`) the usual precedence still holds on top: flag, then `PATCHY_*` environment
-variable, then the merged files, then the flag default.
-
-The file's shape — the blocks `mirror` and `build` share sit at the top level, then one block per command group:
-
-```yaml
-registries: # where mirror and build publish (each with an optional signing override)
-  - name: ghcr
-    url: ghcr.io/org/platform
-signing: # the default signing block
-  provider: keyless
-  keyless:
-    certificateIdentity: https://github.com/org/repo/.github/workflows/publish.yaml@refs/heads/main
-scan: # scanner roster + the defaults every entry inherits (below)
-  scanners:
-    osv: { enabled: true }
-mirror: # directory, workers, update.cooldownDays, sourceRegistryRewrites, policy
-  update: { cooldownDays: 3 }
-build: {} # see supply-chain/build.md; build.policy restricts base images
-dev: {} # the dev command flags, by name
-```
-
-### Migrating from `mirror.yaml` and `.patchy.yaml`
-
-Both files are gone. A `mirror.yaml` left at a mirror root fails every `mirror` command with the migration; a
-`.patchy.yaml` in the working directory is ignored with a warning. To migrate:
-
-- Move `.patchy.yaml`'s contents into `patchy.yaml` (or any location above) unchanged.
-- From `mirror.yaml`, drop `apiVersion` and `kind`; keep `registries`, `signing` and `scan` at the top level; move
-  `update` and `sourceRegistryRewrites` under `mirror:`.
-- Rename `scan.allowlistMaxDays` to `scan.allowlist.maxDays` and `scan.allowlistNewDays` to `scan.allowlist.newDays`.
-
-### Source policy
-
-`mirror.policy` and `build.policy` restrict where each command may pull from. Unlike every other key, a policy block
-marked `enforced: true` does not merge away: it is evaluated as written in the layer that declares it, so a more
-preferred layer can tighten it but never loosen or delete it. See [Restricting sources](supply-chain/source-policy.md).
-
-### Scanning policy
-
-One `scan` block shape is used everywhere: in the config it holds the defaults (which scanners run, which severities
-block, how long an allowlist acceptance may last), and every chart manifest, artifact manifest and build entry overrides
-it field by field. See [Scanning and allowlists](supply-chain/scanning.md) for the fields, their built-in defaults, what
-`enabled: auto` means for each kind of entry, and the allowlist format.
+The cluster-free command groups (`dev`, `mirror` and `build`) read one layered patchy configuration file. Its locations,
+merge rules and shape are documented in [Configuration](../supply-chain/configuration.md). The cluster verbs above read
+only your kubeconfig.
 
 ## Testing a generic integration
 
 The `dev` commands are the one part of the CLI that never touches a cluster: a local test harness for authors of
-[generic integrations](integrations/sources/generic.md).
+[generic integrations](../integrations/sources/generic.md).
 
 ```sh
 patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance
@@ -309,17 +240,18 @@ payload file, no server involved.
 
 Every `dev` flag also resolves from `PATCHY_DEV_*` environment variables and the `dev:` block of the
 [patchy configuration](#configuration) (flag beats environment beats file). See the
-[generic integration guide](integrations/sources/generic.md#testing-your-integration-locally) for the full walkthrough.
+[generic integration guide](../integrations/sources/generic.md#testing-your-integration-locally) for the full
+walkthrough.
 
 ## Mirroring and building artifacts
 
 Two command groups publish what a platform runs as signed OCI artifacts in your own registries, sharing the config's
 `registries`, `signing` and `scan` blocks. Neither touches a cluster or runs git. The
-[supply chain guide](supply-chain/index.md) covers both end to end, with CI recipes.
+[supply chain guide](../supply-chain/index.md) covers both end to end, with CI recipes.
 
 **`patchy mirror`** maintains a vendored mirror store: a git tree in which every `charts/<name>/` or `artifacts/<name>/`
 directory pins one upstream helm chart or OCI artifact. Each is vendored for review, digest-locked, checked against its
-publisher's signatures, scanned, and published signed. See [Mirroring charts and images](supply-chain/mirror.md).
+publisher's signatures, scanned, and published signed. See [Mirroring charts and images](../supply-chain/mirror.md).
 
 ```sh
 patchy mirror add dex --url https://charts.dexidp.io   # scaffold an entry (and a starter patchy.yaml)
@@ -330,13 +262,14 @@ patchy mirror sync --all                               # converge every registry
 ```
 
 **`patchy build`** builds the Dockerfiles and Flux manifest directories listed under `build:`, scans them before
-anything is pushed, publishes every tag (tags never move), and signs. See
-[Building images and Flux manifests](supply-chain/build.md).
+anything is pushed, publishes every tag (tags never move), and signs. `patchy build promote` adds a tag to the newest
+signed build matching a pattern, without rebuilding. See [Building images and manifests](../supply-chain/build.md).
 
 ```sh
 patchy build --all --dry-run              # PR CI: build and scan, never contact a registry
 patchy build --all -o markdown            # publish and sign, summary ready for a job summary
 patchy build --all --update-allowlists    # regenerate security/allowlists/<name>.yaml
+patchy build promote --all --from '${VERSION}-edge.*' --tag 'v${VERSION}'   # release what CI already built
 ```
 
 Like `dev`, the `mirror` flags also resolve from `PATCHY_MIRROR_*` environment variables and the `mirror:` block. Both
@@ -367,7 +300,7 @@ Two things enforce those verbs, and only one of them matters:
 
 That second piece exists because Kubernetes RBAC has no notion of a field: `update` on findings grants the whole object.
 Without the policy, letting a developer suspend a finding would also let them rewrite its severity or forge an approval.
-See [Kustomize](deployment/kustomize.md) for the manifest and the role ladder.
+See [Kustomize](../deployment/kustomize.md) for the manifest and the role ladder.
 
 !!! warning "Requires Kubernetes 1.30+"
 
@@ -376,7 +309,7 @@ See [Kustomize](deployment/kustomize.md) for the manifest and the role ladder.
     `kubectl api-resources | grep validatingadmissionpolic`.
 
 Because the policy enumerates the spec fields it freezes, contributors adding a field to `FindingSpec` must extend it —
-see [Extending](extending.md#adding-a-field-to-findingspec).
+see [Adding a field to FindingSpec](../contributing/finding-fields.md).
 
 ## Exit codes
 

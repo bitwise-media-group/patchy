@@ -38,7 +38,7 @@ the result with what is committed, so a hand edit to a fact file, or an intent c
 `upgrade`, fails the gate.
 
 The store root is the working directory, or `-C` / `mirror.directory` relative to it. The
-[patchy config](../cli.md#configuration) is always found from the working directory, and its `mirror:` block holds the
+[patchy config](configuration.md) is always found from the working directory, and its `mirror:` block holds the
 store-wide settings:
 
 ```yaml
@@ -342,9 +342,13 @@ its constraint or splits a lockstep group.
 
 ## Migrating from `mirror.yaml`
 
-Stores created before the layered config kept their settings in a `mirror.yaml` at the root. Every `mirror` command now
-refuses to run while that file exists, and prints the migration. See
-[Migrating from `mirror.yaml`](../cli.md#migrating-from-mirroryaml-and-patchyyaml): drop `apiVersion` and `kind`, keep
-`registries`, `signing` and `scan` at the top level of `patchy.yaml`, move `update` and `sourceRegistryRewrites` under
-`mirror:`, and rename `scan.allowlistMaxDays` / `allowlistNewDays` to `scan.allowlist.maxDays` / `newDays`. Compare
-`patchy mirror validate --all` before and after: the results should be identical.
+Stores created before the layered [patchy configuration](configuration.md) kept their settings in a `mirror.yaml` at the
+root. Every `mirror` command refuses to run while that file exists, and prints these steps:
+
+1. Drop `apiVersion` and `kind`.
+2. Keep `registries`, `signing` and `scan` at the top level of `patchy.yaml`.
+3. Move `update` and `sourceRegistryRewrites` under `mirror:`.
+4. Rename `scan.allowlistMaxDays` to `scan.allowlist.maxDays`, and `scan.allowlistNewDays` to `scan.allowlist.newDays`.
+5. Delete `mirror.yaml`.
+
+Compare `patchy mirror validate --all` before and after: the results should be identical.

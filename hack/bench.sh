@@ -7,7 +7,7 @@
 # benchstat, then run the complexity-ratio assertions. The two passes are
 # separate on purpose: a red assertion (expected on a pre-fix tree) must not
 # suppress the benchmark numbers, which `go test` would do if a test failed
-# in the same invocation. See docs/dev/benchmarks.md for the targets and the
+# in the same invocation. See docs/contributing/benchmarks.md for the targets and the
 # 2M extrapolation method.
 set -eu
 

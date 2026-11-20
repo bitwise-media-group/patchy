@@ -6,7 +6,7 @@ cloud's inventory, carries the resource's metadata onto the finding as attribute
 from **ownership labels or tags on the resource itself**.
 
 One rule is shared by every enhancer in this section: it keys purely on the finding's cloud resource, never on which
-source ingested it. A Google Cloud resource gets the [Cloud Asset Inventory lookup](google-cai.md) whether
+source ingested it. A Google Cloud resource gets the [Google Cloud Asset Inventory lookup](google-cai.md) whether
 [SCC](../sources/google-scc.md) or [Wiz](../sources/wiz.md) raised the finding, and an AWS or Azure resource gets its
 [tags](aws.md) [lookup](azure.md) the same way — a [generic source's](../sources/generic.md) cloud findings included.
 

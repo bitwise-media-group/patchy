@@ -8,7 +8,7 @@
 // PATCHY_LOAD_N (default 50000), with hard assertions only under
 // PATCHY_LOAD_ASSERT=1 — absolute numbers are hardware-bound, so they are
 // reported, while the complexity-shaped ratios are asserted. Run via
-// `mise run load`; targets live in docs/dev/benchmarks.md.
+// `mise run load`; targets live in docs/contributing/benchmarks.md.
 //
 // The same caveat as the rest of the suite: envtest has no kubelet, so agent
 // Jobs never execute — pipeline progression past ingest is fabricated via

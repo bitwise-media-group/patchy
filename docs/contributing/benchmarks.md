@@ -82,7 +82,7 @@ contention adds retries). At that rate a 2M-finding backlog drains through termi
 acceptable because investigation throughput (agent runs) is the real bottleneck long before the ledger is.
 `TestLoadRollups` measures the actual rate; the `rollup-finding` controller additionally filters watch events that
 provably cannot change the rollup, so the in-flight population costs it nothing. Revisit only if terminal drain ever
-needs to outrun ~100/s: the design answer is sharded scopes, not a faster retry loop.
+needs to outrun ~100/s: the design answer is to shard the `total` scope, not a faster retry loop.
 
 ## What the load tests cannot see
 

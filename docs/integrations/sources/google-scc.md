@@ -6,7 +6,7 @@ how it [finds a repository to work in](../enhancers/google-cai.md).
 
 !!! info "One provider, two capabilities"
 
-    The SCC source on this page and the [Cloud Asset Inventory enhancer](../enhancers/google-cai.md) are independent
+    The SCC source on this page and the [Google Cloud Asset Inventory enhancer](../enhancers/google-cai.md) are independent
     halves of the one `google-cloud` Integration — an estate sourcing findings from Wiz alone still configures the
     enhancer half, without enabling the source. The [integrations overview](../index.md) maps every provider's roles.
 

@@ -34,7 +34,7 @@ spec:
 
 Agent pods never hold this credential, or any other. source-controller downloads the archive at a pinned SHA and serves
 it from its own artifact endpoint; remediation-controller replays the agent's changeset through the Git Data API. See
-[the isolation model](../../deployment/isolation.md).
+[the isolation model](../../concepts/isolation.md).
 
 ## Credentials
 

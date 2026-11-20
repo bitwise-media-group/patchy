@@ -10,9 +10,9 @@ registries:
   and scanned **before** anything is pushed, then published and signed the same way.
 
 Both stop at the registry. Neither touches a cluster and neither runs git: commits, branches and pull requests belong to
-the pipeline that calls them. Both read the same [patchy configuration](../cli.md#configuration) for where to publish,
-how to sign and which [scan policy](scanning.md) applies, so a mirrored chart and a first-party image are held to one
-standard. Each can also be limited to [approved sources](source-policy.md).
+the pipeline that calls them. Both read the same [patchy configuration](configuration.md) for where to publish, how to
+sign and which [scan policy](scanning.md) applies, so a mirrored chart and a first-party image are held to one standard.
+Each can also be limited to [approved sources](source-policy.md).
 
 |            | `patchy mirror`                                                                                         | `patchy build`                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |

@@ -1,1409 +1,1079 @@
-/* ============================================================
-   Patchy docs — turf & soil theme for Zensical / Material
-   Palette: design-system/tokens/themes.css (.theme-patchy /
-   .theme-patchy-light). Turf green means healthy progress and
-   repaired ground; soil brown marks the original hole; amber and
-   red are reserved for human attention and critical findings.
-   Dark  -> Material "slate" scheme
-   Light -> Material "default" scheme
-   ============================================================ */
+/* Patchy docs — the status page's design system on Zensical / Material.
+ *
+ * The docs are the product's manual, so they wear the product's clothes:
+ * verdigris on graphite and stone, Atkinson Hyperlegible, flat sentence-case
+ * headings, and the status page's tone grammar (pill and note tints via
+ * color-mix). Every colour resolves from tokens.css, the vendored copy of the
+ * status page's tokens re-scoped to Material's schemes, so the palette toggle
+ * re-tints everything.
+ *
+ * Tone rules, same as the product: verdigris is progress and the one accent;
+ * seedling marks completed work; soil marks closed without a change; amber
+ * and red are reserved for human attention and failure.
+ *
+ * Order: Material variable mapping → chrome (header, nav, footer) → typeset
+ * (headings, links, code, tables, admonitions, tabs, buttons) → components
+ * (.pt-pill, .pt-rail) → home (overrides/home.html) → demo
+ * (overrides/demo.html + docs/demo.md).
+ */
 
-/* ---------- DARK (slate) — damp soil at night, bright new turf ---------- */
-[data-md-color-scheme="slate"] {
-    --md-default-bg-color: #0c140e;
-    --md-default-bg-color--light: #121d15;
-    --md-default-fg-color: #edf7ee;
-    --md-default-fg-color--light: #c4d2c6;
-    --md-default-fg-color--lighter: #98ab9b;
-    --md-default-fg-color--lightest: rgba(237, 247, 238, 0.09);
+/* ---- Material variable mapping ---- */
 
-    --md-primary-fg-color: #0c140e;
-    --md-primary-fg-color--light: #121d15;
-    --md-primary-fg-color--dark: #071009;
-    --md-primary-bg-color: #edf7ee;
-    --md-primary-bg-color--light: #c4d2c6;
-
-    --md-accent-fg-color: #9be66a;
-    --md-accent-fg-color--transparent: rgba(155, 230, 106, 0.1);
-    --md-typeset-a-color: #8de05d;
-
-    --md-code-bg-color: #071009;
-    --md-code-fg-color: #d8e5d9;
-    --md-code-hl-comment-color: #697c6d;
-    --md-code-hl-keyword-color: #9be66a;
-    --md-code-hl-string-color: #c7f28a;
-    --md-code-hl-number-color: #e7b75f;
-    --md-code-hl-function-color: #78d64b;
-    --md-code-hl-constant-color: #a47a55;
-    --md-code-hl-name-color: #d8e5d9;
-    --md-code-hl-operator-color: #8de05d;
-    --md-code-hl-punctuation-color: #98ab9b;
-
-    --md-footer-bg-color: #071009;
-    --md-footer-bg-color--dark: #050b06;
-
-    /* patchy garden ramp */
-    --pt-green: #78d64b;
-    --pt-green-2: #9be66a;
-    --pt-moss: #46a653;
-    --pt-seedling: #c7f28a;
-    --pt-ink: #8de05d;
-    --pt-soil: #a47a55;
-    --pt-amber: #e7b75f;
-    --pt-red: #ef716a;
-    --pt-on-accent: #10200d;
-    --pt-bg: #0c140e;
-    --pt-alt: #121d15;
-    --pt-alt-2: #17251a;
-    --pt-code: #071009;
-    --pt-code-2: #0e1811;
-    --pt-fg: #edf7ee;
-    --pt-muted: #98ab9b;
-    --pt-faint: #697c6d;
-    --pt-line: #26372a;
-    --pt-line-2: #354a39;
-    --pt-ic-bg: #1c2b1f;
-    --pt-ic-border: rgba(237, 247, 238, 0.12);
-    --pt-shadow: 0 20px 52px rgba(2, 8, 4, 0.44);
-    --pt-shadow-strong: 0 30px 80px rgba(2, 8, 4, 0.62);
-}
-
-/* ---------- LIGHT (default) — garden paper, deep accessible turf ---------- */
+[data-md-color-scheme="slate"],
 [data-md-color-scheme="default"] {
-    --md-default-bg-color: #f3f7ef;
-    --md-default-fg-color: #172219;
-    --md-default-fg-color--light: #3e4d41;
-    --md-default-fg-color--lighter: #566859;
-    --md-default-fg-color--lightest: rgba(23, 34, 25, 0.12);
+    --md-default-bg-color: var(--patchy-bg);
+    --md-default-bg-color--light: color-mix(in oklab, var(--patchy-bg) 86%, transparent);
+    --md-default-bg-color--lighter: color-mix(in oklab, var(--patchy-bg) 40%, transparent);
+    --md-default-bg-color--lightest: color-mix(in oklab, var(--patchy-bg) 10%, transparent);
+    --md-default-fg-color: var(--patchy-fg);
+    --md-default-fg-color--light: var(--patchy-muted);
+    --md-default-fg-color--lighter: var(--patchy-faint);
+    --md-default-fg-color--lightest: var(--patchy-line);
 
-    --md-primary-fg-color: #f3f7ef;
-    --md-primary-fg-color--light: #eaf2e5;
-    --md-primary-fg-color--dark: #e1ebdd;
-    --md-primary-bg-color: #172219;
-    --md-primary-bg-color--light: #3e4d41;
+    --md-primary-fg-color: var(--patchy-green);
+    --md-primary-fg-color--light: var(--patchy-green-2);
+    --md-primary-fg-color--dark: var(--patchy-moss);
+    --md-primary-bg-color: var(--patchy-on-accent);
+    --md-primary-bg-color--light: var(--patchy-on-accent);
+    --md-accent-fg-color: var(--patchy-green);
+    --md-accent-fg-color--transparent: color-mix(in oklab, var(--patchy-green) 10%, transparent);
+    --md-accent-bg-color: var(--patchy-on-accent);
 
-    --md-accent-fg-color: #25672c;
-    --md-accent-fg-color--transparent: rgba(37, 103, 44, 0.1);
-    --md-typeset-a-color: #286f30;
+    --md-typeset-color: var(--patchy-fg);
+    --md-typeset-a-color: var(--patchy-ink-green);
+    --md-typeset-table-color: var(--patchy-line);
+    --md-typeset-table-color--light: color-mix(in oklab, var(--patchy-green) 4%, var(--patchy-surface));
+    --md-typeset-mark-color: color-mix(in oklab, var(--patchy-amber) 22%, transparent);
+    --md-admonition-fg-color: var(--patchy-fg);
+    --md-admonition-bg-color: var(--patchy-surface);
 
-    --md-code-bg-color: #e7efe2;
-    --md-code-fg-color: #172219;
-    --md-code-hl-comment-color: #708073;
-    --md-code-hl-keyword-color: #25672c;
-    --md-code-hl-string-color: #3c7630;
-    --md-code-hl-number-color: #9a6700;
-    --md-code-hl-function-color: #2f7d36;
-    --md-code-hl-constant-color: #77583e;
-    --md-code-hl-name-color: #172219;
-    --md-code-hl-operator-color: #286f30;
-    --md-code-hl-punctuation-color: #566859;
+    /* Code reads exactly like the status page's transcript: the --hl-* set. */
+    --md-code-fg-color: var(--patchy-fg);
+    --md-code-bg-color: var(--patchy-code-2);
+    --md-code-bg-color--light: var(--patchy-code-2);
+    --md-code-bg-color--lighter: var(--patchy-code);
+    --md-code-hl-color: var(--patchy-green);
+    --md-code-hl-color--light: color-mix(in oklab, var(--patchy-green) 12%, transparent);
+    --md-code-hl-keyword-color: var(--hl-keyword);
+    --md-code-hl-string-color: var(--hl-string);
+    --md-code-hl-number-color: var(--hl-number);
+    --md-code-hl-comment-color: var(--hl-comment);
+    --md-code-hl-function-color: var(--hl-title);
+    --md-code-hl-constant-color: var(--hl-type);
+    --md-code-hl-special-color: var(--hl-meta);
+    --md-code-hl-name-color: var(--hl-variable);
+    --md-code-hl-variable-color: var(--hl-attr);
+    --md-code-hl-operator-color: var(--patchy-muted);
+    --md-code-hl-punctuation-color: var(--patchy-muted);
+    --md-code-hl-generic-color: var(--patchy-muted);
 
-    --md-footer-bg-color: #172219;
-    --md-footer-bg-color--dark: #0c140e;
+    --md-footer-fg-color: var(--patchy-fg);
+    --md-footer-fg-color--light: var(--patchy-muted);
+    --md-footer-fg-color--lighter: var(--patchy-faint);
+    --md-footer-bg-color: var(--patchy-surface);
+    --md-footer-bg-color--dark: var(--patchy-surface);
 
-    --pt-green: #2f7d36;
-    --pt-green-2: #25672c;
-    --pt-moss: #367a3c;
-    --pt-seedling: #3c7630;
-    --pt-ink: #286f30;
-    --pt-soil: #77583e;
-    --pt-amber: #9a6700;
-    --pt-red: #c53b36;
-    --pt-on-accent: #ffffff;
-    --pt-bg: #f3f7ef;
-    --pt-alt: #ffffff;
-    --pt-alt-2: #eaf2e5;
-    --pt-code: #e1ebdd;
-    --pt-code-2: #eaf1e6;
-    --pt-fg: #172219;
-    --pt-muted: #566859;
-    --pt-faint: #708073;
-    --pt-line: #cad8c4;
-    --pt-line-2: #afc2b0;
-    --pt-ic-bg: #eaf2e5;
-    --pt-ic-border: rgba(23, 34, 25, 0.1);
-    --pt-shadow: 0 20px 52px rgba(38, 72, 42, 0.12);
-    --pt-shadow-strong: 0 30px 80px rgba(38, 72, 42, 0.18);
+    --md-mermaid-font-family: var(--font-sans);
+    --md-mermaid-node-bg-color: var(--patchy-surface-2);
+    --md-mermaid-node-fg-color: var(--patchy-fg);
+    /* Edge labels are drawn in the edge colour, so it must read as text (AA). */
+    --md-mermaid-edge-color: var(--patchy-muted);
+    --md-mermaid-label-bg-color: var(--patchy-surface);
+    --md-mermaid-label-fg-color: var(--patchy-fg);
 }
 
-/* ===== Header: flat, with the soil-to-turf underline ===== */
-.md-header {
-    box-shadow: none;
-    border-bottom: 1px solid var(--pt-line);
-    position: relative;
+body {
+    background: var(--patchy-bg);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
 }
-.md-header[data-md-state="shadow"],
+::selection {
+    background: var(--patchy-green);
+    color: var(--patchy-on-accent);
+}
+:where(a, button, input, label, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+}
+
+/* ---- Chrome: header ----
+ * The page colour with a hairline bottom border, like the status page's top
+ * bar; never a coloured band. */
+
+.md-header,
 .md-header--shadow {
+    color: var(--patchy-fg);
+    background-color: color-mix(in oklab, var(--patchy-bg) 86%, transparent);
+    border-bottom: 1px solid var(--patchy-line);
     box-shadow: none;
-}
-.md-header::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: -1px;
-    height: 3px;
-    background: linear-gradient(90deg, var(--pt-soil), var(--pt-moss) 35%, var(--pt-green) 70%, var(--pt-seedling));
 }
 .md-header__title {
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    font-weight: 400;
 }
-
-/* Header wordmark: the SVG patch mark + lowercase mono "patchy"
-   (overrides/partials/header.html, nav.html). The mark is
-   docs/assets/images/logo.svg — a square of new turf sliding over
-   a soil hole. */
-.pt-headmark {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    color: inherit;
-}
-.pt-headmark:hover {
-    opacity: 0.85;
-}
-.pt-headmark__name {
-    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
-    font-weight: 750;
-    font-size: 0.95rem;
-    letter-spacing: -0.03em;
-    text-transform: lowercase;
-}
-.pt-headmark__logo {
-    display: block;
-    flex: 0 0 auto;
-    width: 26px;
-    height: 26px;
-}
-[dir="ltr"] .md-search__input {
-    border-radius: 8px;
-}
-
-/* Active nav + links pick up the turf accent */
-.md-nav__link--active,
-.md-nav__item .md-nav__link--active {
-    color: var(--md-accent-fg-color);
-}
-.md-typeset .md-typeset__table {
-    border-color: var(--pt-line);
-}
-
-/* Admonition flourish: softer 12px panels, like the product surface */
-.md-typeset .admonition,
-.md-typeset details {
-    border-left-width: 2px;
-    border-radius: 8px;
-}
-
-/* ============================================================
-   LANDING PAGE  (.pt) — injected by overrides/home.html
-   ============================================================ */
-.pt {
-    --pt-mono: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
-    --pt-sans: var(--md-text-font-family, "Hanken Grotesk", system-ui, sans-serif);
-    font-family: var(--pt-sans);
-    color: var(--pt-fg);
-    line-height: 1.55;
-}
-.pt * {
-    box-sizing: border-box;
-}
-.pt a {
-    text-decoration: none;
-}
-
-/* HERO — faint grass-blade geometry behind, product surface in front */
-.pt-hero {
-    position: relative;
-    overflow: hidden;
-    border-bottom: 1px solid var(--pt-line);
-}
-.pt-hero__texture {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.44;
-    background-image:
-        linear-gradient(
-            105deg,
-            transparent 47%,
-            color-mix(in oklab, var(--pt-green) 13%, transparent) 48% 49%,
-            transparent 50%
-        ),
-        linear-gradient(
-            75deg,
-            transparent 47%,
-            color-mix(in oklab, var(--pt-green) 9%, transparent) 48% 49%,
-            transparent 50%
-        );
-    background-size: 38px 30px;
-    -webkit-mask-image: radial-gradient(90% 80% at 75% 32%, #000, transparent 74%);
-    mask-image: radial-gradient(90% 80% at 75% 32%, #000, transparent 74%);
-}
-.pt-hero::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background:
-        radial-gradient(700px 440px at 83% 30%, color-mix(in oklab, var(--pt-green) 12%, transparent), transparent 70%),
-        radial-gradient(480px 320px at 12% 82%, color-mix(in oklab, var(--pt-soil) 8%, transparent), transparent 72%);
-}
-.pt-hero__inner {
-    position: relative;
-    z-index: 1;
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 72px 40px 64px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.02fr) minmax(400px, 0.98fr);
-    align-items: center;
-    gap: 64px;
-}
-.pt-kicker {
-    width: fit-content;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 6px 11px;
-    border: 1px solid color-mix(in oklab, var(--pt-green) 42%, transparent);
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--pt-green) 9%, transparent);
-    color: var(--pt-ink);
-    font-family: var(--pt-mono);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: 0.08em;
-}
-.pt-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--pt-green);
-    box-shadow: 0 0 0 4px color-mix(in oklab, var(--pt-green) 12%, transparent);
-    animation: pt-pulse 1.7s ease-in-out infinite;
-}
-.pt-headline {
-    max-width: 650px;
-    margin: 23px 0 0;
-    color: var(--pt-fg);
-    font-size: clamp(40px, 4.6vw, 62px);
-    font-weight: 720;
-    letter-spacing: -0.045em;
-    line-height: 1.02;
-}
-.pt-headline span {
-    color: var(--pt-ink);
-}
-.pt-lede {
-    max-width: 600px;
-    margin: 22px 0 0;
-    color: var(--pt-muted);
-    font-size: 18px;
-    line-height: 1.62;
-    text-wrap: pretty;
-}
-
-/* terminal */
-.pt-term {
-    max-width: 620px;
-    margin: 28px 0 0;
-    overflow: hidden;
-    background: var(--pt-code);
-    border: 1px solid var(--pt-line-2);
-    border-radius: 12px;
-    font-family: var(--pt-mono);
-    box-shadow: var(--pt-shadow);
-}
-.pt-term__bar {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 10px 13px;
-    border-bottom: 1px solid var(--pt-line);
-}
-.pt-term__bar i {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-}
-.pt-term__bar i:nth-child(1) {
-    background: var(--pt-red);
-}
-.pt-term__bar i:nth-child(2) {
-    background: var(--pt-amber);
-}
-.pt-term__bar i:nth-child(3) {
-    background: var(--pt-green);
-}
-.pt-term__bar span {
-    margin-left: 8px;
-    font-size: 11.5px;
-    color: var(--pt-faint);
-}
-.pt-term__body {
-    padding: 14px 15px;
-    font-size: 13px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-x: auto;
-}
-.pt-term__line code {
-    font-family: var(--pt-mono);
-    color: var(--pt-fg);
-    background: none;
-    white-space: nowrap;
-}
-.pt-term__line .pt-p {
-    color: var(--pt-green);
-}
-.pt-cursor {
-    display: inline-block;
-    width: 9px;
-    height: 16px;
-    background: var(--pt-green);
-    margin-left: 3px;
-    vertical-align: -3px;
-    animation: pt-blink 1.1s step-end infinite;
-}
-
-/* buttons */
-.pt-cta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 13px;
-    margin-top: 28px;
-}
-.pt-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    font-family: var(--pt-mono);
-    font-size: 14px;
-    padding: 13px 22px;
-    border-radius: 10px;
-}
-.pt-btn--primary {
-    background: var(--pt-green);
-    color: var(--pt-on-accent);
+.md-header__topic:first-child {
     font-weight: 700;
-    box-shadow: 0 6px 20px color-mix(in oklab, var(--pt-green) 28%, transparent);
-}
-.pt-btn--primary:hover {
-    background: var(--pt-green-2);
-    color: var(--pt-on-accent);
-}
-.pt-btn--ghost {
-    background: var(--pt-alt);
-    color: var(--pt-fg);
-    font-weight: 600;
-    border: 1px solid var(--pt-line-2);
-}
-.pt-btn--ghost::before {
-    content: "★";
-    color: var(--pt-amber);
-}
-.pt-proof {
-    display: flex;
-    gap: 19px;
-    margin-top: 22px;
-    color: var(--pt-muted);
-    font-size: 12.5px;
-    flex-wrap: wrap;
-}
-.pt-proof span {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
 }
 
-/* issue specimen */
-.pt-issue-wrap {
-    position: relative;
-}
-.pt-hole {
-    position: absolute;
-    border-radius: 50%;
-    background: color-mix(in oklab, var(--pt-soil) 35%, var(--pt-code));
-    border: 1px solid color-mix(in oklab, var(--pt-soil) 55%, transparent);
-    box-shadow: inset 0 9px 16px color-mix(in oklab, var(--pt-code) 72%, transparent);
-}
-.pt-hole--one {
-    width: 100px;
-    height: 42px;
-    right: -24px;
-    top: -33px;
-    transform: rotate(8deg);
-}
-.pt-hole--two {
-    width: 72px;
-    height: 30px;
-    left: -34px;
-    bottom: -18px;
-    transform: rotate(-12deg);
-}
-.pt-issue-card {
-    position: relative;
-    padding: 25px;
-    border: 1px solid var(--pt-line-2);
-    border-radius: 16px;
-    background: color-mix(in oklab, var(--pt-alt) 94%, transparent);
-    box-shadow: var(--pt-shadow-strong);
-}
-.pt-issue-card::before {
-    content: "";
-    position: absolute;
-    inset: -1px auto -1px -1px;
-    width: 4px;
-    border-radius: 16px 0 0 16px;
-    background: var(--pt-green);
-}
-.pt-issue-card__top {
-    display: flex;
-    align-items: center;
-    color: var(--pt-muted);
-    font-size: 12px;
-}
-.pt-repo {
+.pt-brand {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    font-family: var(--pt-mono);
+    gap: 0.5rem;
+    color: var(--patchy-fg);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
-.pt-issue-number {
-    margin-left: auto;
-    font-family: var(--pt-mono);
-    color: var(--pt-faint);
+.pt-brand:hover {
+    color: var(--patchy-fg);
 }
-.pt-issue-card h2 {
-    margin: 14px 0 13px;
-    color: var(--pt-fg);
-    font-size: 19px;
-    font-weight: 680;
-    line-height: 1.35;
+.md-nav__title .pt-brand {
+    font-size: 0.8rem;
+}
+
+/* The mark. Stroke and fill come from the scheme, so it re-tints. */
+.pt-mark {
+    flex: none;
+    display: block;
+    overflow: visible;
+}
+.pt-mark__grid rect {
+    fill: none;
+    stroke: var(--patchy-line-3);
+    stroke-width: 1.6;
+}
+.pt-mark__slot {
+    fill: none;
+    stroke: var(--patchy-line-3);
+    stroke-width: 1.2;
+    stroke-dasharray: 2 2;
+}
+.pt-mark__patch {
+    fill: var(--patchy-green);
+}
+
+.md-search__form {
+    background-color: var(--patchy-surface);
+    border: 1px solid var(--patchy-line-3);
+    border-radius: var(--radius-sm);
+}
+.md-search__form:hover {
+    background-color: var(--patchy-surface-2);
+}
+.md-search__input::placeholder {
+    color: var(--patchy-faint);
+}
+
+/* ---- Chrome: navigation ----
+ * The current page is accent-ink text with a 2px verdigris rule, the same
+ * device as the top bar's current-view rule, stood on its side. */
+
+.md-nav__link {
+    border-radius: var(--radius-sm);
+}
+.md-nav--primary .md-nav__item .md-nav__link--active {
+    color: var(--patchy-ink-green);
+    background: transparent;
+    box-shadow: inset 2px 0 0 var(--patchy-green);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.md-nav--primary .md-nav__link[href]:hover:not(.md-nav__link--active),
+.md-nav--primary .md-nav__link[for]:hover:not(.md-nav__link--active) {
+    color: var(--patchy-fg);
+    background-color: var(--patchy-surface-2);
+}
+.md-nav__item--section > .md-nav__link {
+    color: var(--patchy-fg);
+    font-size: 0.66rem;
+    font-weight: 700;
+}
+.md-nav--secondary .md-nav__link--active,
+.md-nav--secondary .md-nav__link--passed {
+    color: var(--patchy-muted);
+}
+.md-nav--secondary .md-nav__link--active {
+    color: var(--patchy-ink-green);
+}
+
+/* ---- Chrome: footer — a surface, not an inverted band ---- */
+
+.md-footer,
+.md-footer-meta {
+    color: var(--patchy-muted);
+    background-color: var(--patchy-surface);
+}
+.md-footer {
+    border-top: 1px solid var(--patchy-line);
+}
+.md-footer-meta {
+    border-top: 1px solid var(--patchy-line);
+}
+.md-footer__link:hover,
+.md-footer-meta a:hover {
+    color: var(--patchy-ink-green);
+}
+.md-footer-meta__inner .md-copyright {
+    color: var(--patchy-faint);
+}
+
+/* ---- Typeset ---- */
+
+.md-typeset {
+    color: var(--patchy-fg);
+}
+/* Prose stays at a readable measure; tables, code and diagrams may run wider. */
+.md-typeset > p,
+.md-typeset > ul,
+.md-typeset > ol,
+.md-typeset > dl {
+    max-width: 80ch;
+}
+
+/* Sentence case, hierarchy from weight and size — never caps. */
+.md-typeset :is(h1, h2, h3, h4, h5, h6),
+[data-md-color-scheme="slate"] .md-typeset :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--patchy-fg);
+    font-weight: 700;
+    text-transform: none;
     letter-spacing: -0.015em;
 }
-.pt-labels {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
+.md-typeset h1 {
+    font-size: 1.9em;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
 }
-.pt-label {
-    display: inline-flex;
-    width: fit-content;
-    align-items: center;
-    padding: 3px 8px;
-    border-radius: 999px;
-    color: var(--pt-ink);
-    background: color-mix(in oklab, var(--pt-green) 10%, transparent);
-    border: 1px solid color-mix(in oklab, var(--pt-green) 28%, transparent);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-    font-weight: 600;
+.md-typeset h2 {
+    font-size: 1.4em;
+    line-height: 1.3;
+    margin-top: 1.9em;
+}
+.md-typeset h3 {
+    font-size: 1.12em;
+    line-height: 1.4;
+}
+.md-typeset h4 {
+    font-size: 1em;
+}
+.md-typeset h5,
+.md-typeset h6 {
+    font-size: 0.9em;
+    color: var(--patchy-muted);
+}
+.md-typeset .headerlink {
+    color: var(--patchy-faint);
+}
+
+.md-typeset a {
+    color: var(--patchy-ink-green);
+    text-underline-offset: 0.18em;
+}
+.md-typeset a:hover,
+.md-typeset a:focus-visible {
+    color: var(--patchy-ink-green);
+    text-decoration: underline;
+}
+
+.md-typeset hr {
+    border-bottom-color: var(--patchy-line);
+}
+.md-typeset blockquote {
+    color: var(--patchy-muted);
+    border-left-color: var(--patchy-line-2);
+}
+.md-typeset kbd {
+    color: var(--patchy-fg);
+    background-color: var(--patchy-surface-2);
+    box-shadow: 0 0 0 1px var(--patchy-line-2) inset, 0 1px 0 var(--patchy-line-2);
+    font-family: var(--font-mono);
+}
+
+/* Inline code: the status page's mono tag. On the status page it sits on a
+ * raised panel; here it sits on the page itself, so its fill is tinted from
+ * the text colour (lighter than the page in dark, darker in light) and its
+ * edge uses the stronger line, or it all but vanishes into the prose. */
+.md-typeset :not(pre) > code {
+    padding: 0.1em 0.38em;
+    color: var(--patchy-fg);
+    background-color: color-mix(in oklab, var(--patchy-fg) 9%, var(--patchy-bg));
+    border: 1px solid var(--patchy-line-2);
+    border-radius: var(--radius-sm);
+}
+.md-typeset a > code {
+    color: var(--patchy-ink-green);
+}
+
+/* Fenced code: a sunken panel with a hairline, highlighted with --hl-*. */
+.md-typeset pre > code {
+    border: 1px solid var(--patchy-line);
+    border-radius: var(--radius-md);
+}
+.md-typeset .highlight .c,
+.md-typeset .highlight .c1,
+.md-typeset .highlight .ch,
+.md-typeset .highlight .cm,
+.md-typeset .highlight .cs {
+    font-style: italic;
+}
+/* YAML/JSON keys are attributes in the transcript's vocabulary. */
+.md-typeset .highlight .nt {
+    color: var(--hl-attr);
+}
+.md-typeset .highlight .gi {
+    color: var(--hl-add);
+    background-color: var(--hl-add-bg);
+}
+.md-typeset .highlight .gd {
+    color: var(--hl-del);
+    background-color: var(--hl-del-bg);
+}
+.md-typeset .md-code__button {
+    color: var(--patchy-faint);
+}
+.md-typeset .md-code__button:hover {
+    color: var(--patchy-ink-green);
+}
+
+/* Tables: flat, hairline rows, muted header text.
+ *
+ * A table wider than the column scrolls sideways, and says so: the two
+ * scroll-attached gradients cover the edge shadows while their side is
+ * flush, so a shadow shows only where more columns are hidden. */
+.md-typeset table:not([class]) {
+    --pt-edge: color-mix(in oklab, var(--patchy-fg) 22%, transparent);
+    font-size: 0.68rem;
+    background:
+        linear-gradient(to right, var(--patchy-surface) 40%, transparent) left / 2.5rem 100% no-repeat local,
+        linear-gradient(to left, var(--patchy-surface) 40%, transparent) right / 2.5rem 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, var(--pt-edge), transparent) left / 0.75rem 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, var(--pt-edge), transparent) right / 0.75rem 100% no-repeat scroll,
+        var(--patchy-surface);
+    border: 1px solid var(--patchy-line);
+    border-radius: var(--radius-md);
+}
+.md-typeset table:not([class]) th {
+    color: var(--patchy-muted);
+    background-color: var(--patchy-surface-2);
+    font-weight: 700;
+    border-bottom: 1px solid var(--patchy-line);
+}
+.md-typeset table:not([class]) td {
+    border-top: 1px solid var(--patchy-line);
+}
+.md-typeset table:not([class]) tbody tr:first-child td {
+    border-top: 0;
+}
+.md-typeset table:not([class]) tbody tr:hover {
+    background-color: color-mix(in oklab, var(--patchy-green) 4%, var(--patchy-surface));
+    box-shadow: none;
+}
+/* The first column holds the names, flags, keys and routes a row is about:
+ * each identifier stays whole, but the cell itself may wrap between them,
+ * so a row naming several (or a prose first column) never forces a scroll. */
+.md-typeset table:not([class]) td:first-child code {
     white-space: nowrap;
 }
-.pt-label--red {
-    color: var(--pt-red);
-    background: color-mix(in oklab, var(--pt-red) 9%, transparent);
-    border-color: color-mix(in oklab, var(--pt-red) 26%, transparent);
+
+/* Admonitions: the status page's note tones. Each type sets a tone and the
+ * panel tints from it; the body stays in the text colour for long reads.
+ * The [class] suffix outranks the theme's per-type rules. */
+.md-typeset :is(.admonition, details)[class] {
+    --pt-tone: var(--patchy-green);
+    --pt-tone-ink: var(--patchy-ink-green);
+    color: var(--patchy-fg);
+    background-color: color-mix(in oklab, var(--pt-tone) 7%, var(--patchy-bg));
+    border: 1px solid color-mix(in oklab, var(--pt-tone) 26%, transparent);
+    border-radius: var(--radius-md);
+    box-shadow: none;
 }
-.pt-label--soil {
-    color: var(--pt-soil);
-    background: color-mix(in oklab, var(--pt-soil) 10%, transparent);
-    border-color: color-mix(in oklab, var(--pt-soil) 28%, transparent);
+.md-typeset :is(.admonition, details):is(.tip, .hint, .success, .check, .done)[class] {
+    --pt-tone: var(--patchy-seedling);
+    --pt-tone-ink: var(--patchy-seedling);
 }
-.pt-label--amber {
-    color: var(--pt-amber);
-    background: color-mix(in oklab, var(--pt-amber) 9%, transparent);
-    border-color: color-mix(in oklab, var(--pt-amber) 28%, transparent);
+.md-typeset :is(.admonition, details):is(.warning, .caution, .attention, .question, .help, .faq)[class] {
+    --pt-tone: var(--patchy-amber);
+    --pt-tone-ink: var(--patchy-amber);
 }
-.pt-progress {
-    margin-top: 22px;
-    padding: 17px;
-    background: var(--pt-code);
-    border: 1px solid var(--pt-line);
-    border-radius: 11px;
+.md-typeset :is(.admonition, details):is(.danger, .error, .failure, .fail, .missing, .bug)[class] {
+    --pt-tone: var(--patchy-red);
+    --pt-tone-ink: var(--patchy-red);
 }
-.pt-progress__item {
+.md-typeset :is(.admonition, details):is(.example, .quote, .cite)[class] {
+    --pt-tone: var(--patchy-muted);
+    --pt-tone-ink: var(--patchy-fg);
+}
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary) {
+    color: var(--pt-tone-ink);
+    background: transparent;
+    font-weight: 700;
+}
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary)::before {
+    background-color: var(--pt-tone);
+}
+.md-typeset :is(.admonition, details) > summary::after {
+    color: var(--pt-tone);
+}
+
+/* Content tabs: the status page's tab strip. */
+.md-typeset .tabbed-labels {
+    border-bottom: 1px solid var(--patchy-line);
+}
+.md-typeset .tabbed-labels > label {
+    color: var(--patchy-muted);
+    font-weight: 700;
+}
+.md-typeset .tabbed-labels > label:hover {
+    color: var(--patchy-fg);
+}
+.js .md-typeset .tabbed-labels::before {
+    height: 2px;
+    background: var(--patchy-green);
+}
+
+/* Buttons: the status page's action buttons. */
+.md-typeset .md-button {
+    padding: 0.5em 1.1em;
+    color: var(--patchy-fg);
+    background-color: var(--patchy-surface);
+    border: 1px solid var(--patchy-line-3);
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.md-typeset .md-button:hover,
+.md-typeset .md-button:focus-visible {
+    color: var(--patchy-fg);
+    background-color: var(--patchy-surface);
+    border-color: var(--patchy-green);
+}
+.md-typeset .md-button--primary {
+    color: var(--patchy-on-accent);
+    background-color: var(--patchy-green);
+    border-color: var(--patchy-green);
+    box-shadow: var(--shadow-glow);
+}
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus-visible {
+    color: var(--patchy-on-accent);
+    background-color: var(--patchy-green-2);
+    border-color: var(--patchy-green-2);
+}
+
+/* ---- Components ---- */
+
+/* Pills: the status page's tone grammar (Pills.tsx PHASE_TONE and
+ * SEVERITY_TONE). Usable in markdown as <span class="pt-pill pt-pill--amber">. */
+.pt-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    width: fit-content;
+    padding: 0.05em 0.6em;
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    font-weight: 500;
+    line-height: 1.6;
+    white-space: nowrap;
+    color: var(--patchy-ink-green);
+    background: color-mix(in oklab, var(--patchy-green) 10%, transparent);
+    border: 1px solid color-mix(in oklab, var(--patchy-green) 28%, transparent);
+    border-radius: var(--radius-pill);
+}
+.pt-pill--seedling {
+    color: var(--patchy-seedling);
+    background: color-mix(in oklab, var(--patchy-seedling) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-seedling) 28%, transparent);
+}
+.pt-pill--amber {
+    color: var(--patchy-amber);
+    background: color-mix(in oklab, var(--patchy-amber) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-amber) 28%, transparent);
+}
+.pt-pill--soil {
+    color: var(--patchy-soil);
+    background: color-mix(in oklab, var(--patchy-soil) 10%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-soil) 28%, transparent);
+}
+.pt-pill--red {
+    color: var(--patchy-red);
+    background: color-mix(in oklab, var(--patchy-red) 9%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-red) 26%, transparent);
+}
+.pt-pill--neutral {
+    color: var(--patchy-muted);
+    background: color-mix(in oklab, var(--patchy-muted) 8%, transparent);
+    border-color: var(--patchy-line-2);
+}
+.pt-pill--sev-high {
+    color: var(--patchy-sev-high);
+    background: color-mix(in oklab, var(--patchy-sev-high) 11%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-high) 32%, transparent);
+}
+.pt-pill--sev-critical {
+    color: var(--patchy-sev-critical);
+    background: color-mix(in oklab, var(--patchy-sev-critical) 11%, transparent);
+    border-color: color-mix(in oklab, var(--patchy-sev-critical) 34%, transparent);
+}
+.pt-pill__label {
+    color: var(--patchy-muted);
+}
+
+/* Timeline rail: the status page's .ps-timeline. A list of steps, each a
+ * marker on a hairline rail; --done and --active fill the marker. */
+.pt-rail {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.pt-rail__item {
     position: relative;
     display: flex;
+    gap: 0.75rem;
     align-items: flex-start;
-    gap: 11px;
-    min-height: 50px;
+    min-height: 3.1rem;
 }
-.pt-progress__item:not(:last-child)::after {
+.pt-rail__item:not(:last-child)::after {
     content: "";
     position: absolute;
     left: 11px;
     top: 24px;
     bottom: 0;
     width: 1px;
-    background: var(--pt-line-2);
+    background: var(--patchy-line-2);
 }
-.pt-progress__marker {
+.pt-rail__marker {
     position: relative;
     z-index: 1;
+    display: grid;
+    flex: none;
+    place-items: center;
     width: 23px;
     height: 23px;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
+    color: var(--patchy-muted);
+    background: var(--patchy-surface-2);
+    border: 1px solid var(--patchy-line-2);
     border-radius: 50%;
-    background: var(--pt-alt-2);
-    border: 1px solid var(--pt-line-2);
-    color: var(--pt-muted);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-}
-.pt-progress__item--done .pt-progress__marker {
-    background: var(--pt-green);
-    border-color: var(--pt-green);
-    color: var(--pt-on-accent);
-}
-.pt-progress__item--active .pt-progress__marker {
-    color: var(--pt-on-accent);
-    background: var(--pt-green);
-    box-shadow: 0 0 0 5px color-mix(in oklab, var(--pt-green) 12%, transparent);
-}
-.pt-progress__item strong {
-    display: block;
-    color: var(--pt-fg);
-    font-size: 12px;
-    font-weight: 650;
-}
-.pt-progress__item small {
-    display: block;
-    margin-top: 3px;
-    color: var(--pt-muted);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-}
-.pt-issue-card__footer {
-    display: flex;
-    align-items: center;
-    margin-top: 17px;
-    color: var(--pt-muted);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-}
-.pt-issue-card__footer > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-}
-.pt-issue-card__footer strong {
-    margin-left: auto;
-    color: var(--pt-ink);
-    font-weight: 650;
-}
-.pt-pulse {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--pt-green);
-    animation: pt-pulse 1.7s ease-in-out infinite;
-}
-
-/* stats — flat cells separated by hairlines, like the product surface */
-.pt-stats {
-    border-bottom: 1px solid var(--pt-line);
-    background: var(--pt-alt);
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    max-width: 1180px;
-    margin: 0 auto;
-    font-family: var(--pt-mono);
-}
-.pt-stat {
-    min-height: 112px;
-    padding: 25px 28px;
-    border-left: 1px solid var(--pt-line);
-}
-.pt-stat:last-child {
-    border-right: 1px solid var(--pt-line);
-}
-.pt-stat b {
-    display: block;
-    color: var(--pt-ink);
-    font-size: 25px;
-    font-weight: 800;
-}
-.pt-stat small {
-    display: block;
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--pt-muted);
-    margin-top: 5px;
-    letter-spacing: 0.5px;
-}
-
-/* sections */
-.pt-section {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 56px 40px;
-    border-bottom: 1px solid var(--pt-line);
-}
-.pt-section:last-of-type {
-    border-bottom: 0;
-}
-.pt-eyebrow {
-    font-family: var(--pt-mono);
-    font-size: 12px;
-    letter-spacing: 2px;
-    color: var(--pt-ink);
-    margin: 0 0 6px;
-}
-.pt-lead {
-    font-size: 26px;
     font-weight: 700;
-    letter-spacing: -0.4px;
-    margin: 0 0 8px;
-    max-width: 680px;
 }
-.pt-sublead {
-    font-size: 15px;
-    color: var(--pt-muted);
-    margin: 0 0 32px;
-    max-width: 640px;
+.pt-rail__item--done .pt-rail__marker,
+.pt-rail__item--active .pt-rail__marker {
+    color: var(--patchy-on-accent);
+    background: var(--patchy-green);
+    border-color: var(--patchy-green);
 }
-
-/* lifecycle pipeline */
-.pt-pipeline {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    margin-top: 20px;
+.pt-rail__item--active .pt-rail__marker {
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--patchy-green) 12%, transparent);
 }
-.pt-state__top {
-    display: flex;
-    align-items: center;
-}
-.pt-state__top > span:first-child {
-    width: 34px;
-    height: 34px;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: var(--pt-green);
-    color: var(--pt-on-accent);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-    font-weight: 750;
-}
-.pt-state:last-child .pt-state__top > span:first-child {
-    box-shadow: 0 0 0 7px color-mix(in oklab, var(--pt-green) 10%, transparent);
-}
-.pt-state__line {
-    height: 1px;
-    flex: 1;
-    margin: 0 9px;
-    background: var(--pt-line-2);
-    position: relative;
-}
-.pt-state__line::after {
-    content: "";
-    position: absolute;
-    right: -1px;
-    top: -3px;
-    border: 3.5px solid transparent;
-    border-left-color: var(--pt-line-2);
-}
-.pt-state strong {
-    display: block;
-    margin-top: 16px;
-    padding-right: 10px;
-    color: var(--pt-fg);
-    font-family: var(--pt-mono);
-    font-size: 11px;
-    overflow-wrap: anywhere;
-}
-.pt-state small {
-    display: block;
-    margin-top: 5px;
-    color: var(--pt-muted);
-    font-size: 11px;
-}
-.pt-branch-note {
-    width: calc(33.333% - 8px);
-    margin: 29px 0 0 50%;
-    display: grid;
-    grid-template-columns: 42px 28px 1fr;
-    align-items: start;
-    color: var(--pt-muted);
-}
-.pt-branch-note__line {
-    height: 1px;
-    margin-top: 15px;
-    background: var(--pt-line-2);
-}
-.pt-branch-note__marker {
-    color: var(--pt-amber);
-    font-family: var(--pt-mono);
-    font-size: 20px;
-}
-.pt-branch-note strong {
-    display: block;
-    color: var(--pt-amber);
-    font-family: var(--pt-mono);
-    font-size: 11px;
-}
-.pt-branch-note small {
-    display: block;
-    margin-top: 4px;
-    font-size: 11px;
-    line-height: 1.45;
-}
-
-/* architecture */
-.pt-architecture {
-    margin-top: 20px;
-}
-.pt-architecture__source {
-    min-height: 74px;
-    padding: 14px 21px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border: 1px solid var(--pt-line-2);
-    border-radius: 12px;
-    background: var(--pt-code);
-}
-.pt-architecture__source > span:first-child {
+.pt-rail__body {
     display: flex;
     flex-direction: column;
+    gap: 0.1rem;
+    padding-top: 1px;
+    line-height: 1.35;
 }
-.pt-architecture__source strong {
-    font-size: 14px;
-}
-.pt-architecture__source small {
-    margin-top: 2px;
-    color: var(--pt-muted);
-    font-size: 11px;
-}
-.pt-architecture__source .pt-label {
-    margin-left: auto;
-}
-.pt-architecture__rail {
-    height: 42px;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    padding: 0 10%;
-}
-.pt-architecture__rail span {
-    position: relative;
-    border-left: 1px solid var(--pt-line-2);
-}
-.pt-architecture__rail span::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -1px;
-    width: 50%;
-    height: 1px;
-    background: var(--pt-line-2);
-}
-.pt-components {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-}
-.pt-component {
-    position: relative;
-    min-height: 140px;
-    padding: 21px;
-    background: var(--pt-alt);
-    border: 1px solid var(--pt-line);
-    border-top: 2px solid var(--pt-green);
-    border-radius: 12px;
-}
-.pt-component__number {
-    position: absolute;
-    right: 18px;
-    top: 16px;
-    color: var(--pt-faint);
-    font-family: var(--pt-mono);
-    font-size: 10px;
-}
-.pt-component h3 {
-    margin: 0;
-    color: var(--pt-fg);
-    font-family: var(--pt-mono);
-    font-size: 12px;
+.pt-rail__body strong {
+    color: var(--patchy-fg);
     font-weight: 700;
 }
-.pt-component p {
-    margin: 8px 0 0;
-    color: var(--pt-muted);
-    font-size: 12px;
-    line-height: 1.55;
+.pt-rail__body small {
+    color: var(--patchy-muted);
+    font-size: 0.85em;
 }
 
-/* principle cards */
-.pt-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 16px;
-    margin-top: 20px;
-}
-.pt-card {
-    background: var(--pt-alt);
-    border: 1px solid var(--pt-line);
-    border-radius: 12px;
-    padding: 24px;
-}
-.pt-card h3 {
-    font-size: 15px;
-    font-weight: 700;
-    margin: 0 0 8px;
-    color: var(--pt-fg);
-}
-.pt-card p {
-    font-size: 13.5px;
-    color: var(--pt-muted);
-    margin: 0;
-    text-wrap: pretty;
-}
-.pt-card p code {
-    font-family: var(--pt-mono);
-    font-size: 12px;
-    color: var(--pt-ink);
-    background: none;
-    padding: 0;
-}
+/* ---- Home (overrides/home.html) ---- */
 
-/* quickstart */
-.pt-steps {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px;
-    margin-top: 20px;
-}
-.pt-step {
-    background: var(--pt-alt);
-    border: 1px solid var(--pt-line);
-    border-radius: 12px;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-}
-.pt-step__num {
-    font-family: var(--pt-mono);
-    font-weight: 800;
-    font-size: 13px;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    margin-bottom: 14px;
-    color: var(--pt-ink);
-    border: 1px solid color-mix(in oklab, var(--pt-green) 45%, transparent);
-    background: color-mix(in oklab, var(--pt-green) 9%, transparent);
-}
-.pt-step h3 {
-    font-size: 15px;
-    margin: 0 0 6px;
-    color: var(--pt-fg);
-}
-.pt-step p {
-    font-size: 14px;
-    color: var(--pt-muted);
-    margin: 0 0 12px;
-}
-.pt-step code {
-    display: block;
-    margin-top: auto;
-    font-family: var(--pt-mono);
-    font-size: 12px;
-    color: var(--pt-fg);
-    background: var(--pt-code);
-    border: 1px solid var(--pt-line);
-    border-radius: 7px;
-    padding: 8px 11px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-}
-/* Copy-to-clipboard button reuses zensical's .md-code__nav / .md-code__button
-   styling; the wrapper just provides the positioning context and pins the
-   command to the card bottom (the margin-top:auto moves off the code). */
-.pt-step .pt-cmd {
-    position: relative;
-    margin-top: auto;
-}
-.pt-step .pt-cmd code {
-    margin-top: 0;
-    padding-right: 40px;
-}
-
-/* Shell code-fence accents. codecolor.js cycles a data-pt-accent per `sh`
-   block through the four garden hues; the command text takes the accent
-   while comments stay at zensical's muted comment colour for contrast. */
-.language-sh.highlight[data-pt-accent="green"] code {
-    color: var(--pt-ink);
-}
-.language-sh.highlight[data-pt-accent="seedling"] code {
-    color: var(--pt-seedling);
-}
-.language-sh.highlight[data-pt-accent="amber"] code {
-    color: var(--pt-amber);
-}
-.language-sh.highlight[data-pt-accent="soil"] code {
-    color: var(--pt-soil);
-}
-.language-sh.highlight[data-pt-accent] .c,
-.language-sh.highlight[data-pt-accent] .c1,
-.language-sh.highlight[data-pt-accent] .ch,
-.language-sh.highlight[data-pt-accent] .cm,
-.language-sh.highlight[data-pt-accent] .cs,
-.language-sh.highlight[data-pt-accent] .sd {
-    color: var(--md-code-hl-comment-color);
-}
-
-/* Inline-code chips. Material's default --md-code-bg-color sits *darker* than
-   the page in dark mode, so a bare inline chip nearly vanishes against it;
-   --pt-ic-bg gives it a lighter raised surface with a hairline border instead.
-   Scoped to inline code (a <code> not inside a <pre>) so fenced blocks keep
-   their own sunken panel (--md-code-bg-color). */
-.md-typeset :not(pre) > code {
-    background-color: var(--pt-ic-bg);
-    border: 1px solid var(--pt-ic-border);
-    border-radius: 5px;
-}
-
-/* Inline-code striping. The long label/flag/values tables are otherwise a wall
-   of identical chips; codecolor.js stripes each table's inline <code> by row
-   (every chip in a tbody row shares one hue, rows cycle through the garden
-   accents, reset per table) via a data-pt-ic attribute. Each chip tints its
-   --pt-ic-bg base toward its hue and lights its text with the brand colour —
-   the same move as the sh fences. The --pt-* vars are scheme-aware, so one
-   rule set serves both dark and light. */
-.md-typeset table code[data-pt-ic="green"] {
-    color: var(--pt-ink);
-    background-color: color-mix(in oklab, var(--pt-green) 16%, var(--pt-ic-bg));
-    border-color: color-mix(in oklab, var(--pt-green) 32%, transparent);
-}
-.md-typeset table code[data-pt-ic="seedling"] {
-    color: var(--pt-seedling);
-    background-color: color-mix(in oklab, var(--pt-seedling) 16%, var(--pt-ic-bg));
-    border-color: color-mix(in oklab, var(--pt-seedling) 32%, transparent);
-}
-.md-typeset table code[data-pt-ic="amber"] {
-    color: var(--pt-amber);
-    background-color: color-mix(in oklab, var(--pt-amber) 16%, var(--pt-ic-bg));
-    border-color: color-mix(in oklab, var(--pt-amber) 32%, transparent);
-}
-.md-typeset table code[data-pt-ic="soil"] {
-    color: var(--pt-soil);
-    background-color: color-mix(in oklab, var(--pt-soil) 18%, var(--pt-ic-bg));
-    border-color: color-mix(in oklab, var(--pt-soil) 34%, transparent);
-}
-
-/* Tables: keep the first column on one line by default — the site's tables
-   lead with a name/flag/label column whose identifiers must never break
-   mid-token, stealing the width from the wide final column instead. A table
-   whose first column is prose can opt back out with a `.wrap-first` wrapper
-   (md_in_html). */
-.md-typeset table th:first-child,
-.md-typeset table td:first-child {
-    white-space: nowrap;
-}
-.md-typeset .wrap-first th:first-child,
-.md-typeset .wrap-first td:first-child {
-    white-space: normal;
-}
-
-/* keyframes */
-@keyframes pt-blink {
-    0%,
-    49% {
-        opacity: 1;
-    }
-    50%,
-    100% {
-        opacity: 0;
-    }
-}
-@keyframes pt-pulse {
-    0%,
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 0.45;
-        transform: scale(0.8);
-    }
-}
-
-@media (max-width: 980px) {
-    .pt-hero__inner {
-        grid-template-columns: 1fr;
-        gap: 48px;
-    }
-    .pt-issue-wrap {
-        max-width: 620px;
-    }
-    .pt-pipeline {
-        grid-template-columns: repeat(3, 1fr);
-        row-gap: 34px;
-    }
-    .pt-state:nth-child(3) .pt-state__line {
-        display: none;
-    }
-    .pt-branch-note {
-        width: 50%;
-        margin-left: 50%;
-    }
-    .pt-architecture__rail {
-        display: none;
-    }
-    .pt-components {
-        grid-template-columns: repeat(2, 1fr);
-        margin-top: 12px;
-    }
-}
-
-@media (max-width: 680px) {
-    .pt-hero__inner,
-    .pt-section {
-        padding-left: 20px;
-        padding-right: 20px;
-    }
-    .pt-headline {
-        font-size: 40px;
-    }
-    .pt-lede {
-        font-size: 16px;
-    }
-    .pt-pipeline {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    .pt-state:nth-child(3) .pt-state__line {
-        display: block;
-    }
-    .pt-state:nth-child(2n) .pt-state__line {
-        display: none;
-    }
-    .pt-branch-note {
-        width: 100%;
-        margin-left: 0;
-    }
-    .pt-components {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .pt-dot,
-    .pt-pulse,
-    .pt-cursor {
-        animation: none !important;
-    }
-}
-
-/* On the home page, let the injected hero own the width */
+/* The landing owns the width; the stock article is emptied. */
 .md-content--home .md-content__inner {
     display: none;
 }
+.pt-home {
+    --pt-home-w: min(72rem, calc(100% - 2rem));
+    color: var(--patchy-fg);
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+.pt-home a:not(.md-button) {
+    color: var(--patchy-ink-green);
+}
+.pt-home__band {
+    width: var(--pt-home-w);
+    margin: 0 auto;
+    padding: 3.2rem 0;
+    border-top: 1px solid var(--patchy-line);
+}
+.pt-home__band:first-child {
+    border-top: 0;
+}
+.pt-home h1,
+.pt-home h2,
+.pt-home h3 {
+    margin: 0;
+    color: var(--patchy-fg);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.pt-home h2 {
+    font-size: 1.35rem;
+    line-height: 1.25;
+}
+.pt-home h3 {
+    font-size: 0.9rem;
+}
+.pt-home p {
+    margin: 0;
+}
+.pt-home__intro {
+    max-width: 44rem;
+    margin-top: 0.6rem;
+    color: var(--patchy-muted);
+}
+.pt-home :is(p, small) > code {
+    padding: 0.05em 0.35em;
+    color: var(--patchy-fg);
+    background: color-mix(in oklab, var(--patchy-fg) 9%, var(--patchy-bg));
+    border: 1px solid var(--patchy-line-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+}
 
-/* ============================================================
-   DEMO SCRIPT  (.pt-demo) — overrides/demo.html + docs/demo.md
-   Presenter-facing layout: glanceable acts, sticky rail, larger
-   talk-track type. Hidden from site nav; noindex via template.
-   ============================================================ */
+/* Hero: the claim on the left, a status-page finding on the right. */
+.pt-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 3rem;
+    align-items: center;
+    padding-top: 3.6rem;
+}
+.pt-hero__mark {
+    margin-bottom: 1.4rem;
+}
+.pt-hero h1 {
+    max-width: 16ch;
+    font-size: clamp(1.9rem, 1.2rem + 2.2vw, 2.75rem);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+}
+.pt-hero__lede {
+    max-width: 36rem;
+    margin-top: 1.1rem !important;
+    color: var(--patchy-muted);
+    font-size: 0.95rem;
+}
+.pt-hero .highlight {
+    max-width: 36rem;
+    margin: 1.5rem 0 0;
+}
+.pt-hero pre {
+    margin: 0;
+}
+.pt-hero pre > code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.pt-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 1.5rem;
+}
 
-/* Banner in the announce slot */
+/* The landing animation: the patch lands into its slot once. */
+.pt-mark--land .pt-mark__patch {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pt-land 900ms var(--ease-out) 200ms both;
+}
+@keyframes pt-land {
+    from {
+        transform: translate(38%, -46%) rotate(-24deg);
+        opacity: 0;
+    }
+    55% {
+        opacity: 1;
+    }
+    to {
+        transform: rotate(-6deg);
+        opacity: 1;
+    }
+}
+
+/* Specimen: one finding, drawn with the status page's own components. */
+.pt-finding {
+    background: var(--patchy-surface);
+    border: 1px solid var(--patchy-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--patchy-shadow-strong);
+    overflow: hidden;
+}
+.pt-finding__head {
+    display: grid;
+    gap: 0.55rem;
+    padding: 1.1rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--patchy-line);
+}
+.pt-finding__repo {
+    color: var(--patchy-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+}
+.pt-finding__title {
+    font-size: 0.95rem;
+    line-height: 1.3;
+}
+.pt-finding__pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+}
+.pt-finding .pt-rail {
+    padding: 1.1rem 1.25rem 0.4rem;
+    font-size: 0.72rem;
+}
+.pt-finding__foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    color: var(--patchy-muted);
+    background: var(--patchy-surface-2);
+    border-top: 1px solid var(--patchy-line);
+    font-size: 0.68rem;
+}
+.pt-finding__foot code {
+    color: var(--patchy-fg);
+    font-family: var(--font-mono);
+}
+
+/* Lifecycle: the happy path is a sequence, so it gets the rail, laid flat. */
+.pt-flow {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 1.8rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+.pt-flow__step {
+    position: relative;
+    display: grid;
+    gap: 0.45rem;
+    align-content: start;
+}
+.pt-flow__step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 11px;
+    left: 30px;
+    right: -0.25rem;
+    height: 1px;
+    background: var(--patchy-line-2);
+}
+.pt-flow__step .pt-rail__marker {
+    background: var(--patchy-green);
+    border-color: var(--patchy-green);
+    color: var(--patchy-on-accent);
+}
+.pt-flow__step strong {
+    font-size: 0.75rem;
+}
+.pt-flow__step small {
+    color: var(--patchy-muted);
+    font-size: 0.66rem;
+    line-height: 1.4;
+}
+.pt-branches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    margin-top: 1.6rem;
+    padding-top: 1.1rem;
+    border-top: 1px dashed var(--patchy-line-2);
+    color: var(--patchy-muted);
+    font-size: 0.72rem;
+}
+.pt-branches span {
+    display: inline-flex;
+    gap: 0.45rem;
+    align-items: center;
+}
+
+/* Components and principles: flat grids of hairline cells, no numbering. */
+.pt-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1px;
+    margin-top: 1.8rem;
+    background: var(--patchy-line);
+    border: 1px solid var(--patchy-line);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+}
+.pt-group {
+    padding: 1.1rem 1.2rem 1.2rem;
+    background: var(--patchy-surface);
+}
+.pt-group h3 {
+    margin-bottom: 0.7rem;
+    color: var(--patchy-muted);
+    font-size: 0.68rem;
+}
+.pt-group dl {
+    display: grid;
+    gap: 0.7rem;
+    margin: 0;
+}
+.pt-group dt {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.pt-group dt a {
+    color: var(--patchy-fg) !important;
+    text-decoration: none;
+}
+.pt-group dt a:hover {
+    color: var(--patchy-ink-green) !important;
+}
+.pt-group dd {
+    margin: 0.1rem 0 0;
+    color: var(--patchy-muted);
+    font-size: 0.72rem;
+}
+.pt-principles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1.5rem 2rem;
+    margin-top: 1.8rem;
+}
+.pt-principles p {
+    margin-top: 0.4rem;
+    color: var(--patchy-muted);
+    font-size: 0.75rem;
+}
+
+/* Quickstart: two charts, two commands. */
+.pt-quick {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: 1.25rem;
+    margin-top: 1.6rem;
+}
+.pt-quick p {
+    margin: 0.35rem 0 0.75rem;
+    color: var(--patchy-muted);
+    font-size: 0.75rem;
+}
+.pt-quick .highlight,
+.pt-quick pre {
+    margin: 0;
+}
+
+@media screen and (max-width: 60em) {
+    .pt-hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2.25rem;
+        padding-top: 2.4rem;
+    }
+    .pt-flow {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+    }
+    .pt-flow__step {
+        grid-template-columns: 23px minmax(0, 1fr);
+        column-gap: 0.75rem;
+        min-height: 3rem;
+    }
+    .pt-flow__step small {
+        grid-column: 2;
+    }
+    .pt-flow__step:not(:last-child)::after {
+        top: 24px;
+        bottom: 0;
+        left: 11px;
+        right: auto;
+        width: 1px;
+        height: auto;
+    }
+    .pt-home__band {
+        padding: 2.4rem 0;
+    }
+}
+
+/* ---- Demo script (overrides/demo.html + docs/demo.md) ----
+ * Presenter-facing: glanceable acts, a sticky act rail, larger talk tracks.
+ * Hidden from the nav; noindex via the template. */
+
 .pt-demo-banner {
     display: flex;
     flex-wrap: wrap;
+    gap: 0.5rem 0.85rem;
     align-items: center;
     justify-content: center;
-    gap: 0.55rem 0.85rem;
     padding: 0.45rem 1rem;
-    background: color-mix(in oklab, var(--pt-soil) 22%, var(--md-default-bg-color));
-    border-bottom: 1px solid var(--pt-line);
-    font-size: 0.78rem;
-    line-height: 1.35;
-    color: var(--pt-muted);
+    color: var(--patchy-muted);
+    background: color-mix(in oklab, var(--patchy-amber) 8%, var(--patchy-bg));
+    border-bottom: 1px solid color-mix(in oklab, var(--patchy-amber) 26%, transparent);
+    font-size: 0.72rem;
 }
 .pt-demo-banner__mark {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.12rem 0.55rem;
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--pt-amber) 28%, transparent);
-    color: var(--pt-fg);
-    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
-    font-size: 0.72rem;
+    color: var(--patchy-amber);
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
 }
-.pt-demo-banner__text {
-    color: var(--pt-muted);
-}
-
-/* Sticky act jump rail under the header */
 .pt-demo-rail {
     position: sticky;
     top: 0;
     z-index: 3;
-    background: color-mix(in oklab, var(--md-default-bg-color) 92%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--pt-line);
+    background: color-mix(in oklab, var(--patchy-bg) 92%, transparent);
+    border-bottom: 1px solid var(--patchy-line);
 }
 .pt-demo-rail__inner {
     display: flex;
-    flex-wrap: nowrap;
-    gap: 0.25rem;
-    overflow-x: auto;
-    scrollbar-width: thin;
+    gap: 1.1rem;
     max-width: 61rem;
     margin: 0 auto;
-    padding: 0.4rem 0.8rem;
-    -webkit-overflow-scrolling: touch;
+    padding: 0 0.8rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
 }
 .pt-demo-rail__link {
-    flex: 0 0 auto;
-    padding: 0.28rem 0.65rem;
-    border-radius: 999px;
-    border: 1px solid var(--pt-line);
-    background: var(--pt-alt);
-    color: var(--pt-fg) !important;
-    font-size: 0.72rem;
-    font-weight: 650;
-    letter-spacing: 0.01em;
-    text-decoration: none !important;
+    flex: none;
+    padding: 0.6rem 0.1rem;
+    color: var(--patchy-muted) !important;
+    border-bottom: 2px solid transparent;
+    font-size: 0.68rem;
+    font-weight: 700;
     white-space: nowrap;
-    transition:
-        background 0.15s ease,
-        border-color 0.15s ease,
-        color 0.15s ease;
+    text-decoration: none !important;
 }
 .pt-demo-rail__link:hover,
 .pt-demo-rail__link:focus-visible {
-    border-color: var(--pt-green);
-    background: color-mix(in oklab, var(--pt-green) 14%, var(--pt-alt));
-    color: var(--pt-fg) !important;
+    color: var(--patchy-fg) !important;
+    border-bottom-color: var(--patchy-green);
 }
 .pt-demo-rail__link--accent {
-    border-color: color-mix(in oklab, var(--pt-amber) 55%, var(--pt-line));
-    background: color-mix(in oklab, var(--pt-amber) 16%, var(--pt-alt));
-}
-
-/* Article body: slightly larger, more breathing room between acts */
-.pt-demo {
-    --pt-demo-say-bg: color-mix(in oklab, var(--pt-green) 7%, var(--md-default-bg-color));
-    --pt-demo-screen-bg: color-mix(in oklab, var(--pt-amber) 10%, var(--md-default-bg-color));
-    --pt-demo-tip-bg: color-mix(in oklab, var(--pt-moss) 8%, var(--md-default-bg-color));
+    color: var(--patchy-amber) !important;
 }
 .pt-demo .md-typeset {
     font-size: 0.82rem;
     line-height: 1.65;
 }
-.pt-demo .md-typeset h1 {
-    margin-bottom: 0.4em;
-}
 .pt-demo .md-typeset h2 {
-    margin-top: 2.1em;
-    padding-top: 0.55em;
-    border-top: 1px solid var(--pt-line);
-    scroll-margin-top: 4.5rem;
+    margin-top: 2.2em;
+    padding-top: 0.6em;
+    border-top: 1px solid var(--patchy-line);
 }
 .pt-demo .md-typeset h2:first-of-type {
-    border-top: 0;
     padding-top: 0;
+    border-top: 0;
 }
 .pt-demo .md-typeset h3 {
-    margin-top: 1.5em;
-    scroll-margin-top: 4.5rem;
+    color: var(--patchy-muted);
     font-size: 1.05em;
-    color: var(--pt-muted);
 }
-.pt-demo .md-typeset > h2 + .pt-demo-act-meta {
-    margin-top: -0.35em;
-}
-
 .pt-demo-lede {
     margin: 0 0 1.1rem;
     padding: 0.85rem 1rem;
-    border-radius: 10px;
-    border: 1px solid var(--pt-line);
-    background: var(--pt-alt);
-    font-size: 0.95em;
-    line-height: 1.55;
+    background: var(--patchy-surface);
+    border: 1px solid var(--patchy-line);
+    border-radius: var(--radius-md);
 }
 .pt-demo-lede p {
     margin: 0.35em 0;
 }
-.pt-demo-lede p:first-child {
-    margin-top: 0;
-}
-.pt-demo-lede p:last-child {
-    margin-bottom: 0;
-}
-
-.pt-demo-section-label {
-    margin: -0.35rem 0 0.85rem;
-    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
-    font-size: 0.72rem;
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--pt-faint);
-}
+.pt-demo-section-label,
 .pt-demo-section-label p {
-    margin: 0;
+    margin: -0.35rem 0 0.85rem;
+    color: var(--patchy-faint);
+    font-size: 0.75rem;
+    font-weight: 700;
 }
-
 .pt-demo-act-meta {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
     gap: 0.45rem;
+    align-items: center;
     margin: 0 0 0.95rem;
 }
 .pt-demo-act-meta p {
-    margin: 0;
     display: contents;
 }
 .pt-demo-clock,
 .pt-demo-dur {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.18rem 0.6rem;
-    border-radius: 999px;
-    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    padding: 0.05em 0.6em;
+    font-family: var(--font-mono);
     font-size: 0.74rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    border-radius: var(--radius-pill);
 }
 .pt-demo-clock {
-    background: color-mix(in oklab, var(--pt-green) 18%, transparent);
-    color: var(--pt-fg);
-    border: 1px solid color-mix(in oklab, var(--pt-green) 40%, var(--pt-line));
+    color: var(--patchy-ink-green);
+    background: color-mix(in oklab, var(--patchy-green) 10%, transparent);
+    border: 1px solid color-mix(in oklab, var(--patchy-green) 28%, transparent);
 }
 .pt-demo-dur {
-    background: transparent;
-    color: var(--pt-muted);
-    border: 1px solid var(--pt-line);
+    color: var(--patchy-muted);
+    border: 1px solid var(--patchy-line-2);
 }
-
 .pt-demo-rail-phases {
     display: inline-block;
     padding: 0.35rem 0.55rem;
-    border-radius: 6px;
-    background: var(--pt-code);
+    background: var(--patchy-code-2);
+    border-radius: var(--radius-sm);
     font-size: 0.85em;
-    white-space: normal;
-    word-break: break-word;
 }
-
-/* Color-code the three roles a presenter scans for */
-.pt-demo .md-typeset .admonition.quote,
-.pt-demo .md-typeset details.quote {
-    border-color: color-mix(in oklab, var(--pt-green) 55%, var(--pt-line));
-    background: var(--pt-demo-say-bg);
+/* The three roles a presenter scans for: say (quote), show (example), tip. */
+.pt-demo .md-typeset :is(.admonition, details).quote[class] {
+    --pt-tone: var(--patchy-green);
+    --pt-tone-ink: var(--patchy-ink-green);
 }
-.pt-demo .md-typeset .admonition.quote > .admonition-title,
-.pt-demo .md-typeset details.quote > summary {
-    background: color-mix(in oklab, var(--pt-green) 12%, transparent);
+.pt-demo .md-typeset :is(.admonition, details).example[class] {
+    --pt-tone: var(--patchy-amber);
+    --pt-tone-ink: var(--patchy-amber);
 }
-.pt-demo .md-typeset .admonition.quote .admonition-title::before,
-.pt-demo .md-typeset details.quote > summary::before {
-    background-color: var(--pt-green);
-}
-
-.pt-demo .md-typeset .admonition.example,
-.pt-demo .md-typeset details.example {
-    border-color: color-mix(in oklab, var(--pt-amber) 55%, var(--pt-line));
-    background: var(--pt-demo-screen-bg);
-}
-.pt-demo .md-typeset .admonition.example > .admonition-title,
-.pt-demo .md-typeset details.example > summary {
-    background: color-mix(in oklab, var(--pt-amber) 14%, transparent);
-}
-.pt-demo .md-typeset .admonition.example .admonition-title::before,
-.pt-demo .md-typeset details.example > summary::before {
-    background-color: var(--pt-amber);
-}
-
-.pt-demo .md-typeset .admonition.tip,
-.pt-demo .md-typeset details.tip {
-    border-color: color-mix(in oklab, var(--pt-moss) 50%, var(--pt-line));
-    background: var(--pt-demo-tip-bg);
-}
-
-/* Talk tracks: larger, easier to read while looking up at the audience */
 .pt-demo .md-typeset .admonition.quote > :not(.admonition-title) {
     font-size: 1.05em;
     line-height: 1.62;
 }
-.pt-demo .md-typeset .admonition.quote p {
-    margin-top: 0.55em;
-    margin-bottom: 0.55em;
-}
-.pt-demo .md-typeset .admonition.quote p:first-of-type {
-    margin-top: 0;
-}
-.pt-demo .md-typeset .admonition.quote p:last-child {
-    margin-bottom: 0;
-}
 .pt-demo .md-typeset .admonition.example > :not(.admonition-title) {
-    font-weight: 550;
+    font-weight: 700;
 }
-
-/* Compact prep checklist table */
-.pt-demo .md-typeset table:not([class]) {
-    font-size: 0.92em;
-}
-.pt-demo .md-typeset table:not([class]) th {
-    background: var(--pt-alt);
-}
-.pt-demo .md-typeset table:not([class]) td:first-child,
-.pt-demo .md-typeset table:not([class]) th:first-child {
-    text-align: center;
-    white-space: nowrap;
-}
-
-/* Side-by-side short/long tips on wide screens */
 .pt-demo-flex {
     display: grid;
-    grid-template-columns: 1fr;
     gap: 0.75rem;
     margin: 0.75rem 0 1.25rem;
 }
-.pt-demo-flex > .admonition,
-.pt-demo-flex > details {
+.pt-demo-flex > :is(.admonition, details) {
     margin: 0 !important;
 }
-@media (min-width: 720px) {
+@media screen and (min-width: 45em) {
     .pt-demo-flex {
         grid-template-columns: 1fr 1fr;
     }
 }
-
-/* Wider reading column when side nav is hidden */
 .md-main__inner:has(.pt-demo) {
     max-width: 72rem;
 }
 .md-content:has(.pt-demo) {
     max-width: 52rem;
 }
-
-/* Keep act anchors clear of sticky header + rail */
 .pt-demo [id] {
     scroll-margin-top: 5rem;
 }
 
+/* ---- Motion: one landing on the home page, nothing ambient ---- */
+
 @media (prefers-reduced-motion: reduce) {
-    .pt-demo-rail {
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        background: var(--md-default-bg-color);
+    .pt-mark--land .pt-mark__patch {
+        animation: none;
+    }
+    *,
+    ::before,
+    ::after {
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

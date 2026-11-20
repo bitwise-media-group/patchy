@@ -14,9 +14,10 @@ repo_name = "bitwise-media-group/patchy"
 # change their choice at any time (see [project.extra.consent] below).
 copyright = '© 2026 Bitwise Media Group Ltd — <a href="#__consent">Change cookie settings</a>'
 
-# Paths are relative to docs_dir (default: "docs")
-extra_css = ["stylesheets/extra.css"]
-extra_javascript = ["javascripts/codecolor.js"]
+# Paths are relative to docs_dir (default: "docs"). tokens.css is the
+# status page's vendored design tokens, re-scoped to Material's schemes; it
+# must load before extra.css, which maps them onto the theme.
+extra_css = ["stylesheets/tokens.css", "stylesheets/extra.css"]
 
 nav = [
   { "Home" = "index.md" },
@@ -125,9 +126,12 @@ features = [
   "toc.follow",
 ]
 
+# The status page's faces: Atkinson Hyperlegible was drawn for low-vision
+# readers, with unambiguous 0/O and 1/l/I, which matters on pages of SHAs,
+# flags and ids.
 [project.theme.font]
-text = "Hanken Grotesk"
-code = "JetBrains Mono"
+text = "Atkinson Hyperlegible Next"
+code = "Atkinson Hyperlegible Mono"
 
 [project.theme.icon]
 repo = "fontawesome/brands/github"

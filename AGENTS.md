@@ -60,8 +60,10 @@ Ten binaries, one module. "Not monolithic" means separate binaries/deployments w
 - `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
   SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, the access-review-gated
   approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
-  `spec.replay`; reset → delete all pipeline CRs). Every data route needs an authorised identity (metrics: `get`
-  on findingrollups; findings: `get` on findings); only auth mode none opens them, and no auth config serves nothing. Writes SPEC only (`spec.approval`, `spec.suspend`, `spec.replay`) — never status, never a phase.
+  `spec.replay`; reset → Integration `spec.reset`). Every data route needs an authorised identity (metrics:
+  `get` on findingrollups; findings: `get` on findings); only auth mode none opens them, and no auth config
+  serves nothing. Writes SPEC only (`spec.approval`, `spec.retry`, `spec.expedite`, `spec.suspend`, Integration
+  `spec.replay`/`spec.reset`/`spec.backfill`) — never status, never a phase.
 - `cmd/patchy` — the workstation CLI (the only binary not deployed): `patchy <verb> <noun>` over the
   caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
   action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API
@@ -106,12 +108,16 @@ charts/             Helm rendering of the same stack, pushed to ghcr OCI on rele
 e2e/                SEPARATE Go module: envtest carries the CRDs, the real binaries run against it,
                     fakegithub (in-memory API) stands in at the network edge, recorded webhook
                     fixtures + the replay tool drive it (`make e2e`).
-docs/ overrides/    Zensical docs site (zensical.toml at the root; patchy-branded theme in
-                    docs/stylesheets/extra.css + overrides/). `mise run serve` to preview,
+docs/ overrides/    Zensical docs site (zensical.toml at the root). The theme mirrors the status
+                    page's design system: docs/stylesheets/tokens.css is a vendored copy of the
+                    UI's tokens.css re-scoped to Material's schemes (re-copy on palette
+                    changes), extra.css maps them onto Material, overrides/ holds the header,
+                    the inline PatchMark partial and the home/demo templates. Moved pages keep
+                    their old URL through zensical.toml's redirect_maps. `mise run serve` to preview,
                     `mise run docs-build` to build; the reusable release workflow publishes it
                     to GitHub Pages (oss.bitwisemedia.uk/patchy). uv provisions zensical
                     (pyproject.toml / uv.lock). docs/cli/ is GENERATED (docgen, above) — edit
-                    the commands' Short/Long/Example, not the markdown; docs/cli.md beside it
+                    the commands' Short/Long/Example, not the markdown; docs/operate/cli.md
                     is the hand-written tour.
 completions/        GENERATED shell completions, committed so the Homebrew cask installs them
                     as static files (deterministic, and the cask never executes the binary

@@ -1,64 +1,77 @@
-{#- overrides/partials/header.html — Patchy header. Drops the stock Material logo button and renders the site name as
-the SVG patch mark (docs/assets/images/logo.svg, theme.logo) plus a lowercase mono "patchy" wordmark. The wordmark
-links home, since removing the stock logo removes the header's only home affordance. Styling lives in
-docs/stylesheets/extra.css (.pt-headmark). -#} {% set class = "md-header" %} {% if
-"navigation.tabs.sticky" in features %} {% set class = class ~ " md-header--shadow md-header--lifted" %} {% elif
-    "navigation.tabs" not in features %} {% set class = class ~ " md-header--shadow" %} {% endif %}
+{#-
+  overrides/partials/header.html — the patchy header.
+
+  Based on the theme's partials/header.html. The stock logo button is
+  replaced by the brand link: the inline patch mark (partials/patchmark.html)
+  plus a lowercase "patchy" wordmark, the same pairing as the status page's
+  top bar. The brand links home, since dropping the stock logo removes the
+  header's only home affordance. Styling: docs/stylesheets/extra.css
+  (.pt-brand, .md-header).
+-#}
+{% set class = "md-header" %}
+{% if "navigation.tabs.sticky" in features %}
+  {% set class = class ~ " md-header--shadow md-header--lifted" %}
+{% elif "navigation.tabs" not in features %}
+  {% set class = class ~ " md-header--shadow" %}
+{% endif %}
 <header class="{{ class }}" data-md-component="header">
-    <nav class="md-header__inner md-grid" aria-label="{{ lang.t("header") }}">
-        <label class="md-header__button md-icon"
-               for="__drawer"
-               aria-label="{{ lang.t("nav") }}">
-            {% set icon = config.theme.icon.menu or "material/menu" %}
-            {% include ".icons/" ~ icon ~ ".svg" %}
+  <nav class="md-header__inner md-grid" aria-label="{{ lang.t('header') }}">
+    <label class="md-header__button md-icon" for="__drawer">
+      {% set icon = config.theme.icon.menu or "material/menu" %}
+      {% include ".icons/" ~ icon ~ ".svg" %}
+      <span class="md-visually-hidden">{{ lang.t('nav') }}</span>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" class="pt-brand" title="{{ config.site_name | e }}">
+            {% include "partials/patchmark.html" %}
+            <span class="pt-brand__name">patchy</span>
+            <span class="md-visually-hidden">, home</span>
+          </a>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            {% if page.meta and page.meta.title %}
+              {{ page.meta.title }}
+            {% else %}
+              {{ page.title }}
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+    {% if config.theme.palette %}
+      {% if not config.theme.palette is mapping %}
+        {% include "partials/palette.html" %}
+      {% endif %}
+    {% endif %}
+    {% if not config.theme.palette is mapping %}
+      {% include "partials/javascripts/palette.html" %}
+    {% endif %}
+    {% if config.extra.alternate %}
+      {% include "partials/alternate.html" %}
+    {% endif %}
+    {% if "search" in config.plugins %}
+      {% set search = config.plugins["search"] | attr("config") %}
+      {% if search.enabled %}
+        <label class="md-header__button md-icon" for="__search">
+          {% set icon = config.theme.icon.search or "material/magnify" %}
+          {% include ".icons/" ~ icon ~ ".svg" %}
+          <span class="md-visually-hidden">{{ lang.t('search') }}</span>
         </label>
-        <div class="md-header__title" data-md-component="header-title">
-            <div class="md-header__ellipsis">
-                <div class="md-header__topic">
-                    <span class="md-ellipsis">
-                        <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
-                           title="{{ config.site_name | e }}"
-                           class="pt-headmark"
-                           aria-label="{{ config.site_name }}">
-                            <img src="{{ config.theme.logo | url }}"
-                                 alt=""
-                                 class="pt-headmark__logo"
-                                 width="26"
-                                 height="26"
-                                 aria-hidden="true">
-                            <span class="pt-headmark__name">patchy</span>
-                        </a>
-                    </span>
-                </div>
-                <div class="md-header__topic" data-md-component="header-topic">
-                    <span class="md-ellipsis">
-                        {% if page.meta and page.meta.title %} {{ page.meta.title }} {% else %} {{ page.title }} {%
-                            endif %}
-                            </span>
-                            </div>
-                            </div>
-                            </div>
-                            {% if config.theme.palette %}
-                                {% if not config.theme.palette is mapping %}
-                                    {% include "partials/palette.html" %}
-                                {% endif %} {% endif %} {% if not config.theme.palette is mapping %} {% include
-                                "partials/javascripts/palette.html" %} {% endif %} {% if config.extra.alternate %} {% include
-                                    "partials/alternate.html" %} {% endif %} {% if "search" in config.plugins %} {% set search = config.plugins["search"] | attr("config") %} {% if search.enabled %}
-                                <label class="md-header__button md-icon"
-                                       for="__search"
-                                       aria-label="{{ lang.t("search") }}">
-                                    {% set icon = config.theme.icon.search or "material/magnify" %}
-                                    {% include ".icons/" ~ icon ~ ".svg" %}
-                                </label>
-                                {% include "partials/search.html" %}
-                            {% endif %}
-                        {% endif %}
-                        <div class="md-header__source">
-                            {% if config.repo_url %}
-                                {% include "partials/source.html" %}
-                            {% endif %}
-                        </div>
-                    </nav>
-                    {% if "navigation.tabs.sticky" in features %} {% if "navigation.tabs" in features %} {% include "partials/tabs.html"
-                        %} {% endif %} {% endif %}
-                        </header>
+        {% include "partials/search.html" %}
+      {% endif %}
+    {% endif %}
+    <div class="md-header__source">
+      {% if config.repo_url %}
+        {% include "partials/source.html" %}
+      {% endif %}
+    </div>
+  </nav>
+  {% if "navigation.tabs.sticky" in features %}
+    {% if "navigation.tabs" in features %}
+      {% include "partials/tabs.html" %}
+    {% endif %}
+  {% endif %}
+</header>

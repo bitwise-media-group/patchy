@@ -1,266 +1,203 @@
-{# overrides/home.html Custom landing for Patchy. Injected full-bleed between the (turf-skinned) Material header and the
-page body via the `tabs` block. The normal article `content` block is emptied; index.md sets `hide: [navigation, toc]`.
-Content mirrors the design-system kit (design-system/ui_kits/patchy): the hero follows one finding from alert to pull
-request, the lifecycle strip makes the happy-path phases visible, and the architecture specimen hangs six binaries off
-one Kubernetes-CR source of truth. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
-<div class="pt">
-    <!-- HERO -->
-    <header class="pt-hero">
-        <div class="pt-hero__texture"></div>
-        <div class="pt-hero__inner">
-            <div class="pt-hero__copy">
-                <div class="pt-kicker"><span class="pt-dot"></span>CUSTOM RESOURCES ARE THE STATE MACHINE</div>
-                <h1 class="pt-headline">Every finding gets a path to <span>solid ground.</span></h1>
-                <p class="pt-lede">
-                    Patchy gathers related security alerts into Kubernetes Finding resources — each projected to a
-                    GitHub tracking issue — adds ownership context, and sends safe fixes through an isolated coding
-                    agent, with a human at the merge button.
-                </p>
-                <div class="pt-term">
-                    <div class="pt-term__bar"><i></i><i></i><i></i><span>zsh — install</span></div>
-                    <div class="pt-term__body">
-                        <div class="pt-term__line">
-                            <code
-                                ><span class="pt-p">$</span> helm install patchy
-                                oci://ghcr.io/bitwise-media-group/patchy/charts/patchy \</code
-                            >
-                        </div>
-                        <div class="pt-term__line">
-                            <code>
-                                &nbsp;&nbsp;&nbsp;&nbsp;--namespace patchy --create-namespace<span
-                                    class="pt-cursor"
-                                ></span
-                            ></code>
-                        </div>
-                    </div>
-                </div>
-                <div class="pt-cta">
-                    <a class="pt-btn pt-btn--primary" href="{{ 'getting-started/' | url }}">Get started →</a>
-                    <a class="pt-btn pt-btn--ghost" href="{{ config.repo_url }}">Star on GitHub</a>
-                </div>
-                <div class="pt-proof">
-                    <span>✓ No agent GitHub credentials</span>
-                    <span>✓ Humans merge every fix</span>
-                    <span>✓ No shadow state store</span>
-                </div>
-            </div>
-            <!-- Issue specimen: one finding mid-flight -->
-            <div class="pt-issue-wrap" aria-label="Example remediated GitHub issue">
-                <div class="pt-hole pt-hole--one" aria-hidden="true"></div>
-                <div class="pt-hole pt-hole--two" aria-hidden="true"></div>
-                <article class="pt-issue-card">
-                    <div class="pt-issue-card__top">
-                        <span class="pt-repo">payments/api</span>
-                        <span class="pt-issue-number">#184</span>
-                    </div>
-                    <h2>SQL query built from user-controlled value</h2>
-                    <div class="pt-labels">
-                        <span class="pt-label pt-label--red">security-severity: high</span>
-                        <span class="pt-label">security-finding: in-review</span>
-                        <span class="pt-label pt-label--soil">security-advisory: CWE-89</span>
-                    </div>
-                    <div class="pt-progress">
-                        <div class="pt-progress__item pt-progress__item--done">
-                            <span class="pt-progress__marker">✓</span>
-                            <span><strong>Finding opened</strong><small>CodeQL · alert #472</small></span>
-                        </div>
-                        <div class="pt-progress__item pt-progress__item--done">
-                            <span class="pt-progress__marker">✓</span>
-                            <span><strong>Context enhanced</strong><small>owner: payments-platform</small></span>
-                        </div>
-                        <div class="pt-progress__item pt-progress__item--done">
-                            <span class="pt-progress__marker">✓</span>
-                            <span><strong>Investigation complete</strong><small>92% confidence · claude</small></span>
-                        </div>
-                        <div class="pt-progress__item pt-progress__item--active">
-                            <span class="pt-progress__marker">4</span>
-                            <span><strong>Pull request in review</strong><small>PR #231 · checks passing</small></span>
-                        </div>
-                    </div>
-                    <div class="pt-issue-card__footer">
-                        <span><span class="pt-pulse"></span> patchy/issue-184</span>
-                        <strong>Ready for review</strong>
-                    </div>
-                </article>
-            </div>
-        </div>
-    </header>
-    <!-- STATS -->
-    <section class="pt-stats" aria-label="Patchy facts">
-        <div class="pt-stat"><b>1 hour</b><small>ALERT ACCUMULATION WINDOW</small></div>
-        <div class="pt-stat"><b>0</b><small>AGENT FORGE CREDENTIALS</small></div>
-        <div class="pt-stat"><b>6</b><small>SEPARATE GO BINARIES</small></div>
-        <div class="pt-stat"><b>1</b><small>HUMAN MERGE DECISION</small></div>
-    </section>
-    <!-- LIFECYCLE -->
-    <section class="pt-section">
-        <h2 class="pt-eyebrow">// THE FINDING LIFECYCLE</h2>
-        <p class="pt-lead">Phases move the work. The cluster keeps the truth.</p>
-        <p class="pt-sublead">
-            No shadow database and no mystery queue. Every transition is a phase edge on the Finding —
-            <code>kubectl get findings -w</code> is the whole pipeline, live.
+{#-
+  overrides/home.html — the landing page.
+
+  Injected full width under the header through the `tabs` block; the stock
+  article is emptied (index.md sets `hide: [navigation, toc]`). Built from the
+  status page's own components rather than marketing chrome: the hero's
+  specimen is a finding as the status page draws it, the lifecycle is the
+  product's timeline rail laid flat, and every binary is listed by role with
+  no count in the copy, so the page cannot drift from the component list.
+  Styles: docs/stylesheets/extra.css (Home section).
+-#}
+{% extends "main.html" %}
+{% block tabs %}
+  {{ super() }}
+  {%- set check -%}
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  {%- endset -%}
+  <div class="pt-home">
+
+    <section class="pt-home__band pt-hero" aria-labelledby="pt-hero-title">
+      <div>
+        {% set pt_mark_size = 44 %}{% set pt_mark_class = "pt-hero__mark pt-mark--land" %}
+        {% include "partials/patchmark.html" %}
+        <h1 id="pt-hero-title">From security alert to reviewed pull request.</h1>
+        <p class="pt-hero__lede">
+          Patchy gathers related alerts into Kubernetes <code>Finding</code> resources, adds ownership context, and has a
+          sandboxed coding agent investigate each one. Confident fixes become pull requests; everything else goes to a
+          person. People merge every change.
         </p>
-        <div class="pt-pipeline" role="list" aria-label="Security finding lifecycle">
-            {% set pt_states = [ [ "01", "Opened", "Alert lands" ], [ "02", "Enhanced", "Owner added" ], [ "03",
-            "Investigating", "Agent assesses" ], [ "04", "Queued", "Slot awaited" ], [ "05", "InReview", "PR opened" ],
-            [ "06", "Remediated", "Patch merged" ] ] %} {% for s in pt_states %}
-            <div class="pt-state" role="listitem">
-                <div class="pt-state__top">
-                    <span>{{ s[0] }}</span>
-                    {% if not loop.last %}<span class="pt-state__line"></span>{% endif %}
-                </div>
-                <strong>{{ s[1] }}</strong>
-                <small>{{ s[2] }}</small>
-            </div>
-            {% endfor %}
+        <div class="md-typeset">
+          <div class="highlight pt-cmd"><pre><code>helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy \
+  --namespace patchy --create-namespace</code></pre></div>
+          <div class="pt-hero__actions">
+            <a class="md-button md-button--primary" href="{{ 'getting-started/' | url }}">Get started</a>
+            <a class="md-button" href="{{ config.repo_url }}">View on GitHub</a>
+          </div>
         </div>
-        <div class="pt-branch-note">
-            <span class="pt-branch-note__line"></span>
-            <span class="pt-branch-note__marker">↳</span>
-            <span>
-                <strong>HandedOff</strong>
-                <small>A safe automated patch was not possible — hand back to the repository owner.</small>
-            </span>
+      </div>
+
+      <figure class="pt-finding" aria-labelledby="pt-finding-caption" style="margin: 0">
+        <figcaption id="pt-finding-caption" class="md-visually-hidden">
+          An example finding as the status page shows it: investigated with 92% confidence and waiting in review.
+        </figcaption>
+        <div class="pt-finding__head">
+          <span class="pt-finding__repo">acme/payments-api</span>
+          <h3 class="pt-finding__title">SQL query built from user-controlled value</h3>
+          <div class="pt-finding__pills">
+            <span class="pt-pill pt-pill--sev-high"><span class="pt-pill__label">severity</span>high</span>
+            <span class="pt-pill pt-pill--seedling">In review</span>
+            <span class="pt-pill pt-pill--neutral">CWE-89</span>
+          </div>
         </div>
+        <ol class="pt-rail">
+          <li class="pt-rail__item pt-rail__item--done">
+            <span class="pt-rail__marker">{{ check }}</span>
+            <span class="pt-rail__body"><strong>Opened</strong><small>CodeQL alert #472 · ghas</small></span>
+          </li>
+          <li class="pt-rail__item pt-rail__item--done">
+            <span class="pt-rail__marker">{{ check }}</span>
+            <span class="pt-rail__body"><strong>Enhanced</strong><small>owner: payments-platform</small></span>
+          </li>
+          <li class="pt-rail__item pt-rail__item--done">
+            <span class="pt-rail__marker">{{ check }}</span>
+            <span class="pt-rail__body"><strong>Investigated</strong><small>remediate · 92% confidence · claude</small></span>
+          </li>
+          <li class="pt-rail__item pt-rail__item--active">
+            <span class="pt-rail__marker">4</span>
+            <span class="pt-rail__body"><strong>In review</strong><small>PR #231 · checks passing</small></span>
+          </li>
+        </ol>
+        <div class="pt-finding__foot">
+          <code>patchy/finding-7c41d09e2a-1</code>
+          <span>Waiting on a reviewer</span>
+        </div>
+      </figure>
     </section>
-    <!-- ARCHITECTURE -->
-    <section class="pt-section">
-        <h2 class="pt-eyebrow">// SIX BINARIES, ONE SYSTEM</h2>
-        <p class="pt-lead">Separate concerns. Shared ground.</p>
-        <p class="pt-sublead">
-            Each component owns a narrow set of phase edges. The agent never talks to GitHub and never receives forge
-            credentials.
-        </p>
-        <div class="pt-architecture">
-            <div class="pt-architecture__source">
-                <span><strong>Custom resources</strong><small>the only state store</small></span>
-                <span class="pt-label">source of truth</span>
-            </div>
-            <div class="pt-architecture__rail" aria-hidden="true">
-                <span></span><span></span><span></span><span></span><span></span><span></span>
-            </div>
-            <div class="pt-components">
-                {% set pt_components = [ ["integration-controller", "Webhooks in · Findings ingested · issues
-                projected"], ["source-controller", "Repositories pinned · tarballs served to the sandbox"],
-                ["context-controller", "Ownership and infrastructure context added"], ["investigation-controller",
-                "Findings gated · analysis Jobs run · verdicts routed"], ["remediation-controller", "Queue scheduled ·
-                fixes pushed · PRs opened"], ["agent-runner", "Investigate and patch inside the isolated pod"] ] %} {%
-                for c in pt_components %}
-                <article class="pt-component">
-                    <span class="pt-component__number">0{{ loop.index }}</span>
-                    <h3>{{ c[0] }}</h3>
-                    <p>{{ c[1] }}</p>
-                </article>
-                {% endfor %}
-            </div>
-        </div>
+
+    <section class="pt-home__band" aria-labelledby="pt-flow-title">
+      <h2 id="pt-flow-title">The cluster keeps the truth</h2>
+      <p class="pt-home__intro">
+        Every step is a phase on the <code>Finding</code> resource, moved by one controller. There is no shadow database
+        and no hidden queue: <code>kubectl get findings -w</code> is the whole pipeline, live.
+      </p>
+      {% set pt_steps = [
+        ["Opened", "An alert lands and related alerts gather for an hour"],
+        ["Enhanced", "Ownership and infrastructure context added"],
+        ["Investigating", "A sandboxed agent assesses the finding"],
+        ["Queued", "A confident fix waits for a slot, in priority order"],
+        ["Remediating", "The agent writes the fix"],
+        ["InReview", "Branch pushed, pull request open"],
+        ["Remediated", "A person merged it"],
+      ] %}
+      <ol class="pt-flow">
+        {% for s in pt_steps %}
+          <li class="pt-flow__step">
+            <span class="pt-rail__marker">{{ loop.index }}</span>
+            <strong>{{ s[0] }}</strong>
+            <small>{{ s[1] }}</small>
+          </li>
+        {% endfor %}
+      </ol>
+      <div class="pt-branches">
+        <span><span class="pt-pill pt-pill--amber">AwaitingApproval</span> a person approves first</span>
+        <span><span class="pt-pill pt-pill--amber">HandedOff</span> the repository owners take over</span>
+        <span><span class="pt-pill pt-pill--soil">Dismissed</span> a false positive, closed</span>
+        <span><span class="pt-pill pt-pill--red">Failed</span> a person can retry it</span>
+        <a href="{{ 'concepts/lifecycle/' | url }}">The finding lifecycle</a>
+      </div>
     </section>
-    <!-- PRINCIPLES -->
-    <section class="pt-section">
-        <h2 class="pt-eyebrow">// THE PATCHY RULES</h2>
-        <p class="pt-lead">Automation with edges you can see.</p>
-        <div class="pt-cards">
-            <div class="pt-card">
-                <h3>Let related alerts gather</h3>
-                <p>
-                    Alerts of one advisory family accumulate into a single Finding for an hour, so one weakness becomes
-                    one useful tracking issue instead of forty noisy ones.
-                </p>
-            </div>
-            <div class="pt-card">
-                <h3>Context before code</h3>
-                <p>
-                    Repository ownership and infrastructure relationships arrive on the finding before the investigation
-                    decides a route.
-                </p>
-            </div>
-            <div class="pt-card">
-                <h3>Keep the agent fenced in</h3>
-                <p>
-                    The coding agent works inside an ephemeral Kubernetes Job with no forge credential at all — the
-                    repository arrives as a digest-verified tarball, and the model key is the only secret in the pod.
-                </p>
-            </div>
-            <div class="pt-card">
-                <h3>Humans finish the repair</h3>
-                <p>
-                    High-confidence fixes become branches and pull requests. Patchy opens them; people review and merge
-                    them.
-                </p>
-            </div>
-        </div>
+
+    <section class="pt-home__band" aria-labelledby="pt-parts-title">
+      <h2 id="pt-parts-title">What you deploy</h2>
+      <p class="pt-home__intro">
+        Separate binaries with narrow jobs, sharing one source of truth: the Kubernetes API.
+      </p>
+      {% set pt_groups = [
+        ["Ingest", [
+          ["integration-controller", "Webhooks in, findings ingested, tracking issues projected", "configuration/integration-controller/"],
+          ["source-controller", "Repositories pinned once and served to the sandbox", "configuration/source-controller/"],
+        ]],
+        ["Context", [
+          ["context-controller", "Ownership and infrastructure context from your clouds and CMDB", "configuration/context-controller/"],
+        ]],
+        ["Agents", [
+          ["investigation-controller", "Gates findings, runs analysis Jobs, routes verdicts", "configuration/investigation-controller/"],
+          ["remediation-controller", "Priority queue, fix Jobs, branch push and pull request", "configuration/remediation-controller/"],
+          ["agent-runner", "The coding agent inside the sandboxed pod", "configuration/agent-runner/"],
+          ["egress-broker", "Holds the model credential, so pods hold none", "configuration/egress-broker/"],
+        ]],
+        ["People", [
+          ["status-server", "The status page: findings, metrics and approvals", "operate/status-page/"],
+          ["patchy", "The CLI: the same view and actions from a terminal", "operate/cli/"],
+        ]],
+        ["Optional", [
+          ["evaluation-controller", "Runs evolve skill evaluations on the same sandbox", "concepts/evaluation/"],
+        ]],
+      ] %}
+      <div class="pt-groups">
+        {% for g in pt_groups %}
+          <div class="pt-group">
+            <h3>{{ g[0] }}</h3>
+            <dl>
+              {% for c in g[1] %}
+                <div>
+                  <dt><a href="{{ c[2] | url }}">{{ c[0] }}</a></dt>
+                  <dd>{{ c[1] }}</dd>
+                </div>
+              {% endfor %}
+            </dl>
+          </div>
+        {% endfor %}
+      </div>
     </section>
-    <!-- QUICKSTART -->
-    <section class="pt-section">
-        <h2 class="pt-eyebrow">// THREE STEPS TO YOUR FIRST PATCH</h2>
-        <div class="pt-steps">
-            <div class="pt-step">
-                <div class="pt-step__num">01</div>
-                <h3>Create the GitHub App</h3>
-                <p>Register the App, grant the four permissions, subscribe the webhook events.</p>
-                <div class="pt-cmd">
-                    <code>Settings → Developer settings → New GitHub App</code>
-                </div>
-            </div>
-            <div class="pt-step">
-                <div class="pt-step__num">02</div>
-                <h3>Create the secrets</h3>
-                <p>App credentials plus the webhook HMAC, and the model API key.</p>
-                <div class="pt-cmd">
-                    <code>$ kubectl -n patchy create secret generic patchy-github …</code>
-                    <div class="md-code__nav">
-                        <button
-                            class="md-code__button"
-                            type="button"
-                            data-md-type="copy"
-                            title="Copy to clipboard"
-                            aria-label="Copy to clipboard"
-                        ></button>
-                    </div>
-                </div>
-            </div>
-            <div class="pt-step">
-                <div class="pt-step__num">03</div>
-                <h3>Install the chart</h3>
-                <p>One Helm release: CRDs, five controllers, RBAC, network policies.</p>
-                <div class="pt-cmd">
-                    <code>$ helm install patchy oci://ghcr.io/bitwise-media-group/patchy/charts/patchy</code>
-                    <div class="md-code__nav">
-                        <button
-                            class="md-code__button"
-                            type="button"
-                            data-md-type="copy"
-                            title="Copy to clipboard"
-                            aria-label="Copy to clipboard"
-                        ></button>
-                    </div>
-                </div>
-            </div>
+
+    <section class="pt-home__band" aria-labelledby="pt-rules-title">
+      <h2 id="pt-rules-title">Automation with edges you can see</h2>
+      <div class="pt-principles">
+        <div>
+          <h3>Related alerts gather</h3>
+          <p>Alerts of one advisory family fold into a single finding for an hour, so one weakness becomes one tracking issue instead of forty.</p>
         </div>
+        <div>
+          <h3>Context before code</h3>
+          <p>Ownership and infrastructure context arrive on the finding before the investigation decides where it goes.</p>
+        </div>
+        <div>
+          <h3>The agent holds no credential</h3>
+          <p>Agent pods carry no forge or model credential at all. The repository arrives as a digest-verified tarball, and the egress broker adds the model credential on the way out.</p>
+        </div>
+        <div>
+          <h3>People merge every fix</h3>
+          <p>Patchy opens the pull request. People review it and merge it, and can approve, retry or hand off any finding along the way.</p>
+        </div>
+      </div>
     </section>
-</div>
-<script>
-    // Wire the landing-page copy buttons. Delegated on document so it survives
-    // instant navigation; scoped to .pt-cmd so it never touches zensical's own
-    // code-block copy buttons. Strips the leading "$ " prompt, then reuses
-    // zensical's own snackbar element and the button focus-outline so the
-    // feedback matches the native code-block copy button exactly.
-    document.addEventListener("click", function (e) {
-        var btn = e.target.closest(".pt-cmd .md-code__button");
-        if (!btn) return;
-        var code = btn.closest(".pt-cmd").querySelector("code");
-        if (!code) return;
-        navigator.clipboard.writeText(code.textContent.replace(/^\s*\$\s+/, "")).then(function () {
-            btn.focus(); // accent focus-outline, same as the native button
-            var dialog = document.querySelector("[data-md-component=dialog]");
-            if (!dialog) return;
-            (dialog.querySelector(".md-dialog__inner") || dialog).textContent = "Copied to clipboard";
-            dialog.classList.add("md-dialog--active");
-            window.clearTimeout(dialog.ptResetTimer);
-            dialog.ptResetTimer = window.setTimeout(function () {
-                dialog.classList.remove("md-dialog--active");
-            }, 2000);
-        });
-    });
-</script>
-{% endblock %} {% block content %}{% endblock %}
+
+    <section class="pt-home__band" aria-labelledby="pt-quick-title">
+      <h2 id="pt-quick-title">Install</h2>
+      <p class="pt-home__intro">
+        Two Helm charts: the stack, then the configuration that switches it on.
+        <a href="{{ 'getting-started/' | url }}">Getting started</a> walks through the GitHub App and the Secrets first.
+      </p>
+      <div class="pt-quick md-typeset">
+        <div>
+          <h3>The stack</h3>
+          <p>CRDs, controllers, the egress broker and the status page.</p>
+          <div class="highlight"><pre><code>helm install patchy \
+  oci://ghcr.io/bitwise-media-group/patchy/charts/patchy \
+  --namespace patchy --create-namespace</code></pre></div>
+        </div>
+        <div>
+          <h3>The configuration</h3>
+          <p>Your Integrations and Forges, once the CRDs exist.</p>
+          <div class="highlight"><pre><code>helm install patchy-config \
+  oci://ghcr.io/bitwise-media-group/patchy/charts/patchy-config \
+  --namespace patchy -f values.yaml</code></pre></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+{% endblock %}
+{% block content %}{% endblock %}

@@ -3,25 +3,27 @@
 An end-to-end workflow for triaging and remediating security findings from multiple sources, using Kubernetes custom
 resources as the state machine and GitHub issues as a human-facing projection.
 
-Findings (GitHub Advanced Security / CodeQL first) arrive via webhook and accumulate into `Finding` resources for an
-hour, each projected to a GitHub tracking issue. Findings are enhanced with ownership context, then a sandboxed coding
-agent investigates each one — false positives are dismissed, low-confidence or human-only work is handed to the
-repository owner, and high-confidence remediations are queued in priority order, attempted automatically, and opened as
-pull requests for human review. Completed findings expire on a TTL while `FindingRollup` resources keep the all-time
-statistics.
+Findings arrive by webhook from GitHub code scanning, Google Cloud Security Command Center, Wiz, or any scanner through
+the generic HTTP integration, and accumulate into `Finding` resources for an hour, each projected to a GitHub tracking
+issue. Findings are enhanced with ownership and infrastructure context, then a sandboxed coding agent investigates each
+one — false positives are dismissed, low-confidence or human-only work is handed to the repository owner, and
+high-confidence remediations are queued in priority order, attempted automatically, and opened as pull requests for
+human review. Completed findings expire on a TTL while `FindingRollup` resources keep the all-time statistics.
 
 ## Components
 
-| Binary                     | Concern                                                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `integration-controller`   | The one internet-facing entry point: validate provider webhooks, ingest alerts into Findings, project tracking issues, apply human signals |
-| `source-controller`        | `Forge`/`Repository` reconcilers: resolve credentials, pin the head SHA, serve the repository tarball agents fetch credential-lessly       |
-| `context-controller`       | Enhance freshly opened Findings with CMDB ownership / infrastructure context                                                               |
-| `investigation-controller` | Gate eligible findings, run analysis agent Jobs, route the verdicts                                                                        |
-| `remediation-controller`   | Queue admission, priority-ordered remediation Jobs, changeset push + pull requests, rollup statistics and the finding TTL                  |
-| `agent-runner`             | In-pod coding-agent runtime: investigate or remediate via `claude -p`                                                                      |
-| `status-server`            | The human-facing status page: findings/rollup projection, OIDC sign-in, the RBAC-gated actions                                             |
-| `patchy`                   | The workstation CLI: list, review and act on findings over your own kubeconfig — never through a controller                                |
+| Binary                      | Concern                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `integration-controller`    | The one internet-facing entry point: validate provider webhooks, ingest alerts into Findings, project tracking issues, apply human signals |
+| `source-controller`         | `Forge`/`Repository` reconcilers: resolve credentials, pin the head SHA, serve the repository tarball agents fetch credential-lessly       |
+| `context-controller`        | The enhancer chain: Google Cloud, AWS and Azure resource lookups, generic HTTP enhancers, and a static context file                        |
+| `investigation-controller`  | Gate eligible findings, run analysis agent Jobs, route the verdicts                                                                        |
+| `remediation-controller`    | Queue admission, priority-ordered remediation Jobs, changeset push + pull requests, rollup statistics and the finding TTL                  |
+| `agent-runner`              | In-pod coding-agent runtime: investigate or remediate with `claude -p` or `codex exec`                                                     |
+| `egress-broker`             | The proxy every agent model request goes through: holds the model credential, so agent pods hold none                                      |
+| `status-server`             | The human-facing status page: findings and metrics, OIDC sign-in, the RBAC-gated actions                                                   |
+| `evaluation-controller`     | Optional: runs evolve skill evaluations remotely on the same sandboxed agent Jobs                                                          |
+| `patchy` / `kubectl-patchy` | The workstation CLI: list, review and act on findings over your own kubeconfig — never through a controller                                |
 
 See [DESIGN.md](DESIGN.md) for the full requirements and the state machine, and [AGENTS.md](AGENTS.md) for a map of the
 repository. Full documentation — getting started, configuration and deployment references — lives at
@@ -75,10 +77,11 @@ brew install bitwise-media-group/tap/patchy
 
 It talks to the Kubernetes API with your own kubeconfig, so what you can do is exactly what your RBAC allows. The cask
 also installs `kubectl-patchy`, so every command works as `kubectl patchy …`, with shell completion for both spellings.
-See [`docs/cli.md`](docs/cli.md) for the tour and [`docs/cli/patchy.md`](docs/cli/patchy.md) for the generated command
-reference.
+See [`docs/operate/cli.md`](docs/operate/cli.md) for the tour and [`docs/cli/patchy.md`](docs/cli/patchy.md) for the
+generated command reference.
 
 ## Status
 
-All components are implemented and tested end to end. The context enhancer is a deliberate placeholder — the plugin seam
-(`pkg/enhance`) and a YAML-backed static enhancer ship, and a real CMDB integration implements the same interface.
+All components are implemented and tested end to end. Ingestion (`pkg/source`) and context enhancement (`pkg/enhance`)
+are plugin seams; the [extending guide](https://oss.bitwisemedia.uk/patchy/extending/) covers both, and the generic HTTP
+integration plugs in an external process without changing patchy.

@@ -6,8 +6,8 @@ List patchy resources
 
 List patchy resources.
 
-Columns come from the CRDs themselves, so they match `kubectl get` exactly;
--o wide adds the columns marked lower priority (issue and pull-request links).
+Columns come from the CRDs themselves, so they match `kubectl get`. -o wide
+adds the columns marked lower priority (issue and pull-request links).
 
 The resource `all` lists every patchy kind, each in its own table, in the
 order the pipeline uses them. Kinds with nothing in them are left out.

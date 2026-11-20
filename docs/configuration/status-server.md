@@ -1,10 +1,14 @@
 # status-server
 
-The backend of the [status page](../operate/status-page.md): the embedded web dashboard over the `Finding` state machine
-and the `FindingRollup` statistics, the sign-in surface, the five finding actions (approve, retry, expedite, suspend,
-resume), and the integration-scoped admin verbs (backfill, replay, reset). It is a server, not a controller: it runs no
-reconcilers and takes no leases. A controller-runtime cache gives it live watches, and an SSE stream tells open browsers
-to refetch when anything changes.
+The backend of the [status page](../operate/status-page.md). It provides:
+
+- the embedded web dashboard over the `Finding` state machine and the `FindingRollup` statistics
+- sign-in
+- the five finding actions (approve, retry, expedite, suspend, resume)
+- the integration-scoped admin verbs (backfill, replay, reset)
+
+It is a server and not a controller, so it runs no reconcilers and takes no leases. A controller-runtime cache gives it
+live watches, and an SSE stream tells open browsers to refetch when anything changes.
 
 ```sh
 status-server serve --namespace patchy --auth-config /etc/patchy/auth/config.yaml
@@ -12,9 +16,8 @@ status-server serve --namespace patchy --auth-config /etc/patchy/auth/config.yam
 
 ## Routes
 
-Every data route needs an authorised identity. With **no** auth config at all the server runs in the _unconfigured_
-posture: it serves nothing but the page, which explains that sign-in is not configured. Auth mode `none` opens
-everything.
+Every data route needs an authorised identity. With **no** auth config at all, the server runs _unconfigured_. It serves
+only the page, which explains that sign-in is not configured. Auth mode `none` opens everything.
 
 | Route                                                       | Needs                                 | Serves                                                                                   |
 | ----------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -30,8 +33,8 @@ everything.
 | `GET /events`                                               | any read grant                        | The SSE refetch signal; it carries no content                                            |
 | `/oauth2/…`, `/logout`                                      | none                                  | Sign-in and sign-out (mode `oidc`)                                                       |
 
-The metrics summary stays small because repository rollups grow with the estate; `repositoryCount` says how many there
-are. `GET /api/rollups/repositories` takes these query parameters:
+The metrics summary leaves out most repository rollups, because their number grows with your repositories. Its
+`repositoryCount` says how many there are. `GET /api/rollups/repositories` takes these query parameters:
 
 | Parameter     | Meaning                                                                                  |
 | ------------- | ---------------------------------------------------------------------------------------- |
@@ -43,10 +46,10 @@ are. `GET /api/rollups/repositories` takes these query parameters:
 | `limit`       | Page size, at most 100                                                                   |
 | `aggregate=1` | Add the summed bucket of every match                                                     |
 
-Agent conversations: a finished run replays its stored ConfigMap; a running one streams from the agent's pod log.
-Following a live run needs `pods` and `pods/log` read in `--agent-namespace`, through the API server (the server never
-dials an agent pod). Without that grant, completed runs' conversations still serve. See
-[Agent conversations](../operate/status-page.md#agent-conversations).
+Agent conversations: a finished run replays its stored ConfigMap, and a running one streams from the agent's pod log. To
+follow a live run, the server needs read access to `pods` and `pods/log` in `--agent-namespace`, through the API server.
+The server never connects to an agent pod directly. Without that grant, the conversations of completed runs are still
+served. See [Agent conversations](../operate/status-page.md#agent-conversations).
 
 ## Flags
 
@@ -55,19 +58,19 @@ The [shared flags](index.md#shared-flags) (`--listen-addr` is the page's own add
 | Flag                | Env                      | Default         | Purpose                                                                              |
 | ------------------- | ------------------------ | --------------- | ------------------------------------------------------------------------------------ |
 | `--agent-namespace` | `PATCHY_AGENT_NAMESPACE` | `patchy-agents` | Namespace the agent Jobs run in; live conversations are followed from their pod logs |
-| `--auth-config`     | `PATCHY_AUTH_CONFIG`     | _(unset)_       | Mounted authentication config; absent means the server serves nothing (see below)    |
+| `--auth-config`     | `PATCHY_AUTH_CONFIG`     | none            | Mounted authentication config; absent means the server serves nothing (see below)    |
 
 ## Authentication configuration
 
 `--auth-config` points at a YAML file, conventionally a mounted Secret (`patchy-status-auth`, key `config.yaml`). The
-deployments mount it `optional`, so removing the Secret degrades to the unconfigured posture (nothing served) rather
-than failing the pod. A present-but-invalid file is a startup error: a broken configuration never silently downgrades to
-no authentication.
+deployments mount it `optional`. If you remove the Secret, the server falls back to running unconfigured (nothing
+served) and the pod keeps running. A file that is present but invalid is a startup error, so a broken configuration
+never quietly turns authentication off.
 
 ```yaml
 mode: oidc # none | anonymous | oidc
 sessionDuration: 168h # absolute session lifetime (default 7 days)
-# insecure: true               # drop the cookies' Secure flag — plain-HTTP local dev ONLY
+# insecure: true               # drop the cookies' Secure flag; plain-HTTP local dev ONLY
 anonymous: # mode: anonymous only
   username: status-viewer
   groups: [patchy-viewers]
@@ -96,15 +99,18 @@ oidc: # mode: oidc only
 
 ### Sessions and cookies (mode `oidc`)
 
-There is no server-side session store. The ID token, refresh token, and session start are sealed with AES-256-GCM — the
-key is derived (HKDF-SHA256) from the OIDC client secret, so **rotating the client secret signs everyone out** — and
-stored in chunked `HttpOnly` cookies (`patchy-auth`, `patchy-auth-1`, …). Every request re-verifies the ID token; an
-expired token is renewed via the refresh token in place, but never past `sessionDuration` from the original sign-in.
-Three small SPA-readable cookies carry no secrets: `patchy-auth-provider` (how sign-in works), `patchy-auth-error` (the
-last failure), `patchy-auth-logout` (pauses `autoLogin` after an explicit sign-out).
+There is no server-side session store. The server seals the ID token, refresh token and session start time with
+AES-256-GCM, and stores them in chunked `HttpOnly` cookies (`patchy-auth`, `patchy-auth-1`, …). The key is derived
+(HKDF-SHA256) from the OIDC client secret, so **rotating the client secret signs everyone out**. Every request
+re-verifies the ID token. When the token expires, the server renews it with the refresh token, but never past
+`sessionDuration` from the original sign-in. Three small cookies that the SPA can read carry no secrets:
 
-The callback URL is derived from `X-Forwarded-Proto` / `X-Forwarded-Host` (or the Host header), which assumes a trusted
-fronting proxy — set `oidc.redirectURL` explicitly if yours cannot be trusted to strip those.
+- `patchy-auth-provider` (how sign-in works)
+- `patchy-auth-error` (the last failure)
+- `patchy-auth-logout` (pauses `autoLogin` after an explicit sign-out)
+
+The callback URL is derived from `X-Forwarded-Proto` / `X-Forwarded-Host` (or the Host header). This assumes a trusted
+proxy in front of the server. If you cannot trust your proxy to strip those headers, set `oidc.redirectURL` explicitly.
 
 ## Authorization
 
@@ -123,9 +129,10 @@ Grants are namespace-scoped and stamped into the payload as each finding's `user
 with the finding's own state machine, and every `POST` is re-checked server-side. See
 `deploy/kustomize/base/rbac.users.example.yaml` for ready-made viewer, approver and operator tiers.
 
-The server's own ServiceAccount is deliberately narrow. It reads `findings`, `findingrollups`, `integrations` and
+The server's own ServiceAccount has narrow permissions. It reads `findings`, `findingrollups`, `integrations` and
 `forges`, and writes **spec only**: `spec.approval`, `spec.retry`, `spec.expedite` and `spec.suspend` on findings, and
-`spec.backfill`, `spec.replay` and `spec.reset` on integrations. It never writes status and never moves a phase; the
-owning controllers react to the spec change. It can delete the pipeline kinds (findings, runs, repositories, rollups)
-for the access-review-gated reset, never the configuration. It also holds cluster-scoped `subjectaccessreviews create`
-for the reviews, and, with live transcripts on, `pods` and `pods/log` read in the agent namespace.
+`spec.backfill`, `spec.replay` and `spec.reset` on integrations. It never writes status and never moves a phase. The
+owning controllers react to the spec change. For the reset action, which an access review guards, it can delete the
+pipeline kinds (findings, runs, repositories, rollups). It can never delete the configuration. It also holds
+cluster-scoped `subjectaccessreviews create` for the reviews, and, with live transcripts on, `pods` and `pods/log` read
+in the agent namespace.

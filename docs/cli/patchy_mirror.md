@@ -4,19 +4,20 @@ Mirror upstream helm charts and OCI artifacts into a platform registry
 
 ### Synopsis
 
-Maintain a vendored mirror store: a git tree where every charts/<name>/ or
-artifacts/<name>/ directory pins one upstream chart or OCI artifact — vendored
-for review, digest-locked, provenance-verified, scanned, and published signed.
-The registries, signing and scan defaults come from the patchy config (shared
-with `patchy build`); the mirror: block adds update and sourceRegistryRewrites.
+Maintain a vendored mirror store. This is a git tree where every charts/<name>/
+or artifacts/<name>/ directory pins one upstream chart or OCI artifact. Each one
+is vendored for review, locked by digest, checked against its publisher's
+signatures, scanned, and published with your signature. The registries, signing
+and scan defaults come from the patchy config (shared with `patchy build`). The
+mirror: block adds update and sourceRegistryRewrites.
 
-`upgrade` moves pins forward and regenerates the derived state; `sync`
-converges the registry onto the committed state (idempotent, never replacing
-an existing tag); `validate` proves the committed state is self-consistent
-without touching the tree. patchy never runs git: commits, branches and PRs
-belong to the calling pipeline.
+`upgrade` moves pins forward and regenerates the derived files. `sync` brings
+the registries in line with the committed state. It is idempotent and never
+replaces an existing tag. `validate` checks that the committed state is
+consistent, without changing the tree. patchy never runs git: commits, branches
+and PRs belong to the calling pipeline.
 
-Flags also resolve from PATCHY_MIRROR_* environment variables and the patchy
+Flags can also come from PATCHY_MIRROR_* environment variables and the patchy
 config's mirror: block.
 
 The patchy config merges from, least to most preferred: /etc/patchy/config.<ext>,
@@ -52,5 +53,5 @@ an inherited key.
 * [patchy mirror add](patchy_mirror_add.md)	 - Scaffold a new chart or artifact entry
 * [patchy mirror sync](patchy_mirror_sync.md)	 - Publish committed charts and images to the mirror registries
 * [patchy mirror upgrade](patchy_mirror_upgrade.md)	 - Move pins to newer upstream versions and regenerate derived state
-* [patchy mirror validate](patchy_mirror_validate.md)	 - Prove the committed store is current, verified and clean
+* [patchy mirror validate](patchy_mirror_validate.md)	 - Check that the committed store is current, verified and clean
 

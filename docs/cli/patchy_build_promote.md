@@ -4,17 +4,18 @@ Promote published builds by adding a tag to them, without rebuilding
 
 ### Synopsis
 
-Promote an already-published build of each entry by adding a tag to its digest:
-what was tested is exactly what ships. In every configured registry, the newest
-tag of <registry.url>/<repository> matching --from (a glob; semver order, so
-X.Y.Z-edge.<yyyymmddhhmmss>.g<commit> builds order by their timestamp) is the
-build promoted. Its digest must carry a valid signature under that registry's
-signing config, and --tag is then added to it.
+Promote an already-published build of each entry by adding a tag to its digest,
+so what ships is the build that was tested. In every configured registry, the
+build promoted is the newest tag of <registry.url>/<repository> that matches
+--from. --from is a glob, and tags compare in semver order, so
+X.Y.Z-edge.<yyyymmddhhmmss>.g<commit> builds order by their timestamp. The
+build's digest must carry a valid signature under that registry's signing
+config. Then --tag is added to it.
 
-Tags never move: a --tag already on that digest is skipped, and one on another
-digest fails the entry. Nothing is built, scanned or signed — the build's own
-signature is the one verified. --from and --tag are ${ENV}-expanded like the
-build's tag templates.
+Tags never move. A --tag already on that digest is skipped, and one on another
+digest fails the entry. Nothing is built, scanned or signed. The signature
+checked is the one the build already carries. --from and --tag are
+${ENV}-expanded like the build's tag templates.
 
 Each row reports the build's org.opencontainers.image.revision annotation (every
 manifests artifact carries one), so a release pipeline can check the build came

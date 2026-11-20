@@ -9,7 +9,7 @@ for a finding or investigation, the pull request for a remediation, the
 repository for a repository.
 
 The verb is `browse` rather than `open` because every other patchy verb acts on
-the pipeline — and `open` would read as moving a finding into the Opened phase.
+the pipeline, and `open` would read as moving a finding into the Opened phase.
 
 ```
 patchy browse <resource> <name> [flags]

@@ -4,13 +4,13 @@ Patchy can also run [evolve](https://github.com/bitwise-media-group/evolve) skil
 sandboxed agent pods it uses for findings. This is optional: the evaluation-controller is off by default in the Helm
 chart, and nothing in the finding pipeline depends on it.
 
-The split of knowledge is strict. Evolve owns every evaluation semantic: the specs, the grading, the LLM judge and the
-baselines. Patchy owns scheduling, sandboxing and state. It never learns what an evaluation means.
+The two sides split the work strictly. Evolve owns everything about what an evaluation means: the specs, the grading,
+the LLM judge and the baselines. Patchy owns scheduling, sandboxing and state. It never learns what an evaluation means.
 
 ## What evolve submits
 
-An evolve client logs in with OIDC, uploads its workspace as a content-addressed bundle, and submits a plan of units.
-Each unit names a skill, a tier, a model, an ordered list of acceptable harnesses and the workspace digest. The
+An evolve client logs in with OIDC, uploads its workspace as a bundle named by its content hash, and submits a plan of
+units. Each unit names a skill, a tier, a model, an ordered list of acceptable harnesses and the workspace digest. The
 [evaluation-controller](../configuration/evaluation-controller.md) validates the submission and records it as an
 `Evaluation` resource.
 
@@ -21,14 +21,14 @@ Each unit names a skill, a tier, a model, an ordered list of acceptable harnesse
 | `Evaluation`     | `eval`     | One submission. Phase `Pending → Running → Complete` or `Failed`, derived from its children  |
 | `EvaluationUnit` | `evu`      | One unit of the plan, run as one agent Job. Phase `Pending → Running → Complete` or `Failed` |
 
-The controller expands each `Evaluation` into its `EvaluationUnit` children (condition `UnitsCreated`), then schedules
-units with bounded concurrency over the same agent-Job machinery as investigations. Each pod runs `evolve exec-unit`
-against the downloaded bundle and emits an `EVOLVE-EVENT:` JSONL stream on stdout.
+The controller expands each `Evaluation` into its `EvaluationUnit` children (condition `UnitsCreated`). It then
+schedules the units on the same agent-Job machinery as investigations, with a limit on how many run at once. Each pod
+runs `evolve exec-unit` against the downloaded bundle and emits an `EVOLVE-EVENT:` JSONL stream on stdout.
 
-Patchy interprets only the `result` and `fatal` events. A bounded summary (cases passed, failed and errored, usage,
-timing) lands on the unit's status. The full results entry is opaque to patchy and is stored in a per-unit ConfigMap,
-which the client reassembles locally. A unit that cannot run settles as `Failed` with a reason: `WorkspaceLost`,
-`HarnessUnavailable`, `JobFailed`, `Aborted` or `ResultTooLarge`.
+Patchy reads only the `result` and `fatal` events. A short summary of fixed size (cases passed, failed and errored,
+usage, timing) goes on the unit's status. Patchy does not read the full results entry. It stores the entry in a per-unit
+ConfigMap, and the client puts the results back together locally. A unit that cannot run ends as `Failed` with a reason:
+`WorkspaceLost`, `HarnessUnavailable`, `JobFailed`, `Aborted` or `ResultTooLarge`.
 
 These phases are local to the evaluation kinds. They are never part of the [Finding lifecycle](lifecycle.md), and the
 evaluation-controller is their only writer. Finished evaluations expire on a TTL (72 hours by default).
@@ -36,7 +36,7 @@ evaluation-controller is their only writer. Finished evaluations expire on a TTL
 ## Isolation
 
 Evaluation pods follow the same [isolation model](isolation.md) as finding pods. Brokered claude and codex pods hold no
-model credential; their traffic goes through the [egress broker](../configuration/egress-broker.md). The workspace
+model credential. Their traffic goes through the [egress broker](../configuration/egress-broker.md). The workspace
 bundle arrives through source-controller's artifact endpoint, addressed by its digest.
 
 ## The wire contract

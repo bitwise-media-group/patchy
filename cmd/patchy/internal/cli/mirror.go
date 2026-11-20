@@ -25,17 +25,18 @@ func newMirrorCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mirror",
 		Short: "Mirror upstream helm charts and OCI artifacts into a platform registry",
-		Long: "Maintain a vendored mirror store: a git tree where every charts/<name>/ or\n" +
-			"artifacts/<name>/ directory pins one upstream chart or OCI artifact — vendored\n" +
-			"for review, digest-locked, provenance-verified, scanned, and published signed.\n" +
-			"The registries, signing and scan defaults come from the patchy config (shared\n" +
-			"with `patchy build`); the mirror: block adds update and sourceRegistryRewrites.\n\n" +
-			"`upgrade` moves pins forward and regenerates the derived state; `sync`\n" +
-			"converges the registry onto the committed state (idempotent, never replacing\n" +
-			"an existing tag); `validate` proves the committed state is self-consistent\n" +
-			"without touching the tree. patchy never runs git: commits, branches and PRs\n" +
-			"belong to the calling pipeline.\n\n" +
-			"Flags also resolve from PATCHY_MIRROR_* environment variables and the patchy\n" +
+		Long: "Maintain a vendored mirror store. This is a git tree where every charts/<name>/\n" +
+			"or artifacts/<name>/ directory pins one upstream chart or OCI artifact. Each one\n" +
+			"is vendored for review, locked by digest, checked against its publisher's\n" +
+			"signatures, scanned, and published with your signature. The registries, signing\n" +
+			"and scan defaults come from the patchy config (shared with `patchy build`). The\n" +
+			"mirror: block adds update and sourceRegistryRewrites.\n\n" +
+			"`upgrade` moves pins forward and regenerates the derived files. `sync` brings\n" +
+			"the registries in line with the committed state. It is idempotent and never\n" +
+			"replaces an existing tag. `validate` checks that the committed state is\n" +
+			"consistent, without changing the tree. patchy never runs git: commits, branches\n" +
+			"and PRs belong to the calling pipeline.\n\n" +
+			"Flags can also come from PATCHY_MIRROR_* environment variables and the patchy\n" +
 			"config's mirror: block.\n\n" + configHelp,
 		Args: cobra.NoArgs,
 	}

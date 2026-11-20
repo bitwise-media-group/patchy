@@ -29,18 +29,19 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade [name]...",
 		Short: "Move pins to newer upstream versions and regenerate derived state",
-		Long: "Converge entries onto their target versions: resolve the newest upstream\n" +
-			"version satisfying each entry's constraint, splice the pin, re-pick tracked\n" +
-			"image tags past their cooldown, re-vendor, re-render, and regenerate the\n" +
-			"digest locks. A fully-converged entry is a clean no-op.\n\n" +
-			"Entries sharing a lockstep group bump together: the group target is the\n" +
-			"lowest of the members' newest satisfying versions, holding the bump until\n" +
+		Long: "Move entries to their target versions. For each entry, upgrade finds the\n" +
+			"newest upstream version that satisfies its constraint and writes the new pin.\n" +
+			"It re-picks tracked image tags that are past their cooldown, re-vendors,\n" +
+			"re-renders, and regenerates the digest locks. An entry that is already up to\n" +
+			"date is left unchanged.\n\n" +
+			"Entries in the same lockstep group move together. The group's target is the\n" +
+			"lowest of the members' newest satisfying versions, so the bump waits until\n" +
 			"upstream has published every member's tag.\n\n" +
-			"--check reports the plan as data without touching the tree (exit 0 with an\n" +
-			"empty groups list when everything is current). patchy never commits: the\n" +
-			"calling pipeline turns the mutated tree into branches and PRs.\n\n" +
-			"--pinned converges on the pins already in the tree, for an external updater\n" +
-			"(Renovate) that moved chart.version or a tracked tag itself: no target is\n" +
+			"--check reports the plan as data without changing the tree. It exits 0 with an\n" +
+			"empty groups list when everything is current. patchy never commits: the\n" +
+			"calling pipeline turns the changed tree into branches and PRs.\n\n" +
+			"--pinned uses the pins already in the tree. It is for an external updater\n" +
+			"(Renovate) that moved chart.version or a tracked tag itself. No target is\n" +
 			"resolved and no tracked tag is re-picked, but every pin must satisfy its\n" +
 			"versionConstraint and every lockstep member must share it.",
 		Example: "  patchy mirror upgrade --check -o json\n" +
@@ -109,7 +110,7 @@ func newMirrorUpgradeCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	fl.StringVar(&group, "group", "", "upgrade one lockstep group")
 	fl.StringVar(&to, "to", "", "target version (default: newest satisfying the constraint)")
 	fl.BoolVar(&check, "check", false, "report the update plan without touching the tree")
-	fl.BoolVar(&pinned, "pinned", false, "converge on the pins already in the tree (validate, don't pick)")
+	fl.BoolVar(&pinned, "pinned", false, "use the pins already in the tree: check them, but pick no new versions")
 	_ = cmd.RegisterFlagCompletionFunc("group", noFileCompletion)
 	_ = cmd.RegisterFlagCompletionFunc("to", noFileCompletion)
 	return cmd

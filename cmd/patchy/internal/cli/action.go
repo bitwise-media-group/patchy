@@ -57,11 +57,12 @@ func newActionCmd(opts *Options, verb string) *cobra.Command {
 		Use:   fmt.Sprintf("%s finding <name...>", verb),
 		Short: verbHelp[verb],
 		Long: verbHelp[verb] + ".\n\n" +
-			"The action writes to the finding's spec only — a controller observes it and\n" +
-			"moves the phase. Repeating an action that has already taken effect is a no-op,\n" +
-			"so this is safe to re-run.\n\n" +
-			"Your RBAC decides whether it lands: the CLI checks the '" + verb + "' verb before\n" +
-			"writing, and the cluster's admission policy enforces it regardless of client.",
+			"The action writes only to the finding's spec. A controller sees the change and\n" +
+			"moves the phase. Repeating an action that has already taken effect does nothing,\n" +
+			"so it is safe to re-run.\n\n" +
+			"Your RBAC decides whether the write is allowed. The CLI checks the '" + verb + "'\n" +
+			"verb before writing, and the cluster's admission policy enforces it for every\n" +
+			"client.",
 		Example: fmt.Sprintf("  patchy %s finding my-finding\n"+
 			"  patchy %s finding -l patchy.bitwisemedia.uk/severity=critical\n"+
 			"  patchy %s finding my-finding --dry-run", verb, verb, verb),

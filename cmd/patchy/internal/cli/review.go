@@ -33,8 +33,8 @@ func newReviewCmd(opts *Options) *cobra.Command {
 		Short: "Read an agent's report on a finding",
 		Long: "Read what the agent concluded: its ratings, its verdict, and the report it wrote.\n\n" +
 			"On a terminal the report is rendered for reading. Piped, or with -o markdown, it\n" +
-			"is emitted as the markdown the agent actually wrote — paste it into an issue and\n" +
-			"nothing is lost in translation.",
+			"is printed as the markdown the agent wrote, so you can paste it into an issue\n" +
+			"without losing anything.",
 		Example: "  patchy review finding my-finding\n" +
 			"  patchy review investigation --finding my-finding\n" +
 			"  patchy review investigation --finding my-finding --attempt 2\n" +

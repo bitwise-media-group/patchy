@@ -4,21 +4,22 @@ Move pins to newer upstream versions and regenerate derived state
 
 ### Synopsis
 
-Converge entries onto their target versions: resolve the newest upstream
-version satisfying each entry's constraint, splice the pin, re-pick tracked
-image tags past their cooldown, re-vendor, re-render, and regenerate the
-digest locks. A fully-converged entry is a clean no-op.
+Move entries to their target versions. For each entry, upgrade finds the
+newest upstream version that satisfies its constraint and writes the new pin.
+It re-picks tracked image tags that are past their cooldown, re-vendors,
+re-renders, and regenerates the digest locks. An entry that is already up to
+date is left unchanged.
 
-Entries sharing a lockstep group bump together: the group target is the
-lowest of the members' newest satisfying versions, holding the bump until
+Entries in the same lockstep group move together. The group's target is the
+lowest of the members' newest satisfying versions, so the bump waits until
 upstream has published every member's tag.
 
---check reports the plan as data without touching the tree (exit 0 with an
-empty groups list when everything is current). patchy never commits: the
-calling pipeline turns the mutated tree into branches and PRs.
+--check reports the plan as data without changing the tree. It exits 0 with an
+empty groups list when everything is current. patchy never commits: the
+calling pipeline turns the changed tree into branches and PRs.
 
---pinned converges on the pins already in the tree, for an external updater
-(Renovate) that moved chart.version or a tracked tag itself: no target is
+--pinned uses the pins already in the tree. It is for an external updater
+(Renovate) that moved chart.version or a tracked tag itself. No target is
 resolved and no tracked tag is re-picked, but every pin must satisfy its
 versionConstraint and every lockstep member must share it.
 
@@ -43,7 +44,7 @@ patchy mirror upgrade [name]... [flags]
       --check[=true|false]    report the update plan without touching the tree
       --group string          upgrade one lockstep group
   -h, --help[=true|false]     help for upgrade
-      --pinned[=true|false]   converge on the pins already in the tree (validate, don't pick)
+      --pinned[=true|false]   use the pins already in the tree: check them, but pick no new versions
       --to string             target version (default: newest satisfying the constraint)
 ```
 

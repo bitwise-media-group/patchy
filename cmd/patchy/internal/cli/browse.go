@@ -24,7 +24,7 @@ func newBrowseCmd(opts *Options) *cobra.Command {
 			"for a finding or investigation, the pull request for a remediation, the\n" +
 			"repository for a repository.\n\n" +
 			"The verb is `browse` rather than `open` because every other patchy verb acts on\n" +
-			"the pipeline — and `open` would read as moving a finding into the Opened phase.",
+			"the pipeline, and `open` would read as moving a finding into the Opened phase.",
 		Example: "  patchy browse finding my-finding\n" +
 			"  patchy browse remediation my-finding-rem-1\n" +
 			"  patchy browse finding my-finding --print-url",

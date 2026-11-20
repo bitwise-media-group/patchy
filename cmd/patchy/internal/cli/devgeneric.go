@@ -55,20 +55,21 @@ func newDevGenericCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "generic",
 		Short: "Host a local receiver to test a generic integration",
-		Long: "Run the generic webhook receiver on your workstation: the same server, HMAC\n" +
-			"authentication, deduplication, and validation the integration-controller runs,\n" +
-			"with findings kept in memory instead of becoming Finding resources. Each\n" +
-			"ingested finding immediately exercises the outbound legs you configure — the\n" +
-			"enhancer call, then the verdict write-back — so one signed POST tests all\n" +
-			"three exchanges of the contract. No cluster is touched.\n\n" +
-			"Rejected deliveries answer 401 with no reason on the wire, exactly as in\n" +
-			"production; the reason appears here on stderr instead. Not emulated:\n" +
-			"accumulation into Finding resources, tracking issues, and the investigation\n" +
-			"that separates enhancement from dismissal — production sends the resolver\n" +
-			"write-back only when a finding is dismissed, typically much later.\n\n" +
-			"Without --secret or --secret-file a random secret is generated and printed,\n" +
-			"so a first run needs no setup. Every flag also reads from a PATCHY_DEV_*\n" +
-			"environment variable and the dev: block of the patchy config (flag >\n" +
+		Long: "Run the generic webhook receiver on your workstation. It is the same server,\n" +
+			"HMAC authentication, deduplication, and validation the integration-controller\n" +
+			"runs, but findings stay in memory instead of becoming Finding resources. Each\n" +
+			"ingested finding at once triggers the outbound calls you configure: first the\n" +
+			"enhancer call, then the verdict write-back. So one signed POST tests all three\n" +
+			"exchanges of the contract. No cluster is touched.\n\n" +
+			"A rejected delivery gets a 401 with no reason in the response, as in\n" +
+			"production. The reason appears here on stderr instead. The harness does not\n" +
+			"emulate accumulation into Finding resources, tracking issues, or the\n" +
+			"investigation that comes between enhancement and dismissal. In production,\n" +
+			"patchy sends the resolver write-back only when a finding is dismissed, usually\n" +
+			"much later.\n\n" +
+			"Without --secret or --secret-file, a random secret is generated and printed,\n" +
+			"so a first run needs no setup. Every flag can also come from a PATCHY_DEV_*\n" +
+			"environment variable or the dev: block of the patchy config (flag >\n" +
 			"environment > file > default).\n\n" + configHelp,
 		Example: "  patchy dev generic\n" +
 			"  patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance\n" +

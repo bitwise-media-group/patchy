@@ -6,12 +6,13 @@ Approve a finding, releasing a hold or reviving a handed-off finding
 
 Approve a finding, releasing a hold or reviving a handed-off finding.
 
-The action writes to the finding's spec only — a controller observes it and
-moves the phase. Repeating an action that has already taken effect is a no-op,
-so this is safe to re-run.
+The action writes only to the finding's spec. A controller sees the change and
+moves the phase. Repeating an action that has already taken effect does nothing,
+so it is safe to re-run.
 
-Your RBAC decides whether it lands: the CLI checks the 'approve' verb before
-writing, and the cluster's admission policy enforces it regardless of client.
+Your RBAC decides whether the write is allowed. The CLI checks the 'approve'
+verb before writing, and the cluster's admission policy enforces it for every
+client.
 
 ```
 patchy approve finding <name...> [flags]

@@ -1,5 +1,5 @@
 {#-
-  overrides/home.html — the landing page.
+  overrides/home.html: the landing page.
 
   Injected full width under the header through the `tabs` block; the stock
   article is emptied (index.md sets `hide: [navigation, toc]`). Built from the
@@ -76,10 +76,10 @@
     </section>
 
     <section class="pt-home__band" aria-labelledby="pt-flow-title">
-      <h2 id="pt-flow-title">The cluster keeps the truth</h2>
+      <h2 id="pt-flow-title">The finding lifecycle</h2>
       <p class="pt-home__intro">
-        Every step is a phase on the <code>Finding</code> resource, moved by one controller. There is no shadow database
-        and no hidden queue: <code>kubectl get findings -w</code> is the whole pipeline, live.
+        Each step is a phase on the <code>Finding</code> resource, and one controller moves it to the next. All state lives
+        in Kubernetes, so <code>kubectl get findings -w</code> shows the pipeline as it runs.
       </p>
       {% set pt_steps = [
         ["Opened", "An alert lands and related alerts gather for an hour"],
@@ -153,7 +153,7 @@
     </section>
 
     <section class="pt-home__band" aria-labelledby="pt-rules-title">
-      <h2 id="pt-rules-title">Automation with edges you can see</h2>
+      <h2 id="pt-rules-title">How patchy stays safe</h2>
       <div class="pt-principles">
         <div>
           <h3>Related alerts gather</h3>

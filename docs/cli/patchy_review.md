@@ -7,8 +7,8 @@ Read an agent's report on a finding
 Read what the agent concluded: its ratings, its verdict, and the report it wrote.
 
 On a terminal the report is rendered for reading. Piped, or with -o markdown, it
-is emitted as the markdown the agent actually wrote — paste it into an issue and
-nothing is lost in translation.
+is printed as the markdown the agent wrote, so you can paste it into an issue
+without losing anything.
 
 ```
 patchy review <resource> [name] [flags]

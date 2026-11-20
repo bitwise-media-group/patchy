@@ -1,8 +1,8 @@
 # Building images and Flux manifests
 
-`patchy build` is the first-party counterpart of [`patchy mirror`](mirror.md). It builds the Dockerfiles and Flux
-manifest directories listed in the config's `build:` block, scans them **before** anything is pushed, publishes them to
-every configured registry as `<registry.url>/<repository>:<tag>`, and signs them. It uses the same
+`patchy build` is the counterpart of [`patchy mirror`](mirror.md) for code you write yourself. It builds the Dockerfiles
+and Flux manifest directories listed in the config's `build:` block and scans them before anything is pushed. Then it
+publishes them to every configured registry as `<registry.url>/<repository>:<tag>`, and signs them. It uses the same
 [registries and signing](index.md#registries), the same scanners and the same [allowlist rules](scanning.md) as the
 mirror.
 
@@ -59,9 +59,9 @@ patchy build --all --tag '${VERSION}'     # replace the configured tag templates
 patchy build --all --update-allowlists    # regenerate security/allowlists/<name>.yaml
 ```
 
-Entries run one at a time (buildx parallelizes inside a build). `--all` carries on past a failed entry and exits
-non-zero at the end. An empty `build:` block makes `--all` a no-op that reports nothing to build, so one shared task can
-run it in every repository.
+Entries run one at a time (buildx runs steps in parallel inside a build). `--all` carries on past a failed entry and
+exits non-zero at the end. With an empty `build:` block, `--all` does nothing and reports that there is nothing to
+build. So one shared task can run it in every repository.
 
 ## Images
 
@@ -75,12 +75,12 @@ docker buildx build --file <dockerfile> --platform <platforms> [--target <t>] [-
 
 The result is a local OCI layout. Each platform image in it is exported as a docker archive and scanned under the
 entry's [scan policy](scanning.md) (attestation manifests are skipped). Blocking findings are checked against
-`security/allowlists/<name>.yaml`. Anything still blocking fails the entry, and **nothing is pushed**. The allowlist is
-also linted before the build starts, so one that breaks the rules (missing statement, expiry beyond `maxDays`) fails
-fast. An entry whose acceptance has lapsed is reported and accepts nothing.
+`security/allowlists/<name>.yaml`. Anything still blocking fails the entry, and nothing is pushed. The allowlist is also
+linted before the build starts, so an allowlist that breaks the rules (missing statement, expiry beyond `maxDays`) fails
+early. An allowlist entry whose acceptance has lapsed is reported and accepts nothing.
 
 **Platforms.** `architectures` takes `amd64`, `arm64`, … (meaning `linux/<arch>`) or full `os/arch[/variant]` values. A
-multi-platform OCI export needs a `docker-container` builder or the containerd image store; the default `docker` driver
+multi-platform OCI export needs a `docker-container` builder or the containerd image store. The default `docker` driver
 refuses it:
 
 ```sh
@@ -91,9 +91,9 @@ Building for a foreign architecture also needs QEMU emulation registered
 (`docker run --privileged --rm tonistiigi/binfmt --install all`, or `docker/setup-qemu-action` in GitHub Actions).
 
 **Reproducible digests.** With `SOURCE_DATE_EPOCH` set, patchy asks buildx to rewrite layer timestamps, and
-`${PATCHY_TIMESTAMP}` is taken from it too. Set it to the commit time and a rebuild of the same commit produces the same
-tags, and the same digest as long as the Dockerfile itself is deterministic (pinned base images by digest, no
-unversioned package installs):
+`${PATCHY_TIMESTAMP}` is taken from it too. Set it to the commit time, and a rebuild of the same commit produces the
+same tags. It also produces the same digest, as long as the Dockerfile itself is deterministic (base images pinned by
+digest, no unversioned package installs):
 
 ```sh
 export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
@@ -102,28 +102,32 @@ export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 A re-run of a reproducible build reports `skipped-current` on every target.
 
 **Secrets.** A build that needs a credential (a private registry token, an `.npmrc`, `GOPRIVATE` access) should mount it
-as a BuildKit secret rather than pass it through `args`, which records the value in the image history. Each entry under
-`secrets` sets an `id`, unique within the image, and exactly one source: `env` names a variable in patchy's environment,
-which docker inherits, and `src` names a file. The Dockerfile mounts it by id, either into a variable or as a file:
+as a BuildKit secret. Do not pass it through `args`, which records the value in the image history. Each entry under
+`secrets` sets an `id`, unique within the image, and one source (never both):
+
+- `env` names a variable in patchy's environment, which docker inherits.
+- `src` names a file.
+
+The Dockerfile mounts the secret by id, either into a variable or as a file:
 
 ```dockerfile
 RUN --mount=type=secret,id=npm_token,env=NPM_TOKEN npm ci
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
 ```
 
-Patchy hands buildx only the reference (`--secret id=npm_token,env=NPM_TOKEN`, `--secret id=npmrc,src=<path>`), so the
-value never reaches the argv, the image or patchy's output. Secrets are resolved before anything is built: an unset or
-empty variable, or a `src` that is missing or not a regular file, fails the entry in seconds with an error naming the
-id. Mark a secret `optional: true` to drop it with a note instead, for a Dockerfile that mounts it with `required=false`
-(the `RUN --mount` default). BuildKit leaves secret contents out of cache keys, so rotating a secret does not invalidate
-the cache; change something the step depends on when a new value must rebuild it.
+patchy passes buildx only the reference (`--secret id=npm_token,env=NPM_TOKEN`, `--secret id=npmrc,src=<path>`). So the
+value never reaches the command line, the image or patchy's output. Secrets are resolved before anything is built. An
+unset or empty variable, or a `src` that is missing or not a regular file, fails the entry in seconds with an error that
+names the id. To drop the secret with a note instead, mark it `optional: true`. Use this for a Dockerfile that mounts it
+with `required=false` (the `RUN --mount` default). BuildKit leaves secret contents out of cache keys, so rotating a
+secret does not invalidate the cache. When a new value must trigger a rebuild, change something the step depends on.
 
 ## Flux manifests
 
-A manifests entry publishes a directory as-is, as a Flux OCI artifact, with no render step. The tree under `path` is
-staged with the `ignore` patterns applied (gitignore syntax; `.git/` always excluded). Only regular files and
-directories are allowed, and a symlink fails the entry rather than being followed. If scanning is enabled, kubescape
-sweeps the staged tree, so it sees exactly what gets published. The tree is then packaged:
+A manifests entry publishes a directory as-is, as a Flux OCI artifact, with no render step. patchy copies the tree under
+`path` to a staging directory, applying the `ignore` patterns (gitignore syntax; `.git/` is always excluded). Only
+regular files and directories are allowed. A symlink fails the entry instead of being followed. If scanning is enabled,
+kubescape scans the staged tree, so it sees the same files that get published. The tree is then packaged:
 
 | Part        | Value                                                                                                |
 | ----------- | ---------------------------------------------------------------------------------------------------- |
@@ -131,9 +135,9 @@ sweeps the staged tree, so it sees exactly what gets published. The tree is then
 | layer       | one `application/vnd.cncf.flux.content.v1.tar+gzip`                                                  |
 | annotations | `org.opencontainers.image.source` from `source`, `org.opencontainers.image.revision` from `revision` |
 
-The tarball is deterministic: entries are sorted, timestamps zeroed, owners zeroed, modes normalized to `0644` / `0755`,
-and the gzip header carries no name or time. An unchanged tree with the same annotations always produces the same
-digest. There is deliberately no `created` annotation, which would break that.
+The tarball is deterministic. Entries are sorted, timestamps and owners are set to zero, modes are normalized to `0644`
+/ `0755`, and the gzip header carries no name or time. An unchanged tree with the same annotations always produces the
+same digest. There is no `created` annotation, because it would change the digest on every build.
 
 `flux pull artifact`, `flux build`, and an `OCIRepository` all consume it directly:
 
@@ -141,8 +145,8 @@ digest. There is deliberately no `created` annotation, which would break that.
 flux pull artifact oci://ghcr.io/acme/manifests/platform:1.4.0 --output ./platform
 ```
 
-Manifests entries only get the configuration scan. `failOn`, `ignoreUnfixed` and `allowlist` are image-scan settings, so
-setting them on a manifests entry is a validation error. Inherited config defaults are simply not used.
+Manifests entries get only the configuration scan. `failOn`, `ignoreUnfixed` and `allowlist` are image-scan settings, so
+setting them on a manifests entry is a validation error. Inherited config defaults for them are ignored.
 
 ## Tags
 
@@ -156,9 +160,9 @@ Tag templates, image `args`, secret `src` paths, `source` and `revision` all exp
 | `$$`                   | a literal `$`; any other bare `$` is an error                       |
 | `${PATCHY_TIMESTAMP}`  | built in: UTC `yyyymmddhhmmss`, fixed once per run                  |
 
-`PATCHY_TIMESTAMP` comes from `SOURCE_DATE_EPOCH` when that is set, and a real `PATCHY_TIMESTAMP` environment variable
+`PATCHY_TIMESTAMP` comes from `SOURCE_DATE_EPOCH` when that is set. A real `PATCHY_TIMESTAMP` environment variable
 overrides both, so several jobs can share one value. Expansion happens before anything is built, so a missing variable
-fails in seconds rather than after a long build. Every expanded tag must be a valid OCI tag.
+fails in seconds instead of after a long build. Every expanded tag must be a valid OCI tag.
 
 ### Channels without moving tags
 
@@ -171,23 +175,23 @@ fails in seconds rather than after a long build. Every expanded tag must be a va
 | points at a different digest          | `skipped-tag-exists`, with a warning; it is left alone |
 | (with `--dry-run`)                    | `would-push`                                           |
 
-That makes `build` safe against registries with immutable tags, and it means a channel can't be a moving tag. A channel
-is instead its **newest immutable build**, written as a semver pre-release that sorts by time:
+This makes `build` safe with registries that have immutable tags. It also means a channel cannot be a moving tag.
+Instead, a channel is its **newest immutable build**, written as a semver pre-release that sorts by time:
 
 | Channel | Tag                                  | Consumer follows                                                                                |
 | ------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | edge    | `1.4.0-edge.20261110090807.g0123456` | semver `>=0.0.0-0`, filtered to `^[0-9]+[.][0-9]+[.][0-9]+-edge[.][0-9]{14}[.]g[0-9a-f]{7,40}$` |
 | stable  | `v1.4.0`                             | semver `>=0.0.0`, which excludes pre-releases                                                   |
 
-A Flux `OCIRepository` follows a channel with `ref.semver` plus `ref.semverFilter`. Base an edge build on the **next**
-release (`1.4.0` while `1.3.2` is the latest), so the order is consistent everywhere: `1.3.2` < `1.4.0-edge.*` <
-`1.4.0`. A release-please repository has it in the open release pull request's `.release-please-manifest.json`.
-`sha-${GITHUB_SHA}` gives every build a second, commit-addressed name. More channels (`staging`, `rc`) are the same
-pattern with another pre-release word.
+A Flux `OCIRepository` follows a channel with `ref.semver` plus `ref.semverFilter`. Base an edge build on the next
+release (`1.4.0` while `1.3.2` is the latest), so the order is the same everywhere: `1.3.2` < `1.4.0-edge.*` < `1.4.0`.
+In a release-please repository, the next version is in the open release pull request's `.release-please-manifest.json`.
+`sha-${GITHUB_SHA}` gives every build a second name, based on its commit. More channels (`staging`, `rc`) follow the
+same pattern with another pre-release word.
 
 ### Promotion
 
-**Promotion** adds a tag to a build that already exists, so what shipped is exactly what was tested.
+**Promotion** adds a tag to a build that already exists, so what ships is the build that was tested.
 `patchy build promote` does it without rebuilding:
 
 ```sh
@@ -202,17 +206,17 @@ For each entry, in every registry:
 3. `--tag` is added to that digest. A `--tag` already on it is `skipped-current`; one on another digest fails the entry,
    because tags never move.
 
-Nothing is built, scanned or signed. Each row also reports the build's `org.opencontainers.image.revision`, so a release
-pipeline can check that the build came from the commit it is releasing before it promotes (`--dry-run -o json` resolves
-and verifies without tagging). A release commit that only bumps versions and the changelog leaves every artifact's tree
-unchanged, which is what makes the newest edge build the right one to promote.
+Nothing is built, scanned or signed. Each row also reports the build's `org.opencontainers.image.revision`. A release
+pipeline can use it to check that the build came from the commit it is releasing before it promotes (`--dry-run -o json`
+resolves and verifies without tagging). A release commit that only bumps versions and the changelog leaves every
+artifact's tree unchanged. That is why the newest edge build is the right one to promote.
 
 ## Publishing and signing
 
-After the tags are written, every registry where at least one tag holds the build's digest gets it signed with that
-registry's signing block, or the global one. An image index is signed recursively, so every platform manifest is too.
-Before signing, patchy checks for an existing valid signature with the configured identity, so re-runs don't stack up
-signatures. See [Signing](index.md#signing).
+After the tags are written, patchy signs the build in every registry where at least one tag holds its digest. It uses
+that registry's signing block, or the global one. An image index is signed recursively, so every platform manifest is
+signed too. Before signing, patchy checks for an existing valid signature with the configured identity, so re-runs do
+not pile up signatures. See [Signing](index.md#signing).
 
 The report has one row per (entry, registry, tag): `ENTRY`, `REGISTRY`, `REF`, `ACTION`, `SIGNED`. `-o json` adds the
 digest and the scan summary. `-o markdown` gives one section per entry with its digest, a scan line, a bullet per
@@ -221,8 +225,8 @@ target, and a fenced block listing any blocking findings, ready for a job summar
 ## Restricting base images
 
 `build.policy` limits the registries a build may take images from. It covers every image a Dockerfile pulls (`FROM`,
-`COPY --from`, `RUN --mount` `from=`, and the `# syntax=` frontend), expanded from the entry's `args`, and it is checked
-before buildx runs:
+`COPY --from`, `RUN --mount` `from=`, and the `# syntax=` frontend), with references expanded from the entry's `args`.
+patchy checks it before buildx runs:
 
 ```yaml
 build:
@@ -237,24 +241,29 @@ policy a project's own config cannot loosen.
 ## Dry runs
 
 `--dry-run` builds and scans everything and reports `would-push` for every target, but never contacts a registry. That
-makes it the pull-request gate. It needs no push credentials, no signing identity, and no `registries` at all: with none
-configured it reports each build's digest. That keeps registry URLs out of a public repository, which only needs them
-where it publishes. It does need the variables your tag templates reference, because they are expanded first, and the
-image's required secrets, because the build runs.
+makes it the pull-request gate. It needs no push credentials, no signing identity, and no `registries` at all. With no
+registries configured, it reports each build's digest. So a public repository can keep registry URLs out of its files
+and supply them only in the job that publishes. A dry run does need the variables your tag templates reference, because
+they are expanded first. It also needs the image's required secrets, because the build runs.
 
 ## Allowlists
 
 Each image entry's allowlist lives at `security/allowlists/<name>.yaml` (relative to the working directory), in the same
-format as a mirror entry's. `--update-allowlists` is build's version of the mirror's upgrade-time derivation. For each
-selected image entry whose resolved `scan.allowlist.generate` is true, it rebuilds, rescans and regenerates the file:
-surviving acceptances keep their expiry, new ones get `newDays`, and findings that have gone are dropped. It never
-pushes, never signs and never fails on findings. Like a dry run, it never contacts a registry, so it needs no
-`registries` configured. Reviewing the allowlist diff in a pull request is where the risk is accepted. Entries with
+format as a mirror entry's. `--update-allowlists` does for build what `mirror upgrade` does when it regenerates an
+allowlist. For each selected image entry whose resolved `scan.allowlist.generate` is true, it rebuilds, rescans and
+regenerates the file:
+
+- Surviving acceptances keep their expiry.
+- New ones get `newDays`.
+- Findings that have gone are dropped.
+
+It never pushes, never signs and never fails on findings. Like a dry run, it never contacts a registry, so it needs no
+`registries` configured. The risk is accepted when someone reviews the allowlist diff in a pull request. Entries with
 `generate` off are skipped with a note. See [Scanning and allowlists](scanning.md#allowlists).
 
 ## Running it in CI
 
-GitHub Actions examples, with checkout, tool installation and registry login trimmed. Log in to every registry host
+These GitHub Actions examples leave out checkout, tool installation and registry login. Log in to every registry host
 before publishing (`docker login`, or a cloud auth action). Keyless signing needs `permissions: id-token: write`.
 
 **Pull request: build and scan.**
@@ -267,8 +276,8 @@ before publishing (`docker login`, or a cloud auth action). Keyless signing need
     VERSION: "0.0.0" # anything that expands; nothing is published
 ```
 
-**Build secrets.** Map each secret an image's `env` names onto the `patchy build` step. The variable lives only in that
-step's environment:
+**Build secrets.** Map each secret that an image's `env` names onto the `patchy build` step. The variable then exists
+only in that step's environment:
 
 ```yaml
 - run: patchy build --all -o markdown >> "$GITHUB_STEP_SUMMARY"
@@ -294,8 +303,8 @@ export VERSION="${TAG#v}"
 patchy build promote --all --from '${VERSION}-edge.*' --tag 'v${VERSION}' -o markdown >> "$GITHUB_STEP_SUMMARY"
 ```
 
-The registries and the signing config can come from a lower config layer the workflow writes
-(`~/.config/patchy/config.yaml`), so the repository's `patchy.yaml` carries only its `build:` block. The org's shared
+The registries and the signing config can come from a lower config layer that the workflow writes
+(`~/.config/patchy/config.yaml`). Then the repository's `patchy.yaml` carries only its `build:` block. The org's shared
 GitHub workflows package all of this as the `patchy-publish` action.
 
 **Scheduled: refresh allowlists.** Run `patchy build --all --update-allowlists` and open a pull request with whatever
@@ -303,13 +312,13 @@ changed under `security/allowlists/`, the same way the mirror's update sweep doe
 
 ## Troubleshooting
 
-| Symptom                                               | Cause and fix                                                                                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OCI exporter is not supported for the docker driver` | the active builder is the plain `docker` driver: create a `docker-container` builder (above) or turn on the containerd image store                     |
-| `exec format error` during a build step               | a foreign-architecture `RUN` without QEMU: register binfmt handlers                                                                                    |
-| `${VERSION} is not set`                               | a tag, arg, secret `src`, `source` or `revision` template references an unset variable: set it, or give it a `${VERSION:-default}`                     |
-| `secret "<id>": environment variable X is not set`    | the image declares a secret whose variable is unset or empty: export it (in CI, map it into the step's `env`), or mark the secret `optional: true`     |
-| `secret "<id>": src … does not exist`                 | the secret's file is missing (relative paths resolve against the working directory): create it first, or mark the secret `optional: true`              |
-| `no image scanner enabled`                            | image scanning is on but `scan.scanners.osv` and `scan.scanners.grype` are both off: enable one, or set the entry's `scan.enabled: false` deliberately |
-| `skipped-tag-exists`                                  | the tag already names another digest: tags never move, so build a new tag (the timestamp and commit in the default templates make each build unique)   |
-| allowlist lint errors before the build                | `security/allowlists/<name>.yaml` breaks policy: every entry needs `id`, `statement` and an `expired_at` within `maxDays`                              |
+| Symptom                                               | Cause and fix                                                                                                                                        |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OCI exporter is not supported for the docker driver` | the active builder is the plain `docker` driver: create a `docker-container` builder (above) or turn on the containerd image store                   |
+| `exec format error` during a build step               | a foreign-architecture `RUN` without QEMU: register binfmt handlers                                                                                  |
+| `${VERSION} is not set`                               | a tag, arg, secret `src`, `source` or `revision` template references an unset variable: set it, or give it a `${VERSION:-default}`                   |
+| `secret "<id>": environment variable X is not set`    | the image declares a secret whose variable is unset or empty: export it (in CI, map it into the step's `env`), or mark the secret `optional: true`   |
+| `secret "<id>": src … does not exist`                 | the secret's file is missing (relative paths resolve against the working directory): create it first, or mark the secret `optional: true`            |
+| `no image scanner enabled`                            | image scanning is on but `scan.scanners.osv` and `scan.scanners.grype` are both off: enable one, or set the entry's `scan.enabled: false` on purpose |
+| `skipped-tag-exists`                                  | the tag already names another digest: tags never move, so build a new tag (the timestamp and commit in the default templates make each build unique) |
+| allowlist lint errors before the build                | `security/allowlists/<name>.yaml` breaks policy: every entry needs `id`, `statement` and an `expired_at` within `maxDays`                            |

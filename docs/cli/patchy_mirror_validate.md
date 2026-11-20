@@ -1,19 +1,23 @@
 ## patchy mirror validate
 
-Prove the committed store is current, verified and clean
+Check that the committed store is current, verified and clean
 
 ### Synopsis
 
-Validate entries without touching the tree: regenerate the derived state
-out-of-tree and byte-compare it with what is committed (a stale tree means
-someone edited intent without running upgrade), verify upstream provenance,
-scan the locked images with the enabled scanners, and lint the manifests
-and CVE allowlists (statement + expiry within the policy horizon, rendered
-output pulling only from the mirror unless allowed with a reason).
+Validate entries without changing the tree. validate runs four checks:
 
-Wall-clock steps — tracked-tag picks, allowlist expiry stamping — never run
-here, so the byte-identity gate stays deterministic between a commit and CI
-validating it.
+  - It regenerates the derived files out-of-tree and byte-compares them with
+    what is committed. A stale tree means someone edited intent without running
+    upgrade.
+  - It verifies upstream provenance.
+  - It scans the locked images with the enabled scanners.
+  - It lints the manifests and CVE allowlists. Each allowlist entry needs a
+    statement and an expiry within the policy horizon. Rendered output may pull
+    only from the mirror, unless an exception is allowed with a reason.
+
+Steps that read the clock (tracked-tag picks, allowlist expiry stamping) never
+run here. That keeps the byte comparison deterministic between a commit and the
+CI run that validates it.
 
 ```
 patchy mirror validate [name]... [flags]

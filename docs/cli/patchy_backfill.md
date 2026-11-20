@@ -4,24 +4,24 @@ Backfill an integration's pre-existing open alerts into findings
 
 ### Synopsis
 
-Request a one-shot list-alerts backfill on an integration: the
-integration-controller walks the provider's open alerts and ingests the ones
-that predate webhook coverage — alerts raised before the GitHub App was
-installed on (or associated with) their repository, which no replay of the
-delivery log can ever surface. Ingestion is idempotent, so alerts that already
-have findings simply fold in.
+Request a one-shot backfill of open alerts on an integration. The
+integration-controller lists the provider's open alerts and ingests the ones
+that predate webhook coverage. These are alerts raised before the GitHub App
+was installed on (or associated with) their repository, so no replay of the
+delivery log can surface them. Ingestion is idempotent: an alert that already
+has a finding merges into it.
 
---repo narrows the walk: an "owner/" prefix covers a whole account, an
-"owner/name" entry one repository (and, being a prefix, any name extending
-it). With App credentials the filter prunes whole installations; with a PAT
-every entry must be an exact owner/name, since a PAT cannot discover
-repositories. A walk that reports truncated on status.backfill hit the page
-budget — re-run with a narrower prefix to reach the rest.
+--repo narrows the walk. An "owner/" prefix covers a whole account. An
+"owner/name" entry covers one repository and, because it is a prefix, any name
+that starts with it. With App credentials the filter skips whole installations.
+With a PAT every entry must be an exact owner/name, because a PAT cannot
+discover repositories. If status.backfill reports the walk as truncated, it hit
+the page budget: re-run with a narrower prefix to reach the rest.
 
-The command writes spec.backfill only — a controller observes it and runs the
-walk. Your RBAC decides whether it lands: the CLI checks the 'backfill' verb on
-integrations before writing, and the cluster's admission policy enforces it
-regardless of client.
+The command writes only spec.backfill. A controller sees the change and runs
+the walk. Your RBAC decides whether the write is allowed. The CLI checks the
+'backfill' verb on integrations before writing, and the cluster's admission
+policy enforces it for every client.
 
 ```
 patchy backfill <integration> [flags]

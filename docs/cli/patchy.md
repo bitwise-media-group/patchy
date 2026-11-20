@@ -7,8 +7,8 @@ Work with patchy security findings from the terminal
 patchy lists, inspects, reviews and acts on the custom resources that carry the
 patchy pipeline's state machine.
 
-It talks to the Kubernetes API with your own kubeconfig — never through a
-controller or the status page — so what you can do is what your RBAC allows.
+It talks to the Kubernetes API with your own kubeconfig. It never goes through
+a controller or the status page, so what you can do is what your RBAC allows.
 Run `patchy can-i` to see your grants.
 
 ### Options

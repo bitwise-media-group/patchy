@@ -4,22 +4,23 @@ Host a local receiver to test a generic integration
 
 ### Synopsis
 
-Run the generic webhook receiver on your workstation: the same server, HMAC
-authentication, deduplication, and validation the integration-controller runs,
-with findings kept in memory instead of becoming Finding resources. Each
-ingested finding immediately exercises the outbound legs you configure — the
-enhancer call, then the verdict write-back — so one signed POST tests all
-three exchanges of the contract. No cluster is touched.
+Run the generic webhook receiver on your workstation. It is the same server,
+HMAC authentication, deduplication, and validation the integration-controller
+runs, but findings stay in memory instead of becoming Finding resources. Each
+ingested finding at once triggers the outbound calls you configure: first the
+enhancer call, then the verdict write-back. So one signed POST tests all three
+exchanges of the contract. No cluster is touched.
 
-Rejected deliveries answer 401 with no reason on the wire, exactly as in
-production; the reason appears here on stderr instead. Not emulated:
-accumulation into Finding resources, tracking issues, and the investigation
-that separates enhancement from dismissal — production sends the resolver
-write-back only when a finding is dismissed, typically much later.
+A rejected delivery gets a 401 with no reason in the response, as in
+production. The reason appears here on stderr instead. The harness does not
+emulate accumulation into Finding resources, tracking issues, or the
+investigation that comes between enhancement and dismissal. In production,
+patchy sends the resolver write-back only when a finding is dismissed, usually
+much later.
 
-Without --secret or --secret-file a random secret is generated and printed,
-so a first run needs no setup. Every flag also reads from a PATCHY_DEV_*
-environment variable and the dev: block of the patchy config (flag >
+Without --secret or --secret-file, a random secret is generated and printed,
+so a first run needs no setup. Every flag can also come from a PATCHY_DEV_*
+environment variable or the dev: block of the patchy config (flag >
 environment > file > default).
 
 The patchy config merges from, least to most preferred: /etc/patchy/config.<ext>,

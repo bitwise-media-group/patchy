@@ -1,8 +1,9 @@
 # Restricting sources
 
-A **source policy** limits where `patchy mirror` and `patchy build` may pull from. The mirror gets one policy for
-upstream charts, images and artifacts. The build gets another for the base images its Dockerfiles use. The two are
-independent: the registries a mirror copies from are usually not the ones a build should take base images from.
+A **source policy** limits where `patchy mirror` and `patchy build` may pull from. The mirror has one policy for
+upstream charts, images and artifacts. The build has another for the base images its Dockerfiles use. The two are
+independent, because a mirror usually copies from different registries than the ones a build should take base images
+from.
 
 ```yaml
 mirror:
@@ -61,8 +62,8 @@ digest, one with no registry host (`library/nginx`), and a lone `*`, which match
 Charts are matched as `<chart.repo>/<chart.name>` with the scheme kept, so the transport is part of the decision:
 `oci://ghcr.io/acme/charts/app`, `https://charts.example.com/app`.
 
-The mirror matches the **canonical** source, never the host a `sourceRegistryRewrites` entry reroutes pulls through. A
-pull-through cache does not change what a source is.
+The mirror matches the canonical source. It never matches the host that a `sourceRegistryRewrites` entry sends pulls
+through, because a pull-through cache does not change what a source is.
 
 ## Modes
 
@@ -78,8 +79,8 @@ what a new policy would reject before switching to `fail`.
 
 ## What a build policy checks
 
-The Dockerfile is parsed with BuildKit's own parser and expanded the way BuildKit expands it. Every stage counts,
-whether or not the target depends on it. These all pull an image, so all are checked:
+patchy parses the Dockerfile with BuildKit's own parser and expands it the way BuildKit does. Every stage counts,
+whether or not the target depends on it. Each of these pulls an image, so each is checked:
 
 - each `FROM`, other than an earlier stage or `scratch`
 - `COPY --from=<image>`
@@ -88,25 +89,25 @@ whether or not the target depends on it. These all pull an image, so all are che
   frontend too, or allow `docker.io/docker/dockerfile`.
 
 References expand from the global `ARG` defaults, overridden by the entry's `args`, plus BuildKit's automatic platform
-args, once per target platform. A stage's own `ARG` and `ENV` values also apply to its `--from` flags. A reference that
-cannot be resolved is rejected under the strictest policy restricting images, because it cannot be shown to be
-permitted. An example is `FROM ${REGISTRY}/app` with `REGISTRY` unset.
+args. This happens once per target platform. A stage's own `ARG` and `ENV` values also apply to its `--from` flags. A
+reference that cannot be resolved, such as `FROM ${REGISTRY}/app` with `REGISTRY` unset, cannot be shown to be
+permitted. So the strictest policy that restricts images rejects it.
 
 A build policy governs image pulls only. `ADD <url>` and network access from `RUN` are outside its scope.
 
 ## Enforcing a policy
 
-The patchy config is [layered](configuration.md): normally a more preferred layer replaces a list wholesale and deletes
-a key with `null`. A policy shipped from a shared location, such as the toolchain's `.mise/patchy.yaml`, would then be
-one line away from being switched off by a project's own `patchy.yaml`.
+The patchy config is [layered](configuration.md). Normally a more preferred layer replaces a list completely and can
+delete a key with `null`. So one line in a project's own `patchy.yaml` could switch off a policy shipped from a shared
+location, such as the toolchain's `.mise/patchy.yaml`.
 
 `enforced: true` pins a policy block to the layer that declares it. patchy evaluates that block **as written in its own
-file**, alongside the merged result, and a source must pass both. A more preferred layer can therefore still tighten the
-policy, for example by adding a `deny` entry or narrowing `allow`. Changing its `mode`, replacing its lists, setting
+file**, alongside the merged result, and a source must pass both. So a more preferred layer can still tighten the
+policy, for example by adding a `deny` entry or narrowing `allow`. But changing its `mode`, replacing its lists, setting
 `enforced: false` or writing `policy: null` all change only the merged block, never the pinned one.
 
-A block without `enforced` merges like any other key, so a project can override it. Leave `enforced` off where that
-flexibility is intended.
+A block without `enforced` merges like any other key, so a project can override it. Leave `enforced` off when you want
+projects to have that freedom.
 
 A violation names the layer that rejected it:
 
@@ -115,5 +116,6 @@ source policy: image gcr.io/distroless/static is not permitted: matches no allow
   (images.allow/deny in .mise/patchy.yaml, enforced)
 ```
 
-`enforced` is a guardrail on the client side: whoever controls the files controls the policy. The firm enforcement point
-is CI running `patchy mirror validate` or `patchy build --dry-run` against a toolchain it pins.
+`enforced` is a client-side guardrail: whoever controls the files controls the policy. The place where the policy is
+firmly enforced is CI, running `patchy mirror validate` or `patchy build --dry-run` with a toolchain version that CI
+pins.

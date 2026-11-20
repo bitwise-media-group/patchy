@@ -45,15 +45,16 @@ func newDevEnhanceCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "enhance <payload-file>...",
 		Short: "Send an enhancement request to a generic enhancer",
-		Long: "Fire one signed enhancement request per finding at an enhancer endpoint,\n" +
-			"without hosting anything: the way to test an integration that is only an\n" +
+		Long: "Send one signed enhancement request per finding to an enhancer endpoint,\n" +
+			"without hosting anything. Use it to test an integration that is only an\n" +
 			"enhancer and never delivers findings itself.\n\n" +
 			"Payload files use the same envelope the webhook receives (version v1, event\n" +
-			"findings), validated by the same code, so a fixture works in both places. The\n" +
-			"request carries exactly what production sends for a fresh finding: title,\n" +
-			"description, repository and cloud resource — no issue number, no labels.\n\n" +
-			"Flags also resolve from PATCHY_DEV_* and the patchy config's dev: block (the\n" +
-			"same keys the harness reads: dev.enhance-url, dev.secret-file, ...).",
+			"findings), checked by the same validation code, so a fixture works in both\n" +
+			"places. The request carries the same fields production sends for a new\n" +
+			"finding: title, description, repository and cloud resource. It has no issue\n" +
+			"number and no labels.\n\n" +
+			"Flags can also come from PATCHY_DEV_* variables and the patchy config's dev:\n" +
+			"block (the same keys the harness reads: dev.enhance-url, dev.secret-file, ...).",
 		Example: "  patchy dev enhance --url http://127.0.0.1:9000/enhance --secret dev-secret findings.json\n" +
 			"  patchy dev enhance --secret-file ./webhook.secret findings.json   # url from patchy.yaml\n" +
 			"  patchy dev enhance --url http://127.0.0.1:9000/enhance --secret s -o json findings.json | jq .",
@@ -71,15 +72,16 @@ func newDevResolveCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resolve <payload-file>...",
 		Short: "Send a verdict write-back to a generic resolver",
-		Long: "Fire one signed verdict write-back per finding at a resolver endpoint. The\n" +
-			"verdict is the one patchy sends in production — ignore, \"false positive\" —\n" +
-			"because dismissal after investigation is the only path that resolves today.\n\n" +
+		Long: "Send one signed verdict write-back per finding to a resolver endpoint. The\n" +
+			"verdict is the one patchy sends in production: ignore, with the reason\n" +
+			"\"false positive\". Dismissal after investigation is the only path that\n" +
+			"resolves an alert today.\n\n" +
 			"Production sends the write-back once per finding at dismissal, carrying every\n" +
-			"accumulated alert; this command does not emulate accumulation, so it sends one\n" +
-			"alert per call. Any 2xx answer is success, and patchy retries failures — the\n" +
-			"endpoint must treat an already-closed alert as success, not an error.\n\n" +
-			"Payload files use the same envelope the webhook receives; flags also resolve\n" +
-			"from PATCHY_DEV_* and the patchy config's dev: block.",
+			"accumulated alert. This command does not emulate accumulation, so it sends one\n" +
+			"alert per call. Any 2xx answer is success, and patchy retries failures, so the\n" +
+			"endpoint must treat an already-closed alert as success rather than an error.\n\n" +
+			"Payload files use the same envelope the webhook receives. Flags can also come\n" +
+			"from PATCHY_DEV_* variables and the patchy config's dev: block.",
 		Example: "  patchy dev resolve --url http://127.0.0.1:9000/resolve --secret dev-secret findings.json\n" +
 			"  patchy dev resolve --secret-file ./webhook.secret findings.json   # url from patchy.yaml",
 		Args: cobra.MinimumNArgs(1),

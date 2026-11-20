@@ -2,7 +2,7 @@
 
 `patchy mirror` and `patchy build` apply one scan policy to everything they publish. A mirrored chart's images, a
 mirrored artifact and a first-party image all go through the same scanners, the same blocking rules and the same
-allowlist format. Nothing is published while a blocking finding stands that no one has accepted.
+allowlist format. Nothing is published while it has a blocking finding that no one has accepted.
 
 ## Scanners
 
@@ -22,25 +22,26 @@ scan:
 | grype     | container images         | `grype registry:<ref>` for a mirrored image, `grype docker-archive:<path>` for a local build |
 | kubescape | Kubernetes configuration | `kubescape scan <path>` with an empty `KUBECONFIG`, so no cluster is ever consulted          |
 
-Image scanners default to off. An image scan with neither osv nor grype enabled is an error, so turning image scanning
-off has to be an explicit `scan.enabled: false`. When both are on, both run and their findings are combined.
+Image scanners are off by default. An image scan with neither osv nor grype enabled is an error. So to turn image
+scanning off, you must set `scan.enabled: false` explicitly. When both scanners are on, both run and their findings are
+combined.
 
-kubescape is advisory by default. In `warn` mode its output is narrated and never blocks: configuration findings such as
-RBAC breadth or missing security contexts are often inherent to what an operator chart has to do. In `fail` mode, any
-finding fails the entry. When `kubescape` isn't on `PATH`, the scan is skipped with a warning.
+kubescape only reports by default. In `warn` mode its findings are printed and never block. Configuration findings such
+as broad RBAC or missing security contexts are often unavoidable for what an operator chart has to do. In `fail` mode,
+any finding fails the entry. When `kubescape` is not on `PATH`, the scan is skipped with a warning.
 
-| What              | Image scan                              | Configuration scan                               |
-| ----------------- | --------------------------------------- | ------------------------------------------------ |
-| mirrored chart    | every locked image                      | the rendered manifests                           |
-| mirrored artifact | the artifact, if it is a runnable image | —                                                |
-| build image       | every platform image in the build       | —                                                |
-| build manifests   | —                                       | the staged tree, exactly as it will be published |
+| What              | Image scan                              | Configuration scan                       |
+| ----------------- | --------------------------------------- | ---------------------------------------- |
+| mirrored chart    | every locked image                      | the rendered manifests                   |
+| mirrored artifact | the artifact, if it is a runnable image | none                                     |
+| build image       | every platform image in the build       | none                                     |
+| build manifests   | none                                    | the staged tree, as it will be published |
 
 ## The `scan` block
 
-One `scan` block shape is used everywhere. In the config it holds the defaults. In a chart manifest, an artifact
-manifest or a build entry it overrides them field by field. Each field resolves from the entry when the entry sets it,
-otherwise from the config, otherwise from the built-in default.
+The `scan` block has the same shape everywhere. In the config it holds the defaults. In a chart manifest, an artifact
+manifest or a build entry it overrides them field by field. Each field takes the entry's value when the entry sets it.
+Otherwise it takes the config's value, and failing that, the built-in default.
 
 ```yaml
 # config (defaults)                     # chart / artifact manifest, build entry (overrides)
@@ -65,9 +66,9 @@ scan:                                   scan:
 | `allowlist.generate` | `false`            | regenerate the entry's allowlist from a fresh scan                    |
 | `allowlist.preamble` | none               | whole-file context rendered at the top of a generated allowlist       |
 
-An entry's `enabled` defaults to `auto`, which defers to the config's `scan.enabled` and then to the rule for the
-entry's kind. An explicit `true` or `false` on the entry overrides `scan.enabled` for that entry. `false` turns off
-every scan, kubescape included.
+An entry's `enabled` defaults to `auto`. `auto` follows the config's `scan.enabled`, and then the rule for the entry's
+kind in the table below. An explicit `true` or `false` on the entry overrides `scan.enabled` for that entry. `false`
+turns off every scan, kubescape included.
 
 | Kind            | `auto` means                                                                        |
 | --------------- | ----------------------------------------------------------------------------------- |
@@ -78,8 +79,8 @@ every scan, kubescape included.
 
 ## What blocks
 
-Scanner severities are normalized onto one ladder: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `NEGLIGIBLE`, then `UNKNOWN`. A
-finding blocks when:
+patchy maps every scanner's severities onto one scale: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `NEGLIGIBLE`, then
+`UNKNOWN`. A finding blocks when:
 
 1. its severity is in the resolved `failOn`,
 2. it has a released fix, or `ignoreUnfixed` is off, and
@@ -91,7 +92,7 @@ lists them in a fenced block per entry, ready for a PR comment.
 
 ## Allowlists
 
-An allowlist is a reviewed record of accepted risk. Each entry has its own file:
+An allowlist is a reviewed record of accepted risk. Each mirror or build entry has its own file:
 
 | Entry                      | File                                                                                |
 | -------------------------- | ----------------------------------------------------------------------------------- |
@@ -107,7 +108,7 @@ vulnerabilities:
       Only reachable through the admin API, which is not exposed.
 ```
 
-The policy, which `mirror validate --only lint` and every `build` enforce:
+`mirror validate --only lint` and every `build` enforce these rules:
 
 - every entry has an `id`, a `statement` and a parseable `expired_at`;
 - `expired_at` is no more than `allowlist.maxDays` in the future, so an acceptance can't last forever;
@@ -116,28 +117,27 @@ The policy, which `mirror validate --only lint` and every `build` enforce:
 
 ### Generated allowlists
 
-Writing a per-CVE list by hand stops being review and becomes transcription once images bump on their own schedule. With
-`scan.allowlist.generate: true`, the machine does the transcription and the pull request is where the risk is accepted.
+Once images update on their own schedule, keeping a per-CVE list by hand turns into copying rather than reviewing. With
+`scan.allowlist.generate: true`, patchy does the copying, and people accept the risk by reviewing the pull request.
 `patchy mirror upgrade` regenerates a mirror entry's file, and `patchy build --update-allowlists` regenerates a build
-entry's. Never `validate`, never a plain `build`: the finding set moves with the vulnerability databases, and those
-verbs must stay deterministic.
+entry's. `validate` and a plain `build` never regenerate it. The set of findings changes with the vulnerability
+databases, and those verbs must stay deterministic.
 
-Three rules make a regenerated file something you can trust rather than a rubber stamp:
+Three rules keep a regenerated file trustworthy:
 
-- **Gone findings are dropped.** A stale acceptance is indistinguishable from a live one, so nothing outlives its
-  finding.
+- **Gone findings are dropped.** A stale acceptance looks the same as a live one, so no entry outlives its finding.
 - **Surviving entries keep their expiry.** Regeneration never rolls the clock forward. New entries get today plus
   `newDays`, and a surviving entry that has already lapsed is renewed like a new acceptance, so the date change shows up
   in the diff for review.
-- **Notes are preserved.** The `statement` is a machine fact: which packages are affected, the smallest released fix,
-  what the image actually ships, and where the package was found: the binary a Go module is compiled into, or the
-  lockfile or package database that declares it. On a mirrored entry the paths are grouped by image reference
-  (`Found in ghcr.io/x/controller@sha256:…: /manager.`); a build entry is one image, so it lists the paths alone
-  (`Found in /usr/local/bin/controller.`). Human reachability analysis goes in `notes`, which regeneration keeps
-  verbatim.
+- **Notes are preserved.** patchy writes the `statement` from scan data. It records which packages are affected, the
+  smallest released fix, the version the image ships, and where the package was found. That location is the binary a Go
+  module is compiled into, or the lockfile or package database that declares it. On a mirrored entry the paths are
+  grouped by image reference (`Found in ghcr.io/x/controller@sha256:…: /manager.`). A build entry is one image, so it
+  lists the paths alone (`Found in /usr/local/bin/controller.`). Put your own analysis of whether the code is reachable
+  in `notes`, which regeneration keeps word for word.
 
-The file opens with a generated banner, followed by the entry's `allowlist.preamble`. Use the preamble for whole-file
-context, such as "images ship in lockstep with the chart; the next chart release clears these":
+The file starts with a generated banner, followed by the entry's `allowlist.preamble`. Use the preamble for context that
+covers the whole file, such as "images ship in lockstep with the chart; the next chart release clears these":
 
 ```yaml
 scan:
@@ -151,6 +151,6 @@ scan:
 ## Rescanning what is already published
 
 A clean scan at merge time says nothing about next month's CVEs. Rescan what you have already published on a schedule
-with `patchy mirror validate <entry> --only scan,lint -o markdown`, and turn failures into issues instead of blocking
+with `patchy mirror validate <entry> --only scan,lint -o markdown`. Turn failures into issues instead of blocking
 anything. The [mirror guide](mirror.md#running-a-store-in-ci) has the loop. The lint stage in the same run catches
 allowlist entries that are about to lapse.

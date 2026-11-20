@@ -3,9 +3,9 @@
 `patchy` works with the pipeline's custom resources from a terminal: list findings, read what an agent concluded, and
 approve or suspend work.
 
-It talks to the Kubernetes API with **your** kubeconfig — never through a controller, and never through the status
-server. There is no patchy-specific auth, no separate endpoint to expose, and no service account acting on your behalf:
-what you can do is exactly what your RBAC allows.
+It talks to the Kubernetes API with **your** kubeconfig. It never goes through a controller or the status server. There
+is no patchy-specific auth, no separate endpoint to expose, and no service account acting for you. You can do what your
+RBAC allows, and nothing more.
 
 This page is the tour. For every command, flag and default, generated from the binary itself, see the
 [command reference](../cli/patchy.md).
@@ -18,8 +18,8 @@ On macOS and linux, from the Homebrew tap:
 brew install bitwise-media-group/tap/patchy
 ```
 
-Otherwise, binaries ship with each release for linux, macOS and windows — cosign-signed on linux and windows, Developer
-ID-signed and notarized on macOS, so a downloaded `patchy` runs without a Gatekeeper prompt:
+Otherwise, binaries ship with each release for linux, macOS and windows. They are cosign-signed on linux and windows,
+and Developer ID-signed and notarized on macOS, so a downloaded `patchy` runs without a Gatekeeper prompt:
 
 ```sh
 # from a release archive
@@ -30,8 +30,8 @@ install -m 0755 patchy /usr/local/bin/patchy
 go install github.com/bitwise-media-group/patchy/cmd/patchy@latest
 ```
 
-The cask and the archive both carry `kubectl-patchy` — brew puts it on your `PATH` for you; from an archive, put it
-there yourself. Either way every command below also works as `kubectl patchy …`:
+The cask and the archive both include `kubectl-patchy`. brew puts it on your `PATH` for you. From an archive, put it
+there yourself. Either way, every command below also works as `kubectl patchy …`:
 
 ```sh
 kubectl patchy get findings
@@ -39,8 +39,9 @@ kubectl patchy get findings
 
 ## Shell completion
 
-Completion covers verbs, nouns, and the enumerated flag values (phases, severities, output formats). The cask installs
-all of it; from an archive, install what your shell reads — the scripts ship pre-generated under `completions/`:
+Completion covers verbs, nouns, and the fixed lists of flag values (phases, severities, output formats). The cask
+installs all of it. From an archive, install the script your shell reads. The scripts ship pre-generated under
+`completions/`:
 
 ```sh
 install -m 0644 completions/patchy.zsh "${fpath[1]}/_patchy"                     # zsh
@@ -50,16 +51,17 @@ install -m 0644 completions/patchy.fish ~/.config/fish/completions/patchy.fish  
 
 `patchy completion <shell>` prints the same script, and adds `powershell`.
 
-`kubectl patchy …` completes through a different mechanism, and needs one more file. kubectl never reads a plugin's own
-completion script: it strips its own global flags, then looks for an executable named `kubectl_complete-<plugin>` on
-your `PATH` and asks that for candidates. So the hook belongs in `bin`, not in a completion directory:
+`kubectl patchy …` completes through a different mechanism and needs one more file. kubectl never reads a plugin's own
+completion script. Instead it strips its own global flags, then looks on your `PATH` for an executable named
+`kubectl_complete-<plugin>` and asks it for candidates. So this hook goes in a `bin` directory rather than a completion
+directory:
 
 ```sh
 install -m 0755 completions/kubectl_complete-patchy /usr/local/bin/kubectl_complete-patchy
 ```
 
 It is a one-line forward to `kubectl-patchy __complete`, so both spellings complete from the same command tree and
-cannot drift. Requires kubectl 1.26 or newer; the cask installs it for you.
+cannot drift apart. It requires kubectl 1.26 or newer. The cask installs it for you.
 
 ## Grammar
 
@@ -67,9 +69,9 @@ cannot drift. Requires kubectl 1.26 or newer; the cask installs it for you.
 patchy <verb> <noun> [name...] [flags]
 ```
 
-Verbs and nouns are separate axes: every verb accepts any noun it makes sense for, so learning one verb teaches you all
-of them. Nouns take the same short names the CRDs declare, which means `patchy get fnd` and `kubectl get fnd` always
-mean the same thing.
+Verbs and nouns combine freely. Every verb accepts any noun it makes sense for, so once you learn a verb you can use it
+on every noun. Nouns take the same short names the CRDs declare, so `patchy get fnd` and `kubectl get fnd` always mean
+the same thing.
 
 | Noun            | Also accepts                                |
 | --------------- | ------------------------------------------- |
@@ -81,10 +83,10 @@ mean the same thing.
 | `integration`   | `integrations`                              |
 | `forge`         | `forges`                                    |
 
-`get` takes one more: `all`, meaning every kind in the table above, and no other verb accepts it — there is nothing
-sensible to describe, review or approve collectively. It is close to `kubectl get patchy` (every CRD declares the
-`patchy` category) but not identical: `kubectl get patchy` also lists the `Evaluation` and `EvaluationUnit` kinds of
-[remote evaluation](../concepts/evaluation.md), which the CLI has no nouns for.
+`get` accepts one more noun: `all`, which means every kind in the table above. No other verb accepts it, because there
+is nothing sensible to describe, review or approve as a group. It is close to `kubectl get patchy` (every CRD declares
+the `patchy` category) but not identical. `kubectl get patchy` also lists the `Evaluation` and `EvaluationUnit` kinds of
+[remote evaluation](../concepts/evaluation.md), and the CLI has no nouns for those.
 
 ## Global flags
 
@@ -99,9 +101,8 @@ sensible to describe, review or approve collectively. It is close to `kubectl ge
 -v, --verbose              log what the CLI is doing to stderr
 ```
 
-Namespace resolution follows kubectl's rules exactly, including its fallback to `default`, so the two tools never
-disagree about where they are looking. If your findings live in `patchy`, either set that on your context or pass
-`-n patchy`.
+Namespace resolution follows kubectl's rules, including its fallback to `default`, so the two tools always look in the
+same place. If your findings live in `patchy`, either set that on your context or pass `-n patchy`.
 
 ## Reading
 
@@ -115,12 +116,12 @@ patchy get findings --repo billing --suspended
 patchy get investigations --finding my-finding
 ```
 
-Columns come from the CRDs' own print columns, so they match `kubectl get` and always will; `-o wide` adds the ones the
-CRDs mark lower priority. Filters that map to labels (`--severity`, `--source`, `--finding`, `-l`) run on the API
-server; the rest (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`) need the object and run locally.
+Columns come from the CRDs' own print columns, so they match `kubectl get` and always will. `-o wide` adds the ones the
+CRDs mark as lower priority. Filters that map to labels (`--severity`, `--source`, `--finding`, `-l`) run on the API
+server. The others (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`) need the full object, so they run
+locally.
 
-`patchy get all` is the whole pipeline in one screen — every kind, each in its own table, in the order the pipeline uses
-them:
+`patchy get all` shows every kind on one screen, each in its own table, in the order the pipeline uses them:
 
 ```text
 Findings
@@ -136,11 +137,11 @@ NAME   PROVIDER   READY   AGE
 gh     github     True    9d
 ```
 
-Kinds with nothing in them are left out rather than printed as an empty table. `all` lists, and only lists: it takes no
-names, and it refuses the finding-only filters (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`,
-`--finding`) rather than narrow one table and leave the rest whole. The label filters (`-l`, `--severity`, `--source`)
-mean the same thing on every kind, so those do apply. `-o json` and `-o yaml` give you one stream of every object;
-`-o name` gives you fully-qualified references you can pipe back into `kubectl`.
+Kinds with nothing in them are left out instead of being printed as empty tables. `all` only lists. It takes no names.
+It also refuses the finding-only filters (`--phase`, `--verdict`, `--repo`, `--suspended`, `--awaiting`, `--finding`),
+because they would narrow one table and leave the rest unfiltered. The label filters (`-l`, `--severity`, `--source`)
+mean the same thing on every kind, so those do apply. `-o json` and `-o yaml` give you one stream of every object.
+`-o name` gives you fully qualified references you can pipe back into `kubectl`.
 
 ```sh
 patchy describe finding my-finding               # state, timeline, owners, alerts, runs, spend
@@ -156,15 +157,15 @@ patchy review investigation --finding my-finding --attempt 2
 patchy review remediation my-finding-rem-1
 ```
 
-On a terminal the report is rendered for reading. Piped, or with `-o markdown`, you get the markdown the agent actually
-wrote — so pasting it into a ticket loses nothing:
+On a terminal, the report is rendered for reading. When you pipe it, or pass `-o markdown`, you get the markdown the
+agent wrote, so pasting it into a ticket loses nothing:
 
 ```sh
 patchy review finding my-finding -o markdown > report.md
 ```
 
-`--raw` keeps the machine frontmatter, which is a contract between the investigate and remediate stages and is stripped
-by default.
+`--raw` keeps the machine frontmatter. That frontmatter is a contract between the investigate and remediate stages, and
+it is stripped by default.
 
 ## Opening the human-facing page
 
@@ -174,8 +175,8 @@ patchy browse remediation my-finding-rem-1 # the pull request
 patchy browse finding my-finding --print-url
 ```
 
-The verb is `browse` rather than `open` because `Opened` is a real phase — `patchy open finding` would read like a state
-transition. `patchy review … --web` is the same behaviour without leaving the review.
+The verb is `browse` rather than `open` because `Opened` is a real phase, and `patchy open finding` would read like a
+state transition. `patchy review … --web` opens the same page from the `review` command.
 
 ## Acting on a finding
 
@@ -187,10 +188,10 @@ patchy retry    finding my-finding
 patchy expedite finding my-finding
 ```
 
-Every action writes to the finding's **spec only**. A controller observes the change and moves the phase — the CLI never
-writes status and never transitions a finding itself, which is what keeps each phase edge single-writer.
+Every action writes to the finding's **spec only**. A controller sees the change and moves the phase. The CLI never
+writes status and never moves a finding to a new phase itself. That keeps a single writer for each phase change.
 
-Actions are idempotent. Approving an already-approved finding succeeds and changes nothing, so re-running a script is
+Actions are idempotent: approving an already-approved finding succeeds and changes nothing. So re-running a script is
 safe:
 
 ```sh
@@ -198,14 +199,14 @@ patchy suspend finding my-finding --dry-run                              # repor
 patchy suspend finding -l patchy.bitwisemedia.uk/severity=critical -y    # bulk, no prompt
 ```
 
-Bulk operations prompt above one finding unless you pass `-y`, report each finding individually, and exit non-zero if
-any failed — one unavailable finding never stops the rest.
+Bulk operations ask for confirmation when they cover more than one finding, unless you pass `-y`. They report each
+finding separately and exit non-zero if any failed. One unavailable finding never stops the rest.
 
 ## Backfilling an integration
 
-One action acts on an Integration rather than a finding: the
-[manual backfill](../integrations/sources/github.md#the-manual-backfill), which lists the provider's open alerts and
-ingests the ones that predate webhook coverage.
+One action works on an Integration rather than a finding: the
+[manual backfill](../integrations/sources/github.md#the-manual-backfill). It lists the provider's open alerts and
+ingests the ones raised before webhook coverage started.
 
 ```sh
 patchy backfill gh                                      # the credential's full scope
@@ -213,9 +214,9 @@ patchy backfill gh --repo acme/                         # one owner
 patchy backfill gh --repo acme/shop --repo acme/billing # exact repositories (required with a PAT)
 ```
 
-Like every action it writes spec only (`spec.backfill`); the integration-controller runs the walk on its next reconcile
-and reports on `status.backfill` — watch for `truncated`, which means the page budget ran out and a narrower `--repo`
-prefix is needed to reach the rest.
+Like every action, it writes spec only (`spec.backfill`). The integration-controller runs the walk on its next reconcile
+and reports on `status.backfill`. Watch for `truncated`: it means the page budget ran out, and you need a narrower
+`--repo` prefix to reach the rest.
 
 ## Configuration
 
@@ -225,33 +226,34 @@ only your kubeconfig.
 
 ## Testing a generic integration
 
-The `dev` commands are the one part of the CLI that never touches a cluster: a local test harness for authors of
+Like `mirror` and `build`, the `dev` commands never touch a cluster. They are a local test harness for authors of
 [generic integrations](../integrations/sources/generic.md).
 
 ```sh
 patchy dev generic --secret dev-secret --enhance-url http://127.0.0.1:9000/enhance
 ```
 
-hosts the real generic webhook receiver on your workstation — the same HMAC authentication, deduplication, and
-validation the integration-controller runs — retains ingested findings in memory, and drives the enhancer call and
-resolver write-back at your endpoints, so one signed POST tests every exchange of the contract. For a process that is
-only an enhancer or resolver, `patchy dev enhance` / `patchy dev resolve` fire a single signed exchange from a findings
-payload file, no server involved.
+This command hosts the real generic webhook receiver on your workstation. It runs the same HMAC authentication,
+deduplication, and validation as the integration-controller. It keeps ingested findings in memory, and it drives the
+enhancer call and the resolver write-back against your endpoints. So one signed POST tests every exchange in the
+contract. For a process that is only an enhancer or only a resolver, `patchy dev enhance` / `patchy dev resolve` fire a
+single signed exchange from a findings payload file, with no server involved.
 
-Every `dev` flag also resolves from `PATCHY_DEV_*` environment variables and the `dev:` block of the
-[patchy configuration](#configuration) (flag beats environment beats file). See the
+You can also set every `dev` flag from `PATCHY_DEV_*` environment variables and the `dev:` block of the
+[patchy configuration](#configuration). A flag beats the environment, and the environment beats the file. See the
 [generic integration guide](../integrations/sources/generic.md#testing-your-integration-locally) for the full
 walkthrough.
 
 ## Mirroring and building artifacts
 
-Two command groups publish what a platform runs as signed OCI artifacts in your own registries, sharing the config's
-`registries`, `signing` and `scan` blocks. Neither touches a cluster or runs git. The
+Two command groups publish the software a platform runs as signed OCI artifacts in your own registries. They share the
+config's `registries`, `signing` and `scan` blocks. Neither touches a cluster or runs git. The
 [supply chain guide](../supply-chain/index.md) covers both end to end, with CI recipes.
 
-**`patchy mirror`** maintains a vendored mirror store: a git tree in which every `charts/<name>/` or `artifacts/<name>/`
-directory pins one upstream helm chart or OCI artifact. Each is vendored for review, digest-locked, checked against its
-publisher's signatures, scanned, and published signed. See [Mirroring charts and images](../supply-chain/mirror.md).
+**`patchy mirror`** maintains a vendored mirror store. This is a git tree in which every `charts/<name>/` or
+`artifacts/<name>/` directory pins one upstream helm chart or OCI artifact. Each entry is vendored (copied into the
+tree) for review, locked to a digest, checked against its publisher's signatures, scanned, and published signed. See
+[Mirroring charts and images](../supply-chain/mirror.md).
 
 ```sh
 patchy mirror add dex --url https://charts.dexidp.io   # scaffold an entry (and a starter patchy.yaml)
@@ -272,51 +274,51 @@ patchy build --all --update-allowlists    # regenerate security/allowlists/<name
 patchy build promote --all --from '${VERSION}-edge.*' --tag 'v${VERSION}'   # release what CI already built
 ```
 
-Like `dev`, the `mirror` flags also resolve from `PATCHY_MIRROR_*` environment variables and the `mirror:` block. Both
-groups shell out to `cosign` (v3 or later) for signing and verification, and to whichever scanners the config enables
-(`osv-scanner`, `grype`, `kubescape`). `build` also needs `docker` with buildx for image entries.
+Like `dev`, the `mirror` flags can also be set from `PATCHY_MIRROR_*` environment variables and the `mirror:` block.
+Both groups run the `cosign` binary (v3 or later) for signing and verification. They also run whichever scanners the
+config enables (`osv-scanner`, `grype`, `kubescape`). `build` also needs `docker` with buildx for image entries.
 
 ## Permissions
 
-Each action is a **custom RBAC verb**, granted independently: holding `approve` says nothing about `suspend`. The
-per-finding verbs (`approve`, `retry`, `expedite`, `suspend`, `resume`) live on `findings.patchy.bitwisemedia.uk`; the
-integration-scoped ones (`backfill`, `replay`, `reset`) on `integrations.patchy.bitwisemedia.uk`. To see yours:
+Each action is a **custom RBAC verb**, granted separately, so holding `approve` does not grant `suspend`. The
+per-finding verbs (`approve`, `retry`, `expedite`, `suspend`, `resume`) are on `findings.patchy.bitwisemedia.uk`. The
+integration-scoped ones (`backfill`, `replay`, `reset`) are on `integrations.patchy.bitwisemedia.uk`. To see yours:
 
 ```sh
-patchy can-i                # the whole matrix, findings and integrations
+patchy can-i                # the full matrix, findings and integrations
 patchy can-i approve        # one verb; exit code answers, for shell conditionals
 patchy can-i backfill       # integration-scoped verbs resolve on integrations
 ```
 
-Two things enforce those verbs, and only one of them matters:
+Two things check those verbs, but only one of them enforces them:
 
-- The CLI runs a `SelfSubjectAccessReview` before writing. This is **ergonomics** — a fast, clear failure naming the
-  verb you lack instead of an opaque server rejection. It carries no security weight and is trivially bypassed by not
-  using the CLI.
-- A **`ValidatingAdmissionPolicy`** in the cluster binds each spec field to its verb. This runs inside the API server's
-  admission chain, so it applies identically to `patchy`, `kubectl edit`, `kubectl patch`, server-side apply and raw
-  `curl`. This is the actual enforcement. There are two policies: one on findings, one on integrations (gating
-  `spec.backfill`/`spec.replay`/`spec.reset` while leaving the operator's configuration surface freely updatable).
+- The CLI runs a `SelfSubjectAccessReview` before writing. This is for **convenience**: you get a fast, clear failure
+  that names the verb you lack, instead of an unclear rejection from the server. It provides no security, and anyone can
+  bypass it by not using the CLI.
+- A **`ValidatingAdmissionPolicy`** in the cluster binds each spec field to its verb. It runs inside the API server's
+  admission chain, so it applies the same way to `patchy`, `kubectl edit`, `kubectl patch`, server-side apply and raw
+  `curl`. This is the actual enforcement. There are two policies. One covers findings. The other covers integrations: it
+  gates `spec.backfill`/`spec.replay`/`spec.reset` and leaves the rest of the operator's configuration free to update.
 
-That second piece exists because Kubernetes RBAC has no notion of a field: `update` on findings grants the whole object.
-Without the policy, letting a developer suspend a finding would also let them rewrite its severity or forge an approval.
-See [Kustomize](../deployment/kustomize.md) for the manifest and the role ladder.
+The policy is needed because Kubernetes RBAC has no notion of a field: `update` on findings allows changes to every
+field of the object. Without the policy, letting a developer suspend a finding would also let them rewrite its severity
+or forge an approval. See [Kustomize](../deployment/kustomize.md) for the manifest and the role ladder.
 
 !!! warning "Requires Kubernetes 1.30+"
 
-    `ValidatingAdmissionPolicy` reached GA in 1.30. On an older cluster the policy will not install and
-    enforcement degrades silently to "whoever holds `update` owns the whole resource". Check with
+    `ValidatingAdmissionPolicy` reached GA in 1.30. On an older cluster the policy will not install, and
+    enforcement silently falls back to plain RBAC, where anyone with `update` can change every field. Check with
     `kubectl api-resources | grep validatingadmissionpolic`.
 
-Because the policy enumerates the spec fields it freezes, contributors adding a field to `FindingSpec` must extend it —
-see [Adding a field to FindingSpec](../contributing/finding-fields.md).
+The policy lists the spec fields it protects. So a contributor who adds a field to `FindingSpec` must extend it. See
+[Adding a field to FindingSpec](../contributing/finding-fields.md).
 
 ## Exit codes
 
 | Code | Meaning                                                                   |
 | ---- | ------------------------------------------------------------------------- |
 | `0`  | success                                                                   |
-| `1`  | runtime failure — unreachable cluster, bad response                       |
+| `1`  | runtime failure (unreachable cluster, bad response)                       |
 | `2`  | usage error                                                               |
 | `3`  | the named resource does not exist                                         |
 | `4`  | RBAC refused, or the action is unavailable in the finding's current phase |
@@ -332,19 +334,19 @@ patchy approve finding <name>               # release the hold
 
 ## Output and piping
 
-Rendered reports use the dark theme by default. On a light terminal, set the same variable `glow` and the other charm
-tools read:
+Rendered reports use the dark theme by default. On a light terminal, set the same variable that `glow` and the other
+charm tools read:
 
 ```sh
 export GLAMOUR_STYLE=light     # or dark, dracula, tokyo-night, notty, ascii
 ```
 
-There is no automatic detection: probing a terminal's background needs a query/response round trip that only an
-interactive event loop can service, and `patchy` is a one-shot command. Tables are unaffected — they use the ANSI 0-15
-palette, so they inherit whatever theme your terminal already has.
+There is no automatic detection. Finding a terminal's background colour needs a query and response round trip, which
+only an interactive event loop can handle, and `patchy` is a one-shot command. Tables are not affected. They use the
+ANSI 0-15 palette, so they inherit your terminal's theme.
 
-`stdout` carries data, `stderr` carries narration — so `-v` never corrupts a pipe, and "no findings found" goes to
-stderr rather than into your `jq`. Styling turns itself off whenever stdout is not a terminal, and also honours
+`stdout` carries data and `stderr` carries messages. So `-v` never corrupts a pipe, and "no findings found" goes to
+stderr instead of into your `jq`. Styling turns itself off whenever stdout is not a terminal. It also honours
 `--no-color`, `NO_COLOR`, and `TERM=dumb`.
 
 ```sh

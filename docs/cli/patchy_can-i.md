@@ -6,11 +6,12 @@ Show which actions your RBAC allows
 
 Show what you may do in this namespace.
 
-Each action is a custom RBAC verb, granted independently — holding 'approve'
-says nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,
-suspend, resume) live on findings; the integration-scoped verbs (backfill,
-replay, reset) live on integrations. With no argument this prints the whole
-matrix, which is the fastest answer to "why was that refused?".
+Each action is a custom RBAC verb, granted on its own. Holding 'approve' says
+nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,
+suspend, resume) apply to findings. The integration-scoped verbs (backfill,
+replay, reset) apply to integrations. With no argument this prints every verb
+and your answer for each, which is the fastest way to see why something was
+refused.
 
 ```
 patchy can-i [verb] [flags]

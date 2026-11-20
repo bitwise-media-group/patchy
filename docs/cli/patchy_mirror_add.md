@@ -4,16 +4,17 @@ Scaffold a new chart or artifact entry
 
 ### Synopsis
 
-Create the entry directory for a new mirrored chart or OCI artifact: detect
-what --url points at (an https:// helm repository, an oci:// chart
-repository, or a bare artifact reference), pin the newest stable version,
-default the constraint to stay-in-major, and scaffold manifest.yaml.
+Create the entry directory for a new mirrored chart or OCI artifact. The
+command works out what --url points at (an https:// helm repository, an oci://
+chart repository, or a bare artifact reference). It pins the newest stable
+version, sets the constraint to stay within that major version, and writes a
+starter manifest.yaml.
 
 The name defaults to the URL's last path segment. When the working directory
 has no patchy config yet, add also writes a starter patchy.yaml with
 commented defaults (registries, signing, scan, mirror and a build example).
-Nothing is vendored and nothing is committed — review the scaffold, then run
-`patchy mirror upgrade <name>` to vendor and lock it.
+Nothing is vendored and nothing is committed. Review the new files, then run
+`patchy mirror upgrade <name>` to vendor and lock the entry.
 
 ```
 patchy mirror add [name] [flags]

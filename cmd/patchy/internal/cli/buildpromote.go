@@ -26,16 +26,17 @@ func newBuildPromoteCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "promote [name]... --from <pattern> --tag <tag>",
 		Short: "Promote published builds by adding a tag to them, without rebuilding",
-		Long: "Promote an already-published build of each entry by adding a tag to its digest:\n" +
-			"what was tested is exactly what ships. In every configured registry, the newest\n" +
-			"tag of <registry.url>/<repository> matching --from (a glob; semver order, so\n" +
-			"X.Y.Z-edge.<yyyymmddhhmmss>.g<commit> builds order by their timestamp) is the\n" +
-			"build promoted. Its digest must carry a valid signature under that registry's\n" +
-			"signing config, and --tag is then added to it.\n\n" +
-			"Tags never move: a --tag already on that digest is skipped, and one on another\n" +
-			"digest fails the entry. Nothing is built, scanned or signed — the build's own\n" +
-			"signature is the one verified. --from and --tag are ${ENV}-expanded like the\n" +
-			"build's tag templates.\n\n" +
+		Long: "Promote an already-published build of each entry by adding a tag to its digest,\n" +
+			"so what ships is the build that was tested. In every configured registry, the\n" +
+			"build promoted is the newest tag of <registry.url>/<repository> that matches\n" +
+			"--from. --from is a glob, and tags compare in semver order, so\n" +
+			"X.Y.Z-edge.<yyyymmddhhmmss>.g<commit> builds order by their timestamp. The\n" +
+			"build's digest must carry a valid signature under that registry's signing\n" +
+			"config. Then --tag is added to it.\n\n" +
+			"Tags never move. A --tag already on that digest is skipped, and one on another\n" +
+			"digest fails the entry. Nothing is built, scanned or signed. The signature\n" +
+			"checked is the one the build already carries. --from and --tag are\n" +
+			"${ENV}-expanded like the build's tag templates.\n\n" +
 			"Each row reports the build's org.opencontainers.image.revision annotation (every\n" +
 			"manifests artifact carries one), so a release pipeline can check the build came\n" +
 			"from the commit it is releasing. --dry-run resolves and verifies, and tags\n" +

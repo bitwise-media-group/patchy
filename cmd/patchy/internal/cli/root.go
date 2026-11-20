@@ -125,8 +125,8 @@ func NewRoot(opts *Options) *cobra.Command {
 		Short: "Work with patchy security findings from the terminal",
 		Long: "patchy lists, inspects, reviews and acts on the custom resources that carry the\n" +
 			"patchy pipeline's state machine.\n\n" +
-			"It talks to the Kubernetes API with your own kubeconfig — never through a\n" +
-			"controller or the status page — so what you can do is what your RBAC allows.\n" +
+			"It talks to the Kubernetes API with your own kubeconfig. It never goes through\n" +
+			"a controller or the status page, so what you can do is what your RBAC allows.\n" +
 			"Run `patchy can-i` to see your grants.",
 		Version:       fmt.Sprintf("%s (commit %s, built %s)", version.Version, version.Commit, version.BuildDate),
 		SilenceUsage:  true,

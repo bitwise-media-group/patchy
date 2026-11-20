@@ -23,23 +23,25 @@ func newMirrorSyncCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync [name]...",
 		Short: "Publish committed charts and images to the mirror registries",
-		Long: "Converge every configured registry onto the committed state, idempotently:\n" +
-			"for each entry, re-pull the upstream chart archive and fail loudly if upstream\n" +
-			"mutated the released version (digest vs lock, tree vs the committed vendor/),\n" +
-			"then per registry push the chart unless its tag already exists (an existing\n" +
-			"tag is never replaced), copy every locked image by digest, and sign everything\n" +
-			"published that does not already carry a valid mirror signature — using that\n" +
-			"registry's signing block when it has one, else the global default.\n\n" +
-			"Before a chart, image or artifact is first pushed or signed, its upstream\n" +
-			"provenance is verified per its verifyUpstream rule — once per run however many\n" +
-			"registries it publishes to, and never for a copy already current and signed\n" +
-			"everywhere — so nothing reaches a registry unverified even when validate\n" +
-			"never ran. --dry-run reports what it would verify without calling cosign.\n\n" +
+		Long: "Bring every configured registry in line with the committed state. The command\n" +
+			"is idempotent. For each entry it re-pulls the upstream chart archive, and fails\n" +
+			"loudly if upstream changed the released version (digest against the lock, tree\n" +
+			"against the committed vendor/). Then, for each registry, it pushes the chart\n" +
+			"unless its tag already exists (an existing tag is never replaced), copies every\n" +
+			"locked image by digest, and signs everything it published that does not already\n" +
+			"carry a valid mirror signature. It signs with that registry's signing block when\n" +
+			"it has one, or else the global default.\n\n" +
+			"Before a chart, image or artifact is first pushed or signed, sync checks its\n" +
+			"upstream provenance against its verifyUpstream rule. Each one is checked once\n" +
+			"per run however many registries it publishes to, and never when its copy is\n" +
+			"already current and signed everywhere. So nothing reaches a registry unverified,\n" +
+			"even when validate never ran. --dry-run reports what it would verify without\n" +
+			"calling cosign.\n\n" +
 			"--registry restricts publishing to the named registries (repeatable or\n" +
-			"comma-separated); the default is all of them.\n\n" +
-			"sync is read-only on the working tree — every write goes to a registry —\n" +
-			"so the publish-on-merge pipeline creates no commits. Skips are successes;\n" +
-			"a re-run after a partial failure finishes the remainder.",
+			"comma-separated). The default is all of them.\n\n" +
+			"sync never writes to the working tree. Every write goes to a registry, so the\n" +
+			"publish-on-merge pipeline creates no commits. Skips count as successes, so a\n" +
+			"re-run after a partial failure finishes the rest.",
 		Example: "  patchy mirror sync --all\n" +
 			"  patchy mirror sync --all -o markdown       # publish summary, ready to paste\n" +
 			"  patchy mirror sync --all --dry-run -o json\n" +

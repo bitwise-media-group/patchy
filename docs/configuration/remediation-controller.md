@@ -1,8 +1,12 @@
 # remediation-controller
 
-Queue admission (approvals and revivals), the priority scheduler (bounded concurrency, aging against starvation),
-remediation agent Jobs, the changeset push + pull request — the only place a forge **write** credential is exercised —
-and the rollup/TTL loop, which makes it the one deleter of expired Findings.
+This controller runs:
+
+- queue admission (approvals and revivals)
+- the priority scheduler (bounded concurrency, with aging so no finding waits forever)
+- remediation agent Jobs
+- the changeset push and pull request, which is the only place a forge **write** credential is used
+- the rollup/TTL loop, which makes it the only component that deletes expired Findings
 
 ```sh
 remediation-controller serve --namespace patchy \
@@ -25,31 +29,41 @@ The [shared flags](index.md#shared-flags), plus:
 | `--priority-weight-impact`         | `PATCHY_PRIORITY_WEIGHT_IMPACT`         | `0.2`            | Weight of the assessed impact                                                |
 | `--finding-ttl`                    | `PATCHY_FINDING_TTL`                    | `336h` (14 days) | How long completed findings are kept before deletion; `0` keeps them forever |
 
-The four weights combine the investigation's ratings into the 0–100 scheduling priority the queue sorts on (severity 30%
-/ exploitability 30% / likelihood 20% / impact 20% by default).
+The four weights combine the investigation's ratings into the 0–100 scheduling priority the queue sorts on. By default
+the split is severity 30%, exploitability 30%, likelihood 20% and impact 20%.
 
 ## Agent Job flags
 
-The same per-harness runner flags as the [investigation-controller](investigation-controller.md#agent-job-flags):
-`--claude-agent-image` / `--codex-agent-image` / `--fake-agent-image`, `--harnesses`, the broker/provider flags for the
-brokered claude and codex runners (`--broker-url`, `--claude-provider*`, `--claude-model-map`, `--codex-provider`,
-`--codex-model-map`, `--codex-provider-env`), `--agent-namespace`, `--agent-service-account`, `--job-deadline`,
-`--job-ttl`. The legacy `--claude-secret{,-key,-env}` and `--codex-secret{,-key,-env}` are ignored (customizing them
-logs a migration notice). The controller refuses to start on a claude or codex runner without `--broker-url`, on a
-provider its harness cannot front, on a foundry or azure model map that misses an allowlisted model of that harness, or
-on an allowlisted model no enabled harness can run.
+This controller takes the same per-harness runner flags as the
+[investigation-controller](investigation-controller.md#agent-job-flags):
+
+- `--claude-agent-image`, `--codex-agent-image` and `--fake-agent-image`
+- `--harnesses`
+- the broker and provider flags for the brokered claude and codex runners: `--broker-url`, `--claude-provider*`,
+  `--claude-model-map`, `--codex-provider`, `--codex-model-map` and `--codex-provider-env`
+- `--agent-namespace`, `--agent-service-account`, `--job-deadline` and `--job-ttl`
+
+The legacy `--claude-secret{,-key,-env}` and `--codex-secret{,-key,-env}` flags are ignored. If you set them, the
+controller logs a migration notice. The controller refuses to start in any of these cases:
+
+- a claude or codex runner is configured without `--broker-url`
+- a harness is given a provider it cannot use (claude takes `anthropic`, `bedrock`, `vertex` or `foundry`; codex takes
+  `openai` or `azure`)
+- a foundry or azure model map misses an allowlisted model of that harness
+- an allowlisted model has no enabled harness that can run it
 
 ## Stage flags
 
 The investigation report suggests a model for the fix and estimates its turns and output tokens. The estimate never
-shrinks a run: every remediation gets at least the **auto** budget, an estimate above it holds the finding for approval,
-and an approval grants the estimate up to the **manual** budget.
+shrinks a run. Every remediation gets at least the **auto** budget. An estimate above the auto budget holds the finding
+for approval, and an approval grants the estimate up to the **manual** budget.
 [The remediation budget](../deployment/models.md#the-remediation-budget) explains the model in full.
 
-The model suggestion is clamped: the spawner holds it to the allowlist and resolves the harness that runs it (the
-model's provider decides the runner image and credential route). `--remediate-model` is the fallback when the report's
-suggestion is missing or off the allowlist. Both flags accept family aliases (`anthropic/claude-opus`), resolved to
-concrete ids once at startup; see [Model ids and aliases](../deployment/models.md#model-ids-and-aliases).
+The model suggestion is clamped. The spawner holds it to the allowlist and resolves the harness that runs it. The
+model's provider decides the runner image and the credential route. `--remediate-model` is the fallback when the
+report's suggestion is missing or not on the allowlist. Both flags accept family aliases (`anthropic/claude-opus`),
+which resolve to concrete ids once at startup. See
+[Model ids and aliases](../deployment/models.md#model-ids-and-aliases).
 
 | Flag                              | Env                                    | Default                   | Purpose                                                        |
 | --------------------------------- | -------------------------------------- | ------------------------- | -------------------------------------------------------------- |
@@ -61,23 +75,24 @@ concrete ids once at startup; see [Model ids and aliases](../deployment/models.m
 | `--remediate-manual-max-turns`    | `PATCHY_REMEDIATE_MANUAL_MAX_TURNS`    | `240`                     | Most turns one human approval can grant                        |
 | `--remediate-manual-token-budget` | `PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET` | `1200000`                 | Most output tokens one human approval can grant                |
 
-The manual values must be at least the auto values; the runner refuses to start otherwise. Token budgets are enforced
-live: the runner watches the harness's streamed usage events and kills the process group once the cumulative
-output-token count is exceeded.
+The manual values must be at least the auto values, or the runner refuses to start. Token budgets are enforced live. The
+runner watches the harness's streamed usage events and kills the process group once the total output-token count goes
+over the budget.
 
 ## Behavior
 
-- **Queue admission** — `AwaitingApproval → Queued` and `HandedOff → Queued` on an accepted `spec.approval`, whether a
-  `/approve` issue comment, the status page or `patchy approve` wrote it. `Failed → Queued` on a human retry of a failed
-  remediation. See [Human actions](../concepts/lifecycle.md#human-actions).
-- **Scheduling** — `Queued → Remediating` when a slot frees, highest effective priority first; waiting findings gain +1
-  effective priority per `--priority-aging-interval` up to `--priority-aging-cap`, so low-priority work cannot starve.
-  Each grant creates one immutable `Remediation` child and its agent Job.
-- **Verification, then push** — the agent's `commit.sh` must run cleanly and leave real commits; the controller then
-  replays the changeset through the GitHub Git Data API (blob → tree → commit → ref) onto the `patchy/<finding>` branch
-  with a scoped write token — no git binary, no clone — opens the pull request, and moves the finding to `InReview`. A
-  recoverable failure re-queues (`Remediating → Queued`) within `--max-attempts`; exhaustion is `Failed`. An agent that
-  reports the finding is not safely fixable moves it to `HandedOff`.
-- **Rollup statistics and the TTL** — on terminal-phase entry the stage statistics are aggregated exactly-once
-  (finalizer-backed) into the per-scope `FindingRollup` objects; completed findings older than `--finding-ttl` are
-  deleted, and the rollups remain the durable record.
+- **Queue admission**: an accepted `spec.approval` moves a finding `AwaitingApproval → Queued` or `HandedOff → Queued`.
+  The approval can come from a `/approve` issue comment, the status page or `patchy approve`. A human retry of a failed
+  remediation moves it `Failed → Queued`. See [Human actions](../concepts/lifecycle.md#human-actions).
+- **Scheduling**: when a slot frees, the finding with the highest effective priority moves `Queued → Remediating`.
+  Waiting findings gain +1 effective priority per `--priority-aging-interval`, up to `--priority-aging-cap`, so
+  low-priority work cannot starve. Each grant creates one immutable `Remediation` child and its agent Job.
+- **Verification, then push**: the agent's `commit.sh` must run cleanly and leave real commits. The controller then
+  replays the changeset through the GitHub Git Data API (blob → tree → commit → ref) onto the `patchy/<finding>` branch,
+  using a scoped write token. It uses no git binary and no clone. It then opens the pull request and moves the finding
+  to `InReview`. A recoverable failure re-queues the finding (`Remediating → Queued`) up to `--max-attempts`. When the
+  attempts run out, the finding is `Failed`. If the agent reports that the finding cannot be fixed safely, the finding
+  moves to `HandedOff`.
+- **Rollup statistics and the TTL**: when a finding enters a terminal phase, its stage statistics are added exactly once
+  (backed by a finalizer) into the per-scope `FindingRollup` objects. Completed findings older than `--finding-ttl` are
+  deleted, and the rollups stay as the lasting record.

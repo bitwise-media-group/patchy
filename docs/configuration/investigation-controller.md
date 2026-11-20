@@ -1,9 +1,13 @@
 # investigation-controller
 
-Two engines in one binary. The **gate** admits findings that are `Enhanced`, have a closed accumulation window, and are
-older than `--finding-min-age`; admission materializes the `Repository` (if absent) and one immutable `Investigation`
-per attempt — the child create is the lease. The **analysis scheduler** then runs agent Jobs under bounded concurrency
-in severity order, parses the `PATCHY-EVENT:` stream, stamps the results, and routes the verdict onto the Finding.
+This binary runs two engines.
+
+- The **gate** admits findings that are `Enhanced`, have a closed accumulation window, and are older than
+  `--finding-min-age`. On admission it creates the `Repository` (if it does not exist yet) and one immutable
+  `Investigation` per attempt. Creating that child resource is the lease: if two reconciles race, they end up with one
+  lease.
+- The **analysis scheduler** then runs agent Jobs in severity order, with a limit on how many run at once. It parses the
+  `PATCHY-EVENT:` stream, records the results, and routes the verdict onto the Finding.
 
 ```sh
 investigation-controller serve --namespace patchy \
@@ -26,42 +30,43 @@ The [shared flags](index.md#shared-flags), plus:
 
 ## Agent Job flags
 
-Shared with the [remediation-controller](remediation-controller.md) — both job controllers build Jobs the same way, from
-a per-harness runner fleet. A runner is _configured_ when its image flag is set and _enabled_ when it is also in
-`--harnesses` (or, when that is empty, always — both model-calling runners are brokered, so there is no credential to
-probe). The controller resolves each stage's model to a harness and runs the matching runner. At startup it validates
-that every allowlisted model has an enabled harness that supports it, refusing to start otherwise.
+These flags are shared with the [remediation-controller](remediation-controller.md), because both job controllers build
+Jobs the same way, from a fleet of runners with one runner per harness. A runner is _configured_ when its image flag is
+set. It is _enabled_ when it is also listed in `--harnesses`, or always when `--harnesses` is empty. Both runners that
+call models are brokered, so there is no credential to probe. The controller resolves each stage's model to a harness
+and runs the matching runner. At startup it checks that every allowlisted model has an enabled harness that supports it.
+If one does not, the controller refuses to start.
 
-| Flag                              | Env                                    | Default                | Purpose                                                                                                                           |
-| --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `--claude-agent-image`            | `PATCHY_CLAUDE_AGENT_IMAGE`            | —                      | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                              |
-| `--codex-agent-image`             | `PATCHY_CODEX_AGENT_IMAGE`             | —                      | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                                 |
-| `--fake-agent-image`              | `PATCHY_FAKE_AGENT_IMAGE`              | —                      | fake agent image for dev/e2e (replays fixtures, no credential)                                                                    |
-| `--harnesses`                     | `PATCHY_HARNESSES`                     | — (auto)               | Restrict enabled harnesses to this comma list; empty = every harness whose runner image is set                                    |
-| `--broker-url`                    | `PATCHY_BROKER_URL`                    | —                      | The [egress broker](egress-broker.md)'s base URL — **required** when a claude or codex runner is configured (both run proxy-only) |
-| `--broker-token-audience`         | `PATCHY_BROKER_TOKEN_AUDIENCE`         | `patchy-egress-broker` | Audience the agent pods' projected broker caller tokens are bound to (must match the broker's `--token-audience`)                 |
-| `--claude-provider`               | `PATCHY_CLAUDE_PROVIDER`               | `anthropic`            | Claude model provider behind the broker: `anthropic`, `bedrock`, `vertex`, or `foundry`                                           |
-| `--claude-provider-region`        | `PATCHY_CLAUDE_PROVIDER_REGION`        | —                      | Provider region (required for bedrock and vertex)                                                                                 |
-| `--claude-provider-region-prefix` | `PATCHY_CLAUDE_PROVIDER_REGION_PREFIX` | —                      | Bedrock inference-profile prefix override when it cannot be derived from the region (`us`/`eu`/`apac`)                            |
-| `--claude-provider-project-id`    | `PATCHY_CLAUDE_PROVIDER_PROJECT_ID`    | —                      | GCP project id (required for vertex)                                                                                              |
-| `--claude-model-map`              | `PATCHY_CLAUDE_MODEL_MAP`              | —                      | `canonical=provider-id` overrides, comma separated — **required** for foundry, whose deployment names cannot be derived           |
-| `--claude-provider-env`           | `PATCHY_CLAUDE_PROVIDER_ENV`           | —                      | Extra `NAME=value` agent-pod env for the provider, comma separated (credential names rejected)                                    |
-| `--claude-secret{,-key,-env}`     | `PATCHY_CLAUDE_SECRET{,_KEY,_ENV}`     | (legacy)               | **Ignored** — claude is brokered and its pods hold no credential; customizing these logs a migration notice                       |
-| `--codex-provider`                | `PATCHY_CODEX_PROVIDER`                | `openai`               | Codex model provider behind the broker: `openai` or `azure`                                                                       |
-| `--codex-model-map`               | `PATCHY_CODEX_MODEL_MAP`               | —                      | `canonical=provider-id` overrides, comma separated — **required** for azure, whose deployment names cannot be derived             |
-| `--codex-provider-env`            | `PATCHY_CODEX_PROVIDER_ENV`            | —                      | Extra `NAME=value` agent-pod env for the codex provider, comma separated (credential names rejected)                              |
-| `--codex-secret{,-key,-env}`      | `PATCHY_CODEX_SECRET{,_KEY,_ENV}`      | (legacy)               | **Ignored** — codex is brokered and its pods hold no credential; customizing these logs a migration notice                        |
-| `--agent-namespace`               | `PATCHY_AGENT_NAMESPACE`               | `patchy-agents`        | Namespace the agent Jobs run in                                                                                                   |
-| `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                                 |
-| `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                          |
-| `--job-ttl`                       | `PATCHY_JOB_TTL`                       | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                      |
-| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases  | Canonical model ids or family aliases the investigation may request for remediation (comma-separated)                             |
+| Flag                              | Env                                    | Default                | Purpose                                                                                                                          |
+| --------------------------------- | -------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `--claude-agent-image`            | `PATCHY_CLAUDE_AGENT_IMAGE`            | none                   | claude-agent-runner image (bundles the claude CLI); unset disables the claude runner                                             |
+| `--codex-agent-image`             | `PATCHY_CODEX_AGENT_IMAGE`             | none                   | codex-agent-runner image (bundles the codex CLI); unset disables the codex runner                                                |
+| `--fake-agent-image`              | `PATCHY_FAKE_AGENT_IMAGE`              | none                   | fake agent image for dev/e2e (replays fixtures, no credential)                                                                   |
+| `--harnesses`                     | `PATCHY_HARNESSES`                     | none (auto)            | Restrict enabled harnesses to this comma list; empty = every harness whose runner image is set                                   |
+| `--broker-url`                    | `PATCHY_BROKER_URL`                    | none                   | The [egress broker](egress-broker.md)'s base URL. **Required** when a claude or codex runner is configured (both run proxy-only) |
+| `--broker-token-audience`         | `PATCHY_BROKER_TOKEN_AUDIENCE`         | `patchy-egress-broker` | Audience the agent pods' projected broker caller tokens are bound to (must match the broker's `--token-audience`)                |
+| `--claude-provider`               | `PATCHY_CLAUDE_PROVIDER`               | `anthropic`            | Claude model provider behind the broker: `anthropic`, `bedrock`, `vertex`, or `foundry`                                          |
+| `--claude-provider-region`        | `PATCHY_CLAUDE_PROVIDER_REGION`        | none                   | Provider region (required for bedrock and vertex)                                                                                |
+| `--claude-provider-region-prefix` | `PATCHY_CLAUDE_PROVIDER_REGION_PREFIX` | none                   | Bedrock inference-profile prefix override when it cannot be derived from the region (`us`/`eu`/`apac`)                           |
+| `--claude-provider-project-id`    | `PATCHY_CLAUDE_PROVIDER_PROJECT_ID`    | none                   | GCP project id (required for vertex)                                                                                             |
+| `--claude-model-map`              | `PATCHY_CLAUDE_MODEL_MAP`              | none                   | `canonical=provider-id` overrides, comma separated. **Required** for foundry, whose deployment names cannot be derived           |
+| `--claude-provider-env`           | `PATCHY_CLAUDE_PROVIDER_ENV`           | none                   | Extra `NAME=value` agent-pod env for the provider, comma separated (credential names rejected)                                   |
+| `--claude-secret{,-key,-env}`     | `PATCHY_CLAUDE_SECRET{,_KEY,_ENV}`     | (legacy)               | **Ignored**: claude is brokered and its pods hold no credential. Changing these from the defaults logs a migration notice        |
+| `--codex-provider`                | `PATCHY_CODEX_PROVIDER`                | `openai`               | Codex model provider behind the broker: `openai` or `azure`                                                                      |
+| `--codex-model-map`               | `PATCHY_CODEX_MODEL_MAP`               | none                   | `canonical=provider-id` overrides, comma separated. **Required** for azure, whose deployment names cannot be derived             |
+| `--codex-provider-env`            | `PATCHY_CODEX_PROVIDER_ENV`            | none                   | Extra `NAME=value` agent-pod env for the codex provider, comma separated (credential names rejected)                             |
+| `--codex-secret{,-key,-env}`      | `PATCHY_CODEX_SECRET{,_KEY,_ENV}`      | (legacy)               | **Ignored**: codex is brokered and its pods hold no credential. Changing these from the defaults logs a migration notice         |
+| `--agent-namespace`               | `PATCHY_AGENT_NAMESPACE`               | `patchy-agents`        | Namespace the agent Jobs run in                                                                                                  |
+| `--agent-service-account`         | `PATCHY_AGENT_SERVICE_ACCOUNT`         | `patchy-agent`         | ServiceAccount for the agent pods                                                                                                |
+| `--job-deadline`                  | `PATCHY_JOB_DEADLINE`                  | `1h`                   | `activeDeadlineSeconds` for an agent Job                                                                                         |
+| `--job-ttl`                       | `PATCHY_JOB_TTL`                       | `1h`                   | `ttlSecondsAfterFinished` for a finished Job                                                                                     |
+| `--model-allowlist`               | `PATCHY_MODEL_ALLOWLIST`               | Sonnet + Opus aliases  | Canonical model ids or family aliases the investigation may request for remediation (comma-separated)                            |
 
 ## Stage flags
 
-The investigation stage's limits are **absolute**: the stage runs on exactly these. Its model is a canonical,
-provider-qualified id (e.g. `anthropic/claude-sonnet-5-5`) or a family alias (`anthropic/claude-sonnet`), and the
-harness that runs it is derived from the model; see
+The investigation stage's limits are **absolute**: the stage always runs with these values. Its model is a canonical,
+provider-qualified id (for example `anthropic/claude-sonnet-5-5`) or a family alias (`anthropic/claude-sonnet`). The
+harness that runs it is derived from the model. See
 [Model ids and aliases](../deployment/models.md#model-ids-and-aliases).
 
 | Flag                         | Env                               | Default                   | Purpose                                             |
@@ -72,19 +77,19 @@ harness that runs it is derived from the model; see
 | `--investigate-token-budget` | `PATCHY_INVESTIGATE_TOKEN_BUDGET` | `150000`                  | Output-token budget for the analysis stage          |
 
 The controller also takes the four remediation budget flags, `--remediate-{auto,manual}-{max-turns,token-budget}`
-(`PATCHY_REMEDIATE_{AUTO,MANUAL}_*`; defaults 80 / 400000 and 240 / 1200000). Here they only feed the analysis prompt,
-telling the agent what an estimate buys unattended and what a human can approve. They never clamp anything, and they
-must match the remediation-controller's values. See
+(`PATCHY_REMEDIATE_{AUTO,MANUAL}_*`; defaults 80 / 400000 and 240 / 1200000). Here they only feed the analysis prompt.
+They tell the agent what an estimate buys without a human, and what a human can approve. They never clamp anything, and
+they must match the remediation-controller's values. See
 [The remediation budget](../deployment/models.md#the-remediation-budget).
 
-The stage flags are re-serialized into `PATCHY_*` environment variables injected into every investigation pod
-([agent-runner](agent-runner.md) reads them), so this controller's flags are the single operator-facing configuration
-point for the analysis stage.
+The controller converts the stage flags into `PATCHY_*` environment variables and injects them into every investigation
+pod, where [agent-runner](agent-runner.md) reads them. So this controller's flags are the one place where an operator
+configures the analysis stage.
 
 ## Verdict routing
 
-When the analysis Job completes, the controller writes the summary to `Finding.status.investigation`, sets the
-scheduling priority, and routes the finding on the verdict: `Dismissed`, `HandedOff`, `AwaitingApproval`, `Queued`, or a
-retry back to `Enhanced` and eventually `Failed`. The full table lives in
-[Verdict routing](../concepts/lifecycle.md#verdict-routing); `--confidence-threshold` and `--max-attempts` above are the
-knobs.
+When the analysis Job completes, the controller writes the summary to `Finding.status.investigation` and sets the
+scheduling priority. It then routes the finding on the verdict: `Dismissed`, `HandedOff`, `AwaitingApproval`, `Queued`,
+or a retry back to `Enhanced` and eventually `Failed`. The full table is in
+[Verdict routing](../concepts/lifecycle.md#verdict-routing). `--confidence-threshold` and `--max-attempts` above are the
+settings that control it.

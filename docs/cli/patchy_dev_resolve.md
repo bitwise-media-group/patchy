@@ -4,17 +4,18 @@ Send a verdict write-back to a generic resolver
 
 ### Synopsis
 
-Fire one signed verdict write-back per finding at a resolver endpoint. The
-verdict is the one patchy sends in production — ignore, "false positive" —
-because dismissal after investigation is the only path that resolves today.
+Send one signed verdict write-back per finding to a resolver endpoint. The
+verdict is the one patchy sends in production: ignore, with the reason
+"false positive". Dismissal after investigation is the only path that
+resolves an alert today.
 
 Production sends the write-back once per finding at dismissal, carrying every
-accumulated alert; this command does not emulate accumulation, so it sends one
-alert per call. Any 2xx answer is success, and patchy retries failures — the
-endpoint must treat an already-closed alert as success, not an error.
+accumulated alert. This command does not emulate accumulation, so it sends one
+alert per call. Any 2xx answer is success, and patchy retries failures, so the
+endpoint must treat an already-closed alert as success rather than an error.
 
-Payload files use the same envelope the webhook receives; flags also resolve
-from PATCHY_DEV_* and the patchy config's dev: block.
+Payload files use the same envelope the webhook receives. Flags can also come
+from PATCHY_DEV_* variables and the patchy config's dev: block.
 
 ```
 patchy dev resolve <payload-file>... [flags]

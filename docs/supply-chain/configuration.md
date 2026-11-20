@@ -1,12 +1,12 @@
 # Configuration
 
-The cluster-free command groups of the [patchy CLI](../operate/cli.md) (`dev`, `mirror` and `build`) share one layered
-patchy configuration. The cluster verbs never read it; they use your kubeconfig.
+The [patchy CLI](../operate/cli.md) command groups that run without a cluster (`dev`, `mirror` and `build`) share one
+patchy configuration, built from several files in layers. The cluster verbs never read it. They use your kubeconfig.
 
 ## Where it is read from
 
-It merges from up to seven locations, least to most preferred, so a system-wide or per-user default can be refined by a
-project:
+patchy merges the configuration from up to seven locations, listed here from least to most preferred. A project can
+refine a system-wide or per-user default this way:
 
 | #   | Location                         | Typical use                                     |
 | --- | -------------------------------- | ----------------------------------------------- |
@@ -18,14 +18,18 @@ project:
 | 6   | `<workdir>/.patchy/config.<ext>` | hidden project config                           |
 | 7   | `<workdir>/patchy.<ext>`         | the plain project file (`mirror add` writes it) |
 
-`<ext>` is `yaml`, `yml`, `json` or `toml`, and `<workdir>` is the directory you run patchy in. Two formats at one
-location are ambiguous and refused; a file two locations resolve to is read once. Every command narrates the layers it
-loaded on stderr (`patchy: using ~/.config/patchy/config.toml, patchy.yaml`).
+`<ext>` is `yaml`, `yml`, `json` or `toml`, and `<workdir>` is the directory you run patchy in. If one location has
+files in two formats, patchy cannot tell which to use and refuses to run. A file that two locations point to is read
+only once. Every command lists the layers it loaded on stderr
+(`patchy: using ~/.config/patchy/config.toml, patchy.yaml`).
 
 ## How layers merge
 
-The layers merge key by key: **maps merge recursively, lists and scalars are replaced whole** by the more specific
-layer, and an explicit `null` deletes an inherited key — the way a project drops, say, a signing block from `/etc`:
+The layers merge key by key, and the more specific layer wins:
+
+- Maps merge recursively.
+- Lists and scalars are replaced whole.
+- An explicit `null` deletes an inherited key. For example, a project can drop a signing block it inherits from `/etc`:
 
 ```yaml
 signing: null # this project publishes with each registry's own signing block
@@ -34,14 +38,16 @@ scan:
 ```
 
 Relative paths in any layer (`mirror.directory`, a build entry's `dockerfile`, `context` and `path`) resolve against the
-working directory, not the file that holds them. Keys are strict: a typo fails against the file that carries it
-(`~/.config/patchy/config.toml: 'build.images[0]' has invalid keys: dockerfil`). For the flag-backed keys (`dev.*`,
-`mirror.directory`, `mirror.workers`) the usual precedence still holds on top: flag, then `PATCHY_*` environment
-variable, then the merged files, then the flag default.
+working directory, not against the file that holds them. Keys are strict. A typo fails with an error that names the file
+it is in (`~/.config/patchy/config.toml: 'build.images[0]' has invalid keys: dockerfil`).
+
+Some keys can also be set by a flag: `dev.*`, `mirror.directory` and `mirror.workers`. For those, the usual order
+applies on top of the files. The flag wins, then the `PATCHY_*` environment variable, then the merged files, then the
+flag's default.
 
 ## The file's shape
 
-The blocks `mirror` and `build` share sit at the top level, then one block per command group:
+Blocks that `mirror` and `build` share sit at the top level. Each command group then has its own block:
 
 ```yaml
 registries: # where mirror and build publish (each with an optional signing override)
@@ -62,19 +68,20 @@ dev: {} # the dev command flags, by name
 
 ## Migrating from `mirror.yaml` and `.patchy.yaml`
 
-Both files are gone. A `.patchy.yaml` in the working directory is ignored with a warning: move its contents into
-`patchy.yaml`, or into any location above, unchanged. A `mirror.yaml` left at a mirror root fails every `mirror` command
-until it is migrated; see [Migrating from `mirror.yaml`](mirror.md#migrating-from-mirroryaml) for the steps.
+patchy no longer reads either file. A `.patchy.yaml` in the working directory is ignored with a warning. Move its
+contents, unchanged, into `patchy.yaml` or into any location above. A `mirror.yaml` left at a mirror root makes every
+`mirror` command fail until you migrate it. See [Migrating from `mirror.yaml`](mirror.md#migrating-from-mirroryaml) for
+the steps.
 
 ## Source policy
 
-`mirror.policy` and `build.policy` restrict where each command may pull from. Unlike every other key, a policy block
-marked `enforced: true` does not merge away: it is evaluated as written in the layer that declares it, so a more
-preferred layer can tighten it but never loosen or delete it. See [Restricting sources](source-policy.md).
+`mirror.policy` and `build.policy` restrict where each command may pull from. A policy block marked `enforced: true`
+behaves unlike every other key: merging cannot remove it. patchy evaluates it as written in the layer that declares it.
+A more preferred layer can tighten it, but can never loosen or delete it. See [Restricting sources](source-policy.md).
 
 ## Scanning policy
 
-One `scan` block shape is used everywhere: in the config it holds the defaults (which scanners run, which severities
-block, how long an allowlist acceptance may last), and every chart manifest, artifact manifest and build entry overrides
-it field by field. See [Scanning and allowlists](scanning.md) for the fields, their built-in defaults, what
+The `scan` block has the same shape everywhere. In the config it holds the defaults: which scanners run, which
+severities block, and how long an allowlist acceptance may last. Every chart manifest, artifact manifest and build entry
+can override it field by field. See [Scanning and allowlists](scanning.md) for the fields, their built-in defaults, what
 `enabled: auto` means for each kind of entry, and the allowlist format.

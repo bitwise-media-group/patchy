@@ -1,14 +1,14 @@
 {#-
   Overrides the theme's partials/javascripts/base.html (zensical 0.0.54).
 
-  `extra.scope = "/"` deliberately shares preference storage (the cookie
-  consent choice, colour palette — localStorage) across every docs site on
-  oss.bitwisemedia.uk, but upstream keys sessionStorage entries with the same
-  scope, so the GitHub repository facts (`__source`: version/stars/forks)
-  fetched by whichever sibling site loaded first are shown for all of them.
+  `extra.scope = "/"` makes every docs site on oss.bitwisemedia.uk share
+  preference storage in localStorage (the cookie consent choice and the
+  colour palette). Upstream also keys sessionStorage entries with that scope,
+  so the GitHub repository facts (`__source`: version, stars, forks) fetched
+  by whichever sibling site loaded first would show on all of them.
 
-  This copy adds `__md_scope_site` — this site's own base path — and makes it
-  the default scope for sessionStorage reads/writes, while localStorage keeps
+  This copy adds `__md_scope_site`, this site's own base path, and makes it
+  the default scope for sessionStorage reads and writes. localStorage keeps
   the shared `extra.scope`. Only `__source` is affected: the other
   sessionStorage entry (`__outdated`) already passes its scope explicitly.
 

@@ -1,9 +1,9 @@
 # Issue labels
 
 Two different things in patchy are called labels. **Issue labels** are the `security-*` labels on a finding's tracking
-issue: a one-way projection of the [Finding's state](lifecycle.md) for humans and issue searches. **Resource labels**
-are Kubernetes labels on the custom resources themselves, there for selectors. Nothing ever parses either back into
-state; the Finding's spec and status are the truth.
+issue. They are a one-way projection of the [Finding's state](lifecycle.md) for humans and issue searches. **Resource
+labels** are Kubernetes labels on the custom resources themselves, used by selectors. Patchy never reads either kind
+back into state. The Finding's spec and status are the source of truth.
 
 ## The projected labels
 
@@ -25,13 +25,13 @@ colours or descriptions.
 When two enhancers record the same attribute key, the first enhancer in the chain wins. The chain runs the most
 authoritative source first, the same precedence it uses for owners.
 
-The projection is deliberately small. Labels exist for issue searches and human triage. Alert numbers, confidence,
+The projection is kept small on purpose. Labels exist for issue searches and human triage. Alert numbers, confidence,
 budgets, attempt counts and token accounting live on the custom resources, so none of them appear as labels.
 
 ## Resource labels
 
 Patchy stamps a few Kubernetes labels on its own resources so that `kubectl` and the [patchy CLI](../operate/cli.md) can
-select on them. The values mirror spec fields; the spec stays the source of truth.
+select on them. The values copy spec fields, and the spec stays the source of truth.
 
 | Label                                | On                                    | Value                            |
 | ------------------------------------ | ------------------------------------- | -------------------------------- |

@@ -73,8 +73,8 @@ func newGetCmd(opts *Options) *cobra.Command {
 		Use:   "get <resource|all> [name...]",
 		Short: "List patchy resources",
 		Long: "List patchy resources.\n\n" +
-			"Columns come from the CRDs themselves, so they match `kubectl get` exactly;\n" +
-			"-o wide adds the columns marked lower priority (issue and pull-request links).\n\n" +
+			"Columns come from the CRDs themselves, so they match `kubectl get`. -o wide\n" +
+			"adds the columns marked lower priority (issue and pull-request links).\n\n" +
 			"The resource `all` lists every patchy kind, each in its own table, in the\n" +
 			"order the pipeline uses them. Kinds with nothing in them are left out.",
 		Example: "  patchy get findings\n" +

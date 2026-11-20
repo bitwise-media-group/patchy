@@ -1,46 +1,46 @@
 # Webhook exposure
 
-A GitHub App has exactly **one** webhook URL, and GitHub POSTs every subscribed event to it. In patchy that URL points
-at the **integration-controller** — the single internet-facing component and the only webhook receiver in the system:
+A GitHub App has only **one** webhook URL, and GitHub POSTs every subscribed event to it. In patchy that URL points at
+the **integration-controller**. It is the only component that faces the internet and the only webhook receiver in the
+system:
 
 ```text
 https://<webhook.host>/github/webhooks
 ```
 
-Each delivery's HMAC signature is validated against the `webhookSecret` of your configured `Integration` resources
-before anything else happens; a delivery no Integration's secret matches is rejected with `401`. There is no routing
-tier and nothing to fan deliveries out to — scanner events are ingested into `Finding` resources and human signals
-(issue close, `/approve`, PR merge) are applied to them, all inside this one controller.
+The controller first checks each delivery's HMAC signature against the `webhookSecret` of your configured `Integration`
+resources. If no Integration's secret matches, it rejects the delivery with `401`. There is no routing tier and nothing
+to fan deliveries out to. This one controller turns scanner events into `Finding` resources and applies human signals
+(issue close, `/approve`, PR merge) to them.
 
-Two properties follow:
+This has two consequences:
 
-- **Losing a delivery is not losing work.** The webhook path carries ingestion and human-in-the-loop signals only;
-  pipeline progress rides on the controllers' watch-driven reconcile loops, which no delivery can announce anyway
-  ("accumulation closed", "older than an hour", "a slot freed"). A rejected delivery (`503` on a full queue, downtime)
-  stays in GitHub's 30-day delivery log, and the
+- **Losing a delivery does not lose work.** The webhook path carries only new alerts and human-in-the-loop signals.
+  Pipeline progress comes from the controllers' watch-driven reconcile loops. No delivery could announce those events
+  anyway ("accumulation closed", "older than an hour", "a slot freed"). A rejected delivery (`503` on a full queue, or
+  downtime) stays in GitHub's 30-day delivery log, and the
   [redelivery sweep](../integrations/sources/github.md#the-failed-delivery-sweep) replays it.
-- **Exposure needs nothing exotic.** Any plain Ingress or Gateway API implementation works as-is — no header matching,
-  no rewrites, no mirroring. Only the provider webhook paths need exposing — `/github/webhooks`, plus
-  `/google-cloud/webhooks`, `/wiz/webhooks`, and the `/generic/` prefix when those Integrations are configured; the
-  probes stay cluster-internal on port 8081.
+- **Exposure needs nothing unusual.** Any plain Ingress or Gateway API implementation works as it is. You need no header
+  matching, rewrites or mirroring. Expose only the provider webhook paths: `/github/webhooks`, plus
+  `/google-cloud/webhooks`, `/wiz/webhooks` and the `/generic/` prefix when you configure those Integrations. The probes
+  stay inside the cluster on port 8081.
 
-The credential story: the integration-controller holds no GitHub credential in its Deployment at all — the
-`Integration`/`Forge` Secrets are read on demand through the Kubernetes API, and the components that exercise write
-credentials (remediation-controller's push/PR) never face the internet.
+The integration-controller's Deployment holds no GitHub credential. It reads the `Integration` and `Forge` Secrets on
+demand through the Kubernetes API. The component that uses write credentials (remediation-controller, for push and PR)
+never faces the internet.
 
 ## Missed deliveries
 
-GitHub does **not** retry a failed webhook delivery; it records the attempt in the App's 30-day delivery log and moves
-on. The redelivery sweep, the replay action and the manual backfill recover what the receiver missed, and they are
-Integration behaviour rather than exposure: see
-[the GitHub source](../integrations/sources/github.md#the-failed-delivery-sweep).
+GitHub does **not** retry a failed webhook delivery. It records the attempt in the App's 30-day delivery log and moves
+on. The redelivery sweep, the replay action and the manual backfill recover what the receiver missed. They belong to the
+Integration, not to exposure, so see [the GitHub source](../integrations/sources/github.md#the-failed-delivery-sweep).
 
 ## Expose it
 
-Enable one flavour under the chart's `webhook` value and point the App's webhook URL at
+Enable one option under the chart's `webhook` value. Then point the App's webhook URL at
 `https://<host>/github/webhooks`.
 
-**Plain Ingress** (`webhook.ingress`) — works with any ingress controller:
+**Plain Ingress** (`webhook.ingress`) works with any ingress controller:
 
 ```yaml
 webhook:
@@ -54,11 +54,11 @@ webhook:
           - patchy.example.com
 ```
 
-GitHub should always deliver over HTTPS — set `tls` (cert-manager annotations go in `webhook.ingress.annotations`) or
+GitHub should always deliver over HTTPS. Set `tls` (put cert-manager annotations in `webhook.ingress.annotations`), or
 terminate TLS in front of the Ingress.
 
-**Gateway API** (`webhook.httpRoute`) — one `HTTPRoute` that attaches to a `Gateway` you bring via `parentRefs`; TLS and
-certificates are the Gateway listener's concern:
+**Gateway API** (`webhook.httpRoute`) creates one `HTTPRoute`. It attaches to a `Gateway` you supply through
+`parentRefs`. The Gateway listener handles TLS and certificates:
 
 ```yaml
 webhook:
@@ -73,30 +73,33 @@ webhook:
 
 ## Managed platform notes
 
-Nothing here is patchy-specific — the chart emits standard resources with no implementation-specific annotations of its
-own (add what your controller needs via `webhook.ingress.annotations` / `webhook.httpRoute.annotations`) — but for
-orientation:
+None of this is specific to patchy. The chart creates standard resources and adds no implementation-specific annotations
+of its own. Add what your controller needs through `webhook.ingress.annotations` or `webhook.httpRoute.annotations`. As
+a guide:
 
-- **GKE** — both flavours work out of the box: the built-in GKE Ingress (`gce` class), or the
-  [GKE Gateway controller](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) (enable with
-  `--gateway-api=standard`; Google manages the CRDs and controller) with a `gke-l7-*` Gateway.
-- **EKS** — install the [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/):
-  its `alb` IngressClass covers the Ingress flavour, and its
+- **GKE**: both options work by default. Use the built-in GKE Ingress (`gce` class), or the
+  [GKE Gateway controller](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) with a `gke-l7-*`
+  Gateway. Enable the Gateway controller with `--gateway-api=standard`; Google manages its CRDs and controller.
+- **EKS**: install the [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/).
+  Its `alb` IngressClass covers the Ingress option. Its
   [GA Gateway API support](https://aws.amazon.com/blogs/networking-and-content-delivery/aws-load-balancer-controller-adds-general-availability-support-for-kubernetes-gateway-api/)
-  (Gateway API CRDs installed alongside) covers `httpRoute`, provisioning an ALB with the certificate from ACM.
-- **AKS** —
+  covers `httpRoute` (install the Gateway API CRDs alongside it) and provisions an ALB with the certificate from ACM.
+- **AKS**:
   [Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/overview)
-  implements both the Ingress and Gateway APIs; enable its ALB Controller as an
+  implements both the Ingress and Gateway APIs. Enable its ALB Controller as an
   [AKS managed add-on](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/quickstart-deploy-application-gateway-for-containers-alb-controller-addon)
-  (requires workload identity and Azure CNI). The AKS _application routing_ add-on (managed NGINX) also covers the
-  Ingress flavour.
+  (this needs workload identity and Azure CNI). The AKS _application routing_ add-on (managed NGINX) also covers the
+  Ingress option.
 
 Any other conformant implementation (ingress-nginx, Istio, Envoy Gateway, Cilium, ...) works the same way.
 
 ## Kustomize
 
-The base ships the integration-controller Deployment and its ClusterIP Service (`patchy-integration-controller:8080`)
-but deliberately no Ingress — put your environment's Ingress or Gateway in front of that Service in your own overlay.
-The dev overlay exposes it two ways at once: NodePort 30079 (where a webhook tunnel — smee.io, ngrok,
-`gh webhook forward` — or `mise run replay` should point) and a host-less, class-less Ingress for the same path that any
-default ingress controller satisfies. On [Colima](colima.md) that Ingress is live out of the box.
+The base ships the integration-controller Deployment and its ClusterIP Service (`patchy-integration-controller:8080`).
+It ships no Ingress on purpose. Put your environment's Ingress or Gateway in front of that Service in your own overlay.
+The dev overlay exposes it in two ways at once:
+
+- NodePort 30079. Point a webhook tunnel (smee.io, ngrok, `gh webhook forward`) or `mise run replay` here.
+- An Ingress for the same path with no host and no class, which any default ingress controller serves.
+
+On [Colima](colima.md) that Ingress works by default.

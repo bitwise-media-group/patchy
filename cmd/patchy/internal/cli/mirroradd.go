@@ -35,15 +35,16 @@ func newMirrorAddCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add [name]",
 		Short: "Scaffold a new chart or artifact entry",
-		Long: "Create the entry directory for a new mirrored chart or OCI artifact: detect\n" +
-			"what --url points at (an https:// helm repository, an oci:// chart\n" +
-			"repository, or a bare artifact reference), pin the newest stable version,\n" +
-			"default the constraint to stay-in-major, and scaffold manifest.yaml.\n\n" +
+		Long: "Create the entry directory for a new mirrored chart or OCI artifact. The\n" +
+			"command works out what --url points at (an https:// helm repository, an oci://\n" +
+			"chart repository, or a bare artifact reference). It pins the newest stable\n" +
+			"version, sets the constraint to stay within that major version, and writes a\n" +
+			"starter manifest.yaml.\n\n" +
 			"The name defaults to the URL's last path segment. When the working directory\n" +
 			"has no patchy config yet, add also writes a starter patchy.yaml with\n" +
 			"commented defaults (registries, signing, scan, mirror and a build example).\n" +
-			"Nothing is vendored and nothing is committed — review the scaffold, then run\n" +
-			"`patchy mirror upgrade <name>` to vendor and lock it.",
+			"Nothing is vendored and nothing is committed. Review the new files, then run\n" +
+			"`patchy mirror upgrade <name>` to vendor and lock the entry.",
 		Example: "  patchy mirror add --url oci://ghcr.io/open-telemetry/" +
 			"opentelemetry-helm-charts/opentelemetry-collector\n" +
 			"  patchy mirror add dex --url https://charts.dexidp.io\n" +

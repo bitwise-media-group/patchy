@@ -1,19 +1,19 @@
 # Finding lifecycle
 
-The `Finding` custom resource is the authoritative state machine for one security finding. `api/v1alpha1` owns the phase
-taxonomy and the legal transition table (`transitions.go`); `SetPhase` refuses an illegal move, so a controller cannot
-invent a transition by accident. This page is the single reference for phases, verdict routing, retry and expedite —
-other pages link here rather than restating it. Labels on the tracking issue are a one-way projection of this state; see
+The `Finding` custom resource is the authoritative state machine for one security finding. `api/v1alpha1` defines the
+phases and the table of legal transitions (`transitions.go`). `SetPhase` refuses an illegal move, so a controller cannot
+invent a transition by accident. This page is the one reference for phases, verdict routing, retry and expedite. Other
+pages link here instead of repeating it. Labels on the tracking issue are a one-way projection of this state. See
 [Issue labels](issue-labels.md).
 
 ## Phases
 
-`Finding.status.phase` walks the happy path
-`Opened → Enhanced → Investigating → Queued → Remediating → InReview → Remediated`, with `AwaitingApproval` before
-`Queued` when a human must approve, and `Dismissed`, `HandedOff` and `Failed` as the other terminal phases. `Queued` is
-a real phase: remediation runs in priority order with bounded concurrency, so findings observably wait for a slot. The
-colours are the status page's: amber needs a person, red has failed, and soil marks a new finding or one closed without
-a change.
+On the happy path, `Finding.status.phase` moves through
+`Opened → Enhanced → Investigating → Queued → Remediating → InReview → Remediated`. `AwaitingApproval` comes before
+`Queued` when a human must approve. `Dismissed`, `HandedOff` and `Failed` are the other terminal phases. `Queued` is a
+real phase. Remediation runs in priority order with a limit on how many run at once, so you can see findings waiting for
+a slot. The colours match the status page: amber needs a person, red has failed, and soil marks a new finding or one
+closed without a change.
 
 | Phase                                                        | Meaning                                                                                                       |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
@@ -30,9 +30,9 @@ a change.
 | <span class="pt-pill pt-pill--amber">HandedOff</span>        | Verdict `manual`, a remediation the agent judged unsafe, or a human closed the issue. **Terminal**, revivable |
 
 Entering a terminal phase sets `status.completedAt`, which starts the
-[finding TTL](../configuration/remediation-controller.md) (14 days by default; the `FindingRollup` objects keep the
-statistics after deletion). Every terminal phase except `Remediated` can be left again, and leaving clears `completedAt`
-and cancels the TTL:
+[finding TTL](../configuration/remediation-controller.md). The TTL is 14 days by default, and the `FindingRollup`
+objects keep the statistics after deletion. A finding can leave every terminal phase except `Remediated`. Leaving clears
+`completedAt` and cancels the TTL:
 
 - **Dismissed → HandedOff** when someone reopens the tracking issue.
 - **HandedOff → Queued** on an approval newer than the finding's completion.
@@ -40,8 +40,8 @@ and cancels the TTL:
 
 ## Verdict routing
 
-When the analysis Job completes, the investigation-controller writes the summary to `Finding.status.investigation`,
-derives the 0–100 scheduling priority from the ratings, and routes on the verdict:
+When the analysis Job completes, the investigation-controller writes the summary to `Finding.status.investigation`. It
+works out the 0–100 scheduling priority from the ratings, and routes the finding by its verdict:
 
 | Verdict                                                           | Finding moves to                                                        |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -52,13 +52,13 @@ derives the 0–100 scheduling priority from the ratings, and routes on the verd
 | Stage outcome not `ok`                                            | `Enhanced` to retry while attempts remain, then `Failed`                |
 
 A partial report is never trusted. The outcomes other than `ok` (`runtime_error`, `timeout`, `budget_exceeded`,
-`report_missing`, `report_invalid`) always retry or fail; they never route on whatever frontmatter survived. The
-threshold and attempt count are investigation-controller flags; see
+`report_missing`, `report_invalid`) always retry or fail. They never route on whatever frontmatter survived. The
+threshold and attempt count are investigation-controller flags. See
 [investigation-controller](../configuration/investigation-controller.md).
 
 ## Legal transitions
 
-Self-transitions are always legal no-ops; `SetPhase` refuses everything else.
+A move to the same phase is always legal and does nothing. `SetPhase` refuses every move not shown below.
 
 ```mermaid
 stateDiagram-v2
@@ -133,13 +133,13 @@ Each controller owns its own edges. Grouped by writer:
 | `Remediating`      | `HandedOff`   | The agent reports no safe fix                 |
 | `Remediating`      | `Failed`      | Attempts exhausted                            |
 
-Each trigger has exactly one writer. `HandedOff` is the one phase with several: a stage's own verdict reaches it from
-the controller that ran the stage, and a human closing the issue reaches it from the integration-controller.
+Each trigger has one writer. `HandedOff` is the only phase with several writers. A stage's own verdict moves a finding
+there from the controller that ran the stage. A human closing the issue moves it there from the integration-controller.
 
 ## Human actions
 
 People act on a finding by writing its **spec**, never its status. The controller that owns the matching edge sees the
-change and makes the transition, so the edge keeps its one writer whichever surface the human used: the `/approve` issue
+change and makes the transition. So the edge keeps its one writer, whichever tool the human used: the `/approve` issue
 comment, the [status page](../operate/status-page.md), or the [patchy CLI](../operate/cli.md). Each action is a custom
 RBAC verb on `findings.patchy.bitwisemedia.uk`.
 
@@ -156,27 +156,27 @@ RBAC verb on `findings.patchy.bitwisemedia.uk`.
 An `/approve` comment on the tracking issue, the status page's **Approve** button and `patchy approve` all write the
 same `spec.approval` record (who, when, an optional note). The remediation-controller's spawner then drives
 `AwaitingApproval → Queued`, or `HandedOff → Queued` when the approval is newer than the finding's completion. The first
-approval wins, except on a handed-off finding whose recorded approval predates its completion: that one can never revive
-it, so a fresh approval replaces it.
+approval wins, with one exception. On a handed-off finding, an approval recorded before the finding completed can never
+revive it, so a new approval replaces it.
 
 ### Retry
 
 A retry recovers a `Failed` finding to the recoverable state immediately before the failure. A failed investigation
 reverts to `Enhanced`, and the investigation gate opens the next attempt. A failed remediation, or a pull request closed
-without merging, re-queues to `Queued`, and the remediation spawner creates the next attempt. The recovery consumes the
-retry and sets the `Retried` condition; if the finding fails again, it needs another retry.
+without merging, re-queues to `Queued`, and the remediation spawner creates the next attempt. The recovery uses up the
+retry and sets the `Retried` condition. If the finding fails again, it needs another retry.
 
 ### Expedite
 
-Expedite marks the finding urgent for its whole lifetime. The investigation gate skips the accumulation window and the
-minimum-age wait, and both schedulers rank the finding's runs ahead of all non-expedited work. It does not bypass an
-`AwaitingApproval` hold; that is still Approve's job. A run already in flight gains nothing from it, so it is not
-offered from `Remediating` on.
+Expedite marks the finding urgent for the rest of its life. The investigation gate skips the accumulation window and the
+minimum-age wait. Both schedulers rank the finding's runs ahead of all work that is not expedited. Expedite does not
+bypass an `AwaitingApproval` hold, which still needs Approve. A run already in progress gains nothing from it, so it is
+not offered from `Remediating` onwards.
 
 ## Conditions
 
-Facts that are not phases ride on `status.conditions`. Accumulation is the important one: alerts keep folding into a
-Finding **while** enhancement runs, so the close of the window cannot be a phase.
+Facts that are not phases are stored in `status.conditions`. Accumulation is the important one. Alerts keep folding into
+a Finding **while** enhancement runs, so the close of the window cannot be a phase.
 
 | Condition              | On                                                     | Meaning                                                                                                      |
 | ---------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -206,5 +206,5 @@ kubectl describe finding <name>                     # conditions, phase log, enr
 kubectl get patchy -n patchy                        # every patchy kind, one shot
 ```
 
-Machine metadata that used to ride on issue labels (alert numbers, accumulation state, confidence, budgets, attempt
+Machine metadata that used to live on issue labels (alert numbers, accumulation state, confidence, budgets, attempt
 counts, per-stage token and cost accounting) lives on these resources and nowhere else.

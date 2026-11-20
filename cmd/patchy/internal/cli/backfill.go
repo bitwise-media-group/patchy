@@ -22,22 +22,22 @@ func newBackfillCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backfill <integration>",
 		Short: "Backfill an integration's pre-existing open alerts into findings",
-		Long: "Request a one-shot list-alerts backfill on an integration: the\n" +
-			"integration-controller walks the provider's open alerts and ingests the ones\n" +
-			"that predate webhook coverage — alerts raised before the GitHub App was\n" +
-			"installed on (or associated with) their repository, which no replay of the\n" +
-			"delivery log can ever surface. Ingestion is idempotent, so alerts that already\n" +
-			"have findings simply fold in.\n\n" +
-			"--repo narrows the walk: an \"owner/\" prefix covers a whole account, an\n" +
-			"\"owner/name\" entry one repository (and, being a prefix, any name extending\n" +
-			"it). With App credentials the filter prunes whole installations; with a PAT\n" +
-			"every entry must be an exact owner/name, since a PAT cannot discover\n" +
-			"repositories. A walk that reports truncated on status.backfill hit the page\n" +
-			"budget — re-run with a narrower prefix to reach the rest.\n\n" +
-			"The command writes spec.backfill only — a controller observes it and runs the\n" +
-			"walk. Your RBAC decides whether it lands: the CLI checks the 'backfill' verb on\n" +
-			"integrations before writing, and the cluster's admission policy enforces it\n" +
-			"regardless of client.",
+		Long: "Request a one-shot backfill of open alerts on an integration. The\n" +
+			"integration-controller lists the provider's open alerts and ingests the ones\n" +
+			"that predate webhook coverage. These are alerts raised before the GitHub App\n" +
+			"was installed on (or associated with) their repository, so no replay of the\n" +
+			"delivery log can surface them. Ingestion is idempotent: an alert that already\n" +
+			"has a finding merges into it.\n\n" +
+			"--repo narrows the walk. An \"owner/\" prefix covers a whole account. An\n" +
+			"\"owner/name\" entry covers one repository and, because it is a prefix, any name\n" +
+			"that starts with it. With App credentials the filter skips whole installations.\n" +
+			"With a PAT every entry must be an exact owner/name, because a PAT cannot\n" +
+			"discover repositories. If status.backfill reports the walk as truncated, it hit\n" +
+			"the page budget: re-run with a narrower prefix to reach the rest.\n\n" +
+			"The command writes only spec.backfill. A controller sees the change and runs\n" +
+			"the walk. Your RBAC decides whether the write is allowed. The CLI checks the\n" +
+			"'backfill' verb on integrations before writing, and the cluster's admission\n" +
+			"policy enforces it for every client.",
 		Example: "  patchy backfill gh\n" +
 			"  patchy backfill gh --repo acme/\n" +
 			"  patchy backfill gh --repo acme/shop --repo acme/billing",

@@ -22,11 +22,12 @@ func newCanICmd(opts *Options) *cobra.Command {
 		Use:   "can-i [verb]",
 		Short: "Show which actions your RBAC allows",
 		Long: "Show what you may do in this namespace.\n\n" +
-			"Each action is a custom RBAC verb, granted independently — holding 'approve'\n" +
-			"says nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,\n" +
-			"suspend, resume) live on findings; the integration-scoped verbs (backfill,\n" +
-			"replay, reset) live on integrations. With no argument this prints the whole\n" +
-			"matrix, which is the fastest answer to \"why was that refused?\".",
+			"Each action is a custom RBAC verb, granted on its own. Holding 'approve' says\n" +
+			"nothing about 'suspend'. The per-finding verbs (approve, retry, expedite,\n" +
+			"suspend, resume) apply to findings. The integration-scoped verbs (backfill,\n" +
+			"replay, reset) apply to integrations. With no argument this prints every verb\n" +
+			"and your answer for each, which is the fastest way to see why something was\n" +
+			"refused.",
 		Example: "  patchy can-i\n  patchy can-i approve\n  patchy can-i backfill\n  patchy can-i approve -n patchy",
 		Args:    cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {

@@ -1,7 +1,10 @@
 # Models and credentials
 
-This page is the single reference for three things the controllers, the agent pods and the Helm chart all share: how
-model ids are written, how the remediation budget works, and where each provider's model credential lives.
+This page is the one reference for three things that the controllers, the agent pods and the Helm chart all share:
+
+- how model ids are written
+- how the remediation budget works
+- where each provider's model credential lives
 
 ## Model ids and aliases
 
@@ -16,8 +19,8 @@ three forms. The controllers resolve it once, at startup:
 | Pattern id    | `anthropic/claude-opus-6`     | An Anthropic version patchy has not registered yet: claude harness only, unpriced  |
 
 The defaults are aliases: `anthropic/claude-sonnet` for both stages, and `anthropic/claude-sonnet,anthropic/claude-opus`
-for the allowlist. An upgrade of patchy that registers a newer model therefore moves them with no configuration change.
-Pin a concrete id to hold a version.
+for the allowlist. So when you upgrade to a patchy release that registers a newer model, the defaults move to it with no
+configuration change. Pin a concrete id to stay on one version.
 
 Only the **concrete** id flows downstream. The pod environment, the investigation prompt's model list, CRD status and
 the rollups all record a version, never an alias, so statistics and pricing stay per version.
@@ -27,14 +30,14 @@ A pattern id lets a new Anthropic release run before patchy ships an entry for i
 registered. The claude CLI reports its own cost, so run costs are still recorded. The controller logs a warning naming
 every such id at startup. An alias whose family patchy does not know, or an id of neither shape, is a startup error.
 
-The **harness** (the coding-agent CLI: `claude -p` or `codex exec`) is derived from the model's provider, never
-configured beside it. Anthropic ids run on claude, OpenAI ids on codex.
+The **harness** is the coding-agent CLI: `claude -p` or `codex exec`. Patchy picks it from the model's provider, and you
+do not configure it separately. Anthropic ids run on claude, and OpenAI ids run on codex.
 
 ## The remediation budget
 
 The investigation stage runs on fixed limits: `--investigate-max-turns` (25), `--investigate-token-budget` (150,000) and
 `--investigate-timeout` (15 minutes). Remediation is different, because the investigation report **estimates** how many
-turns and output tokens the fix will need. The estimate never shrinks a run; it only decides whether a human must
+turns and output tokens the fix will need. The estimate never shrinks a run. It only decides whether a human must
 approve it first.
 
 The budget has two levels, set on the remediation-controller:
@@ -52,13 +55,13 @@ How a run's budget is decided:
    `exceedsAutomatedTurns` or `exceedsAutomatedTokens` hold).
 3. Approving that finding grants the estimate, capped at the manual budget.
 
-Beyond the approval gate, the estimate is reporting only. Each run records the estimate, the granted budget and the
-actual usage, and the rollups average the skew. That average feeds back into the next investigation's prompt
-(`PATCHY_CALIBRATION`) so later estimates can correct for it.
+Apart from the approval gate, the estimate is only reported. Each run records the estimate, the granted budget and the
+actual usage. The rollups average the gap between estimate and usage. That average feeds back into the next
+investigation's prompt (`PATCHY_CALIBRATION`) so later estimates can correct for it.
 
 Each flag is also a `PATCHY_REMEDIATE_{AUTO,MANUAL}_{MAX_TURNS,TOKEN_BUDGET}` environment variable. The
 investigation-controller takes the same four flags, but only to tell the analysis prompt what an estimate will buy
-unattended and what an approval can grant. They are never a clamp there, and they must match the
+unattended and what an approval can grant. They never limit a run there, and they must match the
 remediation-controller's values. In the chart, both controllers read one block:
 
 ```yaml
@@ -70,9 +73,9 @@ agent:
     manual: { maxTurns: 240, tokenBudget: 1200000 }
 ```
 
-The manual budget must be at least the auto budget: approving a fix must never buy less than leaving it alone. The agent
-runner refuses to start when a `MANUAL` value is below its `AUTO` value. Token budgets are enforced live: the runner
-watches the harness's streamed usage and kills the process group once the cumulative output-token count passes the
+The manual budget must be at least the auto budget, because approving a fix must never buy less than leaving it alone.
+The agent runner refuses to start when a `MANUAL` value is below its `AUTO` value. Token budgets are enforced live. The
+runner watches the harness's streamed usage and kills the process group once the total output-token count passes the
 budget.
 
 ## Provider credentials
@@ -148,7 +151,7 @@ egressBroker:
 
 Bedrock and Vertex model ids are derived for every registered model, and for pattern ids too. Foundry and Azure
 deployment names cannot be derived, so their `modelMap` must cover every allowlisted model and stage default that
-resolves to that runner; the controllers refuse to start otherwise. Scope cloud roles to invoking models only:
+resolves to that runner. Otherwise the controllers refuse to start. Limit cloud roles to invoking models only:
 `bedrock:InvokeModel*`, `aiplatform.endpoints.predict`, or Cognitive Services User. See
 [egress-broker](../configuration/egress-broker.md#workload-identity) for the workload-identity recipes.
 

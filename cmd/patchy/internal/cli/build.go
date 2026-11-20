@@ -35,31 +35,33 @@ func newBuildCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build [name]...",
 		Short: "Build, scan, publish and sign first-party images and Flux manifests",
-		Long: "Build the artifacts the patchy config's build: block lists — Dockerfile images\n" +
-			"(build.images) and Flux manifest directories (build.manifests) — scan them\n" +
-			"before anything is pushed, publish them to every configured registry as\n" +
-			"<registry.url>/<repository>:<tag>, and sign them with that registry's signing\n" +
-			"block (else the global one). It is the first-party sibling of `patchy mirror`\n" +
-			"and shares its registries, signing and scan blocks.\n\n" +
-			"Images build with `docker buildx` into an OCI layout; every platform image is\n" +
-			"scanned (osv-scanner and/or grype) under the entry's resolved scan policy and\n" +
+		Long: "Build the artifacts listed in the patchy config's build: block. These are\n" +
+			"Dockerfile images (build.images) and Flux manifest directories (build.manifests).\n" +
+			"The command scans them before anything is pushed, publishes them to every\n" +
+			"configured registry as <registry.url>/<repository>:<tag>, and signs them with\n" +
+			"that registry's signing block (or the global one). It is the counterpart of\n" +
+			"`patchy mirror` for code you write, and it shares the registries, signing and\n" +
+			"scan blocks.\n\n" +
+			"Images build with `docker buildx` into an OCI layout. Every platform image is\n" +
+			"scanned (osv-scanner, grype, or both) under the entry's resolved scan policy and\n" +
 			"its allowlist, security/allowlists/<name>.yaml. Any blocking finding the\n" +
-			"allowlist does not accept fails the entry with nothing pushed; a lapsed\n" +
+			"allowlist does not accept fails the entry, and nothing is pushed. A lapsed\n" +
 			"allowlist entry is reported and accepts nothing. Manifests directories are\n" +
-			"staged (ignore patterns applied, symlinks refused), swept by kubescape, and\n" +
+			"staged (ignore patterns applied, symlinks refused), scanned by kubescape, and\n" +
 			"published as-is as a Flux OCI artifact.\n\n" +
 			"Tags come from ${ENV} templates: ${VAR}, ${VAR:-default}, ${VAR:offset:length}\n" +
-			"and $$, plus the built-in ${PATCHY_TIMESTAMP} (UTC yyyymmddhhmmss, fixed once per\n" +
-			"run; from SOURCE_DATE_EPOCH when set, overridable by a real PATCHY_TIMESTAMP).\n" +
-			"Tags never move: an absent tag is pushed, one already at the build's digest is\n" +
-			"skipped, and one at another digest is left alone with a warning. With\n" +
-			"SOURCE_DATE_EPOCH set, rebuilds of one commit reproduce the same digest.\n\n" +
-			"--dry-run builds and scans but never contacts a registry (safe in PR CI with\n" +
-			"no push credentials), and needs no registries configured: without any, it\n" +
+			"and $$, plus the built-in ${PATCHY_TIMESTAMP}. That is UTC yyyymmddhhmmss, fixed\n" +
+			"once per run. It comes from SOURCE_DATE_EPOCH when that is set, and a real\n" +
+			"PATCHY_TIMESTAMP variable overrides it. Tags never move. A missing tag is pushed,\n" +
+			"a tag already at the build's digest is skipped, and a tag at another digest is\n" +
+			"left alone with a warning. With SOURCE_DATE_EPOCH set, rebuilding one commit\n" +
+			"gives the same digest.\n\n" +
+			"--dry-run builds and scans but never contacts a registry, so it is safe in PR CI\n" +
+			"with no push credentials. It needs no registries configured: without any, it\n" +
 			"reports each build's digest. --update-allowlists rebuilds and rescans each image\n" +
-			"entry whose scan.allowlist.generate is true and regenerates its allowlist —\n" +
-			"never pushing, signing, or failing on findings: the PR review of the diff is\n" +
-			"where the risk is accepted.\n\n" +
+			"entry whose scan.allowlist.generate is true, and regenerates its allowlist. It\n" +
+			"never pushes, signs, or fails on findings. Reviewers accept the risk when they\n" +
+			"review the allowlist diff in the PR.\n\n" +
 			"Needs docker with buildx (multi-platform builds need a docker-container\n" +
 			"builder or the containerd image store), cosign (>= v3) for signing, and the\n" +
 			"enabled scanners on PATH.\n\n" + configHelp,

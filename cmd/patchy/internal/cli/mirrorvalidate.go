@@ -24,16 +24,19 @@ func newMirrorValidateCmd(opts *Options, f *mirrorFlags) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "validate [name]...",
-		Short: "Prove the committed store is current, verified and clean",
-		Long: "Validate entries without touching the tree: regenerate the derived state\n" +
-			"out-of-tree and byte-compare it with what is committed (a stale tree means\n" +
-			"someone edited intent without running upgrade), verify upstream provenance,\n" +
-			"scan the locked images with the enabled scanners, and lint the manifests\n" +
-			"and CVE allowlists (statement + expiry within the policy horizon, rendered\n" +
-			"output pulling only from the mirror unless allowed with a reason).\n\n" +
-			"Wall-clock steps — tracked-tag picks, allowlist expiry stamping — never run\n" +
-			"here, so the byte-identity gate stays deterministic between a commit and CI\n" +
-			"validating it.",
+		Short: "Check that the committed store is current, verified and clean",
+		Long: "Validate entries without changing the tree. validate runs four checks:\n\n" +
+			"  - It regenerates the derived files out-of-tree and byte-compares them with\n" +
+			"    what is committed. A stale tree means someone edited intent without running\n" +
+			"    upgrade.\n" +
+			"  - It verifies upstream provenance.\n" +
+			"  - It scans the locked images with the enabled scanners.\n" +
+			"  - It lints the manifests and CVE allowlists. Each allowlist entry needs a\n" +
+			"    statement and an expiry within the policy horizon. Rendered output may pull\n" +
+			"    only from the mirror, unless an exception is allowed with a reason.\n\n" +
+			"Steps that read the clock (tracked-tag picks, allowlist expiry stamping) never\n" +
+			"run here. That keeps the byte comparison deterministic between a commit and the\n" +
+			"CI run that validates it.",
 		Example: "  patchy mirror validate --all\n" +
 			"  patchy mirror validate --all -o markdown   # reviewer summary (PR comment, step summary)\n" +
 			"  patchy mirror validate --all --only scan -o json\n" +

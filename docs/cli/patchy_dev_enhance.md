@@ -4,17 +4,18 @@ Send an enhancement request to a generic enhancer
 
 ### Synopsis
 
-Fire one signed enhancement request per finding at an enhancer endpoint,
-without hosting anything: the way to test an integration that is only an
+Send one signed enhancement request per finding to an enhancer endpoint,
+without hosting anything. Use it to test an integration that is only an
 enhancer and never delivers findings itself.
 
 Payload files use the same envelope the webhook receives (version v1, event
-findings), validated by the same code, so a fixture works in both places. The
-request carries exactly what production sends for a fresh finding: title,
-description, repository and cloud resource — no issue number, no labels.
+findings), checked by the same validation code, so a fixture works in both
+places. The request carries the same fields production sends for a new
+finding: title, description, repository and cloud resource. It has no issue
+number and no labels.
 
-Flags also resolve from PATCHY_DEV_* and the patchy config's dev: block (the
-same keys the harness reads: dev.enhance-url, dev.secret-file, ...).
+Flags can also come from PATCHY_DEV_* variables and the patchy config's dev:
+block (the same keys the harness reads: dev.enhance-url, dev.secret-file, ...).
 
 ```
 patchy dev enhance <payload-file>... [flags]

@@ -4,34 +4,36 @@ Build, scan, publish and sign first-party images and Flux manifests
 
 ### Synopsis
 
-Build the artifacts the patchy config's build: block lists — Dockerfile images
-(build.images) and Flux manifest directories (build.manifests) — scan them
-before anything is pushed, publish them to every configured registry as
-<registry.url>/<repository>:<tag>, and sign them with that registry's signing
-block (else the global one). It is the first-party sibling of `patchy mirror`
-and shares its registries, signing and scan blocks.
+Build the artifacts listed in the patchy config's build: block. These are
+Dockerfile images (build.images) and Flux manifest directories (build.manifests).
+The command scans them before anything is pushed, publishes them to every
+configured registry as <registry.url>/<repository>:<tag>, and signs them with
+that registry's signing block (or the global one). It is the counterpart of
+`patchy mirror` for code you write, and it shares the registries, signing and
+scan blocks.
 
-Images build with `docker buildx` into an OCI layout; every platform image is
-scanned (osv-scanner and/or grype) under the entry's resolved scan policy and
+Images build with `docker buildx` into an OCI layout. Every platform image is
+scanned (osv-scanner, grype, or both) under the entry's resolved scan policy and
 its allowlist, security/allowlists/<name>.yaml. Any blocking finding the
-allowlist does not accept fails the entry with nothing pushed; a lapsed
+allowlist does not accept fails the entry, and nothing is pushed. A lapsed
 allowlist entry is reported and accepts nothing. Manifests directories are
-staged (ignore patterns applied, symlinks refused), swept by kubescape, and
+staged (ignore patterns applied, symlinks refused), scanned by kubescape, and
 published as-is as a Flux OCI artifact.
 
 Tags come from ${ENV} templates: ${VAR}, ${VAR:-default}, ${VAR:offset:length}
-and $$, plus the built-in ${PATCHY_TIMESTAMP} (UTC yyyymmddhhmmss, fixed once per
-run; from SOURCE_DATE_EPOCH when set, overridable by a real PATCHY_TIMESTAMP).
-Tags never move: an absent tag is pushed, one already at the build's digest is
-skipped, and one at another digest is left alone with a warning. With
-SOURCE_DATE_EPOCH set, rebuilds of one commit reproduce the same digest.
+and $$, plus the built-in ${PATCHY_TIMESTAMP}. That is UTC yyyymmddhhmmss, fixed
+once per run. It comes from SOURCE_DATE_EPOCH when that is set, and a real
+PATCHY_TIMESTAMP variable overrides it. Tags never move. A missing tag is pushed,
+a tag already at the build's digest is skipped, and a tag at another digest is
+left alone with a warning. With SOURCE_DATE_EPOCH set, rebuilding one commit
+gives the same digest.
 
---dry-run builds and scans but never contacts a registry (safe in PR CI with
-no push credentials), and needs no registries configured: without any, it
+--dry-run builds and scans but never contacts a registry, so it is safe in PR CI
+with no push credentials. It needs no registries configured: without any, it
 reports each build's digest. --update-allowlists rebuilds and rescans each image
-entry whose scan.allowlist.generate is true and regenerates its allowlist —
-never pushing, signing, or failing on findings: the PR review of the diff is
-where the risk is accepted.
+entry whose scan.allowlist.generate is true, and regenerates its allowlist. It
+never pushes, signs, or fails on findings. Reviewers accept the risk when they
+review the allowlist diff in the PR.
 
 Needs docker with buildx (multi-platform builds need a docker-container
 builder or the containerd image store), cosign (>= v3) for signing, and the

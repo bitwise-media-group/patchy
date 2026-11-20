@@ -4,14 +4,14 @@ Local test harnesses for generic-integration authors
 
 ### Synopsis
 
-Test a generic integration against the real patchy contract without a cluster:
+Test a generic integration against the real patchy contract without a cluster.
 `dev generic` hosts the receiver locally and drives the enhancer and resolver
-calls; `dev enhance` and `dev resolve` fire a single outbound exchange for
-authors whose process is only an enhancer or resolver.
+calls. `dev enhance` and `dev resolve` each make one outbound call, for authors
+whose process is only an enhancer or only a resolver.
 
-Every flag also resolves from a PATCHY_DEV_* environment variable and the
-dev: block of the patchy config, with explicit flags winning over the
-environment, and the environment over the file.
+Every flag can also come from a PATCHY_DEV_* environment variable or the dev:
+block of the patchy config. An explicit flag wins over the environment, and the
+environment wins over the file.
 
 The patchy config merges from, least to most preferred: /etc/patchy/config.<ext>,
 ~/.config/patchy/config.<ext>, then in the working directory mise/patchy.<ext>,

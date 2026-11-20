@@ -1,18 +1,19 @@
 # Supply chain
 
-`patchy` carries two cluster-free command groups that turn what a platform runs into signed OCI artifacts in your own
-registries:
+`patchy` has two command groups that run without a cluster. They turn what a platform runs into signed OCI artifacts in
+your own registries:
 
-- **[`patchy mirror`](mirror.md)** brings in what you did not write. Upstream helm charts, the images they deploy and
-  standalone OCI artifacts are vendored into a git tree for review, pinned by digest, checked against their publisher's
-  signatures, scanned, and then copied into your registries signed with your own identity.
-- **[`patchy build`](build.md)** publishes what you did write. Dockerfile images and Flux manifest directories are built
-  and scanned **before** anything is pushed, then published and signed the same way.
+- **[`patchy mirror`](mirror.md)** brings in what you did not write. It vendors upstream helm charts, the images they
+  deploy and standalone OCI artifacts into a git tree for review (it copies the upstream files into your repository). It
+  pins each one by digest, checks it against its publisher's signatures and scans it. Then it copies it into your
+  registries, signed with your own identity.
+- **[`patchy build`](build.md)** publishes what you did write. It builds and scans Dockerfile images and Flux manifest
+  directories before anything is pushed. Then it publishes and signs them the same way.
 
 Both stop at the registry. Neither touches a cluster and neither runs git: commits, branches and pull requests belong to
 the pipeline that calls them. Both read the same [patchy configuration](configuration.md) for where to publish, how to
-sign and which [scan policy](scanning.md) applies, so a mirrored chart and a first-party image are held to one standard.
-Each can also be limited to [approved sources](source-policy.md).
+sign and which [scan policy](scanning.md) applies. So a mirrored chart and a first-party image meet the same standard.
+You can also limit each one to [approved sources](source-policy.md).
 
 |            | `patchy mirror`                                                                                         | `patchy build`                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -20,12 +21,15 @@ Each can also be limited to [approved sources](source-policy.md).
 | Committed  | the manifest, plus everything derived from it: vendored chart, rendered output, digest locks, allowlist | the Dockerfiles and manifest trees themselves, plus `security/allowlists/<name>.yaml` |
 | Gate       | `validate`: regenerate and byte-compare, verify provenance, scan, lint                                  | `--dry-run`: build and scan without a registry                                        |
 | Publish    | `sync`: copy charts and images by digest, sign                                                          | `build`: push every tag, sign                                                         |
-| Moves pins | `upgrade` (the only verb that consults the clock)                                                       | never: you choose the tags                                                            |
+| Moves pins | `upgrade` (the only verb that reads the clock)                                                          | never: you choose the tags                                                            |
 
 ## The pipeline
 
-Both groups fit the same three-trigger shape. The pull request gate proves the change is safe without credentials, the
-merge publishes it, and a schedule notices what changed upstream or in the vulnerability databases since.
+Both groups run from the same three CI triggers:
+
+- A **pull request** runs the gate. The gate checks that the change is safe, and it needs no credentials.
+- A **merge** publishes the change.
+- A **schedule** finds what has changed since then, upstream or in the vulnerability databases.
 
 ```mermaid
 flowchart LR
@@ -34,9 +38,9 @@ flowchart LR
   cron["schedule"] --> sweep["mirror upgrade --check → update PRs<br/>mirror validate --only scan,lint → issues<br/>build --update-allowlists → allowlist PRs"]
 ```
 
-Every verb that reports has `-o markdown`, which is written to be pasted as-is into a job summary, a sticky PR comment
-or an issue body. `-o json` is the same report as data. The exit code is always the gate, so a workflow never has to
-parse the output to decide whether to fail.
+Every verb that prints a report supports `-o markdown`. You can paste that output as-is into a job summary, a sticky PR
+comment or an issue body. `-o json` gives the same report as data. The exit code always carries the gate's result, so a
+workflow never has to parse the output to decide whether to fail.
 
 ## Registries
 
@@ -58,17 +62,19 @@ registries:
         key: awskms:///arn:aws:kms:eu-west-1:123456789012:alias/platform-signing
 ```
 
-The namespaces only apply to mirrored content. A build entry names its own `repository`, which is published at
-`<url>/<repository>:<tag>`. Authentication is the docker keychain: log in to each registry host (`docker login`,
-`crane auth login`, or a cloud credential helper) before running `sync` or `build`. patchy, cosign and buildx all read
-it.
+The namespaces apply only to mirrored content. A build entry names its own `repository`, which is published at
+`<url>/<repository>:<tag>`.
+
+patchy logs in to registries through the docker keychain, the credential store that `docker login` writes to. Log in to
+each registry host (`docker login`, `crane auth login`, or a cloud credential helper) before you run `sync` or `build`.
+patchy, cosign and buildx all read it.
 
 ## Signing
 
-Everything published is signed with [cosign](https://github.com/sigstore/cosign), and the signature is stored as a
-sigstore bundle attached through the OCI referrers API. Older ECR private registries without referrers support fall back
-to cosign's tag-based scheme. The top-level `signing` block is the default, and a registry's own `signing` block
-replaces it wholesale for pushes to that registry.
+Everything published is signed with [cosign](https://github.com/sigstore/cosign). The signature is stored as a sigstore
+bundle attached through the OCI referrers API. Older ECR private registries without referrers support fall back to
+cosign's tag-based scheme. The top-level `signing` block is the default. A registry's own `signing` block replaces it
+completely for pushes to that registry.
 
 ```yaml
 signing:
@@ -81,21 +87,21 @@ signing:
   #   key: gcpkms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>
 ```
 
-- **keyless** signs with the run's ambient OIDC identity: in GitHub Actions, the workflow's `id-token: write` token
-  becomes a short-lived Fulcio certificate whose subject is the workflow file at its ref. `certificateIdentity` is the
-  subject patchy **verifies** against before signing. A digest that already carries a valid signature with that identity
+- **keyless** signs with the run's ambient OIDC identity. In GitHub Actions, the workflow's `id-token: write` token
+  becomes a short-lived Fulcio certificate whose subject is the workflow file at its ref. Before signing, patchy checks
+  existing signatures against `certificateIdentity`. A digest that already carries a valid signature with that identity
   is not signed again, which keeps re-runs quiet. A digest signed under another identity (an edge workflow versus a
-  release workflow, say) is simply signed again; the extra signature is harmless.
-- **kms** signs with a cloud KMS key (`gcpkms://`, `awskms://`, `azurekms://`, `hashivault://`). Which key schemes work
-  is decided by the installed cosign build.
+  release workflow, say) is signed again. The extra signature does no harm.
+- **kms** signs with a cloud KMS key (`gcpkms://`, `awskms://`, `azurekms://`, `hashivault://`). The installed cosign
+  build decides which key schemes work.
 
-Publishing needs `cosign` v3 or later on `PATH`. Signing is recursive for an image index, so every platform manifest is
+Publishing needs `cosign` v3 or later on `PATH`. An image index is signed recursively, so every platform manifest is
 signed too.
 
 ## Consuming what you publish
 
-The artifacts are ordinary OCI artifacts, so anything that speaks OCI can pull them. Verify them the way you configured
-them to be signed:
+The artifacts are ordinary OCI artifacts, so any OCI client can pull them. Verify them the same way you configured them
+to be signed:
 
 ```sh
 cosign verify us-central1-docker.pkg.dev/acme-platform/platform/charts/cert-manager:v1.21.2 \
@@ -103,8 +109,8 @@ cosign verify us-central1-docker.pkg.dev/acme-platform/platform/charts/cert-mana
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-A Flux `OCIRepository`, or a `HelmChart` pulled from an OCI `HelmRepository` for a mirrored chart, does the same check
-on every reconcile with its `verify` block. Pin the identity with `matchOIDCIdentity`, using a subject regexp when
+A Flux `OCIRepository` makes the same check on every reconcile with its `verify` block. So does a `HelmChart` pulled
+from an OCI `HelmRepository` for a mirrored chart. Pin the identity with `matchOIDCIdentity`. Use a subject regexp when
 several workflows publish to the same repository:
 
 ```yaml
@@ -126,7 +132,8 @@ spec:
 
 ## What you need installed
 
-patchy links nothing it shells out to, so these must be on `PATH` for the verbs that use them:
+patchy runs these tools as separate programs and does not bundle them. They must be on `PATH` for the verbs that use
+them:
 
 | Tool                 | Needed by                                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -136,13 +143,14 @@ patchy links nothing it shells out to, so these must be on `PATH` for the verbs 
 | `kubescape`          | configuration scans when `scan.scanners.kubescape.enabled`; skipped with a warning when missing                                      |
 | `docker` with buildx | `build` of image entries (not needed for manifests entries)                                                                          |
 
-Helm is not needed: chart pulls, renders and pushes use the helm SDK, pinned so rendered output stays byte-stable.
+You do not need Helm. Chart pulls, renders and pushes use the helm SDK built into patchy. It is pinned to one version so
+rendered output stays byte-for-byte the same.
 
 !!! tip "Repositories on the shared toolchain"
 
     A repository on the bitwise-media-group [toolchain](https://oss.bitwisemedia.uk/toolchain/) gets all of this from
-    the **containers** archetype: pinned patchy, cosign, scanners and Flux validation tools, plus mise tasks over these
-    commands. `mise run build` runs `patchy build --all --dry-run`, `mise run publish` publishes, and the `mirror-*`
-    tasks drive a mirror store. Before each `patchy build`, the tasks set `GIT_COMMIT`, `VERSION` and
+    the **containers** archetype. It provides pinned patchy, cosign, scanners and Flux validation tools, plus mise tasks
+    that run these commands. `mise run build` runs `patchy build --all --dry-run`, `mise run publish` publishes, and the
+    `mirror-*` tasks drive a mirror store. Before each `patchy build`, the tasks set `GIT_COMMIT`, `VERSION` and
     `SOURCE_DATE_EPOCH` from git, so tag templates expand the same way locally and in CI. See the
     [containers archetype](https://oss.bitwisemedia.uk/toolchain/archetypes/containers/).

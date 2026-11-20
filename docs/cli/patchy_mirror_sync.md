@@ -4,26 +4,28 @@ Publish committed charts and images to the mirror registries
 
 ### Synopsis
 
-Converge every configured registry onto the committed state, idempotently:
-for each entry, re-pull the upstream chart archive and fail loudly if upstream
-mutated the released version (digest vs lock, tree vs the committed vendor/),
-then per registry push the chart unless its tag already exists (an existing
-tag is never replaced), copy every locked image by digest, and sign everything
-published that does not already carry a valid mirror signature — using that
-registry's signing block when it has one, else the global default.
+Bring every configured registry in line with the committed state. The command
+is idempotent. For each entry it re-pulls the upstream chart archive, and fails
+loudly if upstream changed the released version (digest against the lock, tree
+against the committed vendor/). Then, for each registry, it pushes the chart
+unless its tag already exists (an existing tag is never replaced), copies every
+locked image by digest, and signs everything it published that does not already
+carry a valid mirror signature. It signs with that registry's signing block when
+it has one, or else the global default.
 
-Before a chart, image or artifact is first pushed or signed, its upstream
-provenance is verified per its verifyUpstream rule — once per run however many
-registries it publishes to, and never for a copy already current and signed
-everywhere — so nothing reaches a registry unverified even when validate
-never ran. --dry-run reports what it would verify without calling cosign.
+Before a chart, image or artifact is first pushed or signed, sync checks its
+upstream provenance against its verifyUpstream rule. Each one is checked once
+per run however many registries it publishes to, and never when its copy is
+already current and signed everywhere. So nothing reaches a registry unverified,
+even when validate never ran. --dry-run reports what it would verify without
+calling cosign.
 
 --registry restricts publishing to the named registries (repeatable or
-comma-separated); the default is all of them.
+comma-separated). The default is all of them.
 
-sync is read-only on the working tree — every write goes to a registry —
-so the publish-on-merge pipeline creates no commits. Skips are successes;
-a re-run after a partial failure finishes the remainder.
+sync never writes to the working tree. Every write goes to a registry, so the
+publish-on-merge pipeline creates no commits. Skips count as successes, so a
+re-run after a partial failure finishes the rest.
 
 ```
 patchy mirror sync [name]... [flags]

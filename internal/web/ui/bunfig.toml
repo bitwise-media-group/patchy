@@ -1,0 +1,7 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Bundler plugins for the HTML dev server (dev.ts). The production build
+# (build.ts) passes the same plugin through the Bun.build API instead.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

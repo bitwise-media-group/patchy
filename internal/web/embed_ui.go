@@ -12,7 +12,7 @@ import (
 
 // uiDist is the built single-file status page (internal/web/ui/dist),
 // embedded only when compiled with -tags withui — `make build` and the
-// release pipeline build the Vite app first, then compile with the tag. A
+// release pipeline build the UI bundle first, then compile with the tag. A
 // bare `go build` uses the stub in embed_stub.go instead, so the package
 // always compiles without the bundle.
 //

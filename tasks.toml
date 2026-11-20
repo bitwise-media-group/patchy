@@ -80,10 +80,10 @@ run = "./hack/envtest.sh"
 # Status page SPA: built into internal/web/ui/dist and embedded into the
 # status-server binary via -tags withui (hack/build.sh). dist/ is git-ignored
 # (a built bundle); sources/outputs rerun bun only when the UI sources change.
-# The UI runs on the shared toolchain's bun — the repo pins no node. bun check
-# type-checks, and package.json runs vite's entry file under bun directly
-# rather than through its `#!/usr/bin/env node` bin: `bun --bun` only swaps in
-# its own node when none is on PATH, and a global mise node shim always is.
+# The UI is bun end to end on the shared toolchain's bun (the repo pins no
+# node): `bun check` type-checks, and build.ts bundles it through Bun.build
+# (compile + browser target, with the Tailwind plugin) into one inlined
+# dist/index.html.
 [ui]
 description = "build the embedded status page SPA (internal/web/ui/dist)"
 dir = "{{cwd}}"
@@ -91,7 +91,8 @@ sources = [
   "internal/web/ui/package.json",
   "internal/web/ui/bun.lock",
   "internal/web/ui/index.html",
-  "internal/web/ui/vite.config.ts",
+  "internal/web/ui/build.ts",
+  "internal/web/ui/bunfig.toml",
   "internal/web/ui/tsconfig.json",
   "internal/web/ui/src/**/*",
 ]
@@ -101,13 +102,16 @@ run = [
   "bun run --cwd internal/web/ui build",
 ]
 
-# The status page SPA on Vite's dev server, with hot reload, run from the UI's
-# own directory. /api, /events, /oauth2 and /logout proxy to a status server
-# at VITE_API_TARGET (default http://127.0.0.1:8080), so run one alongside.
-# Trailing args reach vite.
-# Example: VITE_API_TARGET=http://127.0.0.1:9090 mise run ui-dev -- --port 5174
+# The status page SPA on Bun's dev server (internal/web/ui/dev.ts), with hot
+# reload, run from the UI's own directory wherever mise is invoked. /api,
+# /events, /oauth2 and /logout are forwarded to a status server at
+# PATCHY_API_TARGET (default http://127.0.0.1:8080), so run one alongside.
+# --port picks the listen port (default 5173). --demo needs no server at all:
+# the page runs on its built-in mock data (src/mock) and nothing is forwarded.
+# Example: PATCHY_API_TARGET=http://127.0.0.1:9090 mise run ui-dev -- --port 5174
+# Example: mise run ui-dev -- --demo
 [ui-dev]
-description = "run the status page SPA on the Vite dev server (hot reload)"
+description = "run the status page SPA on the Bun dev server (hot reload)"
 dir = "{{config_root}}/internal/web/ui"
 raw = true
 run = [

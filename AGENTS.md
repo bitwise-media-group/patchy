@@ -155,8 +155,9 @@ completions/        GENERATED shell completions, committed so the Homebrew cask 
   is MEANINGFUL, never whether the caller may take it.
 - `web` (+ `web/auth`, `web/authz`) — the status-server backend: wire types mirroring the SPA's
   `ui/src/types.ts` (keep the two in lockstep), the action handlers, SSE broker + cache-informer watcher, and
-  the embedded UI (`internal/web/ui`, Vite/Preact, single-file build embedded behind the `withui` tag; `mise run
-  ui` builds it, bare `go build` compiles a stub). `auth` = who you are (OIDC/none/anonymous/unconfigured,
+  the embedded UI (`internal/web/ui`, Preact on bun: `build.ts` bundles one inlined `index.html` via Bun.build,
+  embedded behind the `withui` tag; `mise run ui` builds it, `mise run ui-dev` serves it with hot reload against a
+  running status server, bare `go build` compiles a stub). `auth` = who you are (OIDC/none/anonymous/unconfigured,
   cookie sessions, zero k8s imports); `authz` = what you may do (SubjectAccessReviews for the custom verbs
   approve/retry/expedite/suspend/resume + native get).
 - `ghas`, `enhancers` — the built-in `pkg/source` and `pkg/enhance` implementations.

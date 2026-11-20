@@ -6,21 +6,17 @@
   "packageManager": "bun@1.4.4",
   "description": "Patchy finding status page (embedded into the status-server binary).",
   "scripts": {
-    "dev": "bun node_modules/vite/bin/vite.js",
-    "build": "bun check --no-script && bun node_modules/vite/bin/vite.js build",
-    "typecheck": "bun check --no-script",
-    "preview": "bun node_modules/vite/bin/vite.js preview"
+    "dev": "bun dev.ts",
+    "build": "bun check --no-script && bun build.ts",
+    "typecheck": "bun check --no-script"
   },
   "dependencies": {
     "lowlight": "^3.3.0",
     "preact": "^11.0.0"
   },
   "devDependencies": {
-    "@preact/preset-vite": "^2.10.5",
-    "@tailwindcss/vite": "^4.1.0",
     "@types/bun": "^1.4.4",
-    "tailwindcss": "^4.1.0",
-    "vite": "^8.2.0",
-    "vite-plugin-singlefile": "^2.3.3"
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.1.0"
   }
 }

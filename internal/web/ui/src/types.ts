@@ -185,6 +185,8 @@ export interface InvestigationDetail extends InvestigationSummary {
   usage?: Usage;
   sessionID?: string;
   transcript?: TranscriptSummary;
+  // reportArchived: the full, untruncated report is in the run archive.
+  reportArchived?: boolean;
 }
 
 // RemediationSummary mirrors the finding's own remediation status.
@@ -208,6 +210,10 @@ export interface RemediationDetail extends RemediationSummary {
   usage?: Usage;
   sessionID?: string;
   transcript?: TranscriptSummary;
+  // reportArchived: the full, untruncated report is in the run archive.
+  reportArchived?: boolean;
+  // patchAvailable: the change is in the run archive as a `git am`-able patch.
+  patchAvailable?: boolean;
 }
 
 // TranscriptSummary says whether a run has a captured conversation worth
@@ -215,6 +221,19 @@ export interface RemediationDetail extends RemediationSummary {
 export interface TranscriptSummary {
   turns: number;
   truncated?: boolean;
+  // archived: the conversation is in the run archive; the client plays it
+  // back from a presigned URL instead of the transcript stream.
+  archived?: boolean;
+}
+
+// ArchiveObject names what the archive route can presign for one run.
+export type ArchiveObject = "transcript" | "report" | "patch" | "manifest";
+
+// PresignedURL is a short-lived URL the browser reads straight from the
+// archive bucket. Mirrors internal/web.PresignedURL.
+export interface PresignedURL {
+  url: string;
+  expiresAt: string;
 }
 
 export type TurnRole = "assistant" | "user" | "system";

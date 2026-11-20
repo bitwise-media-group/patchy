@@ -58,6 +58,7 @@ nav = [
     { "Kustomize" = "deployment/kustomize.md" },
     { "Webhook exposure" = "deployment/webhook.md" },
     { "Models and credentials" = "deployment/models.md" },
+    { "Run archival" = "deployment/archival.md" },
     { "Local dev on Colima" = "deployment/colima.md" },
     { "Demo mode" = "deployment/dev-fake.md" },
   ] },

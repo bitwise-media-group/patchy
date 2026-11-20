@@ -203,6 +203,24 @@ data:
     PATCHY_REMEDIATE_MANUAL_MAX_TURNS: "240"
     PATCHY_REMEDIATE_MANUAL_TOKEN_BUDGET: "1200000"
 
+    # ---- run archive (optional; investigation, remediation, status) --------
+    # Long-term archival of every agent run (full transcript, full report,
+    # the remediation patch and changeset, a sha256 manifest) to an S3 or GCS
+    # bucket, one immutable prefix per run attempt. Patchy only creates
+    # objects; retention, Object Lock and keys are the bucket's policy. Leave
+    # PATCHY_ARCHIVE_PROVIDER unset to keep transcripts in ConfigMaps only.
+    # See docs/deployment/archival.md for IAM, CORS, Terraform examples and
+    # the NetworkPolicy egress the credential chain needs.
+    # PATCHY_ARCHIVE_PROVIDER: s3            # s3 or gcs
+    # PATCHY_ARCHIVE_BUCKET: my-audit-bucket
+    # PATCHY_ARCHIVE_PREFIX: patchy
+    # PATCHY_ARCHIVE_REGION: eu-west-2       # S3 only
+    # PATCHY_ARCHIVE_ENDPOINT: ""            # S3-compatible stores
+    # PATCHY_ARCHIVE_KMS_KEY: ""             # default: the bucket's encryption
+    # PATCHY_ARCHIVE_REQUIRED: "false"       # true fails runs that cannot be archived
+    # PATCHY_ARCHIVE_RETRY_WINDOW: 45m       # below PATCHY_JOB_TTL
+    # PATCHY_ARCHIVE_PRESIGN_TTL: 5m         # status server's browser URLs
+
     # ---- evaluation-controller ----------------------------------------------
     # The remote-evaluation engine (optional; only read by
     # evaluation-controller). The evolve-runner images are the counterpart of

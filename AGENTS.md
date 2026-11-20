@@ -129,7 +129,9 @@ charts/             Helm rendering of the same stack, pushed to ghcr OCI on rele
                     stamps both Chart.yaml versions. Lint and render with `mise run helm-lint`.
 e2e/                A SEPARATE Go module. envtest provides the CRDs, the real binaries run against it,
                     fakegithub (an in-memory API) stands in at the network edge, and recorded webhook
-                    fixtures plus the replay tool drive it (`make e2e`).
+                    fixtures plus the replay tool drive it (`make e2e`). fakeoidc (a Google issuer)
+                    and fakes3 (an S3 that verifies SigV4, header and presigned) stand in at the
+                    other edges; fakes3's own tests run without envtest.
 docs/ overrides/    Zensical docs site (zensical.toml at the root). The theme follows the status
                     page's design system: docs/stylesheets/tokens.css is a vendored copy of the
                     UI's tokens.css re-scoped to Material's schemes (copy it again when the palette
@@ -219,6 +221,14 @@ completions/        GENERATED shell completions. They are committed so the Homeb
     canonical model ids to provider ids, with defaults derived for each provider; and the `PATCHY_MODEL_MAP` codec
     that both the controllers and agentrun use. `provider.BrokerTokenHeader` is the one definition of the caller-token
     header.
+- `archive`, `runarchive`: optional long-term run archival (docs/deployment/archival.md).
+  - `archive` is the cloud seam, with no k8s imports: a create-only `Store` (Put, Get, Presign) over S3
+    (aws-sdk-go-v2, `If-None-Match: *`) or GCS (`DoesNotExist`). A retry finding the same sha256 succeeds; a different
+    one is `ErrConflict`. `archivetest` is the in-memory fake.
+  - `runarchive` assembles one run's objects under `<prefix>/<ns>/<finding>/<run>/<uid>/` (uncompacted transcript,
+    full report, patch, changeset, manifest last, push.json after the push), byte-deterministic so collection retries
+    converge. Its `Collector` is the decision both run controllers share: archive and record `stage.archive` (no
+    ConfigMap), defer within the retry window, then fall back (fail open) or fail the run (`archive_failed`).
 - `artifact`: the tarball store and the HTTP handler source-controller serves agent fetches from. It also holds the
   content-addressed workspace blobs:
   - bundles named by sha256 (64-hex files next to the 32-hex repo tarballs);

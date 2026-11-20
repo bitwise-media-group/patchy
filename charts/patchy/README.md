@@ -189,6 +189,12 @@ Settings that several components share stay global:
   - `ssePingInterval`
   - for bedrock/vertex/entra, `serviceAccount.annotations`/`podLabels`, where the workload identity attaches
   - `networkPolicy.extraEgress`, for reaching the cloud metadata endpoints
+- `archive.*`: optional long-term archival of every agent run to an S3 or GCS bucket (off by default). It covers
+  `provider` (`s3`/`gcs`), `bucket`, `prefix`, `region`, `endpoint`, `kmsKey`, the failure policy (`required`,
+  `retryWindow`, which must stay below `agent.jobTTL`) and the status page's `presignTTL`. The investigation and
+  remediation controllers write; the status server presigns. Attach their cloud identities through
+  `<controller>.serviceAccount.annotations`; the NetworkPolicies gain the metadata-endpoint egress automatically. See
+  the [archival guide](https://oss.bitwisemedia.uk/patchy/deployment/archival/).
 - `agent.networkPolicy.*`: the sandbox policies (above).
 - `commonLabels` / `commonAnnotations`: stamped on every object the chart renders. Annotations reach the pods too, and
   per-object annotations win key by key.

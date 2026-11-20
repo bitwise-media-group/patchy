@@ -61,6 +61,13 @@ resources as the state machine and GitHub issues as a human-facing projection.
 9. Completed findings are kept for a TTL (default 14 days) and then deleted; per-scope `FindingRollup` resources
    retain the all-time statistics (success rates, verdict mix, token and cost totals per repository, harness, and
    model) with exactly-once accounting.
+   Optionally, every agent run is also archived, once and in full, to an S3 or GCS bucket: the uncompacted
+   transcript, the full report, the remediation patch and pushed changeset, and a manifest of sha256 digests
+   written last, under one create-only prefix per run attempt (the run UID keeps reused names apart). Archival
+   happens when the run is collected and before any push; a failed upload is retried while the Job's log is
+   still readable, then either falls back to the ConfigMap transcript (fail open, the default) or fails the run
+   (`archive_failed`, finding `Failed`). Patchy never deletes or overwrites an archived object: retention, lock
+   and keys are the bucket's policy, so the record outlives the finding's TTL.
 
 ## Architecture
 

@@ -3,7 +3,14 @@
 // patchy api/v1alpha1 types. Timestamps are fixed ISO strings so the demo is
 // deterministic; relative times are computed at render.
 
-import type { Finding, OfflineDataset, Rollup, TranscriptTurn } from "../types";
+import type {
+  ArchiveObject,
+  Finding,
+  OfflineDataset,
+  PresignedURL,
+  Rollup,
+  TranscriptTurn,
+} from "../types";
 import { withScale } from "./scale";
 
 const findings: Finding[] = [
@@ -391,6 +398,10 @@ const findings: Finding[] = [
       harness: "claude-code",
       model: "claude-sonnet-5",
       numTurns: 14,
+      // Archived run: the conversation and full report come from the
+      // (mock) archive rather than the transcript stream.
+      transcript: { turns: 11, archived: true },
+      reportArchived: true,
       estimate: { maxTurns: 12, tokenBudget: 50_000 },
       usage: {
         inputTokens: 48_200,
@@ -407,6 +418,9 @@ const findings: Finding[] = [
       success: true,
       branch: "patch/security-205",
       completedAt: "2026-07-15T13:58:27Z",
+      transcript: { turns: 7, archived: true },
+      reportArchived: true,
+      patchAvailable: true,
       report:
         "## Change\n\nDisabled DTD processing and external entity resolution in `internal/feeds/parse.go` " +
         "(`decoder.Strict = true`, entity map cleared).\n\n## Verification\n\nAdded a regression test with a " +
@@ -1138,4 +1152,63 @@ export function mockTranscript(
 ): TranscriptTurn[] {
   const turns = kind === "investigation" ? investigationTranscript : remediationTranscript;
   return JSON.parse(JSON.stringify(turns)) as TranscriptTurn[];
+}
+
+// mockArchivePatch is the demo kit's archived remediation patch.
+const mockArchivePatch = `From 3f1c2d9e Mon Sep 17 00:00:00 2001
+From: patchy <patchy@example.com>
+Subject: [PATCH] fix(feeds): disable DTD processing in the feed parser
+
+---
+ internal/feeds/parse.go | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/internal/feeds/parse.go b/internal/feeds/parse.go
+--- a/internal/feeds/parse.go
++++ b/internal/feeds/parse.go
+@@ -14,7 +14,8 @@ func Parse(r io.Reader) (*Feed, error) {
+ \tdec := xml.NewDecoder(r)
+-\tdec.Strict = false
++\tdec.Strict = true
++\tdec.Entity = nil
+ \tvar f Feed
+`;
+
+// mockArchiveURL stands in for the archive route in demo and snapshot modes:
+// the object is built in the browser and served from a blob URL, so the
+// archived playback path (gunzip, JSONL decode) runs for real offline. The
+// transcript is gzipped JSONL in the archive's own turn format, version field
+// included.
+export async function mockArchiveURL(
+  finding: string,
+  kind: "investigation" | "remediation",
+  object: ArchiveObject,
+): Promise<PresignedURL> {
+  let blob: Blob;
+  switch (object) {
+    case "transcript": {
+      const jsonl = mockTranscript(finding, kind)
+        .map((t) => JSON.stringify({ v: 1, ...t }))
+        .join("\n");
+      const gz = new Blob([jsonl]).stream().pipeThrough(new CompressionStream("gzip"));
+      blob = new Blob([await new Response(gz).arrayBuffer()], { type: "application/gzip" });
+      break;
+    }
+    case "patch":
+      blob = new Blob([mockArchivePatch], { type: "application/mbox" });
+      break;
+    case "report": {
+      const run = findings.find((f) => f.name === finding)?.[kind];
+      blob = new Blob([`---\nmock: frontmatter\n---\n${run?.report ?? ""}`], { type: "text/markdown" });
+      break;
+    }
+    default:
+      blob = new Blob([JSON.stringify({ version: 1, kind, run: { name: finding } }, null, 2)], {
+        type: "application/json",
+      });
+  }
+  return {
+    url: URL.createObjectURL(blob),
+    expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+  };
 }

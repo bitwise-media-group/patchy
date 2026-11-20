@@ -130,6 +130,17 @@ to an agent pod, so the agents' default-deny ingress policy is unchanged. Turn i
 `statusServer.liveTranscripts=false` (helm) or by dropping the `patchy-status-server-agent-logs` Role and its binding
 (kustomize); completed runs' conversations still serve, since those come from their own ConfigMaps.
 
+### Archived runs
+
+With [run archival](../deployment/archival.md) on, a collected run's record lives in an S3 or GCS bucket instead of a
+ConfigMap, and it outlives the finding. The conversation section looks the same, but the full, uncompacted conversation
+is played back: the page asks the status server for a short-lived presigned URL, fetches the gzipped transcript straight
+from the bucket, and decompresses it in the browser. Its footer reads "full record from the archive". The investigation
+and remediation tabs also gain **Full report** (the untruncated report, frontmatter included) and, for a remediation,
+**Download patch** (`git format-patch` output you can apply with `git am`). The server never relays bucket bytes, so the
+bucket must allow `GET` from the page's origin (CORS); without it the page says the archived conversation could not be
+loaded.
+
 ## Actions and what they really do
 
 The action bar renders only the verbs the signed-in user is granted _and_ the finding's state machine allows:

@@ -23,6 +23,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/model"
 	"github.com/bitwise-media-group/patchy/internal/priority"
+	"github.com/bitwise-media-group/patchy/internal/runarchive"
 	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
@@ -59,6 +60,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
+	runarchive.RegisterFlags(f)
 
 	f.String("model-allowlist", model.DefaultAllowlist,
 		"canonical model ids or family aliases remediation may run (the investigation's choice is clamped to this; "+
@@ -154,6 +156,17 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		slog.Any("enabled", enabled), slog.String("default_remediate_model", remediateModel),
 		slog.Any("model_allowlist", allowlist))
 
+	archiver, err := runarchive.FromOptions(ctx, opts, opts.Duration("job-ttl"))
+	if err != nil {
+		return err
+	}
+	if archiver != nil {
+		defer func() { _ = archiver.Store.Close() }()
+		log.LogAttrs(ctx, slog.LevelInfo, "run archival enabled",
+			slog.String("provider", string(archiver.Config.Provider)), slog.String("bucket", archiver.Config.Bucket),
+			slog.Bool("required", archiver.Required), slog.Duration("retry_window", archiver.RetryWindow))
+	}
+
 	runner := jobs.New(cs, jobs.Config{
 		Namespace:      agentNS,
 		ServiceAccount: opts.String("agent-service-account"),
@@ -200,6 +213,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 			Cap:      int32(opts.Int("priority-aging-cap")),
 		},
 		Enabled: enabled,
+		Archive: archiver,
+		Events:  mgr.GetEventRecorder("remediation-controller"),
 		Log:     log,
 	}
 	if err := rem.SetupWithManager(mgr); err != nil {

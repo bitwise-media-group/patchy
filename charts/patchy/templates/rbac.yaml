@@ -181,6 +181,13 @@ remediations (as well as on status) to remove the rollup finalizer.
 - apiGroups: [""]
   resources: [events]
   verbs: [create, patch]
+{{- if has . (list "investigation-controller" "remediation-controller") }}
+# The Warning event an abandoned run archive raises on the run
+# (events.k8s.io/v1, the API controller-runtime's recorder writes).
+- apiGroups: [events.k8s.io]
+  resources: [events]
+  verbs: [create, patch]
+{{- end }}
 {{- end }}
 {{- range $c := list
     (dict "name" "integration-controller" "vals" .Values.integrationController)

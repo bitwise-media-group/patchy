@@ -6,6 +6,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,6 +20,10 @@ type Status struct {
 	Failed    int32
 	// Done means the Job reached a terminal condition (Complete or Failed).
 	Done bool
+	// FinishedAt is when the Job reached that condition; zero while it
+	// runs. The Job's TTL counts from here, so it bounds how long the pod
+	// log stays readable.
+	FinishedAt time.Time
 }
 
 // Status reports the named Job's state.
@@ -52,7 +57,11 @@ func statusOf(job *batchv1.Job) Status {
 		terminal := cond.Type == batchv1.JobComplete || cond.Type == batchv1.JobFailed
 		if terminal && cond.Status == corev1.ConditionTrue {
 			s.Done = true
+			s.FinishedAt = cond.LastTransitionTime.Time
 		}
+	}
+	if s.Done && job.Status.CompletionTime != nil {
+		s.FinishedAt = job.Status.CompletionTime.Time
 	}
 	return s
 }

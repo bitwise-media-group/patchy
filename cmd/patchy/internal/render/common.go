@@ -40,6 +40,19 @@ func Stage(d *printer.Doc, st *v1alpha1.StageResult, now time.Time) {
 		Field("Started", Timestamp(st.StartedAt, now)).
 		Field("Finished", Timestamp(st.FinishedAt, now)).
 		Field("Usage", Usage(st.Usage))
+	if a := st.Archive; a != nil {
+		d.Field("Archive", archiveURI(a))
+	}
+}
+
+// archiveURI names a run's archive prefix the way the provider's own CLI
+// would (s3://bucket/prefix or gs://bucket/prefix).
+func archiveURI(a *v1alpha1.ArchiveRef) string {
+	scheme := string(a.Provider)
+	if a.Provider == v1alpha1.ArchiveProviderGCS {
+		scheme = "gs"
+	}
+	return scheme + "://" + a.Bucket + "/" + a.Prefix + "/"
 }
 
 // Outcome reports how an agent run ended. It sits next to the report because

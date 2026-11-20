@@ -16,20 +16,20 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/agentresult"
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/report"
+	"github.com/bitwise-media-group/patchy/internal/runarchive"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/templates"
-	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
 // remSchedulerRequest is the singleton request every watch event maps to.
@@ -47,8 +47,9 @@ type CRRunner interface {
 // push (Git Data API, scoped write token) and the pull request. It wraps
 // internal/forge + internal/ghpush; tests substitute a fake.
 type ForgeWriter interface {
-	// Push replays the changeset as branch on the repository.
-	Push(ctx context.Context, namespace, repoURL, branch string, cs *envelope.Changeset) error
+	// Push replays the changeset as branch on the repository, returning the
+	// pushed commit's SHA.
+	Push(ctx context.Context, namespace, repoURL, branch string, cs *envelope.Changeset) (string, error)
 	// EnsurePR opens (or finds, idempotently by head branch) the pull
 	// request for branch.
 	EnsurePR(ctx context.Context, namespace, repoURL, branch, title, body string) (number int64, url string, err error)
@@ -76,6 +77,11 @@ type RemediationReconciler struct {
 	// change between spawn and launch fails the run cleanly instead of
 	// creating an unrunnable Job.
 	Enabled []string
+	// Archive writes each finished run to the long-term archive; nil keeps
+	// transcripts in ConfigMaps only.
+	Archive *runarchive.Archiver
+	// Events receives the Warning an abandoned archive raises; nil discards.
+	Events events.EventRecorder
 	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
@@ -288,15 +294,26 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 	}
 	// Persist before applying: this is the only moment the conversation is
 	// still readable, since the Job's TTL takes the pod and its log with it.
-	// A transcript that cannot be stored is logged and dropped: losing the
-	// explanation must never cost the result it explains.
-	transcript, err := transcriptstore.Persist(ctx, r.Client, rem.Namespace,
-		transcriptLabels(rem), rem, remGVK, out.Turns)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "persist transcript", "remediation", rem.Name)
+	// It also comes before the push, so a run whose required archive fails
+	// never reaches the forge. Nothing has been written yet, so a pass that
+	// defers to retry the archive leaves the run exactly as it found it.
+	transcript, retryAfter := r.collector().Collect(ctx, r.archiveRun(ctx, rem, st), out, runarchive.Target{
+		Labels: transcriptLabels(rem), GVK: remGVK,
+	})
+	if retryAfter > 0 {
+		return ctrl.Result{RequeueAfter: retryAfter}, nil
 	}
 
 	var result *envelope.Remediation
+	if transcript.FailDetail != "" {
+		for _, e := range out.Events {
+			if e.Type == envelope.TypeRemediation {
+				result = e.Remediation
+			}
+		}
+		return ctrl.Result{}, r.fail(ctx, rem, runarchive.OutcomeArchiveFailed, transcript.FailDetail,
+			stageOf(result), transcript)
+	}
 	for _, e := range out.Events {
 		switch e.Type {
 		case envelope.TypeRemediation:
@@ -315,6 +332,34 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 	default:
 		return ctrl.Result{}, r.succeed(ctx, rem, result, transcript)
 	}
+}
+
+// collector is the transcript and archive policy for collected runs.
+func (r *RemediationReconciler) collector() *runarchive.Collector {
+	return &runarchive.Collector{Client: r.Client, Archiver: r.Archive, Events: r.Events, Log: r.Log}
+}
+
+// archiveRun describes the run for its archive manifest. The lookups are
+// best-effort: a manifest without its finding or base SHA is still worth
+// writing.
+func (r *RemediationReconciler) archiveRun(
+	ctx context.Context, rem *v1alpha1.Remediation, st jobs.Status,
+) runarchive.Run {
+	run := runarchive.Run{
+		Kind: v1alpha1.RunKindRemediation, Object: rem, Attempt: rem.Spec.Attempt, FinishedAt: st.FinishedAt,
+	}
+	if r.Archive == nil {
+		return run
+	}
+	var fnd v1alpha1.Finding
+	if r.Get(ctx, types.NamespacedName{Namespace: rem.Namespace, Name: rem.Spec.FindingRef.Name}, &fnd) == nil {
+		run.Finding = &fnd
+	}
+	var repo v1alpha1.Repository
+	if r.Get(ctx, types.NamespacedName{Namespace: rem.Namespace, Name: rem.Spec.RepositoryRef.Name}, &repo) == nil {
+		run.BaseSHA = repo.Status.ResolvedSHA
+	}
+	return run
 }
 
 // remGVK identifies the owner reference a transcript carries.
@@ -338,7 +383,7 @@ func transcriptLabels(rem *v1alpha1.Remediation) map[string]string {
 // InReview (Remediating→InReview). The changeset never touches any CR.
 func (r *RemediationReconciler) succeed(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
-	transcript *v1alpha1.TranscriptRef,
+	transcript *runarchive.Record,
 ) error {
 	var fnd v1alpha1.Finding
 	fndKey := types.NamespacedName{Namespace: rem.Namespace, Name: rem.Spec.FindingRef.Name}
@@ -349,7 +394,8 @@ func (r *RemediationReconciler) succeed(
 		return r.fail(ctx, rem, "aborted", "success without changeset or repository", &result.Stage, transcript)
 	}
 	branch := "patchy/" + fnd.Name
-	if err := r.Forge.Push(ctx, rem.Namespace, fnd.Spec.Repository.URL, branch, result.Changeset); err != nil {
+	commit, err := r.Forge.Push(ctx, rem.Namespace, fnd.Spec.Repository.URL, branch, result.Changeset)
+	if err != nil {
 		return fmt.Errorf("push remediation branch: %w", err)
 	}
 
@@ -369,10 +415,16 @@ func (r *RemediationReconciler) succeed(
 	if err != nil {
 		return fmt.Errorf("open remediation PR: %w", err)
 	}
+	// Link the archive to what it became. Best-effort: the PR is open, and
+	// the archive already holds the change itself.
+	push := runarchive.Push{Branch: branch, Commit: commit}
+	push.PullRequest.Number, push.PullRequest.URL = number, url
+	r.collector().RecordPush(ctx, transcript.Archive, push)
 
 	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, transcript, func(cur *v1alpha1.Remediation) {
 		cur.Status.Success = true
 		cur.Status.Branch = branch
+		cur.Status.PushedCommit = commit
 		cur.Status.Confidence = agentresult.FormatConfidence(result.Confidence)
 		cur.Status.PullRequest = &v1alpha1.PullRequestRef{Number: number, URL: url}
 	}); err != nil {
@@ -404,7 +456,7 @@ func (r *RemediationReconciler) succeed(
 // (Remediating→HandedOff).
 func (r *RemediationReconciler) handOff(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
-	transcript *v1alpha1.TranscriptRef,
+	transcript *runarchive.Record,
 ) error {
 	if err := r.stampChild(ctx, rem, result, v1alpha1.RunComplete, transcript, func(cur *v1alpha1.Remediation) {
 		cur.Status.Success = false
@@ -431,7 +483,7 @@ func stageOf(result *envelope.Remediation) *envelope.Stage {
 // nil when no event arrived at all.
 func (r *RemediationReconciler) fail(
 	ctx context.Context, rem *v1alpha1.Remediation, outcome, detail string, reported *envelope.Stage,
-	transcript *v1alpha1.TranscriptRef,
+	transcript *runarchive.Record,
 ) error {
 	result := &envelope.Remediation{Stage: agentresult.FailedStage(reported, outcome, detail)}
 	if err := r.stampChild(ctx, rem, result, v1alpha1.RunFailed, transcript, nil); err != nil {
@@ -442,7 +494,9 @@ func (r *RemediationReconciler) fail(
 		maxAttempts = 2
 	}
 	to := v1alpha1.PhaseQueued
-	if rem.Spec.Attempt >= maxAttempts {
+	// An archive outage is not something another attempt fixes: stop at
+	// Failed for a human retry rather than spending attempts on it.
+	if rem.Spec.Attempt >= maxAttempts || outcome == runarchive.OutcomeArchiveFailed {
 		to = v1alpha1.PhaseFailed
 	}
 	return r.finishFinding(ctx, rem, result, to, outcome+": "+detail)
@@ -479,7 +533,7 @@ func (r *RemediationReconciler) finishFinding(
 // stampChild writes the run result onto the Remediation.
 func (r *RemediationReconciler) stampChild(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
-	phase v1alpha1.RunPhase, transcript *v1alpha1.TranscriptRef, extra func(*v1alpha1.Remediation),
+	phase v1alpha1.RunPhase, transcript *runarchive.Record, extra func(*v1alpha1.Remediation),
 ) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Remediation
@@ -488,7 +542,7 @@ func (r *RemediationReconciler) stampChild(
 		}
 		cur.Status.Phase = phase
 		cur.Status.Stage = agentresult.FromStage(&result.Stage)
-		cur.Status.Stage.Transcript = transcript
+		transcript.Apply(cur.Status.Stage, &cur.Status.Conditions, cur.Generation)
 		cur.Status.Report = agentresult.TruncateReport(result.ReportMarkdown)
 		if extra != nil {
 			extra(&cur)

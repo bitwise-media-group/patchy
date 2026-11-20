@@ -32,6 +32,10 @@ const (
 	// the stage outcome), a settled EvaluationUnit (reason: Complete or the
 	// unit failure reason), or a settled Evaluation (reason: Complete/Failed).
 	ConditionComplete = "Complete"
+	// ConditionArchived reports, on an Investigation or Remediation, whether
+	// the run reached the long-term archive. Set only when archival is
+	// configured (reasons: Archived, ArchiveFailed).
+	ConditionArchived = "Archived"
 	// ConditionUnitsCreated marks an Evaluation whose child EvaluationUnits
 	// all exist.
 	ConditionUnitsCreated = "UnitsCreated"
@@ -60,4 +64,10 @@ const (
 	// at Opened rather than advancing it without a repository. Bounded by the
 	// accumulation window; past that the finding advances regardless.
 	ReasonRepositoryUnresolved = "RepositoryUnresolved"
+	// ReasonArchived: every object of the run is in the archive.
+	ReasonArchived = "Archived"
+	// ReasonArchiveFailed: the archive could not be written within the
+	// retry window. Fail-open runs carry on with a ConfigMap transcript;
+	// required-archive runs fail with outcome archive_failed.
+	ReasonArchiveFailed = "ArchiveFailed"
 )

@@ -31,18 +31,20 @@ func NewForgeWriter(forges *forge.Store) ForgeWriter {
 // Push implements ForgeWriter. The Git Data pusher targets the resolved
 // Forge's baseURL (the same endpoint every other call on that Forge uses),
 // so a GHES or fake forge is honoured on the write path too.
-func (w *forgeWriter) Push(ctx context.Context, namespace, repoURL, branch string, cs *envelope.Changeset) error {
+func (w *forgeWriter) Push(
+	ctx context.Context, namespace, repoURL, branch string, cs *envelope.Changeset,
+) (string, error) {
 	res, err := w.forges.Resolve(ctx, namespace, repoURL)
 	if err != nil {
-		return err
+		return "", err
 	}
 	token, _, err := w.forges.Token(ctx, res, forge.ScopeWrite)
 	if err != nil {
-		return fmt.Errorf("mint push token: %w", err)
+		return "", fmt.Errorf("mint push token: %w", err)
 	}
 	purl, err := w.forges.ProxyURL(ctx, res)
 	if err != nil {
-		return fmt.Errorf("resolve forge proxy: %w", err)
+		return "", fmt.Errorf("resolve forge proxy: %w", err)
 	}
 	return ghpush.New(res.Forge.Spec.BaseURL, ghclient.WithProxy(purl)).
 		Push(ctx, res.Repo, token, branch, cs)

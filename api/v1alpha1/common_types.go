@@ -272,7 +272,9 @@ type UsageSummary struct {
 type StageResult struct {
 	// Outcome is the envelope outcome vocabulary (ok, runtime_error, timeout,
 	// budget_exceeded, report_missing, report_invalid, commit_failed,
-	// changeset_too_large) plus "aborted" for a run killed with no envelope.
+	// changeset_too_large) plus "aborted" for a run killed with no envelope
+	// and "archive_failed" for a run whose required archive could not be
+	// written.
 	Outcome string `json:"outcome"`
 	// Harness that executed the stage.
 	// +optional
@@ -308,15 +310,28 @@ type StageResult struct {
 	// enough of a summary to render without fetching them.
 	// +optional
 	Transcript *TranscriptRef `json:"transcript,omitempty"`
+	// Archive locates this run's long-term record in the operator's object
+	// store, when archival is configured and the upload succeeded.
+	// +optional
+	Archive *ArchiveRef `json:"archive,omitempty"`
 }
 
-// TranscriptRef locates one agent run's captured conversation. The ConfigMap
-// is owned by the run that produced it, which is in turn owned by its Finding:
-// deleting the Finding on TTL cascades to both. A transcript is kept for as
-// long as the finding it explains.
+// TranscriptRef locates one agent run's captured conversation. Exactly one of
+// Name and Object is set.
+//
+// Without archival the turns live in a ConfigMap owned by the run that
+// produced it, which is in turn owned by its Finding: deleting the Finding on
+// TTL cascades to both, so a transcript is kept for as long as the finding it
+// explains. With archival the full, uncompacted transcript is an object in
+// the run's archive (StageResult.Archive) and outlives the finding.
 type TranscriptRef struct {
 	// Name of the ConfigMap holding the turns, in the run's own namespace.
-	Name string `json:"name"`
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Object names the archive object holding the turns (one of
+	// ArchiveRef.Objects), when the transcript was archived.
+	// +optional
+	Object string `json:"object,omitempty"`
 	// Turns is how many the transcript holds.
 	// +optional
 	Turns int32 `json:"turns,omitempty"`
@@ -324,6 +339,83 @@ type TranscriptRef struct {
 	// readers know the record is partial rather than complete.
 	// +optional
 	Truncated bool `json:"truncated,omitempty"`
+}
+
+// ArchiveProvider names an object-store backend.
+// +kubebuilder:validation:Enum=s3;gcs
+type ArchiveProvider string
+
+// Archive providers.
+const (
+	ArchiveProviderS3  ArchiveProvider = "s3"
+	ArchiveProviderGCS ArchiveProvider = "gcs"
+)
+
+// Archive object names: the files one run's prefix holds.
+const (
+	// ArchiveObjectTranscript is the full streamed conversation, gzipped JSONL.
+	ArchiveObjectTranscript = "transcript.jsonl.gz"
+	// ArchiveObjectReport is the full raw report, frontmatter included.
+	ArchiveObjectReport = "report.md"
+	// ArchiveObjectPatch is the remediation as `git format-patch --binary`.
+	ArchiveObjectPatch = "patch.mbox"
+	// ArchiveObjectChangeset is the exact changeset patchy pushed, gzipped JSON.
+	ArchiveObjectChangeset = "changeset.json.gz"
+	// ArchiveObjectManifest describes the run and digests every other
+	// object. It is written last, so its presence means the set is complete.
+	ArchiveObjectManifest = "manifest.json"
+	// ArchiveObjectPush links a remediation's archive to the branch, commit
+	// and pull request it produced. Written after the push.
+	ArchiveObjectPush = "push.json"
+)
+
+// ArchiveRef locates one agent run's immutable record in an S3 or GCS bucket.
+// Patchy writes each object once and never deletes one; how long they are
+// kept is the bucket's retention policy, not patchy's.
+type ArchiveRef struct {
+	// Provider is the object store: s3 or gcs.
+	Provider ArchiveProvider `json:"provider"`
+	// Bucket holding the objects.
+	Bucket string `json:"bucket"`
+	// Region of an S3 bucket.
+	// +optional
+	Region string `json:"region,omitempty"`
+	// Endpoint overrides the service endpoint (S3-compatible stores).
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+	// Prefix is the run's key prefix; every object key starts with it.
+	Prefix string `json:"prefix"`
+	// Objects written for the run, the manifest last.
+	// +optional
+	// +listType=atomic
+	Objects []ArchiveObject `json:"objects,omitempty"`
+	// ArchivedAt is when the manifest was written.
+	ArchivedAt metav1.Time `json:"archivedAt"`
+}
+
+// Object finds an archived object by name.
+func (a *ArchiveRef) Object(name string) (ArchiveObject, bool) {
+	if a == nil {
+		return ArchiveObject{}, false
+	}
+	for _, o := range a.Objects {
+		if o.Name == name {
+			return o, true
+		}
+	}
+	return ArchiveObject{}, false
+}
+
+// ArchiveObject is one archived file.
+type ArchiveObject struct {
+	// Name of the object within the run (e.g. transcript.jsonl.gz).
+	Name string `json:"name"`
+	// Key is the full object key in the bucket.
+	Key string `json:"key"`
+	// SHA256 is the hex digest of the stored bytes.
+	SHA256 string `json:"sha256"`
+	// Size of the stored bytes.
+	Size int64 `json:"size"`
 }
 
 // ConfidencePattern validates a confidence decimal string in [0, 1] with up

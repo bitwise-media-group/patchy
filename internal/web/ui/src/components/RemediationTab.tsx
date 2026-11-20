@@ -1,6 +1,7 @@
 import type { Finding } from "../types";
 import { DASH, formatDate } from "../format";
 import { Icon } from "./icons";
+import { ArchiveLink } from "./ArchiveLink";
 import { Markdown } from "./Markdown";
 import { Pill } from "./Pills";
 import { PullRequestCard } from "./PullRequest";
@@ -76,6 +77,18 @@ export function RemediationTab({ finding }: { finding: Finding }) {
         ) : (
           <p class="text-faint">No report recorded{rem ? " (the remediation may have expired)" : ""}.</p>
         )}
+        {rem?.attempt && (rem.reportArchived || rem.patchAvailable) ? (
+          <div class="mt-3 flex flex-wrap gap-2">
+            {rem.patchAvailable ? (
+              <ArchiveLink finding={finding.name} kind="remediation" attempt={rem.attempt} object="patch"
+                label="Download patch" />
+            ) : null}
+            {rem.reportArchived ? (
+              <ArchiveLink finding={finding.name} kind="remediation" attempt={rem.attempt} object="report"
+                label="Full report" />
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section class="mt-6">

@@ -273,10 +273,11 @@ func TestGateIgnoresRetryForRemediationFailure(t *testing.T) {
 
 // fakeRunner fakes the Runner interface (the jobs client).
 type fakeRunner struct {
-	created []jobs.Spec
-	done    bool
-	events  []envelope.Event
-	turns   []transcript.Turn
+	created    []jobs.Spec
+	done       bool
+	finishedAt time.Time
+	events     []envelope.Event
+	turns      []transcript.Turn
 }
 
 func (f *fakeRunner) Create(_ context.Context, spec jobs.Spec) (string, error) {
@@ -289,7 +290,7 @@ func (f *fakeRunner) Result(context.Context, string) (jobs.RunOutput, error) {
 }
 
 func (f *fakeRunner) Status(context.Context, string) (jobs.Status, error) {
-	st := jobs.Status{Done: f.done}
+	st := jobs.Status{Done: f.done, FinishedAt: f.finishedAt}
 	if f.done {
 		st.Succeeded = 1
 	}

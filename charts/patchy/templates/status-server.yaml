@@ -65,6 +65,7 @@ metadata:
     "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
     "PATCHY_LOG_LEVEL" .Values.config.logLevel
 }}
+{{- include "patchy.archiveData" (dict "root" . "data" $data "role" "status-server") }}
 {{- range $k, $v := .Values.config.extra }}
 {{- $_ := set $data $k $v }}
 {{- end }}
@@ -479,6 +480,7 @@ spec:
                 port: 443
               - protocol: TCP
                 port: 6443
+        {{- include "patchy.archiveEgress" . | nindent 8 }}
 {{- end }}
 {{- if $vals.ingress.enabled }}
 ---

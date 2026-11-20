@@ -67,7 +67,7 @@ func TestPushTranslatesChangeset(t *testing.T) {
 
 	p := New(srv.URL)
 	repo := ghclient.Repo{Owner: "o", Name: "r"}
-	if err := p.Push(context.Background(), repo, "write-token", "patchy/issue-7", testChangeset); err != nil {
+	if _, err := p.Push(context.Background(), repo, "write-token", "patchy/issue-7", testChangeset); err != nil {
 		t.Fatalf("Push() error = %v", err)
 	}
 	// ghclient re-encodes the decoded content; the round-trip must be exact.
@@ -86,7 +86,7 @@ func TestPushRejectsCorruptContent(t *testing.T) {
 		BaseSHA: "base000",
 		Upserts: []envelope.FileChange{{Path: "a", Mode: "100644", ContentB64: "not base64!"}},
 	}
-	err := p.Push(context.Background(), ghclient.Repo{Owner: "o", Name: "r"}, "t", "b", cs)
+	_, err := p.Push(context.Background(), ghclient.Repo{Owner: "o", Name: "r"}, "t", "b", cs)
 	if err == nil || !strings.Contains(err.Error(), "decode a") {
 		t.Errorf("Push() error = %v, want a decode failure naming the path", err)
 	}

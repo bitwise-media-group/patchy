@@ -17,6 +17,7 @@ import (
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/kubecfg"
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/printer"
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/resource"
+	"github.com/bitwise-media-group/patchy/internal/archive"
 	"github.com/bitwise-media-group/patchy/internal/version"
 )
 
@@ -47,6 +48,9 @@ type Options struct {
 	// authorizer and no authenticated identity), so tests supply them.
 	accessFn   func(context.Context, *kubecfg.Env, string, string) (bool, error)
 	identityFn func() string
+	// archiveFn stands in for opening the archive bucket with the caller's
+	// cloud credentials.
+	archiveFn func(context.Context, archive.Config) (archive.Store, error)
 }
 
 // WithEnv pins a pre-built environment, bypassing kubeconfig resolution.

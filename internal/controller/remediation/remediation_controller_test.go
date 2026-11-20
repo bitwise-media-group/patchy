@@ -398,10 +398,11 @@ func TestSpawnerRespawnsAfterSettledCompleteChild(t *testing.T) {
 
 // fakeCRRunner fakes the CRRunner interface (the jobs client).
 type fakeCRRunner struct {
-	created []jobs.Spec
-	done    bool
-	events  []envelope.Event
-	turns   []transcript.Turn
+	created    []jobs.Spec
+	done       bool
+	finishedAt time.Time
+	events     []envelope.Event
+	turns      []transcript.Turn
 }
 
 func (f *fakeCRRunner) Create(_ context.Context, spec jobs.Spec) (string, error) {
@@ -414,7 +415,7 @@ func (f *fakeCRRunner) Result(context.Context, string) (jobs.RunOutput, error) {
 }
 
 func (f *fakeCRRunner) Status(context.Context, string) (jobs.Status, error) {
-	st := jobs.Status{Done: f.done}
+	st := jobs.Status{Done: f.done, FinishedAt: f.finishedAt}
 	if f.done {
 		st.Succeeded = 1
 	}
@@ -430,12 +431,12 @@ type fakeForge struct {
 	prCalls int
 }
 
-func (f *fakeForge) Push(_ context.Context, _, _, branch string, cs *envelope.Changeset) error {
+func (f *fakeForge) Push(_ context.Context, _, _, branch string, cs *envelope.Changeset) (string, error) {
 	if cs == nil {
 		panic("push without changeset")
 	}
 	f.pushed = append(f.pushed, branch)
-	return nil
+	return "c0ffee", nil
 }
 
 func (f *fakeForge) EnsurePR(_ context.Context, _, _, branch, _, _ string) (int64, string, error) {

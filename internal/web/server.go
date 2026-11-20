@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/bitwise-media-group/patchy/internal/archive"
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
@@ -51,6 +52,10 @@ type Server struct {
 	// reach into the agents namespace, which degrades live streaming to the
 	// persisted transcript alone.
 	tails *tailHub
+	// archive presigns archived run objects for the browser; nil when the
+	// server has no archive access.
+	archive    archive.Store
+	presignTTL time.Duration
 	// debounce overrides the watch coalescing window (tests).
 	debounce time.Duration
 }
@@ -100,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("POST /api/integrations/{name}/actions/backfill", s.handleBackfill)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/transcript", s.handleTranscript)
+	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}", s.handleArchive)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	s.auth.Register(mux)
 	mux.Handle("/", s.staticHandler())

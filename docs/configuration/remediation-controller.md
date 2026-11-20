@@ -79,6 +79,29 @@ The manual values must be at least the auto values, or the runner refuses to sta
 runner watches the harness's streamed usage events and kills the process group once the total output-token count goes
 over the budget.
 
+## Archive flags
+
+Optional long-term archival of every run to S3 or GCS. These flags are shared with the
+[investigation-controller](investigation-controller.md) and, for the store location, the
+[status-server](status-server.md). See [Run archival](../deployment/archival.md) for what is archived, the identities
+involved, and bucket setup.
+
+| Flag                     | Env                           | Default | Purpose                                                                                 |
+| ------------------------ | ----------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `--archive-provider`     | `PATCHY_ARCHIVE_PROVIDER`     | none    | `s3` or `gcs`; empty disables archival                                                  |
+| `--archive-bucket`       | `PATCHY_ARCHIVE_BUCKET`       | none    | The bucket                                                                              |
+| `--archive-prefix`       | `PATCHY_ARCHIVE_PREFIX`       | none    | Key prefix every run is written under                                                   |
+| `--archive-region`       | `PATCHY_ARCHIVE_REGION`       | SDK     | S3 bucket region                                                                        |
+| `--archive-endpoint`     | `PATCHY_ARCHIVE_ENDPOINT`     | none    | Endpoint override for S3-compatible stores                                              |
+| `--archive-kms-key`      | `PATCHY_ARCHIVE_KMS_KEY`      | bucket  | KMS key every write is encrypted with                                                   |
+| `--archive-required`     | `PATCHY_ARCHIVE_REQUIRED`     | `false` | Fail a run (outcome `archive_failed`, finding `Failed`) whose archive cannot be written |
+| `--archive-retry-window` | `PATCHY_ARCHIVE_RETRY_WINDOW` | `45m`   | How long after the Job finishes a failed upload is retried; must be below `--job-ttl`   |
+
+With archival on, a collected run records `stage.archive` and the `Archived` condition instead of writing a transcript
+ConfigMap. A remediation is archived before its push, so with `--archive-required` a run that cannot be archived never
+reaches the forge. After the push, `push.json` links the archive to the branch, commit and pull request, and the run's
+`status.pushedCommit` records the commit.
+
 ## Behavior
 
 - **Queue admission**: an accepted `spec.approval` moves a finding `AwaitingApproval → Queued` or `HandedOff → Queued`.

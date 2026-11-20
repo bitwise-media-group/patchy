@@ -96,8 +96,12 @@ func TestPushBranch(t *testing.T) {
 	mux, c := newFakeClient(t)
 	order, trees, refs := pushFake(t, mux)
 
-	if err := c.PushBranch(context.Background(), testRepo, pushRequest); err != nil {
+	sha, err := c.PushBranch(context.Background(), testRepo, pushRequest)
+	if err != nil {
 		t.Fatalf("PushBranch() error = %v", err)
+	}
+	if sha != "newcommit" {
+		t.Errorf("PushBranch() = %q, want the created commit", sha)
 	}
 
 	wantOrder := []string{"blob", "blob", "tree", "commit", "create-ref"}
@@ -157,7 +161,7 @@ func TestPushBranchForceUpdatesExistingRef(t *testing.T) {
 		writeJSON(t, w, `{"ref":"refs/heads/patchy/issue-9","object":{"sha":"newcommit"}}`)
 	})
 
-	if err := c.PushBranch(context.Background(), testRepo, pushRequest); err != nil {
+	if _, err := c.PushBranch(context.Background(), testRepo, pushRequest); err != nil {
 		t.Fatalf("PushBranch() error = %v", err)
 	}
 	if patched == nil {
@@ -175,7 +179,7 @@ func TestPushBranchBlobErrorSurfaces(t *testing.T) {
 		writeJSON(t, w, `{"message":"nope"}`)
 	})
 
-	if err := c.PushBranch(context.Background(), testRepo, pushRequest); err == nil {
+	if _, err := c.PushBranch(context.Background(), testRepo, pushRequest); err == nil {
 		t.Fatal("PushBranch() error = nil, want the blob failure")
 	}
 }

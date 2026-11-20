@@ -250,6 +250,9 @@ type Investigation struct {
 	// Transcript summarises the captured conversation; the turns themselves
 	// come from the transcript endpoint.
 	Transcript *TranscriptSummary `json:"transcript,omitempty"`
+	// ReportArchived reports that the full, untruncated report is in the run
+	// archive (the archive route's "report" object).
+	ReportArchived bool `json:"reportArchived,omitempty"`
 }
 
 // RemediationSummary mirrors the Finding's own remediation status.
@@ -276,6 +279,12 @@ type Remediation struct {
 	SessionID string `json:"sessionID,omitempty"`
 	// Transcript summarises the captured conversation.
 	Transcript *TranscriptSummary `json:"transcript,omitempty"`
+	// ReportArchived reports that the full, untruncated report is in the run
+	// archive (the archive route's "report" object).
+	ReportArchived bool `json:"reportArchived,omitempty"`
+	// PatchAvailable reports that the change is in the run archive as a
+	// `git am`-able patch (the archive route's "patch" object).
+	PatchAvailable bool `json:"patchAvailable,omitempty"`
 }
 
 // TranscriptSummary tells the client whether a run has a conversation worth
@@ -285,6 +294,10 @@ type Remediation struct {
 type TranscriptSummary struct {
 	Turns     int32 `json:"turns"`
 	Truncated bool  `json:"truncated,omitempty"`
+	// Archived reports that the conversation is in the run archive: the
+	// transcript stream answers `archived`, and the client plays the turns
+	// back from the archive route's "transcript" object.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // Usage is token and cost accounting: one run's, or the finding's total
@@ -617,6 +630,7 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 				out.Investigation.Usage = stageUsage(st)
 				out.Investigation.SessionID = st.SessionID
 				out.Investigation.Transcript = wireTranscript(st.Transcript)
+				_, out.Investigation.ReportArchived = st.Archive.Object(v1alpha1.ArchiveObjectReport)
 			}
 		}
 	}
@@ -630,6 +644,8 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 				out.Remediation.Usage = stageUsage(st)
 				out.Remediation.SessionID = st.SessionID
 				out.Remediation.Transcript = wireTranscript(st.Transcript)
+				_, out.Remediation.ReportArchived = st.Archive.Object(v1alpha1.ArchiveObjectReport)
+				_, out.Remediation.PatchAvailable = st.Archive.Object(v1alpha1.ArchiveObjectPatch)
 			}
 			// What the run was predicted to cost against what it was allowed;
 			// NumTurns and Usage.OutputTokens above are what it actually spent.
@@ -649,14 +665,14 @@ func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 }
 
 // wireTranscript projects a run's transcript reference onto the wire summary.
-// The ConfigMap name stays server-side: the client addresses a transcript by
+// The ConfigMap name and archive key stay server-side: the client addresses a transcript by
 // finding, kind and attempt, so nothing in the browser depends on the storage
 // layout.
 func wireTranscript(ref *v1alpha1.TranscriptRef) *TranscriptSummary {
 	if ref == nil || ref.Turns == 0 {
 		return nil
 	}
-	return &TranscriptSummary{Turns: ref.Turns, Truncated: ref.Truncated}
+	return &TranscriptSummary{Turns: ref.Turns, Truncated: ref.Truncated, Archived: ref.Object != ""}
 }
 
 // stageUsage converts a stage's usage block onto the wire type, or nil when

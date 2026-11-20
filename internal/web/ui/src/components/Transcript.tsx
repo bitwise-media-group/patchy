@@ -38,6 +38,7 @@ export function Conversation({
         attempt={attempt}
         live={live}
         truncated={run?.transcript?.truncated ?? false}
+        archived={run?.transcript?.archived ?? false}
       />
     </section>
   );
@@ -49,12 +50,14 @@ function TranscriptStream({
   attempt,
   live,
   truncated,
+  archived,
 }: {
   finding: string;
   kind: "investigation" | "remediation";
   attempt: number;
   live: boolean;
   truncated: boolean;
+  archived: boolean;
 }) {
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   const [state, setState] = useState<"loading" | "streaming" | "done" | "error">("loading");
@@ -97,12 +100,12 @@ function TranscriptStream({
         setState("error");
       },
       onReconnecting: setReconnecting,
-    });
+    }, archived);
     return () => {
       close();
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [finding, kind, attempt]);
+  }, [finding, kind, attempt, archived]);
 
   // Each tool_use by id, so a tool_result can borrow its call's path and be
   // highlighted as the file it read.
@@ -129,7 +132,12 @@ function TranscriptStream({
     return <p class="text-faint">Loading the conversation…</p>;
   }
   if (state === "error" && turns.length === 0) {
-    return <p class="text-faint">The conversation could not be loaded.</p>;
+    return (
+      <p class="text-faint">
+        The conversation could not be loaded
+        {archived ? " from the archive (the bucket must allow GET from this page's origin)" : ""}.
+      </p>
+    );
   }
   if (turns.length === 0) {
     return (
@@ -165,6 +173,7 @@ function TranscriptStream({
           </span>
         ) : null}
         <span class="font-mono">{formatCount(turns.length)} turns</span>
+        {archived ? <span class="font-mono">full record from the archive</span> : null}
         {truncated ? (
           <span class="inline-flex items-center gap-1">
             <Icon name="alertTriangle" size={13} />

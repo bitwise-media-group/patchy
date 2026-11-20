@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/bitwise-media-group/patchy/internal/archive"
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
@@ -41,6 +42,9 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.String("auth-config", "",
 		"path to the mounted authentication config; absent serves nothing (set mode none to disable authentication)")
+	archive.RegisterFlags(f)
+	f.Duration("archive-presign-ttl", web.DefaultPresignTTL,
+		"how long a presigned archive URL handed to the browser stays valid")
 	return cmd
 }
 
@@ -61,6 +65,27 @@ func agentTailer(kubeconfig, agentNamespace string) (web.Tailer, error) {
 		return nil, fmt.Errorf("kubernetes clientset: %w", err)
 	}
 	return jobs.NewTailer(cs, agentNamespace), nil
+}
+
+// archiveAccess opens the run archive the server presigns for, or returns a
+// nil store when archival is not configured.
+func archiveAccess(ctx context.Context, opts *cli.Options, log *slog.Logger) (archive.Store, time.Duration, error) {
+	cfg := archive.ConfigFrom(opts)
+	if !cfg.Enabled() {
+		return nil, 0, nil
+	}
+	ttl := opts.Duration("archive-presign-ttl")
+	if ttl <= 0 || ttl > archive.MaxPresignTTL {
+		return nil, 0, fmt.Errorf("--archive-presign-ttl %s must be in (0, %s]", ttl, archive.MaxPresignTTL)
+	}
+	store, err := archive.Open(ctx, cfg)
+	if err != nil {
+		return nil, 0, err
+	}
+	log.LogAttrs(ctx, slog.LevelInfo, "run archive access enabled",
+		slog.String("provider", string(cfg.Provider)), slog.String("bucket", cfg.Bucket),
+		slog.Duration("presign_ttl", ttl))
+	return store, ttl, nil
 }
 
 func serve(ctx context.Context, opts *cli.Options) error {
@@ -134,6 +159,17 @@ func serve(ctx context.Context, opts *cli.Options) error {
 			slog.String("agent_namespace", agentNS), slog.Any("error", err))
 	}
 	srv = srv.WithTranscripts(mgr.GetAPIReader(), tailer)
+
+	// Archived runs are read by the browser straight from the bucket through
+	// short-lived presigned URLs; this process only signs them.
+	store, ttl, err := archiveAccess(ctx, opts, log)
+	if err != nil {
+		return err
+	}
+	if store != nil {
+		defer func() { _ = store.Close() }()
+		srv = srv.WithArchive(store, ttl)
+	}
 
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		return srv.StartWatch(ctx, mgr.GetCache())

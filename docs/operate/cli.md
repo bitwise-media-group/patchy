@@ -167,6 +167,24 @@ patchy review finding my-finding -o markdown > report.md
 `--raw` keeps the machine frontmatter. That frontmatter is a contract between the investigate and remediate stages, and
 it is stripped by default.
 
+### Transcripts, patches and full reports
+
+`review` can also print one run's artifacts instead of its report summary:
+
+```sh
+patchy review investigation --finding my-finding --transcript | less   # the conversation
+patchy review investigation --finding my-finding --transcript --raw    # as JSONL
+patchy review remediation --finding my-finding --patch | git am        # the change itself
+patchy review remediation --finding my-finding --report-full           # the untruncated report
+patchy review remediation --finding my-finding --patch --print-url     # a 15-minute presigned URL
+```
+
+A run that was [archived](../deployment/archival.md) is read straight from the bucket with **your own** cloud
+credentials (the AWS default chain or Google ADC); the run's status says where, so the CLI needs no other configuration.
+Each object is checked against the sha256 recorded on the run before it is printed. A transcript that was not archived
+is read from its ConfigMap instead, so `--transcript` works on every cluster while the finding exists. `--patch` and
+`--report-full` need an archived run.
+
 ## Opening the human-facing page
 
 ```sh

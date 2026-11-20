@@ -428,6 +428,69 @@ spec:
               stage:
                 description: Stage is the agent accounting for the run.
                 properties:
+                  archive:
+                    description: |-
+                      Archive locates this run's long-term record in the operator's object
+                      store, when archival is configured and the upload succeeded.
+                    properties:
+                      archivedAt:
+                        description: ArchivedAt is when the manifest was written.
+                        format: date-time
+                        type: string
+                      bucket:
+                        description: Bucket holding the objects.
+                        type: string
+                      endpoint:
+                        description: Endpoint overrides the service endpoint (S3-compatible
+                          stores).
+                        type: string
+                      objects:
+                        description: Objects written for the run, the manifest last.
+                        items:
+                          description: ArchiveObject is one archived file.
+                          properties:
+                            key:
+                              description: Key is the full object key in the bucket.
+                              type: string
+                            name:
+                              description: Name of the object within the run (e.g.
+                                transcript.jsonl.gz).
+                              type: string
+                            sha256:
+                              description: SHA256 is the hex digest of the stored
+                                bytes.
+                              type: string
+                            size:
+                              description: Size of the stored bytes.
+                              format: int64
+                              type: integer
+                          required:
+                          - key
+                          - name
+                          - sha256
+                          - size
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      prefix:
+                        description: Prefix is the run's key prefix; every object
+                          key starts with it.
+                        type: string
+                      provider:
+                        description: 'Provider is the object store: s3 or gcs.'
+                        enum:
+                        - s3
+                        - gcs
+                        type: string
+                      region:
+                        description: Region of an S3 bucket.
+                        type: string
+                    required:
+                    - archivedAt
+                    - bucket
+                    - prefix
+                    - provider
+                    type: object
                   detail:
                     description: Detail explains a non-ok outcome for humans.
                     maxLength: 4096
@@ -454,7 +517,9 @@ spec:
                     description: |-
                       Outcome is the envelope outcome vocabulary (ok, runtime_error, timeout,
                       budget_exceeded, report_missing, report_invalid, commit_failed,
-                      changeset_too_large) plus "aborted" for a run killed with no envelope.
+                      changeset_too_large) plus "aborted" for a run killed with no envelope
+                      and "archive_failed" for a run whose required archive could not be
+                      written.
                     type: string
                   sessionID:
                     description: SessionID of the harness session.
@@ -474,6 +539,11 @@ spec:
                         description: Name of the ConfigMap holding the turns, in the
                           run's own namespace.
                         type: string
+                      object:
+                        description: |-
+                          Object names the archive object holding the turns (one of
+                          ArchiveRef.Objects), when the transcript was archived.
+                        type: string
                       truncated:
                         description: |-
                           Truncated reports that recording bounds cut the conversation short, so
@@ -483,8 +553,6 @@ spec:
                         description: Turns is how many the transcript holds.
                         format: int32
                         type: integer
-                    required:
-                    - name
                     type: object
                   usage:
                     description: Usage accounting for the stage.

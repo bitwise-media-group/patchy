@@ -35,6 +35,21 @@ data:
     # Keep finished Jobs around long enough to debug a bad run.
     PATCHY_JOB_TTL: 6h
 
+    # Optional run archive (docs/deployment/archival.md). Uncomment to keep
+    # every run's full record in a locked bucket after its finding expires.
+    # The investigation-controller, remediation-controller and status-server
+    # ServiceAccounts then need cloud identities (IRSA / workload identity
+    # annotations), and, for EKS Pod Identity or GKE workload identity, a
+    # NetworkPolicy egress rule to the node-local metadata endpoint
+    # (169.254.170.23:80, or 169.254.169.254:80 + 169.254.169.252:988).
+    # PATCHY_ARCHIVE_PROVIDER: s3
+    # PATCHY_ARCHIVE_BUCKET: acme-patchy-audit
+    # PATCHY_ARCHIVE_PREFIX: prod
+    # PATCHY_ARCHIVE_REGION: eu-west-2
+    # PATCHY_ARCHIVE_KMS_KEY: arn:aws:kms:eu-west-2:111122223333:key/0000-example
+    # PATCHY_ARCHIVE_REQUIRED: "true"
+    # PATCHY_ARCHIVE_RETRY_WINDOW: 5h   # below PATCHY_JOB_TTL (6h here)
+
     # Must be the same tag as the claude-agent-runner entry in
     # kustomization.yaml's `images:` block. The controllers copy this string
     # unchanged into every claude Job they create, and kustomize does not

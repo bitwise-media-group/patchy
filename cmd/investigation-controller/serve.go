@@ -22,6 +22,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/model"
+	"github.com/bitwise-media-group/patchy/internal/runarchive"
 	"github.com/bitwise-media-group/patchy/internal/runnercfg"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
@@ -53,6 +54,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	runnercfg.RegisterFlags(f)
 	f.Duration("job-deadline", time.Hour, "activeDeadlineSeconds for an agent Job")
 	f.Duration("job-ttl", time.Hour, "ttlSecondsAfterFinished for a finished agent Job")
+	runarchive.RegisterFlags(f)
 	f.String("model-allowlist", model.DefaultAllowlist,
 		"canonical model ids or family aliases the investigation may request for remediation "+
 			"(an alias such as anthropic/claude-opus resolves to the newest registered version at startup)")
@@ -160,6 +162,17 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		slog.Any("enabled", enabled), slog.String("investigate_harness", investigateHarness),
 		slog.String("investigate_model", investigateModel), slog.Any("model_allowlist", allowlist))
 
+	archiver, err := runarchive.FromOptions(ctx, opts, opts.Duration("job-ttl"))
+	if err != nil {
+		return err
+	}
+	if archiver != nil {
+		defer func() { _ = archiver.Store.Close() }()
+		log.LogAttrs(ctx, slog.LevelInfo, "run archival enabled",
+			slog.String("provider", string(archiver.Config.Provider)), slog.String("bucket", archiver.Config.Bucket),
+			slog.Bool("required", archiver.Required), slog.Duration("retry_window", archiver.RetryWindow))
+	}
+
 	runner := jobs.New(cs, jobs.Config{
 		Namespace:      agentNS,
 		ServiceAccount: opts.String("agent-service-account"),
@@ -200,6 +213,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		},
 		InvestigateHarness: investigateHarness,
 		InvestigateModel:   investigateModel,
+		Archive:            archiver,
+		Events:             mgr.GetEventRecorder("investigation-controller"),
 		Log:                log,
 	}
 	if err := inv.SetupWithManager(mgr); err != nil {

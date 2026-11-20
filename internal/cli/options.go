@@ -101,3 +101,6 @@ func (o *Options) Float(key string) float64 { return o.viper.GetFloat64(key) }
 
 // Int reads an extra controller-specific integer value.
 func (o *Options) Int(key string) int { return o.viper.GetInt(key) }
+
+// Bool reads an extra controller-specific boolean value.
+func (o *Options) Bool(key string) bool { return o.viper.GetBool(key) }

@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -19,11 +20,14 @@ import (
 
 // reviewFlags are the options `review` accepts.
 type reviewFlags struct {
-	finding  string
-	attempt  int32
-	raw      bool
-	web      bool
-	printURL bool
+	finding    string
+	attempt    int32
+	raw        bool
+	web        bool
+	printURL   bool
+	transcript bool
+	patch      bool
+	reportFull bool
 }
 
 func newReviewCmd(opts *Options) *cobra.Command {
@@ -34,12 +38,22 @@ func newReviewCmd(opts *Options) *cobra.Command {
 		Long: "Read what the agent concluded: its ratings, its verdict, and the report it wrote.\n\n" +
 			"On a terminal the report is rendered for reading. Piped, or with -o markdown, it\n" +
 			"is printed as the markdown the agent wrote, so you can paste it into an issue\n" +
-			"without losing anything.",
+			"without losing anything.\n\n" +
+			"--transcript prints the agent's conversation, --patch the remediation as a\n" +
+			"`git am`-able patch, and --report-full the untruncated report. When the run was\n" +
+			"archived these read the archive bucket directly with your own cloud credentials\n" +
+			"(the AWS default chain or Google ADC), so you need read access to it; a\n" +
+			"transcript that was not archived is read from the cluster instead. Add\n" +
+			"--print-url to print a short-lived presigned URL rather than the content, and\n" +
+			"--raw to get the transcript as JSONL.",
 		Example: "  patchy review finding my-finding\n" +
 			"  patchy review investigation --finding my-finding\n" +
 			"  patchy review investigation --finding my-finding --attempt 2\n" +
 			"  patchy review remediation my-finding-rem-1 --web\n" +
-			"  patchy review finding my-finding -o markdown > report.md",
+			"  patchy review finding my-finding -o markdown > report.md\n" +
+			"  patchy review investigation --finding my-finding --transcript | less\n" +
+			"  patchy review remediation --finding my-finding --patch | git am\n" +
+			"  patchy review remediation --finding my-finding --patch --print-url",
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: nounCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -56,7 +70,12 @@ func newReviewCmd(opts *Options) *cobra.Command {
 	fl.Int32Var(&f.attempt, "attempt", 0, "which attempt to read (default: the latest)")
 	fl.BoolVar(&f.raw, "raw", false, "keep the machine frontmatter the agent emitted")
 	fl.BoolVar(&f.web, "web", false, "open the tracking issue (investigations) or pull request (remediations)")
-	fl.BoolVar(&f.printURL, "print-url", false, "print that URL instead of opening it")
+	fl.BoolVar(&f.printURL, "print-url", false,
+		"print that URL instead of opening it (with --transcript/--patch/--report-full: a presigned archive URL)")
+	fl.BoolVar(&f.transcript, "transcript", false, "print the agent's conversation (--raw: as JSONL)")
+	fl.BoolVar(&f.patch, "patch", false, "print the remediation as a git am-able patch (archived runs only)")
+	fl.BoolVar(&f.reportFull, "report-full", false, "print the untruncated report (archived runs only)")
+	cmd.MarkFlagsMutuallyExclusive("transcript", "patch", "report-full", "web")
 	return cmd
 }
 
@@ -70,6 +89,13 @@ func runReview(ctx context.Context, opts *Options, f *reviewFlags, noun, name st
 	}
 	if !kind.Run() && kind.Singular != "finding" {
 		return errUsage(fmt.Errorf("cannot review %s; try finding, investigation or remediation", kind.Plural))
+	}
+	if f.archived() && !kind.Run() {
+		return errUsage(errors.New("--transcript, --patch and --report-full read one run; " +
+			"review an investigation or remediation"))
+	}
+	if f.patch && kind.Singular != "remediation" {
+		return errUsage(errors.New("--patch reads a remediation"))
 	}
 
 	env, err := opts.Connect()
@@ -138,6 +164,10 @@ func reviewRun(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer.
 	obj := kind.New()
 	if err := env.Client.Get(ctx, objectKey(env, name), obj); err != nil {
 		return err
+	}
+
+	if f.archived() {
+		return reviewArtifact(ctx, opts, env, f, obj)
 	}
 
 	d := p.Doc()

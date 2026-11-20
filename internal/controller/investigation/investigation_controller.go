@@ -16,21 +16,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	kevents "k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/agentresult"
 	"github.com/bitwise-media-group/patchy/internal/envelope"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/priority"
+	"github.com/bitwise-media-group/patchy/internal/runarchive"
 	"github.com/bitwise-media-group/patchy/internal/schedule"
 	"github.com/bitwise-media-group/patchy/internal/stats"
 	"github.com/bitwise-media-group/patchy/internal/templates"
-	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
 // InvestigationPhaseIndex indexes Investigations by status.phase for the
@@ -76,6 +76,11 @@ type InvestigationReconciler struct {
 	// them so its pod runs the harness its runner image was built for.
 	InvestigateHarness string
 	InvestigateModel   string
+	// Archive writes each finished run to the long-term archive; nil keeps
+	// transcripts in ConfigMaps only.
+	Archive *runarchive.Archiver
+	// Events receives the Warning an abandoned archive raises; nil discards.
+	Events kevents.EventRecorder
 	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// calibrationTimeout bounds the advisory rollup read (tests shorten it);
@@ -269,14 +274,45 @@ func (r *InvestigationReconciler) collect(ctx context.Context, inv *v1alpha1.Inv
 	}
 	// Persist before applying: this is the only moment the conversation is
 	// still readable, since the Job's TTL takes the pod and its log with it.
-	// A transcript that cannot be stored is logged and dropped: losing the
-	// explanation must never cost the result it explains.
-	ref, err := transcriptstore.Persist(ctx, r.Client, inv.Namespace,
-		transcriptLabels(inv), inv, invGVK, out.Turns)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "persist transcript", "investigation", inv.Name)
+	// Nothing has been written yet, so a pass that defers to retry the
+	// archive leaves the run exactly as it found it.
+	rec, retryAfter := r.collector().Collect(ctx, r.archiveRun(ctx, inv, st), out, runarchive.Target{
+		Labels: transcriptLabels(inv), GVK: invGVK,
+	})
+	if retryAfter > 0 {
+		return ctrl.Result{RequeueAfter: retryAfter}, nil
 	}
-	return ctrl.Result{}, r.apply(ctx, inv, out.Events, ref)
+	return ctrl.Result{}, r.apply(ctx, inv, out.Events, rec)
+}
+
+// collector is the transcript and archive policy for collected runs.
+func (r *InvestigationReconciler) collector() *runarchive.Collector {
+	return &runarchive.Collector{Client: r.Client, Archiver: r.Archive, Events: r.Events, Log: r.Log}
+}
+
+// archiveRun describes the run for its archive manifest. The lookups are
+// best-effort: a manifest without its finding or base SHA is still worth
+// writing.
+func (r *InvestigationReconciler) archiveRun(
+	ctx context.Context, inv *v1alpha1.Investigation, st jobs.Status,
+) runarchive.Run {
+	run := runarchive.Run{
+		Kind: v1alpha1.RunKindInvestigation, Object: inv, Attempt: inv.Spec.Attempt, FinishedAt: st.FinishedAt,
+	}
+	if r.Archive == nil {
+		return run
+	}
+	var fnd v1alpha1.Finding
+	if r.Get(ctx, types.NamespacedName{Namespace: inv.Namespace, Name: inv.Spec.FindingRef.Name}, &fnd) == nil {
+		run.Finding = &fnd
+	}
+	if ref := inv.Spec.RepositoryRef; ref != nil {
+		var repo v1alpha1.Repository
+		if r.Get(ctx, types.NamespacedName{Namespace: inv.Namespace, Name: ref.Name}, &repo) == nil {
+			run.BaseSHA = repo.Status.ResolvedSHA
+		}
+	}
+	return run
 }
 
 // invGVK identifies the owner reference a transcript carries.
@@ -299,7 +335,7 @@ func transcriptLabels(inv *v1alpha1.Investigation) map[string]string {
 // apply routes the Job's investigation event onto the child and the Finding.
 func (r *InvestigationReconciler) apply(
 	ctx context.Context, inv *v1alpha1.Investigation, events []envelope.Event,
-	transcript *v1alpha1.TranscriptRef,
+	transcript *runarchive.Record,
 ) error {
 	var fnd v1alpha1.Finding
 	key := types.NamespacedName{Namespace: inv.Namespace, Name: inv.Spec.FindingRef.Name}
@@ -308,6 +344,17 @@ func (r *InvestigationReconciler) apply(
 	}
 
 	var result *envelope.Investigation
+	if transcript != nil && transcript.FailDetail != "" {
+		// A required archive failed: no verdict is routed from a run whose
+		// record cannot be kept. The agent's accounting still lands.
+		for _, e := range events {
+			if e.Type == envelope.TypeInvestigation {
+				result = e.Investigation
+			}
+		}
+		return r.fail(ctx, inv, &fnd, runarchive.OutcomeArchiveFailed, transcript.FailDetail,
+			stageOf(result), transcript)
+	}
 	for _, e := range events {
 		switch e.Type {
 		case envelope.TypeInvestigation:
@@ -504,7 +551,7 @@ func estimateOf(result *envelope.Investigation) *v1alpha1.AgentEstimate {
 // that produced no event at all.
 func (r *InvestigationReconciler) fail(
 	ctx context.Context, inv *v1alpha1.Investigation, fnd *v1alpha1.Finding,
-	outcome, detail string, reported *envelope.Stage, transcript *v1alpha1.TranscriptRef,
+	outcome, detail string, reported *envelope.Stage, transcript *runarchive.Record,
 ) error {
 	result := &envelope.Investigation{Stage: agentresult.FailedStage(reported, outcome, detail)}
 	if err := r.stampChild(ctx, inv, result, v1alpha1.RunFailed, transcript); err != nil {
@@ -515,7 +562,10 @@ func (r *InvestigationReconciler) fail(
 		maxAttempts = 2
 	}
 	to := v1alpha1.PhaseEnhanced
-	if inv.Spec.Attempt >= maxAttempts {
+	// An archive outage is not something another attempt fixes, so a
+	// required-archive failure stops at Failed for a human retry rather
+	// than spending the remaining attempts on it.
+	if inv.Spec.Attempt >= maxAttempts || outcome == runarchive.OutcomeArchiveFailed {
 		to = v1alpha1.PhaseFailed
 	}
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -538,7 +588,7 @@ func (r *InvestigationReconciler) fail(
 // stampChild writes the run result onto the Investigation.
 func (r *InvestigationReconciler) stampChild(
 	ctx context.Context, inv *v1alpha1.Investigation, result *envelope.Investigation,
-	phase v1alpha1.RunPhase, transcript *v1alpha1.TranscriptRef,
+	phase v1alpha1.RunPhase, transcript *runarchive.Record,
 ) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Investigation
@@ -547,7 +597,7 @@ func (r *InvestigationReconciler) stampChild(
 		}
 		cur.Status.Phase = phase
 		cur.Status.Stage = agentresult.FromStage(&result.Stage)
-		cur.Status.Stage.Transcript = transcript
+		transcript.Apply(cur.Status.Stage, &cur.Status.Conditions, cur.Generation)
 		cur.Status.Report = agentresult.TruncateReport(result.ReportMarkdown)
 		if phase == v1alpha1.RunComplete {
 			cur.Status.Exploitability = agentresult.Analysis(result.Exploitability)

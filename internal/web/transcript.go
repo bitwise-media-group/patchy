@@ -79,9 +79,10 @@ func resumeAfter(r *http.Request) int {
 
 // handleTranscript streams one agent run's conversation.
 //
-// It is Server-Sent Events in both modes so the client has a single code path:
+// It is Server-Sent Events in every mode so the client has a single code path:
 // a completed run replays its persisted transcript and ends, a running one
-// replays what it has said so far and then follows live. Unlike /events,
+// replays what it has said so far and then follows live, and an archived one
+// sends `archived` and ends, so the client plays it back from the archive. Unlike /events,
 // which carries no content and admits any read grant, a transcript is finding
 // data and is gated exactly like /api/findings.
 func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +127,7 @@ type runRef struct {
 	name       string
 	namespace  string
 	transcript *v1alpha1.TranscriptRef
+	archive    *v1alpha1.ArchiveRef
 	jobName    string
 	running    bool
 }
@@ -170,7 +172,7 @@ func (s *Server) findRun(
 
 	ref.namespace = s.namespace
 	if stage != nil {
-		ref.transcript = stage.Transcript
+		ref.transcript, ref.archive = stage.Transcript, stage.Archive
 	}
 	if job != nil {
 		ref.jobName = job.Name
@@ -187,6 +189,12 @@ func (s *Server) streamTranscript(
 	w http.ResponseWriter, r *http.Request, flusher http.Flusher, run runRef, after int,
 ) {
 	ctx := r.Context()
+	if run.transcript != nil && run.transcript.Object != "" {
+		// Archived: the client fetches the full record straight from the
+		// bucket through the archive route.
+		writeArchived(w, flusher)
+		return
+	}
 	if run.transcript != nil {
 		turns, err := transcriptstore.Load(ctx, s.reader, run.namespace, run.transcript.Name)
 		if err != nil {

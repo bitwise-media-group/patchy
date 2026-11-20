@@ -1,6 +1,7 @@
 import type { Finding } from "../types";
 import { DASH, formatConfidence, formatCount, formatDate, formatTokens, holdText } from "../format";
 import { Icon } from "./icons";
+import { ArchiveLink } from "./ArchiveLink";
 import { Markdown } from "./Markdown";
 import { Pill, VerdictPill } from "./Pills";
 import { RunAccountingRows } from "./RunUsage";
@@ -90,6 +91,12 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
         ) : (
           <p class="text-faint">No report recorded{inv ? " (the investigation may have expired)" : ""}.</p>
         )}
+        {inv?.attempt && inv.reportArchived ? (
+          <div class="mt-3 flex flex-wrap gap-2">
+            <ArchiveLink finding={finding.name} kind="investigation" attempt={inv.attempt} object="report"
+              label="Full report" />
+          </div>
+        ) : null}
       </section>
       <Conversation finding={finding} kind="investigation" />
 

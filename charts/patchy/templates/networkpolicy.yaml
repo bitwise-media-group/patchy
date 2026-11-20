@@ -121,6 +121,9 @@ spec:
               - protocol: TCP
                 port: 80
         {{- end }}
+        {{- if has $c.name (list "investigation-controller" "remediation-controller") }}
+        {{- include "patchy.archiveEgress" $ | nindent 8 }}
+        {{- end }}
         {{- with $c.vals.networkPolicy.extraEgress }}
         # Operator-supplied additions (<controller>.networkPolicy.extraEgress),
         # for example a generic Integration's resolver or enhancer endpoint on

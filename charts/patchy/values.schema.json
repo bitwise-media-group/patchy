@@ -1245,6 +1245,69 @@
                 }
             }
         },
+        "archive": {
+            "description": "Optional long-term archival of agent runs to an S3 or GCS bucket (docs/deployment/archival.md)",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "s3",
+                        "gcs"
+                    ]
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "kmsKey": {
+                    "type": "string"
+                },
+                "required": {
+                    "description": "Fail a run whose archive cannot be written instead of falling back to the ConfigMap transcript",
+                    "type": "boolean"
+                },
+                "retryWindow": {
+                    "$ref": "#/definitions/duration"
+                },
+                "presignTTL": {
+                    "$ref": "#/definitions/duration"
+                }
+            },
+            "if": {
+                "properties": {
+                    "enabled": {
+                        "const": true
+                    }
+                },
+                "required": [
+                    "enabled"
+                ]
+            },
+            "then": {
+                "required": [
+                    "provider",
+                    "bucket"
+                ],
+                "properties": {
+                    "bucket": {
+                        "minLength": 1
+                    }
+                }
+            }
+        },
         "agent": {
             "type": "object",
             "additionalProperties": false,

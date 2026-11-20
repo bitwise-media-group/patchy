@@ -670,6 +670,57 @@ egressBroker:
 # claude or codex pod holds NO credential of any kind. Its model traffic is
 # authenticated at the broker, and the pod carries only an identity token
 # and the per-Job handoff markdown.
+# ---- run archive ------------------------------------------------------------
+# OPTIONAL long-term archival of every agent run to an S3 or GCS bucket: the
+# full transcript (uncompacted), the full report, and for remediations the
+# patch (git format-patch) and the exact changeset pushed, under one
+# immutable prefix per run attempt, with a manifest of sha256 digests written
+# last. See docs/deployment/archival.md.
+#
+# Patchy only ever creates objects (never overwrites, never deletes).
+# Retention, Object Lock / retention lock, encryption keys, tiering and expiry
+# are the bucket's own policy. With archival on, runs keep a reference to the
+# archive instead of a transcript ConfigMap, so the record outlives the
+# finding's TTL.
+#
+# IDENTITY: the investigation and remediation controllers write (Put, plus
+# Get/Head for idempotent retries, plus KMS encrypt); the status server reads
+# and presigns (Get, KMS decrypt, and on GCS iam.serviceAccounts.signBlob on
+# its own service account). Annotate each one's serviceAccount for IRSA
+# (eks.amazonaws.com/role-arn) or workload identity
+# (iam.gke.io/gcp-service-account). The NetworkPolicies gain the
+# metadata-endpoint egress the credential chain needs (EKS Pod Identity or
+# the GKE metadata server); the bucket itself is reached over 443.
+#
+# The browser fetches archived transcripts straight from the bucket through
+# presigned URLs, so the bucket needs a CORS rule allowing GET from the
+# status page's origin.
+archive:
+    enabled: false
+    # s3 or gcs.
+    provider: s3
+    bucket: ""
+    # Key prefix every run is written under.
+    prefix: ""
+    # S3 only; empty uses the SDK default chain (AWS_REGION).
+    region: ""
+    # Endpoint override for S3-compatible stores (path-style addressing).
+    endpoint: ""
+    # Encrypt each write with this key (S3 KMS key id/ARN, or a GCS
+    # CryptoKey resource name). Empty uses the bucket's default encryption.
+    kmsKey: ""
+    # false (fail open): a run whose archive cannot be written within
+    # retryWindow keeps a ConfigMap transcript, carries Archived=False and
+    # raises a Warning event. true (fail closed): the run fails with outcome
+    # archive_failed, its finding goes to Failed (no verdict routed, no PR
+    # opened), and a human retry relaunches it.
+    required: false
+    # How long after a Job finishes a failed upload is retried. Must stay
+    # below agent.jobTTL: the retry re-reads the Job's log.
+    retryWindow: 45m
+    # How long a presigned URL handed to the browser stays valid.
+    presignTTL: 5m
+
 agent:
     namespace: patchy-agents
     # Set false if the namespace is managed elsewhere; the chart then still

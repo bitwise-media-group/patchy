@@ -284,3 +284,72 @@ yes
 yes
 {{- end -}}
 {{- end }}
+
+{{/*
+patchy.archiveData sets the run-archive keys on a ConfigMap's data dict. It
+renders nothing unless archive.enabled. Called with (dict "root" $ "data"
+$data "role" "controller"|"status-server"): the controllers take the
+failure policy, the status server the presign lifetime.
+*/}}
+{{- define "patchy.archiveData" -}}
+{{- $a := .root.Values.archive | default dict -}}
+{{- if $a.enabled -}}
+{{- if not (has $a.provider (list "s3" "gcs")) -}}
+{{- fail "archive.provider must be s3 or gcs when archive.enabled" -}}
+{{- end -}}
+{{- if not $a.bucket -}}
+{{- fail "archive.bucket is required when archive.enabled" -}}
+{{- end -}}
+{{- $_ := set .data "PATCHY_ARCHIVE_PROVIDER" $a.provider -}}
+{{- $_ := set .data "PATCHY_ARCHIVE_BUCKET" $a.bucket -}}
+{{- with $a.prefix }}{{ $_ := set $.data "PATCHY_ARCHIVE_PREFIX" . }}{{ end -}}
+{{- with $a.region }}{{ $_ := set $.data "PATCHY_ARCHIVE_REGION" . }}{{ end -}}
+{{- with $a.endpoint }}{{ $_ := set $.data "PATCHY_ARCHIVE_ENDPOINT" . }}{{ end -}}
+{{- if eq .role "controller" -}}
+{{- with $a.kmsKey }}{{ $_ := set $.data "PATCHY_ARCHIVE_KMS_KEY" . }}{{ end -}}
+{{- $_ := set .data "PATCHY_ARCHIVE_REQUIRED" ($a.required | default false | toString) -}}
+{{- $_ := set .data "PATCHY_ARCHIVE_RETRY_WINDOW" ($a.retryWindow | default "45m") -}}
+{{- else -}}
+{{- $_ := set .data "PATCHY_ARCHIVE_PRESIGN_TTL" ($a.presignTTL | default "5m") -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+patchy.archiveEgress renders the extra egress a pod needs to fetch archive
+credentials from a node-local metadata endpoint over plain HTTP, which the
+443/6443 rule does not cover: the EKS Pod Identity agent for s3, the GKE
+metadata server for gcs. IRSA needs nothing extra (it exchanges the projected
+token with STS over 443), and the bucket itself is reached over 443. Renders
+nothing unless archive.enabled. Expects the indent of an egress list item.
+*/}}
+{{- define "patchy.archiveEgress" -}}
+{{- $a := .Values.archive | default dict -}}
+{{- if $a.enabled -}}
+{{- if eq $a.provider "gcs" -}}
+# Run archive credentials: the GKE metadata server (workload identity).
+- to:
+      - ipBlock:
+            cidr: 169.254.169.254/32
+  ports:
+      - protocol: TCP
+        port: 80
+- to:
+      - ipBlock:
+            cidr: 169.254.169.252/32
+  ports:
+      - protocol: TCP
+        port: 988
+{{- else -}}
+# Run archive credentials: the EKS Pod Identity agent.
+- to:
+      - ipBlock:
+            cidr: 169.254.170.23/32
+      - ipBlock:
+            cidr: fd00:ec2::23/128
+  ports:
+      - protocol: TCP
+        port: 80
+{{- end }}
+{{- end }}
+{{- end }}

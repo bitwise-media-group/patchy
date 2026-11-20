@@ -31,9 +31,9 @@ type Granter interface {
 	Grants(ctx context.Context, id auth.Identity) (authz.Grants, error)
 }
 
-// Server is the status-server backend: the public rollups projection, the
-// authenticated findings projection, the three actions, the SSE change
-// signal, and the embedded SPA.
+// Server is the status-server backend: the public metrics summary and
+// repository rollup query, the authenticated findings projection, the three
+// actions, the SSE change signal, and the embedded SPA.
 type Server struct {
 	client    client.Client
 	namespace string
@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/findings", s.handleFindings)
 	mux.HandleFunc("GET /api/findings/{name}", s.handleFinding)
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
+	mux.HandleFunc("GET /api/rollups/repositories", s.handleRepositories)
 	mux.HandleFunc("POST /api/findings/{name}/actions/{verb}", s.handleAction)
 	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
 	mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -165,7 +166,7 @@ type viewer struct {
 
 // handleFindings serves the trimmed list dataset to an authenticated
 // identity whose RBAC grants viewing; per-finding detail comes from
-// /api/findings/{name}, and rollups-only readers use /api/rollups.
+// /api/findings/{name}, and metrics come from /api/rollups.
 func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.authorize(w, r)
 	if !ok {
@@ -209,8 +210,9 @@ func (s *Server) handleFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSONGzip(w, r, out)
 }
 
-// handleRollups serves the always-public statistics projection: the same
-// dataset shape with no findings and no user.
+// handleRollups serves the always-public metrics summary: the same dataset
+// shape with no findings and no user, and only the top repositories (the
+// rest page through /api/rollups/repositories).
 func (s *Server) handleRollups(w http.ResponseWriter, r *http.Request) {
 	ds, err := s.buildDataset(r.Context(), false, nil, nil)
 	if err != nil {

@@ -158,7 +158,8 @@ func TestStatusServer(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/findings: %d", resp.StatusCode)
 	}
-	if ds.Namespace != namespace || len(ds.Findings) != 2 || len(ds.Rollups) != 1 {
+	// The findings list carries no rollups; the metrics summary is /api/rollups.
+	if ds.Namespace != namespace || len(ds.Findings) != 2 || len(ds.Rollups) != 0 {
 		t.Fatalf("dataset: ns=%q findings=%d rollups=%d", ds.Namespace, len(ds.Findings), len(ds.Rollups))
 	}
 	for _, f := range ds.Findings {

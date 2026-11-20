@@ -12,7 +12,13 @@ status-server serve --namespace patchy --auth-config /etc/patchy/auth/config.yam
 The exposure contract is deliberately asymmetric — see [the status page](../status-ui.md) for the UI tour and the RBAC
 grammar:
 
-- **Rollup statistics are public.** `GET /api/rollups` (and the SSE stream) serve without a session.
+- **Rollup statistics are public.** `GET /api/rollups` (and the SSE stream) serve without a session. It is a summary —
+  the total, model and harness rollups, the top 10 repositories by findings, and `repositoryCount` — because repository
+  rollups grow with the estate. The rest come from `GET /api/rollups/repositories`, also public, one page at a time:
+  `q` (case-insensitive name match, ranked by relevance), `key` (one repository, with its `rank` by findings), `sort`
+  (`findings`, `remediated`, `failed`, `spend`, `costPerRemediation`, `name`, `relevance`), `order` (`asc`/`desc`),
+  `offset`, `limit` (at most 100), and `aggregate=1` (the summed bucket of every match). The findings list does not
+  carry rollups.
 - **The findings surface always requires authentication.** `GET /api/findings` (the trimmed list projection),
   `GET /api/findings/{name}` (one finding's full detail — description, alerts, enrichments, the phase log, and the run
   reports the list omits), and every action `POST` demand a signed-in identity whose RBAC passes the corresponding

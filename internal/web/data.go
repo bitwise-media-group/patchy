@@ -21,15 +21,20 @@ import (
 )
 
 // Dataset is the payload behind GET /api/findings (the trimmed list
-// projection) and GET /api/rollups (findings empty, no user). It mirrors
-// ui/src/types.ts.
+// projection; no rollups) and GET /api/rollups (the metrics summary:
+// findings empty, no user). It mirrors ui/src/types.ts.
 type Dataset struct {
 	GeneratedAt string           `json:"generatedAt"`
 	Namespace   string           `json:"namespace,omitempty"`
 	Version     string           `json:"version,omitempty"`
 	User        *User            `json:"user,omitempty"`
 	Findings    []FindingSummary `json:"findings"`
-	Rollups     []Rollup         `json:"rollups,omitempty"`
+	// Rollups is the metrics summary: the total, every model and harness
+	// shard, and the top repositories by findings. Repository shards grow
+	// with the estate, so the rest page through GET /api/rollups/repositories.
+	Rollups []Rollup `json:"rollups,omitempty"`
+	// RepositoryCount is how many repository shards exist in all.
+	RepositoryCount int `json:"repositoryCount,omitempty"`
 }
 
 // User is the signed-in identity the top bar renders.
@@ -396,7 +401,7 @@ type MonthlyBucket struct {
 // so the build cost scales with finding count alone. userActions is stamped
 // uniformly — RBAC grants are namespace-scoped, and the client intersects
 // with each finding's state machine itself. withFindings=false produces the
-// public rollups-only projection.
+// metrics summary instead (no findings).
 func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []string, user *User) (*Dataset, error) {
 	ds := &Dataset{
 		GeneratedAt: s.now().UTC().Format(time.RFC3339),
@@ -406,30 +411,19 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 		Findings:    []FindingSummary{},
 	}
 
+	// The two payloads are disjoint: the findings list carries no rollups
+	// (the findings page never reads them), and the other is the metrics
+	// summary.
+	if !withFindings {
+		if err := s.addRollupSummary(ctx, ds); err != nil {
+			return nil, err
+		}
+		return ds, nil
+	}
+
 	// Sorting happens on index slices over the CR items, not on the projected
 	// wire structs: the wide Finding value is ~1KB, and a comparison sort
 	// moving those by value dominates the build at backlog scale.
-	var rollups v1alpha1.FindingRollupList
-	if err := s.client.List(ctx, &rollups, client.InNamespace(s.namespace)); err != nil {
-		return nil, fmt.Errorf("list rollups: %w", err)
-	}
-	rollupOrder := indexOrder(len(rollups.Items), func(a, b int) int {
-		as, bs := &rollups.Items[a].Spec.Scope, &rollups.Items[b].Spec.Scope
-		if c := cmp.Compare(as.Type, bs.Type); c != 0 {
-			return c
-		}
-		return cmp.Compare(as.Key, bs.Key)
-	})
-	if len(rollups.Items) > 0 {
-		ds.Rollups = make([]Rollup, 0, len(rollups.Items))
-	}
-	for _, i := range rollupOrder {
-		ds.Rollups = append(ds.Rollups, projectRollup(&rollups.Items[i]))
-	}
-
-	if !withFindings {
-		return ds, nil
-	}
 	var findings v1alpha1.FindingList
 	if err := s.client.List(ctx, &findings, client.InNamespace(s.namespace)); err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
@@ -454,6 +448,47 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 		ds.Findings = append(ds.Findings, projectFindingSummary(&findings.Items[i], verbs))
 	}
 	return ds, nil
+}
+
+// addRollupSummary fills the metrics summary: every total, model and
+// harness shard (their count is bounded by configuration), the top
+// repositories by findings closed, and how many repositories exist. Order
+// is stable — by scope type, then key — with the repositories last in
+// findings order.
+func (s *Server) addRollupSummary(ctx context.Context, ds *Dataset) error {
+	items, err := s.listRollups(ctx)
+	if err != nil {
+		return err
+	}
+	var fixed []int
+	var repos []repoRow
+	for i := range items {
+		if items[i].Spec.Scope.Type == v1alpha1.ScopeRepository {
+			repos = append(repos, newRepoRow(&items[i]))
+		} else {
+			fixed = append(fixed, i)
+		}
+	}
+	slices.SortFunc(fixed, func(a, b int) int {
+		as, bs := &items[a].Spec.Scope, &items[b].Spec.Scope
+		if c := cmp.Compare(as.Type, bs.Type); c != 0 {
+			return c
+		}
+		return cmp.Compare(as.Key, bs.Key)
+	})
+	slices.SortFunc(repos, func(a, b repoRow) int { return compareRows(&a, &b, sortFindings, true) })
+	top := repos[:min(len(repos), summaryRepositories)]
+	if n := len(fixed) + len(top); n > 0 {
+		ds.Rollups = make([]Rollup, 0, n)
+	}
+	for _, i := range fixed {
+		ds.Rollups = append(ds.Rollups, projectRollup(&items[i]))
+	}
+	for i := range top {
+		ds.Rollups = append(ds.Rollups, projectRollup(top[i].fr))
+	}
+	ds.RepositoryCount = len(repos)
+	return nil
 }
 
 // buildFindingDetail assembles the full projection of one finding: the whole

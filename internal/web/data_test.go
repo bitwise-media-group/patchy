@@ -166,8 +166,11 @@ func TestBuildDatasetProjection(t *testing.T) {
 	if ds.User == nil || ds.User.Name != "dev" || !ds.User.LoggedIn {
 		t.Errorf("user = %+v", ds.User)
 	}
-	if len(ds.Findings) != 1 || len(ds.Rollups) != 1 {
-		t.Fatalf("findings/rollups = %d/%d, want 1/1", len(ds.Findings), len(ds.Rollups))
+	// The findings list never carries rollups: the metrics summary is its
+	// own payload.
+	if len(ds.Findings) != 1 || len(ds.Rollups) != 0 || ds.RepositoryCount != 0 {
+		t.Fatalf("findings/rollups/repositories = %d/%d/%d, want 1/0/0",
+			len(ds.Findings), len(ds.Rollups), ds.RepositoryCount)
 	}
 
 	f := asMap(t, ds.Findings[0])
@@ -417,8 +420,8 @@ func TestBuildDatasetOrderingAndRollupsOnly(t *testing.T) {
 	if ds.Findings[0].Name != "gh-cs-orders-2" {
 		t.Errorf("order = [%s, %s], want newest first", ds.Findings[0].Name, ds.Findings[1].Name)
 	}
-	if ds.Rollups[0].Scope.Type != "repository" || ds.Rollups[1].Scope.Type != "total" {
-		t.Errorf("rollup order = %+v", ds.Rollups)
+	if len(ds.Rollups) != 0 {
+		t.Errorf("findings dataset carried %d rollups", len(ds.Rollups))
 	}
 
 	pub, err := s.buildDataset(t.Context(), false, nil, nil)
@@ -432,7 +435,11 @@ func TestBuildDatasetOrderingAndRollupsOnly(t *testing.T) {
 	if _, ok := m["user"]; ok {
 		t.Error("rollups-only dataset carried user")
 	}
-	if len(pub.Rollups) != 2 {
-		t.Errorf("rollups-only dataset rollups = %d", len(pub.Rollups))
+	// Summary order: the fixed shards by type, then the top repositories.
+	if len(pub.Rollups) != 2 || pub.Rollups[0].Scope.Type != "total" || pub.Rollups[1].Scope.Type != "repository" {
+		t.Errorf("summary rollups = %+v", pub.Rollups)
+	}
+	if pub.RepositoryCount != 1 {
+		t.Errorf("repositoryCount = %d, want 1", pub.RepositoryCount)
 	}
 }

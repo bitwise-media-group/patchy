@@ -10,21 +10,24 @@ none is a fix put off for later.
   is not a Component: `deploy/kustomize/base` and the `dev`, `dev-fake` and `prod` overlays. It passes
   `--exceptions .kubescape/exceptions.json` whenever the file exists, and fails on findings at or above
   `KUBESCAPE_SEVERITY` (default `high`).
-- The Helm charts under `charts/` are not scanned. The shared `lint-helm` script only looks for `helm/*/Chart.yaml`, and
-  `mise run helm-lint` (`hack/helm-lint.sh`) runs `helm lint` and renders, without kubescape.
-- Each entry matches resources by `kind`, `name` and `namespace` attributes. `name` is a regex. The leading `.*` in most
-  patterns also covers a Helm release-name prefix, so the entries would still match if the charts were scanned.
+- `mise run lint-helm` (`.mise/common/scripts/lint-helm.sh`) runs `helm lint` and the same kubescape scan on each chart
+  under `charts/`, rendered with its default values. `charts/patchy-config` renders nothing by default (its Integration
+  and Forge resources are opt-in, and kubescape cannot scan custom resources anyway), so its scan is reported as
+  skipped.
+- Each entry matches resources by `kind`, `name` and `namespace` attributes. `name` is a regex. The leading `.*` covers
+  the release-name prefix the chart adds (kubescape renders it as `release-name-patchy-...`).
 
-To see what each entry matches, scan without the exceptions and compare (the control set is cached in `~/.kubescape`, so
-this works offline):
+To see what each entry matches, scan a target without the exceptions and compare (the control set is cached in
+`~/.kubescape`, so this works offline):
 
 ```sh
 KUBECONFIG=/dev/null kubescape scan framework allcontrols --use-from ~/.kubescape/allcontrols.json \
   deploy/kustomize/overlays/dev --format json --output /tmp/ks.json
 ```
 
-The notes below on what each entry matches come from that scan with kubescape v4.0.20, across all four kustomize
-targets.
+The notes below on what each entry matches come from that scan across the four kustomize targets. Unless a section says
+otherwise, each entry matches the same workloads in `charts/patchy`, with the release-name prefix. The chart's default
+values leave the evaluation controller off, so it has one controller fewer.
 
 ## Security context: `seLinuxOptions` (C-0211)
 
@@ -143,8 +146,8 @@ or Gateway, with TLS, in front of the integration-controller.
 
 ## agents-egress-c0299-selects-runtime-created-job-pods (C-0299)
 
-It matches the `patchy-agents-egress` NetworkPolicy in `base`, `dev` and `dev-fake`. (`prod` uses the Cilium component,
-which replaces this policy.)
+It matches the `patchy-agents-egress` NetworkPolicy in `base`, `dev`, `dev-fake` and `charts/patchy`. (`prod` uses the
+Cilium component, which replaces this policy.)
 
 The policy selects the agent pods (`app.kubernetes.io/name: patchy-agent`). No manifest declares those pods: the
 investigation, remediation and evaluation controllers create the Jobs at runtime (`internal/jobs`). A static scan

@@ -154,7 +154,11 @@
         "resources": [
             {
                 "designatorType": "Attributes",
-                "attributes": { "kind": "NetworkPolicy", "name": "patchy-agents-egress", "namespace": "patchy-agents" }
+                "attributes": {
+                    "kind": "NetworkPolicy",
+                    "name": ".*patchy-agents-egress",
+                    "namespace": "patchy-agents"
+                }
             }
         ],
         "posturePolicies": [{ "controlID": "C-0299" }]

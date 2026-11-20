@@ -102,6 +102,24 @@ the mounts. They match:
 Each workload mounting its own configuration is the intended design. The broker is the one place a model credential
 lives, and it is mounted as a file. Flagging "this workload can read the Secret it mounts" adds nothing here.
 
+## controllers-c0305-recreate-keeps-singletons-apart (C-0305)
+
+It matches the controller Deployments in every target and in `charts/patchy`.
+
+C-0305 fails any Deployment whose `strategy.type` is not `RollingUpdate`. The controllers use `Recreate` on purpose, so
+an old and a new pod never run at the same time:
+
+- source-controller keeps its artifact store in an `emptyDir`. During a rolling overlap the Service would send agent
+  tarball fetches to a new pod with an empty store, and the agent Jobs would fail.
+- The other controllers mostly reconcile, and a new pod does nothing until it holds the leader-election Lease. A rolling
+  update would gain a few seconds and give up the guarantee that only one version runs.
+- integration-controller's webhook server runs outside leader election, so during an overlap both pods would accept
+  deliveries and write Findings. That has not been checked for safety, so it stays on `Recreate` for now.
+
+The status server and the egress broker hold no state and no lease, so they use `RollingUpdate` and need no entry. The
+`dev-fake` overlay's fake GitHub Deployment also uses `Recreate`. Its finding is low severity, below the gate, and it
+only runs in tests, so it has no entry either.
+
 ## configmaps-c0012-key-name-regex-false-positives (C-0012)
 
 It matches the shared `patchy-config` ConfigMap in every target. The name pattern also covers the per-component

@@ -112,6 +112,18 @@
         "posturePolicies": [{ "controlID": "C-0012" }]
     },
     {
+        "name": "controllers-c0305-recreate-keeps-singletons-apart",
+        "policyType": "postureExceptionPolicy",
+        "actions": ["disable"],
+        "resources": [
+            {
+                "designatorType": "Attributes",
+                "attributes": { "kind": "Deployment", "name": ".*patchy-.*-controller" }
+            }
+        ],
+        "posturePolicies": [{ "controlID": "C-0305" }]
+    },
+    {
         "name": "controllers-c0255-c0258-mount-their-own-credentials",
         "policyType": "postureExceptionPolicy",
         "actions": ["disable"],

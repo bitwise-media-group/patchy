@@ -335,9 +335,9 @@ subjects:
 ---
 # ---- status-server ----------------------------------------------------------
 # The status page backend. It reads Findings/FindingRollups for the
-# projection and writes SPEC only: approve records spec.approval, suspend and
-# resume toggle spec.suspend, replay stamps Integration spec.replay. It has
-# NO */status on purpose. The status server never moves a phase (each edge
+# projection and writes SPEC only: spec.approval, spec.retry, spec.expedite
+# and spec.suspend on Findings, and spec.backfill, spec.replay and spec.reset
+# on Integrations. It has no */status access. The status server never moves a phase (each edge
 # in the transition table keeps a single writer), and RBAC enforces that at
 # the API layer. The delete/deletecollection verbs support the
 # access-review-gated reset action (demo tooling). Reset wipes the pipeline
@@ -439,12 +439,12 @@ subjects:
       name: patchy-status-server
       namespace: patchy
 ---
-# The one ClusterRole in the base: SubjectAccessReview is a cluster-scoped,
-# non-namespaced create-only API, so a namespaced Role cannot grant it. The
-# status server uses it to answer "may user U <verb> findings in patchy?"
-# for the signed-in user. That covers the custom verbs (approve, suspend,
-# resume) and the native get that gates viewing (see rbac.users.example.yaml
-# for the grant grammar). Review-only: this grants no power to act, only to
+# SubjectAccessReview is a cluster-scoped, create-only API, so a namespaced
+# Role cannot grant it. The status server uses it to answer "may user U
+# <verb> <resource> in patchy?" for the signed-in user. That covers the
+# custom verbs on findings (approve, retry, expedite, suspend, resume) and on
+# integrations (backfill, replay, reset), and the native get that gates
+# viewing (see rbac.users.example.yaml for the grant grammar). Review-only: this grants no power to act, only to
 # ask.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -576,7 +576,8 @@ subjects:
 #             owner-references it to its Job, delete rolls it back when
 #             creating the Job fails)
 # No secrets list/watch: each controller only ever addresses its own per-Job
-# Secret by name. The two controllers share the namespace; the
+# Secret by name. The investigation, remediation and evaluation controllers
+# share the namespace; the
 # patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
 # of each other's way (RBAC cannot express that split).
 apiVersion: rbac.authorization.k8s.io/v1

@@ -1,77 +1,153 @@
 # Kubescape exceptions
 
-`exceptions.json` is auto-loaded by the kubescape gates, `.mise/common/scripts/lint-helm.sh` and
-`.mise/common/scripts/lint-kustomize.sh`; it does for them what `.grype.yaml` does for grype. JSON carries no comments,
-so the rationale for each accepted finding lives here. Every entry is an accepted design decision or a scanner false
-positive; none is a deferred fix. Resource `name` attributes are regexes; the leading `.*` absorbs the release-name
-prefix.
+`exceptions.json` lists the kubescape findings this repository accepts. JSON has no comments, so the reason for each
+entry lives here, under a heading per entry name. Every entry is either a design decision or a scanner false positive;
+none is a fix put off for later.
 
-## controllers-c0211-selinux-options-are-host-specific (C-0211)
+## How the exceptions are used
 
-The deployments already set the full security context: `runAsNonRoot`, non-zero uid/gid, `fsGroup` +
-`fsGroupChangePolicy`, seccomp `RuntimeDefault`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem`, all
-capabilities dropped. The only field C-0211 still wants is `seLinuxOptions`, and an MCS level is a property of the node
-OS / cluster policy, not something a portable chart can invent.
+- `mise run lint-kustomize` (`.mise/common/scripts/lint-kustomize.sh`) runs `kubescape scan` on every kustomization that
+  is not a Component: `deploy/kustomize/base` and the `dev`, `dev-fake` and `prod` overlays. It passes
+  `--exceptions .kubescape/exceptions.json` whenever the file exists, and fails on findings at or above
+  `KUBESCAPE_SEVERITY` (default `high`).
+- The Helm charts under `charts/` are not scanned. The shared `lint-helm` script only looks for `helm/*/Chart.yaml`, and
+  `mise run helm-lint` (`hack/helm-lint.sh`) runs `helm lint` and renders, without kubescape.
+- Each entry matches resources by `kind`, `name` and `namespace` attributes. `name` is a regex. The leading `.*` in most
+  patterns also covers a Helm release-name prefix, so the entries would still match if the charts were scanned.
 
-## remediation-controller-needs-the-kubernetes-api (C-0190, C-0034, C-0053, C-0261)
+To see what each entry matches, scan without the exceptions and compare (the control set is cached in `~/.kubescape`, so
+this works offline):
 
-The remediation-controller's entire job is driving the Kubernetes API: it creates the ephemeral agent Jobs and reads
-their pod logs (internal/jobs, internal/controller/remediation). Every controller identity mounts its token, because the
-CRs in the release namespace are the state machine (charts/patchy/templates/serviceaccounts.yaml). Only the agent
-ServiceAccount sets `automountServiceAccountToken: false`. The scanner flags any mounted token; it cannot know these are
-required.
+```sh
+KUBECONFIG=/dev/null kubescape scan framework allcontrols --use-from ~/.kubescape/allcontrols.json \
+  deploy/kustomize/overlays/dev --format json --output /tmp/ks.json
+```
 
-## remediation-controller-rbac-is-the-minimal-job-lifecycle (C-0007, C-0015, C-0037, C-0186, C-0267)
+The notes below on what each entry matches come from that scan with kubescape v4.0.20, across all four kustomize
+targets.
 
-The Role (templates/rbac.yaml) is namespace-scoped to the agent namespace and its verbs are exactly what the Job
-lifecycle needs: create/get/delete on jobs and the per-Job Secret/ConfigMap (always addressed by name, with no
-`list`/`watch` on secrets), update to owner-reference them to their Job, delete for cleanup. "Cluster takeover" / "list
-secrets" / "CoreDNS poisoning" are the scanner's worst-case reading of `create`+`update`+`delete`. C-0037 assumes any
-configmap write could reach kube-system's `coredns` ConfigMap, which a Role bound only in the agent namespace cannot;
-the blast radius is one namespace that holds only the agent pods.
+## Security context: `seLinuxOptions` (C-0211)
+
+Entries: `controllers-c0211-selinux-options-are-host-specific`, `fakegithub-c0211-selinux-options-are-host-specific`,
+`status-server-c0211-selinux-options-are-host-specific`, `egress-broker-c0211-selinux-options-are-host-specific`.
+
+They match the six controller Deployments, the status server and the egress broker in every target, and the fake GitHub
+Deployment in `dev-fake`.
+
+These Deployments already set a full security context: `runAsNonRoot`, a non-zero uid and gid, `fsGroup`, the
+`RuntimeDefault` seccomp profile, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem`, and every capability
+dropped. The only field C-0211 still wants is `seLinuxOptions`. An MCS level depends on the node OS and the cluster's
+policy, so a portable manifest cannot pick one.
+
+## Service account tokens (C-0034, C-0053, C-0190, C-0261)
+
+Entries: `controllers-need-the-kubernetes-api`, `status-server-needs-the-kubernetes-api`,
+`egress-broker-needs-the-kubernetes-api`.
+
+They match the Deployments and ServiceAccounts of the six controllers, the status server and the egress broker in every
+target.
+
+These controls fire on any workload that mounts a ServiceAccount token. Each of these workloads needs one:
+
+- The controllers keep all state in the CRs in the release namespace, and the Job-launching controllers create and watch
+  agent Jobs.
+- The status server reads Findings and FindingRollups, writes spec fields, and runs SubjectAccessReviews for the
+  signed-in user.
+- The egress broker validates each caller's token with a TokenReview. That is its only Kubernetes access.
+
+The one workload that needs no token is the agent pod. Its ServiceAccount (`patchy-agent` in
+`deploy/kustomize/base/serviceaccount.yaml`) sets `automountServiceAccountToken: false`. The only token an agent
+container gets is the audience-bound projected token for the egress broker, which is not a Kubernetes API credential.
+
+## RBAC (C-0007, C-0015, C-0037, C-0186, C-0267)
+
+Entry: `controllers-rbac-is-the-minimal-cr-and-job-lifecycle`.
+
+It matches the six controllers' ServiceAccounts and Deployments in every target. The status server and egress broker
+pass these controls, so they need no entry.
+
+The controls read RBAC as a worst case: "roles with delete capabilities" (C-0007), "list Kubernetes secrets" (C-0015,
+C-0186), "CoreDNS poisoning" (C-0037), and "cluster takeover roles" (C-0267). The roles in
+`deploy/kustomize/base/rbac.yaml` are narrower than that:
+
+- Every role is a namespaced Role, except the review-only ClusterRoles that allow `create` on SubjectAccessReviews
+  (status server, evaluation controller) and TokenReviews (egress broker).
+- In the `patchy` namespace, the controllers read named Secrets (the Forge and Integration credentials) with `get` only.
+  Nothing lists or watches Secrets.
+- The investigation, remediation and evaluation controllers create, get and update ConfigMaps in the `patchy` namespace:
+  the per-run transcripts and the per-unit evaluation results, each addressed by a fixed name. C-0037 assumes a
+  ConfigMap write could reach the `coredns` ConfigMap in `kube-system`, which a Role in another namespace cannot do.
+- In the `patchy-agents` namespace, those three controllers share the `patchy-agent-jobs` Role. It allows exactly the
+  Job lifecycle: create, get, list, watch and delete on Jobs; get, list and watch on pods; get on pod logs; and create,
+  get, update and delete on Secrets. Those Secrets are the per-Job handoff Secrets, which hold the issue markdown and no
+  credentials. `update` owner-references each one to its Job, and `delete` cleans up when creating the Job fails.
+- The `delete` verbs on Findings and related CRs serve the TTL cleanup and the status page's reset action.
+
+## Mounted Secrets and ConfigMaps (C-0255, C-0258)
+
+Entries: `controllers-c0255-c0258-mount-their-own-credentials`, `status-server-c0255-c0258-mounts-its-own-auth-config`,
+`egress-broker-c0255-c0258-mounts-the-model-credential`.
+
+These fire only in the `dev` and `dev-fake` overlays. Those are the only targets that include real Secret and ConfigMap
+objects (`deploy/kustomize/overlays/dev/secret-dev.yaml` and `static-context.yaml`), which kubescape can then link to
+the mounts. They match:
+
+- the context-controller, which mounts the `patchy-static-context` ConfigMap (the dev static context map, C-0258);
+- the status server, which mounts the `patchy-status-auth` Secret (its auth config, C-0255);
+- the egress broker, which mounts the `patchy-anthropic` Secret (the model credential, C-0255).
+
+Each workload mounting its own configuration is the intended design. The broker is the one place a model credential
+lives, and it is mounted as a file. Flagging "this workload can read the Secret it mounts" adds nothing here.
 
 ## configmaps-c0012-key-name-regex-false-positives (C-0012)
 
-C-0012 pattern-matches key names against `secret|key|token|...`. Covers the per-controller helm ConfigMaps and the
-kustomize base's shared `patchy-config`. Every flagged key holds a non-credential value: `*_FILE` keys are mount paths,
-`PATCHY_TOKEN_AUDIENCE` is the audience brokered agent tokens are bound to, and `PATCHY_*_TOKEN_BUDGET` are integer LLM
-token budgets. The actual credentials (webhook HMAC, App private key, model API keys) are file-mounted Secrets and never
-appear in a ConfigMap.
+It matches the shared `patchy-config` ConfigMap in every target. The name pattern also covers the per-component
+`patchy-<name>-config` ConfigMaps the Helm chart renders.
 
-## controllers-c0207-github-app-id-is-not-a-credential (C-0207)
+C-0012 matches key names against words such as `secret`, `key` and `token`. Every key it flags holds a value that is not
+a credential:
 
-`PATCHY_GITHUB_APP_ID` arrives as env via `secretKeyRef`. The App ID is a public identifier (it appears in webhook
-payloads and on the App's public page); it lives in the App Secret only so the App's identity is one object. The
-sensitive half, the private key, is file-mounted (`PATCHY_GITHUB_APP_PRIVATE_KEY_FILE`), which is exactly what this
-control asks for.
+- `PATCHY_ANTHROPIC_API_KEY_FILE` is a mount path (`/etc/patchy/anthropic/api-key`).
+- `PATCHY_ANTHROPIC_AUTH` is the auth mode (`key`).
+- `PATCHY_INVESTIGATE_TOKEN_BUDGET` and `PATCHY_REMEDIATE_{AUTO,MANUAL}_TOKEN_BUDGET` are LLM token budgets (integers).
+- In the Helm chart, `PATCHY_TOKEN_AUDIENCE` is the audience brokered agent tokens are bound to.
 
-## controllers-c0255-c0258-mount-their-own-credentials (C-0255, C-0258)
-
-Fires only in the dev overlay, the one variant that renders real `Secret` objects (`secret-dev.yaml`, throwaway kind
-credentials) and the static-context ConfigMap, which gives the scanner Secret/ConfigMap resources to correlate against
-the controllers' mounts. The mounts are the design: every controller file-mounts the webhook HMAC secret, and the
-GitHub-facing three mount the App key (charts/patchy values and base manifests do the same; those scans just have no
-Secret objects in scope). Flagging "workload can read a secret it mounts" is tautological here.
-
-## agents-egress-c0299-selects-runtime-created-job-pods (C-0299)
-
-`patchy-agents-egress` selects the agent pods (`app.kubernetes.io/name: patchy-agent`), which no manifest declares: the
-investigation/remediation/evaluation controllers create those Jobs at runtime (internal/jobs). A static scan of the
-rendered manifests therefore never finds a workload the policy matches and reports it as dangling. The policy is the
-agents' only egress allowance under the namespace's default deny; removing it would cut the sandbox off from the
-artifact server and the egress broker.
+The real credentials (webhook secrets, the GitHub App key, model API keys) are Secrets, and never appear in a ConfigMap.
 
 ## images-c0236-c0237-signed-but-scanner-cannot-see-it (C-0236, C-0237)
 
-The images are signed: GoReleaser's `docker_signs` runs keyless cosign in the release workflow (GitHub Actions OIDC
-identity), which as of cosign 3.x attaches signatures in the new sigstore bundle format
-(`application/vnd.dev.sigstore.bundle.v0.3+json`) via the OCI referrers API, not the legacy `sha256-<digest>.sig` tag
-scheme kubescape's check looks for. Verify for yourself:
+It matches every Deployment in every target (C-0237; C-0236 does not fire with the cached control set).
 
-    cosign verify \
-      --certificate-identity-regexp '^https://github.com/bitwise-media-group/' \
-      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      ghcr.io/bitwise-media-group/patchy/source-controller:v0.3.0
+The images are signed. The `docker_signs` step in `.goreleaser.yaml` runs keyless cosign in the release workflow, using
+the GitHub Actions OIDC identity. cosign 3.x attaches signatures in the sigstore bundle format
+(`application/vnd.dev.sigstore.bundle.v0.3+json`) through the OCI referrers API. Kubescape still looks for the legacy
+`sha256-<digest>.sig` tag, so it finds nothing to check. To verify a release image yourself:
 
-C-0236 (verify the signature) fails for the same reason C-0237 (a signature exists) does: it finds no legacy `.sig` tag
-to verify. Drop this entry if/when kubescape's signature rules learn the bundle format.
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/bitwise-media-group/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/bitwise-media-group/patchy/source-controller:vX.Y.Z
+```
+
+Remove this entry once kubescape's signature rules understand the bundle format.
+
+## dev-webhook-ingress-c0263-tls-terminates-at-the-tunnel (C-0263)
+
+It matches the `patchy-integration` Ingress in the `dev` and `dev-fake` overlays
+(`deploy/kustomize/overlays/dev/ingress-integration.yaml`).
+
+This Ingress only exists on dev clusters. GitHub's HTTPS connection ends at the tunnel that forwards webhooks to the
+cluster (see `docs/deployment/colima.md`), so the Ingress itself has no TLS. Production installs put their own Ingress
+or Gateway, with TLS, in front of the integration-controller.
+
+## agents-egress-c0299-selects-runtime-created-job-pods (C-0299)
+
+It matches the `patchy-agents-egress` NetworkPolicy in `base`, `dev` and `dev-fake`. (`prod` uses the Cilium component,
+which replaces this policy.)
+
+The policy selects the agent pods (`app.kubernetes.io/name: patchy-agent`). No manifest declares those pods: the
+investigation, remediation and evaluation controllers create the Jobs at runtime (`internal/jobs`). A static scan
+therefore finds no workload that the policy selects, and reports it as dangling. Under the namespace's default deny,
+this policy is the agents' only egress allowance. Without it, agent pods could not reach the artifact server or the
+egress broker.

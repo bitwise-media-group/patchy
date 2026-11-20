@@ -76,24 +76,6 @@
         ]
     },
     {
-        "name": "status-server-rbac-is-the-minimal-read-and-spec-write",
-        "policyType": "postureExceptionPolicy",
-        "actions": ["disable"],
-        "resources": [
-            {
-                "designatorType": "Attributes",
-                "attributes": { "name": ".*patchy-status-server.*" }
-            }
-        ],
-        "posturePolicies": [
-            { "controlID": "C-0007" },
-            { "controlID": "C-0015" },
-            { "controlID": "C-0037" },
-            { "controlID": "C-0186" },
-            { "controlID": "C-0267" }
-        ]
-    },
-    {
         "name": "status-server-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
         "actions": ["disable"],
@@ -128,18 +110,6 @@
             }
         ],
         "posturePolicies": [{ "controlID": "C-0012" }]
-    },
-    {
-        "name": "controllers-c0207-github-app-id-is-not-a-credential",
-        "policyType": "postureExceptionPolicy",
-        "actions": ["disable"],
-        "resources": [
-            {
-                "designatorType": "Attributes",
-                "attributes": { "kind": "Deployment", "name": ".*patchy-.*-controller" }
-            }
-        ],
-        "posturePolicies": [{ "controlID": "C-0207" }]
     },
     {
         "name": "controllers-c0255-c0258-mount-their-own-credentials",
@@ -207,24 +177,6 @@
         ]
     },
     {
-        "name": "egress-broker-rbac-is-tokenreview-only",
-        "policyType": "postureExceptionPolicy",
-        "actions": ["disable"],
-        "resources": [
-            {
-                "designatorType": "Attributes",
-                "attributes": { "name": ".*patchy-egress-broker.*" }
-            }
-        ],
-        "posturePolicies": [
-            { "controlID": "C-0007" },
-            { "controlID": "C-0015" },
-            { "controlID": "C-0037" },
-            { "controlID": "C-0186" },
-            { "controlID": "C-0267" }
-        ]
-    },
-    {
         "name": "egress-broker-c0211-selinux-options-are-host-specific",
         "policyType": "postureExceptionPolicy",
         "actions": ["disable"],
@@ -246,9 +198,6 @@
                 "attributes": { "kind": "Deployment", "name": ".*patchy-egress-broker" }
             }
         ],
-        "posturePolicies": [
-            { "controlID": "C-0255" },
-            { "controlID": "C-0258" }
-        ]
+        "posturePolicies": [{ "controlID": "C-0255" }, { "controlID": "C-0258" }]
     }
 ]

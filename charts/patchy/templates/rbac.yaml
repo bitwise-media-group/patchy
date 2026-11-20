@@ -235,7 +235,7 @@ subjects:
 #             owner reference to its Job, and delete rolls back when the Job
 #             create fails)
 # No secrets list/watch: each controller only ever reads its own per-Job
-# Secret by name. The two controllers share the namespace. The
+# Secret by name. The job-launching controllers share the namespace. The
 # patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
 # of each other's way (RBAC cannot express that split).
 apiVersion: rbac.authorization.k8s.io/v1

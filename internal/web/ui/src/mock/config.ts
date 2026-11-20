@@ -15,6 +15,15 @@ const config: ConfigDataset = {
       interval: "10m0s",
       ready: "True",
     },
+    {
+      name: "github-enterprise",
+      provider: "github",
+      baseURL: "https://ghe.acme.internal",
+      orgs: ["platform", "payments"],
+      repositories: ["^payments-.*$", "^ledger$"],
+      secretRef: "forge-ghe",
+      interval: "15m0s",
+    },
   ],
   integrations: [
     {
@@ -56,9 +65,17 @@ const config: ConfigDataset = {
       ready: "True",
       capabilities: ["source", "enhance"],
     },
+    {
+      name: "aws-tags",
+      provider: "aws",
+      interval: "1h0m0s",
+      ready: "True",
+      capabilities: ["resourceTags"],
+    },
   ],
   enhancers: [
     { id: "google-cloud-labels", integration: "gcp", enabled: true },
+    { id: "aws-resource-tags", integration: "aws-tags", enabled: true },
     { id: "generic", integration: "warehouse", enabled: true },
   ],
 };

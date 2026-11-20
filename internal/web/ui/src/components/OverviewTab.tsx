@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { Finding, Rating } from "../types";
-import { DASH, formatConfidence } from "../format";
+import { DASH, formatConfidence, holdText } from "../format";
 import { hrefForFinding } from "../router";
 import { Icon } from "./icons";
 import { Markdown } from "./Markdown";
@@ -70,8 +70,11 @@ export function OverviewTab({ finding }: { finding: Finding }) {
       {inv?.awaitApproval && finding.phase === "AwaitingApproval" ? (
         <div class="ps-note">
           <Icon name="alertTriangle" size={15} />
-          The proposed fix needs human approval before it is queued
-          {inv.outcome ? ` (${inv.outcome})` : ""}. Approving moves this finding to the remediation queue.
+          <span class="min-w-0 flex-1">
+            The proposed fix needs human approval before it is queued
+            {inv.holdReasons?.length ? `: ${inv.holdReasons.map(holdText).join("; ")}` : ""}. Approving moves this
+            finding to the remediation queue.
+          </span>
         </div>
       ) : null}
 

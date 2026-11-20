@@ -1,6 +1,6 @@
 // Formatting helpers. Absent figures render as a dash, never as false zeros.
 
-import type { Level, Phase, Recommendation, Usage } from "./types";
+import type { HoldReason, Level, Phase, Recommendation, Usage } from "./types";
 
 export const DASH = "–";
 
@@ -190,4 +190,21 @@ export function skewTone(ratio?: number): "neutral" | "amber" | "red" {
   if (m >= 1) return "red";
   if (m >= 0.25) return "amber";
   return "neutral";
+}
+
+// holdText explains one approval hold in the reviewer's terms: what they are
+// being asked to decide, not the enum name.
+export function holdText(reason: HoldReason): string {
+  switch (reason) {
+    case "breakingChangeAvailable":
+      return "a better fix exists but would break external callers";
+    case "lowConfidence":
+      return "the investigation's confidence is below the automation threshold";
+    case "exceedsAutomatedTurns":
+      return "the fix is predicted to need more turns than run unattended";
+    case "exceedsAutomatedTokens":
+      return "the fix is predicted to need more output tokens than run unattended";
+    default:
+      return reason;
+  }
 }

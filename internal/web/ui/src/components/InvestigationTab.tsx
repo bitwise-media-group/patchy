@@ -1,5 +1,5 @@
-import type { Finding, HoldReason } from "../types";
-import { DASH, formatConfidence, formatCount, formatDate, formatTokens } from "../format";
+import type { Finding } from "../types";
+import { DASH, formatConfidence, formatCount, formatDate, formatTokens, holdText } from "../format";
 import { Icon } from "./icons";
 import { Markdown } from "./Markdown";
 import { Pill, VerdictPill } from "./Pills";
@@ -68,7 +68,7 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
         {inv?.holdReasons?.length ? (
           <div class="ps-note">
             <Icon name="alertTriangle" size={15} />
-            <span>
+            <span class="min-w-0 flex-1">
               Held for approval: {inv.holdReasons.map(holdText).join("; ")}.
             </span>
           </div>
@@ -95,21 +95,4 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
 
     </div>
   );
-}
-
-// holdText explains one approval hold in the reviewer's terms: what they are
-// being asked to decide, not the enum name.
-function holdText(reason: HoldReason): string {
-  switch (reason) {
-    case "breakingChangeAvailable":
-      return "a better fix exists but would break external callers";
-    case "lowConfidence":
-      return "the investigation's confidence is below the automation threshold";
-    case "exceedsAutomatedTurns":
-      return "the fix is predicted to need more turns than run unattended";
-    case "exceedsAutomatedTokens":
-      return "the fix is predicted to need more output tokens than run unattended";
-    default:
-      return reason;
-  }
 }

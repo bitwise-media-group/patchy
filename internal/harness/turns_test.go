@@ -66,7 +66,7 @@ func TestClaudeScanTurnsBlocks(t *testing.T) {
 			want: []transcript.Turn{
 				{Role: transcript.RoleAssistant, Kind: transcript.KindThinking, Text: "Consider the handler."},
 				{Role: transcript.RoleAssistant, Kind: transcript.KindText, Text: "Checking."},
-				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Read", Text: "a.go"},
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Read", Path: "a.go", Text: "a.go"},
 			},
 		},
 		{
@@ -98,6 +98,32 @@ func TestClaudeScanTurnsBlocks(t *testing.T) {
 				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Odd", Text: `{"a":1}`},
 			},
 		},
+		{
+			name: "tool_use carries its id",
+			line: `{"type":"assistant","message":{"content":[` +
+				`{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"src/app.go"}}]}}`,
+			want: []transcript.Turn{
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Read",
+					ID: "toolu_1", Path: "src/app.go", Text: "src/app.go"},
+			},
+		},
+		{
+			name: "tool_result pairs back to the call",
+			line: `{"type":"user","message":{"content":[` +
+				`{"type":"tool_result","tool_use_id":"toolu_1","content":"     1\tpackage main"}]}}`,
+			want: []transcript.Turn{
+				{Role: transcript.RoleUser, Kind: transcript.KindToolResult, ID: "toolu_1", Text: "1\tpackage main"},
+			},
+		},
+		{
+			name: "edit keeps its diff",
+			line: `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_2","name":"Edit",` +
+				`"input":{"file_path":"a.go","old_string":"x := 1","new_string":"x := 2"}}]}}`,
+			want: []transcript.Turn{
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Edit", ID: "toolu_2",
+					Path: "a.go", Syntax: transcript.SyntaxDiff, Text: "-x := 1\n+x := 2"},
+			},
+		},
 		{name: "empty text block is dropped",
 			line: `{"type":"assistant","message":{"content":[{"type":"text","text":"  "}]}}`},
 		{name: "not json", line: `plain log output`},
@@ -112,8 +138,7 @@ func TestClaudeScanTurnsBlocks(t *testing.T) {
 			continue
 		}
 		for i := range tt.want {
-			if got[i].Role != tt.want[i].Role || got[i].Kind != tt.want[i].Kind ||
-				got[i].Tool != tt.want[i].Tool || got[i].Text != tt.want[i].Text {
+			if got[i] != tt.want[i] {
 				t.Errorf("%s: turn %d = %+v, want %+v", tt.name, i, got[i], tt.want[i])
 			}
 		}
@@ -165,7 +190,8 @@ func TestCodexScanTurns(t *testing.T) {
 			line: `{"type":"item.completed","item":{"type":"command_execution",` +
 				`"command":"go build ./...","aggregated_output":"ok","exit_code":0}}`,
 			want: []transcript.Turn{
-				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Bash", Text: "go build ./..."},
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Bash",
+					Syntax: transcript.SyntaxShell, Text: "go build ./..."},
 				{Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: "ok"},
 			},
 		},
@@ -174,8 +200,28 @@ func TestCodexScanTurns(t *testing.T) {
 			line: `{"type":"item.completed","item":{"type":"command_execution",` +
 				`"command":"go vet","aggregated_output":"bad","exit_code":2}}`,
 			want: []transcript.Turn{
-				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Bash", Text: "go vet"},
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Bash",
+					Syntax: transcript.SyntaxShell, Text: "go vet"},
 				{Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: "[error] bad"},
+			},
+		},
+		{
+			name: "item id pairs call and result",
+			line: `{"type":"item.completed","item":{"id":"item_3","type":"command_execution",` +
+				`"command":"ls","aggregated_output":"a.go","exit_code":0}}`,
+			want: []transcript.Turn{
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Bash", ID: "item_3",
+					Syntax: transcript.SyntaxShell, Text: "ls"},
+				{Role: transcript.RoleUser, Kind: transcript.KindToolResult, ID: "item_3", Text: "a.go"},
+			},
+		},
+		{
+			name: "file change lists its files",
+			line: `{"type":"item.completed","item":{"id":"item_4","type":"file_change","status":"completed",` +
+				`"changes":[{"path":"a.go","kind":"update"},{"path":"b.go","kind":"add"}]}}`,
+			want: []transcript.Turn{
+				{Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Edit", ID: "item_4",
+					Text: "update a.go\nadd b.go"},
 			},
 		},
 		{
@@ -197,8 +243,7 @@ func TestCodexScanTurns(t *testing.T) {
 			continue
 		}
 		for i := range tt.want {
-			if got[i].Role != tt.want[i].Role || got[i].Kind != tt.want[i].Kind ||
-				got[i].Tool != tt.want[i].Tool || got[i].Text != tt.want[i].Text {
+			if got[i] != tt.want[i] {
 				t.Errorf("%s: turn %d = %+v, want %+v", tt.name, i, got[i], tt.want[i])
 			}
 		}
@@ -212,5 +257,52 @@ func TestEveryBuiltinHarnessScansTurns(t *testing.T) {
 		if _, ok := h.(TurnScanner); !ok {
 			t.Errorf("harness %q does not implement TurnScanner", h.ID())
 		}
+	}
+}
+
+func TestRenderToolCall(t *testing.T) {
+	tests := []struct {
+		name       string
+		tool       string
+		input      string
+		wantText   string
+		wantPath   string
+		wantSyntax transcript.Syntax
+	}{
+		{name: "edit is a diff", tool: "Edit",
+			input:    `{"file_path":"/w/a.go","old_string":"a\nb\n","new_string":"a\nc\n"}`,
+			wantText: "-a\n-b\n+a\n+c", wantPath: "/w/a.go", wantSyntax: transcript.SyntaxDiff},
+		{name: "edit deleting text", tool: "Edit",
+			input:    `{"file_path":"a.go","old_string":"gone","new_string":""}`,
+			wantText: "-gone", wantPath: "a.go", wantSyntax: transcript.SyntaxDiff},
+		{name: "multiedit joins hunks", tool: "MultiEdit",
+			input:    `{"file_path":"a.go","edits":[{"old_string":"a","new_string":"b"},{"old_string":"c","new_string":"d"}]}`,
+			wantText: "-a\n+b\n@@\n-c\n+d", wantPath: "a.go", wantSyntax: transcript.SyntaxDiff},
+		{name: "write keeps its content", tool: "Write",
+			input:    `{"file_path":"main.py","content":"print('hi')\n"}`,
+			wantText: "print('hi')\n", wantPath: "main.py"},
+		{name: "write of an empty file", tool: "Write",
+			input: `{"file_path":"empty.txt","content":""}`, wantPath: "empty.txt"},
+		{name: "read is exactly its path", tool: "Read",
+			input:    `{"file_path":"src/app.ts","offset":10,"limit":20}`,
+			wantText: "src/app.ts", wantPath: "src/app.ts"},
+		{name: "bash is shell", tool: "Bash",
+			input:    `{"command":"go test ./...","description":"run tests"}`,
+			wantText: "go test ./...", wantSyntax: transcript.SyntaxShell},
+		{name: "other tools project one key", tool: "Grep",
+			input: `{"pattern":"TODO","glob":"*.go"}`, wantText: "TODO"},
+		{name: "edit without a path falls back", tool: "Edit",
+			input: `{"old_string":"a","new_string":"b"}`, wantText: `{"new_string":"b","old_string":"a"}`},
+		{name: "malformed input", tool: "Edit", input: `not json`, wantText: "not json"},
+		{name: "no input", tool: "Bash"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			text, path, syntax := renderToolCall(tt.tool, []byte(tt.input))
+			if text != tt.wantText || path != tt.wantPath || syntax != tt.wantSyntax {
+				t.Errorf("renderToolCall = (%q, %q, %q), want (%q, %q, %q)",
+					text, path, syntax, tt.wantText, tt.wantPath, tt.wantSyntax)
+			}
+		})
 	}
 }

@@ -40,8 +40,10 @@ func NewTailer(cs kubernetes.Interface, namespace string) *Tailer {
 // Tail follows a running agent's log and delivers each transcript turn as it
 // is emitted, returning when the container exits, the context is cancelled, or
 // fn errors. Unlike Result it waits only for the agent container to start, so
-// a caller joins a run already in progress and sees the turns from that point
-// on; earlier turns come from the persisted transcript instead.
+// a caller can join a run already in progress. The follow sets no TailLines,
+// so it replays the container log from the start: fn sees every turn the run
+// has emitted so far, then the rest as they arrive. (A log rotated by the
+// kubelet is the one exception — only the current file is read.)
 //
 // Envelope events are skipped: a live viewer wants the conversation, and the
 // stage result is the owning controller's to apply.

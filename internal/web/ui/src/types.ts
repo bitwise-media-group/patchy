@@ -228,9 +228,17 @@ export interface TranscriptTurn {
   role: TurnRole;
   kind: TurnKind;
   tool?: string;
+  // id pairs a tool_use turn with its tool_result.
+  id?: string;
+  // path is the file a tool call targets.
+  path?: string;
+  // syntax hints how to render text; absent means infer from path.
+  syntax?: TurnSyntax;
   text?: string;
   truncated?: boolean;
 }
+
+export type TurnSyntax = "diff" | "shell";
 
 export interface PullRequestStatus {
   number: number;

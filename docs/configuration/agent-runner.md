@@ -59,15 +59,21 @@ these names are reserved in `internal/jobs`, so controller-global configuration 
 
 Two knobs exist only here:
 
-| Env                                 | Default            | Purpose                                                             |
-| ----------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| `PATCHY_CHANGESET_MAX_BYTES`        | `5242880` (5 MiB)  | Size cap on the changeset's file contents carried out of the pod    |
-| `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`  | `2048`             | Per-turn text cap in the captured conversation                      |
-| `PATCHY_TRANSCRIPT_MAX_TURNS`       | `500`              | Turn cap for one run's conversation                                 |
-| `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES` | `524288` (512 KiB) | Total cap on one run's conversation, before compression             |
-| `PATCHY_FAKE_FIXTURE`               | —                  | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
+| Env                                 | Default           | Purpose                                                             |
+| ----------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `PATCHY_CHANGESET_MAX_BYTES`        | `5242880` (5 MiB) | Size cap on the changeset's file contents carried out of the pod    |
+| `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`  | `65536` (64 KiB)  | Per-turn text cap on the streamed conversation                      |
+| `PATCHY_TRANSCRIPT_MAX_TURNS`       | `0` (unbounded)   | Turn cap on the streamed conversation                               |
+| `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES` | `8388608` (8 MiB) | Total cap on the streamed conversation                              |
+| `PATCHY_FAKE_FIXTURE`               | —                 | Stream-JSON fixture the `fake` harness replays (tests, dev overlay) |
 
 Malformed values fail fast with an error naming the exact `PATCHY_<KEY>`.
+
+The `TRANSCRIPT_*` knobs bound the conversation the pod streams — what a live viewer on the status page sees — not what
+is stored: the controller compacts the collected conversation to its ConfigMap independently (500 turns, 2 KiB per turn,
+512 KiB total, keeping the head and the tail). Keep the total well under the kubelet's container-log rotation size
+(`containerLogMaxSize`, 10 MiB by default): the stage result is read from the current log file once the agent exits, and
+a conversation large enough to rotate it out loses the result.
 
 ## The workspace, and how it got there
 

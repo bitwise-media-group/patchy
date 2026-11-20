@@ -53,12 +53,23 @@ conversation to a ConfigMap owner-referenced to the run. Since a run is owned by
 [finding TTL](configuration/remediation-controller.md) cascade deletes the transcript with everything else: a
 conversation is retained exactly as long as the finding it explains, and no longer.
 
-Two limits are worth knowing:
+A few behaviours are worth knowing:
 
-- **Turns are bounded and redacted.** Each turn's text is capped (default 2 KiB), a run is capped at 500 turns and 512
-  KiB total, and any value matching a credential in the pod's environment is replaced with `«redacted»` before it leaves
-  the pod. A conversation cut short by those bounds says so, in the section footer and on the last turn. Override with
-  `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`, `PATCHY_TRANSCRIPT_MAX_TURNS`, `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES`.
+- **The live stream is the whole conversation; the stored record is a summary.** While a run is in flight the page shows
+  every turn: there is no turn cap, a single turn is capped at 64 KiB, and the run as a whole at 8 MiB (a safety valve —
+  the kubelet rotates a container log at 10 MiB, and the stage result must stay readable after it). When the run is
+  collected, the controller compacts what it streamed to fit its ConfigMap: at most 500 turns of at most 2 KiB each and
+  512 KiB in total, keeping the start and the end of the conversation with one "N turns elided from stored record"
+  notice between them. Any value matching a credential in the pod's environment is replaced with `«redacted»` before it
+  leaves the pod. A conversation cut short by either bound says so, in the section footer and on the turn that was cut.
+  The stream bounds are `PATCHY_TRANSCRIPT_MAX_TURN_BYTES`, `PATCHY_TRANSCRIPT_MAX_TURNS` (`0`, the default, is
+  unbounded) and `PATCHY_TRANSCRIPT_MAX_TOTAL_BYTES`; the stored bounds are fixed.
+- **Tool calls keep their body.** An edit shows as a diff, a file write shows its content, and a shell command shows the
+  command, each syntax-highlighted; a file read is highlighted by the file's language, with its line numbers in a
+  gutter. Fenced code blocks in the agent's prose, the report and the finding description are highlighted too.
+- **A dropped connection resumes.** Every turn carries its sequence number as the event id, so a viewer that reconnects
+  — or that fell too far behind the live stream and was told to — picks up after the last turn it saw, without a gap and
+  without repeating the conversation.
 - **The upstream session id is not a handle.** `stage.sessionID` records what the agent CLI called its session, which is
   useful for correlating against model-provider logs — but it resolves only against a session file in the pod's `$HOME`,
   which is an `emptyDir` that dies with the pod. Nothing can fetch a conversation from the provider after the fact,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -381,5 +382,100 @@ func TestEventsStaysPublicAndContentFree(t *testing.T) {
 	body, _ := io.ReadAll(res.Body)
 	if strings.Contains(string(body), "Reading the sink") {
 		t.Error("/events leaked transcript content")
+	}
+}
+
+func TestTranscriptEmitsEventIDsAndRetry(t *testing.T) {
+	// Each turn's Seq is its SSE id, so an EventSource reconnect carries
+	// Last-Event-ID and resumes rather than duplicating the conversation.
+	s := transcriptServer(t, nil, completedInvestigation(t)...)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + transcriptPath)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, _ := io.ReadAll(res.Body)
+	for _, want := range []string{"retry: 1000\n", "id: 1\nevent: turn\n", "id: 3\nevent: turn\n"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("body lacks %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestTranscriptResumes(t *testing.T) {
+	tests := []struct {
+		name   string
+		objs   func(t *testing.T) []client.Object
+		tailer Tailer
+		header string
+		query  string
+		want   []int
+	}{
+		{name: "stored, Last-Event-ID", objs: completedInvestigation, header: "2", want: []int{3}},
+		{name: "stored, after query", objs: completedInvestigation, query: "?after=1", want: []int{2, 3}},
+		{name: "stored, header wins over query", objs: completedInvestigation,
+			header: "2", query: "?after=0", want: []int{3}},
+		{name: "stored, malformed id replays all", objs: completedInvestigation, header: "nope", want: []int{1, 2, 3}},
+		{name: "live, Last-Event-ID", objs: func(*testing.T) []client.Object { return runningInvestigation() },
+			tailer: &fakeTailer{turns: storedTurns()}, header: "1", want: []int{2, 3}},
+		{name: "live, after query", objs: func(*testing.T) []client.Object { return runningInvestigation() },
+			tailer: &fakeTailer{turns: storedTurns()}, query: "?after=3", want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := transcriptServer(t, tt.tailer, tt.objs(t)...)
+			ts := httptest.NewServer(s.Handler())
+			defer ts.Close()
+
+			req, err := http.NewRequest(http.MethodGet, ts.URL+transcriptPath+tt.query, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.header != "" {
+				req.Header.Set("Last-Event-ID", tt.header)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("GET: %v", err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			body, _ := io.ReadAll(res.Body)
+
+			turns, ended := sseTurns(t, string(body))
+			var got []int
+			for _, turn := range turns {
+				got = append(got, turn.Seq)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("seqs = %v, want %v", got, tt.want)
+			}
+			if !ended {
+				t.Error("resumed stream did not end")
+			}
+		})
+	}
+}
+
+func TestTranscriptCarriesToolFields(t *testing.T) {
+	turns := []transcript.Turn{
+		{Seq: 1, Role: transcript.RoleAssistant, Kind: transcript.KindToolUse, Tool: "Edit",
+			ID: "toolu_1", Path: "app.js", Syntax: transcript.SyntaxDiff, Text: "-a\n+b"},
+	}
+	s := transcriptServer(t, &fakeTailer{turns: turns}, runningInvestigation()...)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + transcriptPath)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, _ := io.ReadAll(res.Body)
+	got, _ := sseTurns(t, string(body))
+	if len(got) != 1 || got[0].ID != "toolu_1" || got[0].Path != "app.js" || got[0].Syntax != "diff" {
+		t.Errorf("turns = %+v", got)
 	}
 }

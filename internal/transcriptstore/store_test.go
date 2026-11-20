@@ -5,6 +5,7 @@ package transcriptstore
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -216,5 +217,37 @@ func TestLoadMissingKeyIsEmpty(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("Load = %+v, want nil", got)
+	}
+}
+
+func TestPersistCompactsToStoreBounds(t *testing.T) {
+	// The live stream is bounded far above a ConfigMap; the stored record is
+	// compacted to the store limits whatever the run streamed.
+	c := fake.NewClientBuilder().WithScheme(scheme(t)).Build()
+	turns := make([]transcript.Turn, 3000)
+	for i := range turns {
+		turns[i] = transcript.Turn{Seq: i + 1, Role: transcript.RoleUser, Kind: transcript.KindToolResult,
+			Text: strings.Repeat(string(rune('a'+i%26)), 8<<10)}
+	}
+	ref, err := Persist(context.Background(), c, "patchy", nil, investigation("fnd-big-inv-1"), invGVK, turns)
+	if err != nil {
+		t.Fatalf("Persist: %v", err)
+	}
+	if !ref.Truncated || ref.Turns > transcript.DefaultStoreMaxTurns {
+		t.Errorf("ref = %+v, want truncated and at most %d turns", ref, transcript.DefaultStoreMaxTurns)
+	}
+	var cm corev1.ConfigMap
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "patchy", Name: ref.Name}, &cm); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if n := len(cm.BinaryData[DataKey]); n >= 1<<20 {
+		t.Errorf("stored %d bytes, want under the 1 MiB object cap", n)
+	}
+	got, err := FromConfigMap(&cm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Seq != 1 || got[len(got)-1].Seq != 3000 {
+		t.Errorf("first/last Seq = %d/%d, want 1/3000", got[0].Seq, got[len(got)-1].Seq)
 	}
 }

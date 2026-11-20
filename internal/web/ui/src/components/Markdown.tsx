@@ -2,8 +2,11 @@
 // enrichment notes). Builds vnodes — never innerHTML — so untrusted input
 // cannot inject markup. Covers the GHAS/CodeQL help subset: headings, fenced
 // code, lists, blockquotes, inline code, bold/italic, and http(s) links.
+// Fenced code is syntax-highlighted by its info string (```go), or by a
+// cautious guess when the fence names no language.
 
 import type { ComponentChildren } from "preact";
+import { CodeBlock } from "../highlight";
 
 const INLINE_RE = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\*([^*\s][^*\n]*)\*|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 
@@ -41,7 +44,7 @@ function renderInline(text: string): ComponentChildren[] {
 
 type Block =
   | { kind: "heading"; depth: number; text: string }
-  | { kind: "code"; text: string }
+  | { kind: "code"; text: string; lang?: string }
   | { kind: "list"; ordered: boolean; items: string[] }
   | { kind: "quote"; text: string }
   | { kind: "para"; text: string };
@@ -58,12 +61,13 @@ function parseBlocks(source: string): Block[] {
       i++;
       continue;
     }
-    if (/^```/.test(line)) {
+    const fence = /^```\s*([^\s`]*)/.exec(line);
+    if (fence) {
       const body: string[] = [];
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) body.push(lines[i++]);
       i++;
-      blocks.push({ kind: "code", text: body.join("\n") });
+      blocks.push({ kind: "code", text: body.join("\n"), lang: fence[1] || undefined });
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
@@ -108,14 +112,9 @@ function renderBlock(block: Block, key: number): ComponentChildren {
       );
     }
     case "code":
-      return (
-        <pre
-          key={key}
-          class="my-3 overflow-x-auto rounded-[9px] border border-line bg-code-2 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed text-fg"
-        >
-          <code>{block.text}</code>
-        </pre>
-      );
+      // An untagged fence gets a guess from the registered grammars; a
+      // tagged one is trusted (an unknown tag renders plain).
+      return <CodeBlock key={key} code={block.text} lang={block.lang} auto={!block.lang} class="my-3" />;
     case "list": {
       const items = block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>);
       const cls = "my-2 flex flex-col gap-1 pl-5";

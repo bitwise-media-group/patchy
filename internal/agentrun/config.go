@@ -112,9 +112,12 @@ type Config struct {
 	// remediation stage may emit.
 	ChangesetMaxBytes int
 
-	// Transcript bounds one run's captured conversation. The defaults keep it
-	// inside the ConfigMap the controller persists it into; zero takes the
-	// transcript package's default and negative disables that bound.
+	// Transcript bounds the conversation the recorder streams to stdout — what
+	// a live viewer sees. They are stream limits, not storage limits: the
+	// controller compacts the persisted record to fit its ConfigMap
+	// independently (transcript.Compact). Zero takes the transcript package's
+	// stream default (for MaxTurns, unbounded) and negative disables that
+	// bound.
 	TranscriptMaxTurnBytes  int
 	TranscriptMaxTurns      int
 	TranscriptMaxTotalBytes int
@@ -230,9 +233,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	cfg.GrantedMaxTurns = number("GRANTED_MAX_TURNS", "0")
 	cfg.GrantedTokenBudget = number("GRANTED_TOKEN_BUDGET", "0")
 	cfg.ChangesetMaxBytes = number("CHANGESET_MAX_BYTES", strconv.Itoa(5<<20))
-	cfg.TranscriptMaxTurnBytes = number("TRANSCRIPT_MAX_TURN_BYTES", strconv.Itoa(transcript.DefaultMaxTurnBytes))
-	cfg.TranscriptMaxTurns = number("TRANSCRIPT_MAX_TURNS", strconv.Itoa(transcript.DefaultMaxTurns))
-	cfg.TranscriptMaxTotalBytes = number("TRANSCRIPT_MAX_TOTAL_BYTES", strconv.Itoa(transcript.DefaultMaxTotalBytes))
+	cfg.TranscriptMaxTurnBytes = number("TRANSCRIPT_MAX_TURN_BYTES", strconv.Itoa(transcript.DefaultStreamMaxTurnBytes))
+	cfg.TranscriptMaxTurns = number("TRANSCRIPT_MAX_TURNS", strconv.Itoa(transcript.DefaultStreamMaxTurns))
+	cfg.TranscriptMaxTotalBytes = number("TRANSCRIPT_MAX_TOTAL_BYTES", strconv.Itoa(transcript.DefaultStreamMaxTotalBytes))
 	cfg.InvestigateTimeout = duration("INVESTIGATE_TIMEOUT", "15m")
 	cfg.RemediateTimeout = duration("REMEDIATE_TIMEOUT", "45m")
 

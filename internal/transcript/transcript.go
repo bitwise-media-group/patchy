@@ -43,10 +43,25 @@ const (
 	KindNotice     Kind = "notice"
 )
 
+// Syntax is a harness-neutral rendering hint for a tool turn's Text. Empty
+// means "infer from Path, or show plain".
+type Syntax string
+
+// The syntax hints.
+const (
+	SyntaxDiff  Syntax = "diff"
+	SyntaxShell Syntax = "shell"
+)
+
 // Turn is one entry in an agent's conversation, normalised across harnesses.
 // Text carries the message body, the tool invocation's rendered input, or the
 // tool result's excerpt depending on Kind; Truncated reports that the recorder
 // capped it.
+//
+// ID, Path and Syntax are optional and were added within Version 1: ID pairs a
+// tool_use turn with its tool_result, Path names the file a tool call targets,
+// and Syntax hints how to render Text. Records written before them decode with
+// the fields empty.
 type Turn struct {
 	V         int    `json:"v"`
 	Seq       int    `json:"seq"`
@@ -54,6 +69,9 @@ type Turn struct {
 	Role      Role   `json:"role"`
 	Kind      Kind   `json:"kind"`
 	Tool      string `json:"tool,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Syntax    Syntax `json:"syntax,omitempty"`
 	Text      string `json:"text,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
@@ -122,4 +140,74 @@ func Truncate(s string, limit int) (string, bool) {
 		cut = cut[:len(cut)-1]
 	}
 	return cut, true
+}
+
+// Compact bounds a recorded conversation for storage. Each turn is capped at
+// MaxTurnBytes; when the turns exceed MaxTurns or their text exceeds
+// MaxTotalBytes, the head and the tail are kept — how the run started and how
+// it ended — and one notice in between says how many turns were elided. Zero
+// fields take StoreDefaults; negative fields disable that bound. Turns keep
+// their original Seq, so a stored record and the live stream agree on
+// numbering; the notice reuses the Seq of the first turn it replaces.
+//
+// The input is not modified.
+func Compact(turns []Turn, l Limits) []Turn {
+	l = l.resolve(StoreDefaults)
+	out := make([]Turn, len(turns))
+	copy(out, turns)
+	if l.MaxTurnBytes > 0 {
+		for i := range out {
+			if cut, did := Truncate(out[i].Text, l.MaxTurnBytes); did {
+				out[i].Text, out[i].Truncated = cut, true
+			}
+		}
+	}
+
+	// keep is how many turns fit, reserving one slot for the notice once any
+	// must go.
+	keep := len(out)
+	if l.MaxTurns > 0 && keep > l.MaxTurns {
+		keep = max(l.MaxTurns-1, 0)
+	}
+	if l.MaxTotalBytes > 0 {
+		// pre[i] is the text size of the first i turns, so each candidate
+		// head/tail split is sized in constant time.
+		pre := make([]int, len(out)+1)
+		for i, t := range out {
+			pre[i+1] = pre[i] + len(t.Text)
+		}
+		size := func(keep int) int {
+			head, tail := split(keep)
+			return pre[head] + pre[len(out)] - pre[len(out)-tail]
+		}
+		for keep > 0 && size(keep) > l.MaxTotalBytes {
+			keep--
+		}
+	}
+	if keep == len(out) {
+		return out
+	}
+
+	head, tail := split(keep)
+	elided := len(out) - keep
+	notice := Turn{
+		Seq:       out[head].Seq,
+		At:        out[head].At,
+		Role:      RoleSystem,
+		Kind:      KindNotice,
+		Text:      fmt.Sprintf("%d turns elided from stored record", elided),
+		Truncated: true,
+	}
+	res := make([]Turn, 0, keep+1)
+	res = append(res, out[:head]...)
+	res = append(res, notice)
+	res = append(res, out[len(out)-tail:]...)
+	return res
+}
+
+// split divides the keep retained turns between head and tail, favouring the
+// head by one.
+func split(keep int) (head, tail int) {
+	head = (keep + 1) / 2
+	return head, keep - head
 }

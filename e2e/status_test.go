@@ -13,10 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -292,7 +294,7 @@ func TestStatusServer(t *testing.T) {
 
 	// The agent transcript: a completed run replays its stored conversation.
 	transcriptPath := "/api/findings/" + awaiting.Name + "/runs/investigation/1/transcript"
-	turns := fetchTranscript(t, base+transcriptPath)
+	turns := fetchTranscript(t, base+transcriptPath, "")
 	if len(turns) != 2 {
 		t.Fatalf("transcript returned %d turns, want 2: %+v", len(turns), turns)
 	}
@@ -301,6 +303,49 @@ func TestStatusServer(t *testing.T) {
 	}
 	if turns[1].Tool != "Read" || turns[1].Text != "app.js" {
 		t.Errorf("turns[1] = %+v", turns[1])
+	}
+
+	// A long run: the live stream carried every turn, but the stored record
+	// is compacted to fit its ConfigMap — head and tail with an elision
+	// notice — and still resumes by seq.
+	const longTurns = 1200
+	stored := fabricateLongTranscript(t, cl, "finding-long-1", longTurns)
+	if stored.Turns > int32(transcript.DefaultStoreMaxTurns) || !stored.Truncated {
+		t.Errorf("stored ref = %+v, want at most %d turns and truncated", stored, transcript.DefaultStoreMaxTurns)
+	}
+	var storedCM corev1.ConfigMap
+	if err := cl.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: stored.Name}, &storedCM); err != nil {
+		t.Fatalf("get stored transcript: %v", err)
+	}
+	if n := len(storedCM.BinaryData[transcriptstore.DataKey]); n >= 1<<20 {
+		t.Errorf("stored transcript is %d bytes, want under the 1 MiB object cap", n)
+	}
+	longPath := "/api/findings/finding-long-1/runs/investigation/1/transcript"
+	all := fetchTranscript(t, base+longPath, "")
+	if len(all) != int(stored.Turns) {
+		t.Fatalf("long transcript returned %d turns, stored %d", len(all), stored.Turns)
+	}
+	if all[0].Seq != 1 || all[len(all)-1].Seq != longTurns {
+		t.Errorf("first/last seq = %d/%d, want 1/%d", all[0].Seq, all[len(all)-1].Seq, longTurns)
+	}
+	elided := false
+	for i, turn := range all {
+		if i > 0 && turn.Seq <= all[i-1].Seq {
+			t.Fatalf("seq not increasing at %d: %d after %d", i, turn.Seq, all[i-1].Seq)
+		}
+		if len(turn.Text) > transcript.DefaultStoreMaxTurnBytes {
+			t.Errorf("turn %d is %d bytes, want <= %d", turn.Seq, len(turn.Text), transcript.DefaultStoreMaxTurnBytes)
+		}
+		elided = elided || (turn.Kind == "notice" && strings.Contains(turn.Text, "elided"))
+	}
+	if !elided {
+		t.Error("compacted transcript carries no elision notice")
+	}
+	// A reconnect resumes after the last seen turn instead of replaying.
+	resumeAt := all[len(all)-3].Seq
+	resumed := fetchTranscript(t, base+longPath, strconv.Itoa(resumeAt))
+	if len(resumed) != 2 || resumed[0].Seq != all[len(all)-2].Seq {
+		t.Errorf("resume after %d returned %+v, want the last 2 turns", resumeAt, resumed)
 	}
 
 	// Instance B: no auth config at all — the rollups-only posture.
@@ -381,10 +426,60 @@ func fabricateTranscript(t *testing.T, cl *cluster, finding string) {
 	}
 }
 
-// fetchTranscript reads the turn events off the transcript SSE stream.
-func fetchTranscript(t *testing.T, url string) []statusTurn {
+// fabricateLongTranscript writes a completed Investigation whose conversation
+// ran far past the store bounds — n turns, some larger than a stored turn may
+// be — through transcriptstore.Persist, exactly as the investigation
+// controller collects a run.
+func fabricateLongTranscript(t *testing.T, cl *cluster, finding string, n int) *v1alpha1.TranscriptRef {
 	t.Helper()
-	resp, err := http.Get(url)
+	ctx := context.Background()
+	inv := &v1alpha1.Investigation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: finding + "-inv-1", Namespace: namespace,
+			Labels: map[string]string{v1alpha1.LabelFinding: finding},
+		},
+		Spec: v1alpha1.InvestigationSpec{
+			FindingRef: v1alpha1.ObjectReference{Name: finding}, Attempt: 1,
+		},
+	}
+	if err := cl.client.Create(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+	turns := make([]transcript.Turn, n)
+	for i := range turns {
+		text := fmt.Sprintf("turn %d", i+1)
+		if i%10 == 0 {
+			text = strings.Repeat(fmt.Sprintf("line %d of a large tool result\n", i), 400) // ~12 KiB
+		}
+		turns[i] = transcript.Turn{Seq: i + 1, Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: text}
+	}
+	ref, err := transcriptstore.Persist(ctx, cl.client, namespace, nil, inv,
+		metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "Investigation"}, turns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv.Status = v1alpha1.InvestigationStatus{
+		Phase: v1alpha1.RunComplete,
+		Stage: &v1alpha1.StageResult{Outcome: "ok", Transcript: ref},
+	}
+	if err := cl.client.Status().Update(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+	return ref
+}
+
+// fetchTranscript reads the turn events off the transcript SSE stream,
+// resuming after lastEventID when it is set.
+func fetchTranscript(t *testing.T, url, lastEventID string) []statusTurn {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}

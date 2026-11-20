@@ -79,6 +79,21 @@
   --patchy-shadow: 0 20px 52px rgba(2, 8, 4, 0.44);
   --patchy-shadow-strong: 0 30px 80px rgba(2, 8, 4, 0.62);
   --shadow-glow: 0 6px 20px rgba(120, 214, 75, 0.28);
+
+  /* Syntax highlighting — read against --patchy-code-2. */
+  --hl-keyword: #c3a2f2;
+  --hl-string: #a8dc8c;
+  --hl-number: #f2a774;
+  --hl-comment: #6f8574;
+  --hl-title: #7fd1e0;
+  --hl-type: #e9cf86;
+  --hl-attr: #8fbff5;
+  --hl-meta: #f0a3c8;
+  --hl-variable: #edf7ee;
+  --hl-add: #9be66a;
+  --hl-add-bg: rgba(120, 214, 75, 0.12);
+  --hl-del: #ef716a;
+  --hl-del-bg: rgba(239, 113, 106, 0.12);
 }
 
 /* Light — garden paper, white panels, and a deep accessible turf green. */
@@ -111,4 +126,19 @@
   --patchy-shadow: 0 20px 52px rgba(38, 72, 42, 0.12);
   --patchy-shadow-strong: 0 30px 80px rgba(38, 72, 42, 0.18);
   --shadow-glow: 0 6px 20px rgba(47, 125, 54, 0.24);
+
+  /* Syntax highlighting — read against --patchy-code-2. */
+  --hl-keyword: #7334c2;
+  --hl-string: #2a6e30;
+  --hl-number: #a44600;
+  --hl-comment: #6b7b6e;
+  --hl-title: #0a6577;
+  --hl-type: #8a5c00;
+  --hl-attr: #1d4fb8;
+  --hl-meta: #9f1239;
+  --hl-variable: #172219;
+  --hl-add: #25672c;
+  --hl-add-bg: rgba(47, 125, 54, 0.12);
+  --hl-del: #b3322e;
+  --hl-del-bg: rgba(197, 59, 54, 0.1);
 }

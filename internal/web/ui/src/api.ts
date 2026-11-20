@@ -273,12 +273,20 @@ export function subscribe(onChange: () => void): () => void {
 
 // TranscriptHandlers receive one agent conversation as it arrives.
 export interface TranscriptHandlers {
+  // onTurn receives each turn once, in order, even across reconnects.
   onTurn: (turn: TranscriptTurn) => void;
   // onEnd fires when the conversation is complete — a finished run's stored
   // record, or a live run whose agent exited.
   onEnd: () => void;
   onError: (err: Error) => void;
+  // onReconnecting reports the connection dropped and is being resumed
+  // (true), or that turns are flowing again (false).
+  onReconnecting?: (reconnecting: boolean) => void;
 }
+
+// TRANSCRIPT_REOPENS bounds how many times a terminally failed stream is
+// reopened before the error is reported; any delivered turn resets it.
+const TRANSCRIPT_REOPENS = 5;
 
 // streamTranscript opens one run's conversation and returns a close function.
 //
@@ -286,6 +294,12 @@ export interface TranscriptHandlers {
 // there is a single client path: turns arrive in order and an `end` event says
 // the conversation is over. EventSource would otherwise reconnect forever
 // after a completed stream, so `end` also closes the connection.
+//
+// Every turn carries its seq as the SSE id. A dropped connection — or the
+// server evicting a viewer that fell behind the live run — is resumed rather
+// than replayed: EventSource's own reconnect sends Last-Event-ID, and a stream
+// that fails outright is reopened with ?after=<last seq>. Turns at or below the
+// last seq seen are dropped either way, so the conversation never repeats.
 export function streamTranscript(
   finding: string,
   kind: "investigation" | "remediation",
@@ -303,33 +317,67 @@ export function streamTranscript(
   }
 
   const path = `/api/findings/${encodeURIComponent(finding)}/runs/${kind}/${attempt}/transcript`;
-  const es = new EventSource(path);
+  let es: EventSource | undefined;
+  let last = 0;
+  let reopens = 0;
+  let reconnecting = false;
   let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const setReconnecting = (value: boolean) => {
+    if (reconnecting !== value) {
+      reconnecting = value;
+      handlers.onReconnecting?.(value);
+    }
+  };
   const close = () => {
     if (!closed) {
       closed = true;
-      es.close();
+      clearTimeout(timer);
+      es?.close();
     }
   };
 
-  es.addEventListener("turn", (event) => {
-    try {
-      handlers.onTurn(JSON.parse((event as MessageEvent).data) as TranscriptTurn);
-    } catch {
-      // A malformed turn costs one line, not the stream.
-    }
-  });
-  es.addEventListener("end", () => {
-    close();
-    handlers.onEnd();
-  });
-  es.addEventListener("error", () => {
-    // EventSource reports transport errors and retries; only a closed
-    // connection is terminal for us.
-    if (es.readyState === EventSource.CLOSED) {
+  const open = () => {
+    const source = new EventSource(last > 0 ? `${path}?after=${last}` : path);
+    es = source;
+    source.addEventListener("turn", (event) => {
+      let turn: TranscriptTurn;
+      try {
+        turn = JSON.parse((event as MessageEvent).data) as TranscriptTurn;
+      } catch {
+        return; // a malformed turn costs one line, not the stream
+      }
+      if (turn.seq <= last) return;
+      last = turn.seq;
+      reopens = 0;
+      setReconnecting(false);
+      handlers.onTurn(turn);
+    });
+    source.addEventListener("end", () => {
       close();
-      handlers.onError(new Error("transcript stream closed"));
-    }
-  });
+      setReconnecting(false);
+      handlers.onEnd();
+    });
+    source.addEventListener("error", () => {
+      if (closed) return;
+      if (source.readyState !== EventSource.CLOSED) {
+        // EventSource is retrying on its own, with Last-Event-ID.
+        setReconnecting(true);
+        return;
+      }
+      source.close();
+      if (reopens >= TRANSCRIPT_REOPENS) {
+        close();
+        setReconnecting(false);
+        handlers.onError(new Error("transcript stream closed"));
+        return;
+      }
+      reopens++;
+      setReconnecting(true);
+      timer = setTimeout(open, 1000 * reopens);
+    });
+  };
+  open();
   return close;
 }

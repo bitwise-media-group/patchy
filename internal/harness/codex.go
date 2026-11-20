@@ -98,6 +98,7 @@ type codexEvent struct {
 // versioned in a way this repo can pin, so ScanTurns degrades to naming the
 // item type rather than guessing wrong when a field is absent.
 type codexItem struct {
+	ID               string `json:"id"`
 	Type             string `json:"type"`
 	Text             string `json:"text"`
 	Command          string `json:"command"`
@@ -106,6 +107,12 @@ type codexItem struct {
 	Server           string `json:"server"`
 	Tool             string `json:"tool"`
 	Query            string `json:"query"`
+	// Changes is a file_change item's file list. Codex reports which files
+	// changed and how, not the patch itself.
+	Changes []struct {
+		Path string `json:"path"`
+		Kind string `json:"kind"`
+	} `json:"changes"`
 }
 
 // codexToolItems maps a codex item type to the tool name a transcript shows.
@@ -181,16 +188,21 @@ func codexItemTurns(item codexItem) []transcript.Turn {
 	if item.Type == "mcp_tool_call" && item.Tool != "" {
 		tool = strings.TrimSpace(item.Server + " " + item.Tool)
 	}
+	var syntax transcript.Syntax
+	if item.Type == "command_execution" {
+		syntax = transcript.SyntaxShell
+	}
+	// The item id lands on both turns, pairing the call with its result.
 	turns := []transcript.Turn{{
 		Role: transcript.RoleAssistant, Kind: transcript.KindToolUse,
-		Tool: tool, Text: codexItemInput(item),
+		Tool: tool, ID: item.ID, Syntax: syntax, Text: codexItemInput(item),
 	}}
 	if out := strings.TrimSpace(item.AggregatedOutput); out != "" {
 		if item.ExitCode != nil && *item.ExitCode != 0 {
 			out = "[error] " + out
 		}
 		turns = append(turns, transcript.Turn{
-			Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: out,
+			Role: transcript.RoleUser, Kind: transcript.KindToolResult, ID: item.ID, Text: out,
 		})
 	}
 	return turns
@@ -198,7 +210,17 @@ func codexItemTurns(item codexItem) []transcript.Turn {
 
 // codexItemInput picks the argument identifying what a tool item did, falling
 // back to the item type so an unmapped shape still reads as an action.
+//
+// A file_change lists its files, one "kind path" line each: codex's exec
+// stream carries no patch, so there is no diff to show.
 func codexItemInput(item codexItem) string {
+	if len(item.Changes) > 0 {
+		lines := make([]string, 0, len(item.Changes))
+		for _, c := range item.Changes {
+			lines = append(lines, strings.TrimSpace(c.Kind+" "+c.Path))
+		}
+		return strings.Join(lines, "\n")
+	}
 	for _, s := range []string{item.Command, item.Query, item.Text} {
 		if strings.TrimSpace(s) != "" {
 			return strings.TrimSpace(s)

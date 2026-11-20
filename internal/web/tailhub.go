@@ -4,10 +4,13 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bitwise-media-group/patchy/internal/transcript"
 )
@@ -22,10 +25,15 @@ type Tailer interface {
 // this process — viewers past it fall back to the persisted transcript.
 const maxLiveTails = 8
 
-// tailBuffer bounds the turns a run holds for replay. It matches the
-// recorder's own turn cap, so a viewer joining late still sees the whole
-// conversation rather than only what arrives after they connect.
-const tailBuffer = 500
+// tailBufferBytes bounds the turn text a run holds for replay. It matches the
+// recorder's default stream total (plus headroom for its closing notice), so a
+// viewer joining late — or reconnecting — sees the whole conversation rather
+// than only what arrives after they connect.
+const tailBufferBytes = transcript.DefaultStreamMaxTotalBytes + 64<<10
+
+// subscriberBuffer is how far a viewer may fall behind the follow before it is
+// evicted and told to resume.
+const subscriberBuffer = 256
 
 // errTooManyTails is returned when the live-follow budget is exhausted.
 var errTooManyTails = errors.New("too many live transcripts")
@@ -51,31 +59,47 @@ func newTailHub(t Tailer, log *slog.Logger) *tailHub {
 type tailRun struct {
 	cancel context.CancelFunc
 
-	mu       sync.Mutex
-	seen     []transcript.Turn
-	subs     map[chan transcript.Turn]struct{}
-	finished bool
+	mu        sync.Mutex
+	seen      []transcript.Turn
+	seenBytes int
+	subs      map[*subscriber]struct{}
+	finished  bool
+}
+
+// subscriber is one viewer's delivery channel. lagged is set, before ch is
+// closed, when the viewer fell too far behind and was evicted.
+type subscriber struct {
+	ch     chan transcript.Turn
+	lagged atomic.Bool
 }
 
 // subscription is one viewer's view of a followed run.
 type subscription struct {
-	// Replay is everything the run said before this viewer arrived.
+	// Replay is everything the run said before this viewer arrived, after
+	// the resume point the viewer asked for.
 	Replay []transcript.Turn
-	// Turns delivers what it says next, and closes when the run ends.
+	// Turns delivers what it says next. It closes when the run ends, or when
+	// the viewer fell behind and was evicted — Lagged tells the two apart.
 	Turns <-chan transcript.Turn
 
 	hub     *tailHub
 	jobName string
-	ch      chan transcript.Turn
+	sub     *subscriber
 }
 
+// Lagged reports whether Turns closed because this viewer could not keep up,
+// rather than because the run ended. A lagged viewer must reconnect and resume
+// from the last turn it saw; it was never silently skipped past a turn.
+func (s *subscription) Lagged() bool { return s.sub.lagged.Load() }
+
 // Close detaches the viewer, stopping the upstream follow when it was the last.
-func (s *subscription) Close() { s.hub.unsubscribe(s.jobName, s.ch) }
+func (s *subscription) Close() { s.hub.unsubscribe(s.jobName, s.sub) }
 
 // subscribe attaches a viewer to jobName, starting the follow if this is the
-// first. It returns the conversation so far plus the channel carrying the rest,
-// captured atomically so no turn falls between the two.
-func (h *tailHub) subscribe(jobName string) (*subscription, error) {
+// first. It returns the conversation so far — the turns with Seq above after,
+// so a resuming viewer is not sent what it already has — plus the channel
+// carrying the rest, captured atomically so no turn falls between the two.
+func (h *tailHub) subscribe(jobName string, after int) (*subscription, error) {
 	if h == nil || h.tailer == nil {
 		return nil, errTooManyTails
 	}
@@ -86,7 +110,7 @@ func (h *tailHub) subscribe(jobName string) (*subscription, error) {
 			h.mu.Unlock()
 			return nil, errTooManyTails
 		}
-		run = &tailRun{subs: make(map[chan transcript.Turn]struct{})}
+		run = &tailRun{subs: make(map[*subscriber]struct{})}
 		h.runs[jobName] = run
 		ctx, cancel := context.WithCancel(context.Background())
 		run.cancel = cancel
@@ -94,35 +118,51 @@ func (h *tailHub) subscribe(jobName string) (*subscription, error) {
 	}
 	h.mu.Unlock()
 
-	ch := make(chan transcript.Turn, 64)
+	sub := &subscriber{ch: make(chan transcript.Turn, subscriberBuffer)}
 	run.mu.Lock()
-	replay := append([]transcript.Turn(nil), run.seen...)
+	replay := turnsAfter(run.seen, after)
 	if run.finished {
 		// The run ended between the hub lookup and here; the replay is the
 		// whole conversation, so hand back a closed channel.
 		run.mu.Unlock()
-		close(ch)
-		return &subscription{Replay: replay, Turns: ch, hub: h, jobName: jobName, ch: ch}, nil
+		close(sub.ch)
+		return &subscription{Replay: replay, Turns: sub.ch, hub: h, jobName: jobName, sub: sub}, nil
 	}
-	run.subs[ch] = struct{}{}
+	run.subs[sub] = struct{}{}
 	run.mu.Unlock()
 
-	return &subscription{Replay: replay, Turns: ch, hub: h, jobName: jobName, ch: ch}, nil
+	return &subscription{Replay: replay, Turns: sub.ch, hub: h, jobName: jobName, sub: sub}, nil
+}
+
+// turnsAfter copies the turns with Seq above after. Seq is increasing, so the
+// cut is one binary search rather than a filter.
+func turnsAfter(turns []transcript.Turn, after int) []transcript.Turn {
+	i, _ := slices.BinarySearchFunc(turns, after+1, func(t transcript.Turn, seq int) int {
+		return cmp.Compare(t.Seq, seq)
+	})
+	return append([]transcript.Turn(nil), turns[i:]...)
 }
 
 // follow drives the upstream log follow, buffering and fanning out each turn.
 func (h *tailHub) follow(ctx context.Context, jobName string, run *tailRun) {
 	err := h.tailer.Tail(ctx, jobName, func(t transcript.Turn) error {
 		run.mu.Lock()
-		if len(run.seen) < tailBuffer {
+		if run.seenBytes+len(t.Text) <= tailBufferBytes {
 			run.seen = append(run.seen, t)
+			run.seenBytes += len(t.Text)
 		}
-		for ch := range run.subs {
-			// Never block the follow on a slow viewer: a dropped turn costs
-			// that viewer one line, a blocked follow costs everyone the rest.
+		for sub := range run.subs {
+			// Never block the follow on a slow viewer, and never skip a turn
+			// on one either: a viewer that cannot keep up is evicted, and its
+			// client resumes from the last turn it saw. A blocked follow
+			// would cost everyone the rest; a skipped turn would be a silent
+			// hole in the conversation.
 			select {
-			case ch <- t:
+			case sub.ch <- t:
 			default:
+				sub.lagged.Store(true)
+				close(sub.ch)
+				delete(run.subs, sub)
 			}
 		}
 		run.mu.Unlock()
@@ -135,9 +175,9 @@ func (h *tailHub) follow(ctx context.Context, jobName string, run *tailRun) {
 
 	run.mu.Lock()
 	run.finished = true
-	for ch := range run.subs {
-		close(ch)
-		delete(run.subs, ch)
+	for sub := range run.subs {
+		close(sub.ch)
+		delete(run.subs, sub)
 	}
 	run.mu.Unlock()
 
@@ -149,7 +189,7 @@ func (h *tailHub) follow(ctx context.Context, jobName string, run *tailRun) {
 }
 
 // unsubscribe detaches one viewer and cancels the follow when none remain.
-func (h *tailHub) unsubscribe(jobName string, ch chan transcript.Turn) {
+func (h *tailHub) unsubscribe(jobName string, sub *subscriber) {
 	h.mu.Lock()
 	run, ok := h.runs[jobName]
 	h.mu.Unlock()
@@ -158,9 +198,9 @@ func (h *tailHub) unsubscribe(jobName string, ch chan transcript.Turn) {
 	}
 
 	run.mu.Lock()
-	if _, live := run.subs[ch]; live {
-		delete(run.subs, ch)
-		close(ch)
+	if _, live := run.subs[sub]; live {
+		delete(run.subs, sub)
+		close(sub.ch)
 	}
 	last := len(run.subs) == 0 && !run.finished
 	run.mu.Unlock()

@@ -25,8 +25,8 @@ before:
         - go mod download
         # The status page SPA must exist before the status-server build
         # compiles with -tags withui (internal/web/embed_ui.go).
-        - npm --prefix internal/web/ui ci --no-fund --no-audit
-        - npm --prefix internal/web/ui run build
+        - bun install --cwd internal/web/ui --frozen-lockfile --ignore-scripts
+        - bun run --cwd internal/web/ui build
 
 env:
     - CGO_ENABLED=0
@@ -157,7 +157,7 @@ builds:
       binary: status-server
       flags:
           - -trimpath
-      # withui embeds the status page SPA (built by the npm before-hooks).
+      # withui embeds the status page SPA (built by the bun before-hooks).
       tags:
           - withui
       ldflags:

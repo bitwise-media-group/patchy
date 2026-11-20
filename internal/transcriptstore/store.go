@@ -107,6 +107,11 @@ func ConfigMap(namespace string, labels map[string]string, owner client.Object,
 // run's status. No turns means no object and a nil reference — a harness that
 // cannot transcribe, or a run that died before speaking, is not an error.
 //
+// The live stream carries far more than a ConfigMap can hold, so the turns are
+// compacted to the store bounds first (transcript.Compact): the stored record
+// is a bounded summary — head, tail, and an elision notice — whatever the run
+// streamed.
+//
 // The write is idempotent: a re-collected run overwrites its own transcript
 // rather than failing on the object it already wrote.
 func Persist(ctx context.Context, c client.Client, namespace string, labels map[string]string,
@@ -114,6 +119,7 @@ func Persist(ctx context.Context, c client.Client, namespace string, labels map[
 	if len(turns) == 0 {
 		return nil, nil
 	}
+	turns = transcript.Compact(turns, transcript.Limits{})
 	cm, err := ConfigMap(namespace, labels, owner, gvk, turns)
 	if err != nil {
 		return nil, err

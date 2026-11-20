@@ -12,42 +12,71 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/ansi"
 )
 
-// Recording bounds. A transcript is persisted in a ConfigMap, so the total is
-// sized to leave headroom under the 1 MiB object cap even before gzip; the
-// per-turn cap keeps one runaway tool result from consuming the whole budget.
+// Stream bounds: what the in-pod recorder admits onto stdout, and so what a
+// live viewer sees. They are generous because the live stream is the whole
+// conversation; only the total stays bounded, because the kubelet rotates a
+// container log at 10 MiB by default and a non-follow read of the stage result
+// sees only the current file — an unbounded conversation could rotate the
+// result events out of reach. MaxTurns of zero is unbounded.
 const (
-	DefaultMaxTurnBytes  = 2048
-	DefaultMaxTurns      = 500
-	DefaultMaxTotalBytes = 512 << 10
+	DefaultStreamMaxTurnBytes  = 64 << 10
+	DefaultStreamMaxTurns      = 0
+	DefaultStreamMaxTotalBytes = 8 << 20
+)
+
+// Store bounds: what Compact keeps for the persisted record. A transcript is
+// stored in a ConfigMap, so the total is sized to leave headroom under the
+// 1 MiB object cap even before gzip; the per-turn cap keeps one runaway tool
+// result from consuming the whole budget.
+const (
+	DefaultStoreMaxTurnBytes  = 2048
+	DefaultStoreMaxTurns      = 500
+	DefaultStoreMaxTotalBytes = 512 << 10
 )
 
 // Redacted replaces any credential value found in captured text.
 const Redacted = "«redacted»"
 
-// Limits bounds one recording. A zero field takes the package default; a
-// negative field disables that bound.
+// Limits bounds one recording. A zero field takes the default for where the
+// limits apply (stream or store); a negative field disables that bound.
 type Limits struct {
 	MaxTurnBytes  int
 	MaxTurns      int
 	MaxTotalBytes int
 }
 
-func (l Limits) resolve() Limits {
+// StreamDefaults are the recorder's bounds when a field is left zero.
+var StreamDefaults = Limits{
+	MaxTurnBytes:  DefaultStreamMaxTurnBytes,
+	MaxTurns:      DefaultStreamMaxTurns,
+	MaxTotalBytes: DefaultStreamMaxTotalBytes,
+}
+
+// StoreDefaults are Compact's bounds when a field is left zero.
+var StoreDefaults = Limits{
+	MaxTurnBytes:  DefaultStoreMaxTurnBytes,
+	MaxTurns:      DefaultStoreMaxTurns,
+	MaxTotalBytes: DefaultStoreMaxTotalBytes,
+}
+
+// resolve fills each zero field from defaults.
+func (l Limits) resolve(defaults Limits) Limits {
 	if l.MaxTurnBytes == 0 {
-		l.MaxTurnBytes = DefaultMaxTurnBytes
+		l.MaxTurnBytes = defaults.MaxTurnBytes
 	}
 	if l.MaxTurns == 0 {
-		l.MaxTurns = DefaultMaxTurns
+		l.MaxTurns = defaults.MaxTurns
 	}
 	if l.MaxTotalBytes == 0 {
-		l.MaxTotalBytes = DefaultMaxTotalBytes
+		l.MaxTotalBytes = defaults.MaxTotalBytes
 	}
 	return l
 }
 
 // Recorder normalises, bounds, redacts, and sequences the turns of one run.
-// It is the single gate every captured turn passes through, so the live stream
-// and the persisted transcript can never disagree.
+// It is the single gate every captured turn passes through on its way to
+// stdout, so it enforces the stream bounds; the persisted record is a Compact
+// of what it emitted, never a second capture that could disagree with it.
 //
 // Recorder is safe for concurrent use, though the runner's line observer calls
 // it from one goroutine.
@@ -76,7 +105,7 @@ func NewRecorder(limits Limits, secrets []string, emit func(Turn)) *Recorder {
 		}
 	}
 	return &Recorder{
-		limits:  limits.resolve(),
+		limits:  limits.resolve(StreamDefaults),
 		secrets: keep,
 		now:     time.Now,
 		emit:    emit,
@@ -138,6 +167,10 @@ func (r *Recorder) record(t Turn) {
 	}
 	t.Text = text
 	t.Tool = string(ansi.Strip([]byte(t.Tool)))
+	t.Path = string(ansi.Strip([]byte(t.Path)))
+	for _, s := range r.secrets {
+		t.Path = strings.ReplaceAll(t.Path, s, Redacted)
+	}
 	if t.Truncated {
 		r.truncated = true
 	}

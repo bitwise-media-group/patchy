@@ -135,7 +135,12 @@ type claudeEvent struct {
 // tool's arguments are free-form and a tool result is either a bare string or
 // an array of blocks (see renderToolInput/renderToolResult).
 type claudeBlock struct {
-	Type     string          `json:"type"`
+	Type string `json:"type"`
+	// ID is a tool_use block's id; ToolUseID is the tool_result's reference
+	// back to it. Both land on Turn.ID so a reader can pair call and result.
+	ID        string `json:"id"`
+	ToolUseID string `json:"tool_use_id"`
+
 	Text     string          `json:"text"`
 	Thinking string          `json:"thinking"`
 	Name     string          `json:"name"`
@@ -200,9 +205,10 @@ func claudeAssistantTurns(blocks []claudeBlock) []transcript.Turn {
 				Role: transcript.RoleAssistant, Kind: transcript.KindThinking, Text: b.Thinking,
 			})
 		case "tool_use":
+			text, path, syntax := renderToolCall(b.Name, b.Input)
 			turns = append(turns, transcript.Turn{
 				Role: transcript.RoleAssistant, Kind: transcript.KindToolUse,
-				Tool: b.Name, Text: renderToolInput(b.Input),
+				Tool: b.Name, ID: b.ID, Path: path, Syntax: syntax, Text: text,
 			})
 		}
 	}
@@ -223,7 +229,7 @@ func claudeUserTurns(blocks []claudeBlock) []transcript.Turn {
 			text = "[error] " + text
 		}
 		turns = append(turns, transcript.Turn{
-			Role: transcript.RoleUser, Kind: transcript.KindToolResult, Text: text,
+			Role: transcript.RoleUser, Kind: transcript.KindToolResult, ID: b.ToolUseID, Text: text,
 		})
 	}
 	return turns

@@ -131,3 +131,32 @@ func TestRecorderNotice(t *testing.T) {
 		t.Errorf("Text = %q, want the formatted args", (*got)[0].Text)
 	}
 }
+
+func TestRecorderStreamDefaults(t *testing.T) {
+	// The stream has no turn cap and a generous per-turn cap: the live viewer
+	// sees the whole conversation, and storage compacts separately.
+	r, got := collect(Limits{}, nil)
+	for range DefaultStoreMaxTurns * 3 {
+		r.Record(Turn{Role: RoleAssistant, Kind: KindText, Text: "x"})
+	}
+	big := strings.Repeat("y", DefaultStoreMaxTurnBytes*4)
+	r.Record(Turn{Role: RoleUser, Kind: KindToolResult, Text: big})
+	if want := DefaultStoreMaxTurns*3 + 1; len(*got) != want {
+		t.Fatalf("emitted %d turns, want %d", len(*got), want)
+	}
+	if last := (*got)[len(*got)-1]; last.Text != big || last.Truncated {
+		t.Errorf("large turn was cut to %d bytes", len(last.Text))
+	}
+	if _, truncated := r.Stats(); truncated {
+		t.Error("Stats truncated = true, want false")
+	}
+}
+
+func TestRecorderRedactsPath(t *testing.T) {
+	const key = "sk-ant-supersecretvalue"
+	r, got := collect(Limits{}, []string{key})
+	r.Record(Turn{Role: RoleAssistant, Kind: KindToolUse, Tool: "Read", Path: "/tmp/" + key})
+	if strings.Contains((*got)[0].Path, key) {
+		t.Errorf("Path = %q, still carries the credential", (*got)[0].Path)
+	}
+}

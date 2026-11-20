@@ -20,22 +20,35 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
 )
 
-// Transcript SSE event names. Turns arrive one per event and the stream always
-// ends with `end`, so the client knows the difference between a finished
-// conversation and a dropped connection.
+// Transcript SSE event names. Turns arrive one per event, each with its Seq as
+// the event id, and a complete stream ends with `end`, so the client knows the
+// difference between a finished conversation and a dropped connection. A
+// stream that closes without `end` — a dropped connection, or a viewer evicted
+// for falling behind — is resumed by reconnecting with Last-Event-ID.
 const (
 	eventTurn = "turn"
 	eventEnd  = "end"
 )
 
+// transcriptRetry is the reconnect delay, in milliseconds, the stream asks the
+// client's EventSource to use.
+const transcriptRetry = 1000
+
 // Turn is one conversation entry on the wire. It mirrors the SPA's
 // TranscriptTurn; keep the two in lockstep.
 type Turn struct {
-	Seq       int    `json:"seq"`
-	At        string `json:"at,omitempty"`
-	Role      string `json:"role"`
-	Kind      string `json:"kind"`
-	Tool      string `json:"tool,omitempty"`
+	Seq  int    `json:"seq"`
+	At   string `json:"at,omitempty"`
+	Role string `json:"role"`
+	Kind string `json:"kind"`
+	Tool string `json:"tool,omitempty"`
+	// ID pairs a tool_use turn with its tool_result.
+	ID string `json:"id,omitempty"`
+	// Path is the file a tool call targets.
+	Path string `json:"path,omitempty"`
+	// Syntax is a render hint for Text: "diff", "shell", or empty (infer
+	// from Path).
+	Syntax    string `json:"syntax,omitempty"`
 	Text      string `json:"text,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
@@ -43,8 +56,25 @@ type Turn struct {
 func wireTurn(t transcript.Turn) Turn {
 	return Turn{
 		Seq: t.Seq, At: t.At, Role: string(t.Role), Kind: string(t.Kind),
-		Tool: t.Tool, Text: t.Text, Truncated: t.Truncated,
+		Tool: t.Tool, ID: t.ID, Path: t.Path, Syntax: string(t.Syntax),
+		Text: t.Text, Truncated: t.Truncated,
 	}
+}
+
+// resumeAfter is the Seq a reconnecting client already has: the standard
+// Last-Event-ID header an EventSource sends on its own reconnects, or the
+// ?after= query a client uses when it opens a fresh stream to resume. Zero
+// (absent or malformed) replays from the first turn.
+func resumeAfter(r *http.Request) int {
+	raw := r.Header.Get("Last-Event-ID")
+	if raw == "" {
+		raw = r.URL.Query().Get("after")
+	}
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return int(n)
 }
 
 // handleTranscript streams one agent run's conversation.
@@ -85,9 +115,10 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Connection", "keep-alive")
+	_, _ = fmt.Fprintf(w, "retry: %d\n\n", transcriptRetry)
 	flusher.Flush()
 
-	s.streamTranscript(w, r, flusher, run)
+	s.streamTranscript(w, r, flusher, run, resumeAfter(r))
 }
 
 // runRef is the resolved run a transcript request names.
@@ -148,11 +179,12 @@ func (s *Server) findRun(
 	return ref, nil
 }
 
-// streamTranscript writes the run's conversation and ends the stream. A
-// persisted transcript wins over a live follow: once a run is collected its
-// stored record is complete, while its pod log is already being reaped.
+// streamTranscript writes the run's conversation after Seq after and ends the
+// stream. A persisted transcript wins over a live follow: once a run is
+// collected its stored record is final, while its pod log is already being
+// reaped.
 func (s *Server) streamTranscript(
-	w http.ResponseWriter, r *http.Request, flusher http.Flusher, run runRef,
+	w http.ResponseWriter, r *http.Request, flusher http.Flusher, run runRef, after int,
 ) {
 	ctx := r.Context()
 	if run.transcript != nil {
@@ -162,6 +194,9 @@ func (s *Server) streamTranscript(
 				slog.String("run", run.name), slog.Any("error", err))
 		}
 		for _, t := range turns {
+			if t.Seq <= after {
+				continue
+			}
 			if !writeTurn(w, flusher, t) {
 				return
 			}
@@ -176,15 +211,17 @@ func (s *Server) streamTranscript(
 		writeEnd(w, flusher)
 		return
 	}
-	s.followTranscript(ctx, w, flusher, run)
+	s.followTranscript(ctx, w, flusher, run, after)
 }
 
 // followTranscript replays what a running agent has said and then streams the
-// rest until the run ends or the viewer leaves.
+// rest until the run ends or the viewer leaves. A viewer evicted for falling
+// behind gets no `end`: the stream just closes, and the client reconnects
+// from the last turn it saw.
 func (s *Server) followTranscript(
-	ctx context.Context, w http.ResponseWriter, flusher http.Flusher, run runRef,
+	ctx context.Context, w http.ResponseWriter, flusher http.Flusher, run runRef, after int,
 ) {
-	sub, err := s.tails.subscribe(run.jobName)
+	sub, err := s.tails.subscribe(run.jobName, after)
 	if err != nil {
 		// Out of follow budget. The run is still live, so ending the stream
 		// cleanly beats an error: the client retries and meanwhile shows
@@ -208,8 +245,13 @@ func (s *Server) followTranscript(
 			return
 		case t, ok := <-sub.Turns:
 			if !ok {
-				writeEnd(w, flusher)
+				if !sub.Lagged() {
+					writeEnd(w, flusher)
+				}
 				return
+			}
+			if t.Seq <= after {
+				continue // a fresh follow replays the log from its start
 			}
 			if !writeTurn(w, flusher, t) {
 				return
@@ -229,7 +271,7 @@ func writeTurn(w http.ResponseWriter, flusher http.Flusher, t transcript.Turn) b
 	if err != nil {
 		return true // skip the turn, keep the stream
 	}
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventTurn, payload); err != nil {
+	if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", t.Seq, eventTurn, payload); err != nil {
 		return false
 	}
 	flusher.Flush()

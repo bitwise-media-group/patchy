@@ -455,4 +455,73 @@
   .ps-action.is-confirming {
     @apply border-amber bg-amber text-onaccent shadow-none;
   }
+
+  /* Syntax highlighting: lowlight emits highlight.js class names; every
+   * colour resolves from the --hl-* tokens so the theme switch re-tints it. */
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-doctag {
+    color: var(--hl-keyword);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-template-string,
+  .hljs-char {
+    color: var(--hl-string);
+  }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-link {
+    color: var(--hl-number);
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--hl-comment);
+    font-style: italic;
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-name,
+  .hljs-selector-id,
+  .hljs-selector-class {
+    color: var(--hl-title);
+  }
+  .hljs-type,
+  .hljs-built_in,
+  .hljs-class .hljs-title,
+  .hljs-title.class_ {
+    color: var(--hl-type);
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-property,
+  .hljs-params {
+    color: var(--hl-attr);
+  }
+  .hljs-meta,
+  .hljs-meta .hljs-keyword,
+  .hljs-tag {
+    color: var(--hl-meta);
+  }
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-subst {
+    color: var(--hl-variable);
+  }
+  .hljs-addition {
+    color: var(--hl-add);
+    background: var(--hl-add-bg);
+  }
+  .hljs-deletion {
+    color: var(--hl-del);
+    background: var(--hl-del-bg);
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 600;
+  }
 }

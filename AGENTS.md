@@ -1,258 +1,311 @@
 # Agent orientation
 
-Fast map of this repository so a new session can act without re-exploring. For _what_ the system must do — the
-requirements, the state machine, and the end-to-end flow — read [DESIGN.md](DESIGN.md); for end-user usage read
-[README.md](README.md). This file is the "where things are"; DESIGN.md is the "what it must do".
+A quick map of this repository, so a new session can act without exploring it again. For _what_ the system must do
+(the requirements, the state machine and the end-to-end flow), read [DESIGN.md](DESIGN.md). For end-user usage, read
+[README.md](README.md). This file says where things are; DESIGN.md says what the system must do.
 
 ## What this is
 
-`patchy` is an end-to-end pipeline (module `github.com/bitwise-media-group/patchy`) for triaging and remediating
-security findings, using **Kubernetes custom resources as the state machine** — the
-`patchy.bitwisemedia.uk/v1alpha1` kinds carry all state, etcd is the only state store, and GitHub issues are a
-one-way human-facing projection. GHAS/CodeQL alerts arrive via webhook, accumulate into `Finding` resources for an
-hour, get context-enhanced, then a sandboxed `claude -p` run investigates each one; high-confidence verdicts are
-remediated in priority order into pull requests, everything else routes to humans. Completed findings expire on a
-TTL; `FindingRollup` resources keep the all-time statistics.
+`patchy` is an end-to-end pipeline (module `github.com/bitwise-media-group/patchy`) for triaging and fixing security
+findings. **Kubernetes custom resources are the state machine.** The `patchy.bitwisemedia.uk/v1alpha1` kinds carry
+all state, etcd is the only state store, and GitHub issues are a one-way projection for humans. Alerts arrive from code
+scanners and cloud security tools (GitHub code scanning, Google Cloud SCC, Wiz and generic webhooks). They collect into
+`Finding` resources for an hour and get context added. Then a sandboxed agent run (`claude -p` or `codex exec`)
+investigates each one. High-confidence verdicts are fixed in priority order as pull requests, and everything else goes
+to humans. Completed findings expire on a TTL, and `FindingRollup` resources keep the all-time statistics.
 
-Ten binaries, one module. "Not monolithic" means separate binaries/deployments with shared `internal/` code:
+Many binaries, one module. "Not monolithic" means separate binaries and deployments that share `internal/` code:
 
-- `cmd/integration-controller` — the single internet-facing entry point, driven by `Integration` CRs: validates
-  provider webhooks (`/github/webhooks` HMAC, `/google-cloud/webhooks` Pub/Sub OIDC, `/wiz/webhooks` bearer
-  token, the `/generic/{name}/webhooks` wildcard with strictly per-name HMAC; per-Integration secrets), ingests
-  scanner alerts into Findings (accumulation, duplicate merge), projects Findings out as tracking issues
-  (trackingRef falls back to the namespace's issues-enabled Integration for non-github sources), applies human
-  signals (issue close, `/approve`, PR merge) back onto Findings, and POSTs dismissal verdicts to generic
+- `cmd/integration-controller`: the single internet-facing entry point, driven by `Integration` CRs. It validates
+  provider webhooks (`/github/webhooks` with HMAC, `/google-cloud/webhooks` with a Pub/Sub OIDC token, `/wiz/webhooks`
+  with a bearer token, and the `/generic/{name}/webhooks` wildcard with an HMAC per name; each Integration has its own
+  secrets). It turns scanner alerts into Findings (accumulation, duplicate merge) and projects Findings out as tracking
+  issues. For non-github sources, trackingRef falls back to the namespace's Integration that has issues enabled. It
+  applies human signals (issue close, `/approve`, PR merge) back onto Findings, and POSTs dismissal verdicts to generic
   integrations' resolver endpoints.
-- `cmd/source-controller` — `Forge` + `Repository` reconcilers: validates forge credentials, pins
-  each Repository's head SHA once, downloads the tarball archive at that SHA (pure HTTP, no git binary), and
-  serves it from the artifact endpoint (`:9790`) agent pods fetch credential-lessly.
-- `cmd/context-controller` — runs the enhancer chain (CMDB placeholder + the Cloud Asset Inventory lookup, whose
-  config is the `cloudAssetInventory` block on the `google-cloud` Integration, + the AWS and Azure resource-tags
-  lookups, whose configs are the `resourceTags` blocks on the `aws` and `azure` Integrations, + the generic HTTP
-  fan-out — one signed synchronous call per `generic` Integration with `enhance` on, N instances, each attributed
-  by its own name) over `Opened` Findings, writes enrichments/owners to status, transitions to `Enhanced`. No
-  GitHub access at all; reads Integrations read-only plus generic signing Secrets by name.
-- `cmd/investigation-controller` — the gate (admits accumulated, aged findings; creates the Repository and one
-  immutable `Investigation` per attempt) plus the analysis scheduler (bounded concurrency, launches agent Jobs,
-  routes verdicts onto the Finding).
-- `cmd/remediation-controller` — queue admission (approvals/revivals), the priority scheduler, remediation agent
-  Jobs, changeset push + PR via the forge write seam (the only write credential), and hosts the rollup/TTL loop.
-- `cmd/agent-runner` — the in-pod coding-agent runtime: one stage per Job (`investigate` or `remediate`) via
-  `claude -p`, results emitted as a `PATCHY-EVENT:` JSONL stream on stdout. Never talks to GitHub or the
-  Kubernetes API; a claude or codex pod holds no credential at all (model traffic goes through the egress
-  broker, authenticated by a projected SA token read fresh per stage; codex reaches it through a rendered
-  `config.toml` model provider agent-runner writes before each stage).
-- `cmd/egress-broker` — the egress credential broker (NOT a controller: no reconcilers, no leases): the reverse
-  proxy all claude and codex model traffic goes through, one route per provider (anthropic — key or `claude
-  setup-token` bearer via `--anthropic-auth` — plus bedrock SigV4, vertex OAuth, foundry key/entra; for codex
-  openai bearer key and azure api-key/entra). Validates caller
-  tokens via TokenReview (its only Kubernetes access), strips them, injects/signs the model credential
-  outbound, streams SSE with idle keep-alive pings, audits one slog line per request. Engine in
-  `internal/broker`; deployed by the chart exactly when a claude or codex runner is enabled (claude or codex ⇒
-  broker; proxy-only, no in-pod credential mode).
-- `cmd/evaluation-controller` — OPTIONAL (default-off in the chart): remote skill-evaluation execution for
-  evolve. Hosts the bearer-authenticated HTTP API (`pkg/evaluation` wire contract: workspace upload streamed to
-  source-controller's `:9791` blob endpoint, submission, snapshot, SSE monitoring, cancel; OIDC verify + SAR on
-  the `evaluations` resource, native verbs only) and the reconcilers: gate (Evaluation → EvaluationUnit
-  children), unit scheduler (bounded concurrency over the same sandboxed agent-Job machinery; pods run
-  `evolve exec-unit` and emit `EVOLVE-EVENT:` JSONL), and the TTL loop. Patchy never learns eval semantics —
-  bounded summaries land on unit status, the opaque results entry in a per-unit ConfigMap.
-- `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
-  SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, the access-review-gated
-  approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
-  `spec.replay`; reset → Integration `spec.reset`). Every data route needs an authorised identity (metrics:
-  `get` on findingrollups; findings: `get` on findings); only auth mode none opens them, and no auth config
-  serves nothing. Writes SPEC only (`spec.approval`, `spec.retry`, `spec.expedite`, `spec.suspend`, Integration
-  `spec.replay`/`spec.reset`/`spec.backfill`) — never status, never a phase.
-- `cmd/patchy` — the workstation CLI (the only binary not deployed): `patchy <verb> <noun>` over the
-  caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
-  action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API
-  writes is the ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`, NOT the CLI's
-  own SelfSubjectAccessReview (that is ergonomics). Three cluster-free command groups ride along: `dev` (the
-  generic-integration test harness), `mirror` (vendored chart/artifact mirroring over `internal/mirror`) and
-  `build` (first-party image + Flux-manifest build/scan/publish/sign over `internal/build`); kubeconfig flags inert,
-  git never touched. All three read the layered patchy config (`cmd/patchy/internal/config`: seven locations from
-  `/etc/patchy/config.<ext>` to `<workdir>/patchy.<ext>`, yaml/yml/json/toml, maps merge / lists replace / null
-  deletes, strict per-layer keys; the engines only ever receive typed structs — `File.MirrorConfig()` /
-  `File.BuildConfig()` — never discover files). Builds for windows too, and ships a `kubectl-patchy`
-  alias. Ships no container image: it is distributed as its own `patchy-cli` release archive (separate from
-  the cluster binaries' `patchy` archive) and as a Homebrew cask in bitwise-media-group/homebrew-tap.
+- `cmd/source-controller`: the `Forge` and `Repository` reconcilers. It validates forge credentials, pins each
+  Repository's head SHA once, downloads the tarball at that SHA (plain HTTP, no git binary), and serves it from the
+  artifact endpoint (`:9790`). Agent pods fetch from there without a credential.
+- `cmd/context-controller`: runs the enhancer chain over `Opened` Findings, writes enrichments and owners to status,
+  and moves them to `Enhanced`. The chain is:
+  - a CMDB placeholder;
+  - the Cloud Asset Inventory lookup, configured by the `cloudAssetInventory` block on the `google-cloud` Integration;
+  - the AWS and Azure resource-tags lookups, configured by the `resourceTags` blocks on the `aws` and `azure`
+    Integrations;
+  - the generic HTTP fan-out: one signed, synchronous call per `generic` Integration with `enhance` on, each result
+    credited to that Integration's name.
+
+  It has no GitHub access at all. It reads Integrations (read-only) and the generic signing Secrets by name.
+
+- `cmd/investigation-controller`: the gate and the analysis scheduler. The gate admits findings that have finished
+  accumulating and are old enough, and creates the Repository and one immutable `Investigation` per attempt. The
+  scheduler limits concurrency, launches agent Jobs, and routes verdicts onto the Finding.
+- `cmd/remediation-controller`: queue admission (approvals and revivals), the priority scheduler, remediation agent
+  Jobs, and the changeset push and PR through `internal/forge` (the only write credential). It also hosts the rollup
+  and TTL loop.
+- `cmd/agent-runner`: the coding-agent runtime inside the pod. It runs one stage per Job (`investigate` or
+  `remediate`) through `claude -p` or `codex exec`, and writes results as a `PATCHY-EVENT:` JSONL stream on stdout. It
+  never talks to GitHub or the Kubernetes API. A claude or codex pod holds no credential at all. Model traffic goes
+  through the egress broker, authenticated by a projected SA token that is read again for each stage. codex reaches the
+  broker through a `config.toml` model provider that agent-runner writes before each stage.
+- `cmd/egress-broker`: the egress credential broker. It is NOT a controller (no reconcilers, no leases). It is the
+  reverse proxy all claude and codex model traffic goes through, with one route per provider:
+  - claude: anthropic (an API key, or a `claude setup-token` bearer, chosen with `--anthropic-auth`), bedrock (SigV4),
+    vertex (OAuth) and foundry (key or Entra);
+  - codex: openai (bearer key) and azure (api-key or Entra).
+
+  It validates caller tokens with TokenReview (its only Kubernetes access), strips them, adds or signs the model
+  credential on the way out, streams SSE with idle keep-alive pings, and writes one slog audit line per request. The
+  engine is in `internal/broker`. The chart deploys it exactly when a claude or codex runner is enabled. There is no
+  mode that puts the credential in the pod: claude or codex always means the broker.
+
+- `cmd/evaluation-controller`: OPTIONAL, and off by default in the chart. It runs skill evaluations remotely for
+  evolve. It hosts the HTTP API (the `pkg/evaluation` wire contract), which uses bearer auth:
+  - workspace upload, streamed to source-controller's `:9791` blob endpoint;
+  - submission, snapshot, SSE monitoring and cancel;
+  - OIDC verification plus a SubjectAccessReview on the `evaluations` resource (native verbs only).
+
+  It also runs the reconcilers. The gate turns an Evaluation into EvaluationUnit children. The unit scheduler limits
+  concurrency over the same sandboxed agent-Job machinery; its pods run `evolve exec-unit` and emit `EVOLVE-EVENT:`
+  JSONL. The TTL loop expires old evaluations. Patchy never learns what an evaluation means. Short summaries land on
+  the unit's status, and the opaque results entry goes in a ConfigMap for each unit.
+
+- `cmd/status-server`: the human-facing status page. It is NOT a controller (no reconcilers, no leases). It serves:
+  - the embedded SPA and a JSON view of Findings and FindingRollups, plus an SSE signal to refetch;
+  - OIDC sign-in;
+  - the approve, retry, expedite, suspend and resume actions, each gated by an access review;
+  - the user-menu demo tools (replay sets Integration `spec.replay`; reset sets Integration `spec.reset`).
+
+  Every data route needs an authorised identity (metrics: `get` on findingrollups; findings: `get` on findings). Only
+  auth mode none opens them, and with no auth config the server serves nothing. It writes SPEC only (`spec.approval`,
+  `spec.retry`, `spec.expedite`, `spec.suspend`, and Integration `spec.replay`, `spec.reset` and `spec.backfill`). It
+  never writes status or a phase.
+
+- `cmd/patchy`: the workstation CLI, and the only binary that is not deployed. It runs `patchy <verb> <noun>` with the
+  caller's own kubeconfig, not through any controller: get, describe, review, browse and can-i, plus the five action
+  verbs. Like status-server, it writes SPEC only. For direct API writes, the custom verbs are enforced by the
+  ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`. The CLI's own SelfSubjectAccessReview is
+  only there to give a clearer error early.
+
+  It also carries three command groups that need no cluster: `dev` (the generic-integration test harness), `mirror`
+  (mirroring vendored charts and artifacts, over `internal/mirror`) and `build` (building, scanning, publishing and
+  signing first-party images and Flux manifests, over `internal/build`). The kubeconfig flags do nothing for these,
+  and they never touch git. All three read the layered patchy config (`cmd/patchy/internal/config`):
+  - up to seven locations, from `/etc/patchy/config.<ext>` to `<workdir>/patchy.<ext>`, in yaml, yml, json or toml;
+  - maps merge, lists replace, and null deletes; each layer's keys are checked strictly;
+  - the engines only ever receive typed structs (`File.MirrorConfig()`, `File.BuildConfig()`) and never look for
+    files themselves.
+
+  It builds for windows too, and ships a `kubectl-patchy` alias (`cmd/kubectl-patchy`). It has no container image. It
+  ships as its own `patchy-cli` release archive (separate from the cluster binaries' `patchy` archive) and as a
+  Homebrew cask in bitwise-media-group/homebrew-tap.
 
 ## Layout
 
 ```text
-api/v1alpha1/       The CRD types: one <kind>_types.go per kind, transitions.go (the phase table +
-                    SetPhase), conditions.go, generated deepcopy. `mise run codegen` regenerates
-                    deepcopy + the CRD manifests (kustomize + helm); CI fails on drift.
-cmd/<binary>/       package main, thin: build root command, delegate to internal/cli.Execute.
-                    cmd/patchy is the exception — the CLI, with its own internal/ tree
-                    (cli = one file per VERB, render = one file per NOUN; the two are separate
-                    axes on purpose, since `get` resolves nouns through a registry at runtime).
+api/v1alpha1/       The CRD types: one <kind>_types.go per kind, transitions.go (the phase table and
+                    SetPhase), conditions.go, and generated deepcopy. `mise run codegen` regenerates
+                    deepcopy and the CRD manifests (kustomize and helm); CI fails if they drift.
+cmd/<binary>/       package main, kept thin: build the root command and hand off to internal/cli.Execute.
+                    cmd/patchy is the exception. It is the CLI, with its own internal/ tree
+                    (cli = one file per VERB, render = one file per NOUN). The two are separate
+                    on purpose, since `get` looks nouns up in a registry at runtime.
                     cmd/patchy/internal/tools/docgen is dev tooling, not a binary: it renders
-                    docs/cli from the cobra tree. It sits there because the internal rule puts
-                    cmd/patchy/internal/cli out of reach of the repo root, and NOT under cmd/
+                    docs/cli from the cobra tree. It lives there because Go's internal rule puts
+                    cmd/patchy/internal/cli out of reach of the repo root. It is NOT under cmd/
                     because hack/build.sh builds everything there.
 internal/           All private code, one package per concern (see "Packages" below).
-pkg/                PUBLIC plugin seams only: pkg/source (finding sources), pkg/enhance (context
+pkg/                PUBLIC plugin interfaces only: pkg/source (finding sources), pkg/enhance (context
                     enhancers), pkg/generic (the generic integration's HTTP wire contract, importable
-                    by external processes), pkg/evaluation (the remote-evaluation wire contract —
-                    submissions, the in-pod EVOLVE-EVENT stream, the SSE monitor — stdlib-only,
+                    by external processes), and pkg/evaluation (the remote-evaluation wire contract:
+                    submissions, the in-pod EVOLVE-EVENT stream and the SSE monitor; stdlib-only,
                     imported by evolve). Exported signatures must not reference internal/ types.
-deploy/             kustomize base/overlays; deploy/README.md is the operator doc. The container
-                    Dockerfile.* live at the repo root (goreleaser dockers_v2 builds them).
+deploy/             kustomize base and overlays; deploy/README.md is the operator doc. The container
+                    Dockerfile.* files live at the repo root (goreleaser dockers_v2 builds them).
 charts/             Helm rendering of the same stack, pushed to ghcr OCI on release
-                    (.github/workflows/helm.yaml): charts/patchy (CRDs + controllers) and
-                    charts/patchy-config (the Integration/Forge CRs — a separate chart because
-                    helm validates CRs against CRDs that must already exist). release-please
-                    stamps both Chart.yaml versions. Lint/render with `mise run helm-lint`.
-e2e/                SEPARATE Go module: envtest carries the CRDs, the real binaries run against it,
-                    fakegithub (in-memory API) stands in at the network edge, recorded webhook
-                    fixtures + the replay tool drive it (`make e2e`).
-docs/ overrides/    Zensical docs site (zensical.toml at the root). The theme mirrors the status
+                    (.github/workflows/helm.yaml): charts/patchy (CRDs and controllers) and
+                    charts/patchy-config (the Integration and Forge CRs). That is a separate chart
+                    because helm validates CRs against CRDs that must already exist. release-please
+                    stamps both Chart.yaml versions. Lint and render with `mise run helm-lint`.
+e2e/                A SEPARATE Go module. envtest provides the CRDs, the real binaries run against it,
+                    fakegithub (an in-memory API) stands in at the network edge, and recorded webhook
+                    fixtures plus the replay tool drive it (`make e2e`).
+docs/ overrides/    Zensical docs site (zensical.toml at the root). The theme follows the status
                     page's design system: docs/stylesheets/tokens.css is a vendored copy of the
-                    UI's tokens.css re-scoped to Material's schemes (re-copy on palette
-                    changes), extra.css maps them onto Material, overrides/ holds the header,
-                    the inline PatchMark partial and the home/demo templates. Moved pages keep
-                    their old URL through zensical.toml's redirect_maps. `mise run serve` to preview,
-                    `mise run docs-build` to build; the reusable release workflow publishes it
-                    to GitHub Pages (oss.bitwisemedia.uk/patchy). uv provisions zensical
-                    (pyproject.toml / uv.lock). docs/cli/ is GENERATED (docgen, above) — edit
-                    the commands' Short/Long/Example, not the markdown; docs/operate/cli.md
-                    is the hand-written tour.
-completions/        GENERATED shell completions, committed so the Homebrew cask installs them
-                    as static files (deterministic, and the cask never executes the binary
-                    at install time). `mise run docs` writes both this and docs/cli/.
+                    UI's tokens.css re-scoped to Material's schemes (copy it again when the palette
+                    changes), extra.css maps the tokens onto Material, and overrides/ holds the
+                    header, the inline PatchMark partial and the home and demo templates. Moved
+                    pages keep their old URL through zensical.toml's redirect_maps. Run
+                    `mise run serve` to preview and `mise run docs-build` to build; the shared
+                    release workflow publishes it to GitHub Pages (oss.bitwisemedia.uk/patchy).
+                    uv installs zensical (pyproject.toml / uv.lock). docs/cli/ is GENERATED
+                    (docgen, above): edit the commands' Short, Long and Example, not the markdown.
+                    docs/operate/cli.md is the hand-written tour.
+completions/        GENERATED shell completions. They are committed so the Homebrew cask installs
+                    them as static files (they stay deterministic, and the cask never runs the
+                    binary at install time). `mise run docs` writes both this and docs/cli/.
 
-                    kubectl_complete-patchy is the exception — hand-written, and the reason
-                    `kubectl patchy` completes: kubectl ignores a plugin's completion script
-                    and instead runs kubectl_complete-<plugin> from PATH.
-.mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs +
-                    the common + go task archetype; Go itself is pinned in the root mise.toml.
-                    Makefile is a one-line forwarder; repo-local tasks (multi-binary build, e2e,
-                    envtest, codegen, replay) live in tasks.toml.
+                    kubectl_complete-patchy is the exception. It is hand-written, and it is why
+                    `kubectl patchy` completes: kubectl ignores a plugin's completion script and
+                    runs kubectl_complete-<plugin> from PATH instead.
+.mise/              Shared toolchain submodule (bitwise-media-group/toolchain): pinned dev CLIs and
+                    the common and go task sets. Go itself is pinned in the root mise.toml. The
+                    Makefile is a one-line forwarder. Tasks specific to this repo (multi-binary
+                    build, e2e, envtest, codegen, replay) live in tasks.toml.
 .claude/plans/      The living implementation plan (git-ignored).
 ```
 
 ## Packages (`internal/`)
 
-- `controller/` — one engine per controller binary; the binaries are thin wiring over these:
-  `controller/integration` (receiver, ingest, projection, human signals), `controller/source` (Forge +
-  Repository reconcilers), `controller/context` (the enhancer chain), `controller/investigation` (gate +
-  analysis scheduler), `controller/remediation` (spawner + priority scheduler + push/PR), `controller/rollup`
-  (all-time stats + finding TTL; hosted by the remediation binary), `controller/evaluation` (Evaluation gate +
-  unit scheduler + evaluation TTL; single writer for both evaluation kinds — their phases are local enums,
-  never part of the Finding transition table).
-- `kube` — the controller-runtime manager wrapper: scheme, kubeconfig/in-cluster config, leader election,
-  multi-namespace cache, health probes, logr↔slog bridge. Secrets are never cached.
-- `forge` — the shared forge seam: resolve a repository URL to its covering `Forge` CR (host → orgs → repo
-  regexes; most-constrained wins) and mint scoped read/write tokens. Consumers: source (read), remediation
-  (write). `ghclient`, `ghpush`, `ghsecret` sit beneath it.
-- `schedule`, `priority`, `stats` — pure logic: slot picking with anti-starvation aging, the 0–100 scheduling
-  score, rollup delta arithmetic + OTel taps.
-- `labels` — the trimmed human-facing label vocabulary the issue projection renders (one-way; never parsed back
-  into state).
-- `templates` — the finding handoff/issue body, both stage prompts, and the PR body, rendered from embedded
-  templates with golden tests.
-- `webhook`, `telemetry`, `cli`, `version` — service plumbing (the webhook server is used by
-  integration-controller only).
-- `action` — the human-action vocabulary (the custom verbs) and the state-machine gating behind each one:
-  `Apply` mutates spec, `Available` reports what a finding currently admits. Owned here so the status
-  server and the CLI cannot drift; `web/authz` re-exports the verb constants. It decides whether an action
-  is MEANINGFUL, never whether the caller may take it.
-- `web` (+ `web/auth`, `web/authz`) — the status-server backend: wire types mirroring the SPA's
-  `ui/src/types.ts` (keep the two in lockstep), the action handlers, SSE broker + cache-informer watcher, and
-  the embedded UI (`internal/web/ui`, Preact on bun: `build.ts` bundles one inlined `index.html` via Bun.build,
-  embedded behind the `withui` tag; `mise run ui` builds it, `mise run ui-dev` serves it with hot reload against a
-  running status server, bare `go build` compiles a stub). `auth` = who you are (OIDC/none/anonymous/unconfigured,
-  cookie sessions, zero k8s imports); `authz` = what you may do (SubjectAccessReviews for the custom verbs
-  approve/retry/expedite/suspend/resume + native get).
-- `ghas`, `enhancers` — the built-in `pkg/source` and `pkg/enhance` implementations.
-- `generic` — the generic integration's behavior over the `pkg/generic` wire contract: the validating source
-  handler (source id = the Integration's NAME; N integrations coexist) and the HMAC-signing outbound client behind
-  both the verdict resolver and the enhancer call. The enhancer fan-out itself is
-  `enhancers.DynamicGeneric`/`MultiEnhancer` (internal seam; `pkg/enhance` stays one-plugin-one-identity).
-- `harness`, `runner` — adapted from evolve: harness builds argv, runner executes (observe-and-collect with a
-  token-budget kill switch), harness parses stdout. Keep that separation.
-- `agentrun` — the in-pod stage flow (`investigate` | `remediate`); `report`/`envelope` are its contracts
-  (frontmatter schemas in, JSONL events out); `agentresult` converts envelope results onto CR status.
-- `jobs` — the Kubernetes Job the agent runs in. The isolation model lives here, and it STRENGTHENED with the
-  broker: a brokered (claude, codex) pod holds no credential of any kind — its projected SA token
-  (audience-bound, agent container only, never the init) is an identity document, not a capability; the
-  SecretKeyRef channel survives only in the generic Runner shape (no shipped runner uses it); the init
-  container fetches the digest-verified artifact tarball, identity-free.
-  `reservedEnv` covers every credential channel plus the provider gateway names; `Runner.Env` is the per-runner
-  gateway env (wins over `Config.Env`, can never name a credential). `eval.go` is the evaluation Job flavour
-  (same posture; `evolve exec-unit` instead of `agent-runner` — wrapped in a capture-once token export when
-  brokered — no git init, unit.json handoff); `ResultLines` is the envelope-agnostic log reader the evaluation
-  collector decodes its own events from.
-- `broker`, `provider` — the egress-broker engine (TokenReview auth + verdict cache, per-route credential
-  strategies, SSE-safe reverse proxy, audit) and the pure logic of brokered claude and codex runners (claude
-  gateway env, the codex `config.toml` render carried as `PATCHY_CODEX_CONFIG`, canonical→provider model-id
-  maps with per-provider derived defaults, the `PATCHY_MODEL_MAP` codec both the controllers and agentrun
-  share). `provider.BrokerTokenHeader` is the one definition of the caller-token
-  header.
-- `artifact` — the tarball store + HTTP handler source-controller serves agent fetches from, plus the
-  content-addressed workspace-blob side: sha256-named bundles (64-hex files beside the 32-hex repo tarballs),
-  index rebuilt from disk on restart, last-access retention sweep, the `:9791` internal upload handler, and
-  the `Client` other processes reach it with.
-- `evalapi` — the evaluation controller's HTTP surface (`pkg/evaluation` contract): bearer OIDC verify (claims
-  via `web/auth.MapClaims`), SAR authorization (`web/authz.ResourceReviewer`, native verbs on `evaluations`),
-  workspace upload proxy, submission validation, snapshot, SSE monitor (replay + change re-emit + explicit
-  `end`). `evalresults` is the per-unit results ConfigMap store (transcriptstore's sibling).
-- `ghpush` — replays the agent's changeset through the GitHub Git Data API (blob → tree → commit → ref); the
-  only place a write credential is exercised. No git binary anywhere controller-side.
-- `mirror` — the engine behind `patchy mirror` (CLI-only; no controller consumes it): vendored mirroring of
-  upstream helm charts and OCI artifacts into one or more platform registries (the patchy config's top-level
-  `registries` lists them, with `signing` and the `scan` defaults beside it — the engine receives a resolved
-  `spec.Config`; every entry publishes to all, lock files record targets per registry name, and each registry may
-  carry its own wholesale `signing` override — `sync --registry` restricts a run). One concern per subpackage:
-  `spec` (the manifest/lock schema + glob discovery — the tree is the registry of entries — plus the shared
-  `Config.Resolve`, and the one `scan` block: config defaults, per-entry `ScanOverride`,
-  `EffectiveScanPolicy` resolving entry → config → built-in), `imageref`,
-  `semverpick` (constraints + cooldown walks), `yamledit` (comment-preserving byte-splice edits, never
-  re-encode), `helmchart` (pull/extract/tree-diff/push), `render` (byte-stable `helm template` equivalent —
-  helm SDK pinned; upgrades are deliberate, the validate gate byte-compares output), `discover` (4-pass image
-  discovery), `distro` (distribution-manifests → generated images.extra.yaml sidecar), `verify`/`sign`
-  (shell out to the cosign binary: upstream provenance in, bundle-referrers signatures out; KMS support is
-  the installed cosign build's; `sign.Ensurer` is the shared verify-then-sign step), `scan` (pluggable: osv +
-  grype/kubescape, all shell-outs, by registry ref or local docker archive; `scan.Blocking` is the shared policy
-  filter; every image scanner defaults off, and an image scan with none enabled is a hard error), `allowlist`
-  (derive with keep-expiry/drop-stale rules, plus the shared `Lint` / `Active` / `Regenerate`), `ocireg` (also
-  `Write`/`WriteIndex` for local builds). The engine never touches git — the calling pipeline owns
-  commits/branches/PRs — and only the upgrade path may consult the wall clock, keeping `validate`'s
-  byte-identity gate deterministic. cosign (≥ v3) and osv-scanner (v2) are runtime dependencies of the
-  respective verbs, never linked.
-- `build` — the engine behind `patchy build` (CLI-only): builds the config's `build.images` (docker buildx → OCI
-  layout; per-image `secrets` reach buildx as `--secret` references — an env name or a file path, never a value)
-  and `build.manifests` (staged tree → deterministic Flux OCI artifact), scans BEFORE any push, publishes
-  to every registry (`<url>/<repository>:<tag>`; tags never move: pushed / skipped-current / skipped-tag-exists)
-  and signs per registry; `--dry-run` needs no registries (`File.BuildPlanConfig`), so public repos commit none.
-  `Promote` (`patchy build promote`) adds a tag to the newest signed build matching a glob, without rebuilding,
-  and reports its revision annotation. Reuses `mirror/{ocireg,scan,sign,spec,allowlist}` rather than the mirror
-  engine itself;
-  image allowlists live at `security/allowlists/<name>.yaml`. Subpackages: `expand` (pure `${VAR}` /
-  `${VAR:-d}` / `${VAR:o:l}` / `$$` templating + the `PATCHY_TIMESTAMP` built-in; fuzzed), `buildx` (argv +
-  runner over `scan.ToolRunner`), `fluxartifact` (stage with gitignore patterns, deterministic tar.gz, the
-  `{}`-config Flux manifest).
+- `controller/`: one engine per controller binary; the binaries are thin wiring over these.
+  - `controller/integration`: receiver, ingest, projection and human signals.
+  - `controller/source`: the Forge and Repository reconcilers.
+  - `controller/context`: the enhancer chain.
+  - `controller/investigation`: the gate and the analysis scheduler.
+  - `controller/remediation`: the spawner, the priority scheduler, and push and PR.
+  - `controller/rollup`: all-time stats and the finding TTL. The remediation binary hosts it.
+  - `controller/evaluation`: the Evaluation gate, the unit scheduler and the evaluation TTL. It is the only writer for
+    both evaluation kinds. Their phases are local enums and never part of the Finding transition table.
+- `kube`: the controller-runtime manager wrapper: scheme, kubeconfig or in-cluster config, leader election, the
+  multi-namespace cache, health probes, and the logr to slog bridge. Secrets are never cached.
+- `forge`: shared forge logic. It finds the `Forge` CR that covers a repository URL (host, then orgs, then repo
+  regexes; the most specific match wins) and mints scoped read and write tokens. source uses it to read and
+  remediation to write. `ghclient`, `ghpush` and `ghsecret` sit beneath it.
+- `schedule`, `priority`, `stats`: pure logic. Slot picking with aging so nothing starves, the 0–100 scheduling score,
+  and rollup delta arithmetic with OTel taps.
+- `labels`: the small set of human-facing labels the issue projection writes. It is one-way: labels are never parsed
+  back into state.
+- `templates`: the finding handoff and issue body, both stage prompts, and the PR body. They are rendered from embedded
+  templates and covered by golden tests.
+- `webhook`, `telemetry`, `cli`, `version`: service plumbing. Only integration-controller uses the webhook server.
+- `action`: the human-action vocabulary (the custom verbs) and the state-machine checks behind each one. `Apply`
+  changes spec, and `Available` reports what a finding currently allows. It lives here so the status server and the
+  CLI cannot drift apart; `web/authz` re-exports the verb constants. It decides whether an action makes sense, never
+  whether the caller may take it.
+- `web` (with `web/auth` and `web/authz`): the status-server backend.
+  - Wire types that mirror the SPA's `ui/src/types.ts`. Keep the two in step.
+  - The action handlers, the SSE broker and the cache-informer watcher.
+  - The embedded UI (`internal/web/ui`, Preact on bun). `build.ts` bundles one inlined `index.html` with Bun.build,
+    embedded behind the `withui` tag. `mise run ui` builds it, `mise run ui-dev` serves it with hot reload against a
+    running status server, and a bare `go build` compiles a stub.
+  - `auth` is who you are: OIDC, none, anonymous or unconfigured, plus cookie sessions, with no k8s imports. `authz` is
+    what you may do: SubjectAccessReviews for the custom verbs (approve, retry, expedite, suspend, resume) and native
+    get.
+- `ghas`, `enhancers`: the built-in `pkg/source` and `pkg/enhance` implementations.
+- `generic`: the generic integration's behaviour over the `pkg/generic` wire contract. It holds the validating source
+  handler (the source id is the Integration's NAME, so many integrations can coexist) and the HMAC-signing outbound
+  client used by both the verdict resolver and the enhancer call. The enhancer fan-out itself is
+  `enhancers.DynamicGeneric` / `MultiEnhancer`. That is internal; `pkg/enhance` stays one plugin, one identity.
+- `harness`, `runner`: adapted from evolve. The harness builds argv, the runner executes it (it watches and collects,
+  with a token-budget kill switch), and the harness parses stdout. Keep that separation.
+- `agentrun`: the stage flow inside the pod (`investigate` or `remediate`). `report` and `envelope` are its contracts
+  (frontmatter schemas in, JSONL events out). `agentresult` turns envelope results into CR status.
+- `jobs`: the Kubernetes Job the agent runs in. The isolation model lives here, and the broker made it stronger:
+  - A brokered (claude, codex) pod holds no credential of any kind. Its projected SA token (audience-bound, in the
+    agent container only, never the init) is proof of identity, not a capability.
+  - The SecretKeyRef credential channel survives only in the generic Runner shape. No shipped runner uses it.
+  - The init container fetches the digest-verified artifact tarball with no identity at all.
+  - `reservedEnv` covers every credential channel plus the provider gateway names. `Runner.Env` is the gateway env for
+    each runner; it wins over `Config.Env` and can never name a credential.
+  - `eval.go` is the evaluation flavour of the Job. It has the same security posture, but runs `evolve exec-unit`
+    instead of `agent-runner` (wrapped in a one-time token export when brokered), with no git init and a unit.json
+    handoff.
+  - `ResultLines` is the log reader that ignores the envelope format; the evaluation collector decodes its own events
+    from it.
+- `broker`, `provider`: the egress-broker engine, and the pure logic for brokered claude and codex runners.
+  - `broker`: TokenReview auth with a cache of results, credential strategies for each route, an SSE-safe reverse
+    proxy, and the audit log.
+  - `provider`: the claude gateway env; the codex `config.toml` render, carried as `PATCHY_CODEX_CONFIG`; the maps from
+    canonical model ids to provider ids, with defaults derived for each provider; and the `PATCHY_MODEL_MAP` codec
+    that both the controllers and agentrun use. `provider.BrokerTokenHeader` is the one definition of the caller-token
+    header.
+- `artifact`: the tarball store and the HTTP handler source-controller serves agent fetches from. It also holds the
+  content-addressed workspace blobs:
+  - bundles named by sha256 (64-hex files next to the 32-hex repo tarballs);
+  - an index rebuilt from disk on restart, and a cleanup that removes blobs by last access;
+  - the `:9791` internal upload handler, and the `Client` other processes use to reach it.
+- `evalapi`: the evaluation controller's HTTP surface (the `pkg/evaluation` contract). It covers:
+  - bearer OIDC verification (claims through `web/auth.MapClaims`) and SubjectAccessReview checks
+    (`web/authz.ResourceReviewer`, native verbs on `evaluations`);
+  - the workspace upload proxy and submission validation;
+  - the snapshot, and the SSE monitor (replay, re-sending on change, and an explicit `end`).
+
+  `evalresults` is the results ConfigMap store for each unit (a sibling of `transcriptstore`).
+
+- `ghpush`: replays the agent's changeset through the GitHub Git Data API (blob, tree, commit, ref). It is the only
+  place a write credential is used. There is no git binary anywhere on the controller side.
+- `mirror`: the engine behind `patchy mirror`. Only the CLI uses it; no controller does. It mirrors vendored upstream
+  helm charts and OCI artifacts into one or more platform registries.
+  - The patchy config's top-level `registries` lists them, with `signing` and the `scan` defaults next to it. The
+    engine receives a resolved `spec.Config`. Every entry publishes to all registries, and lock files record the
+    targets for each registry name. Each registry may carry its own `signing` override that replaces the default
+    whole. `sync --registry` limits a run to the named registries.
+  - The engine never touches git: the calling pipeline owns commits, branches and PRs. Only the upgrade path may read
+    the wall clock, which keeps `validate`'s byte-identity check deterministic.
+  - cosign (v3 or later) and osv-scanner (v2) are runtime dependencies of the verbs that use them. They are run as
+    separate programs, never linked.
+
+  It has one subpackage per concern:
+  - `spec`: the manifest and lock schema, plus glob discovery (the directory tree is the list of entries). It also
+    holds the shared `Config.Resolve` and the one `scan` block: config defaults, the per-entry `ScanOverride`, and
+    `EffectiveScanPolicy`, which resolves entry, then config, then the built-in default.
+  - `imageref`: parses, rewrites and glob-matches image references as strings.
+  - `semverpick`: version constraints and cooldown walks.
+  - `yamledit`: comment-preserving edits that splice bytes and never re-encode.
+  - `helmchart`: pull, extract, tree diff and push.
+  - `render`: a byte-stable equivalent of `helm template`. The helm SDK is pinned and upgraded only on purpose,
+    because the validate check compares the output byte for byte.
+  - `discover`: image discovery in four passes.
+  - `distro`: turns distribution manifests into the generated images.extra.yaml sidecar.
+  - `verify` and `sign`: run the cosign binary. Upstream provenance comes in, and signatures go out as bundle
+    referrers. KMS support depends on the installed cosign build. `sign.Ensurer` is the shared verify-then-sign step.
+  - `scan`: pluggable scanners (osv, grype, kubescape), all run as separate programs, by registry ref or local docker
+    archive. `scan.Blocking` is the shared policy filter. Every image scanner is off by default, and an image scan
+    with none enabled is a hard error.
+  - `allowlist`: derives allowlists, keeping expiry dates and dropping stale entries, plus the shared `Lint`, `Active`
+    and `Regenerate`.
+  - `ocireg`: also has `Write` / `WriteIndex` for local builds.
+
+- `build`: the engine behind `patchy build`. Only the CLI uses it.
+  - It builds the config's `build.images` (docker buildx to an OCI layout) and `build.manifests` (a staged tree to a
+    deterministic Flux OCI artifact). Each image's `secrets` reach buildx as `--secret` references: an env name or a
+    file path, never a value.
+  - It scans BEFORE any push. It publishes to every registry (`<url>/<repository>:<tag>`) and signs for each one. Tags
+    never move: each result is pushed, skipped-current or skipped-tag-exists.
+  - `--dry-run` needs no registries (`File.BuildPlanConfig`), so public repos commit none.
+  - `Promote` (`patchy build promote`) adds a tag to the newest signed build that matches a glob, without rebuilding,
+    and reports its revision annotation.
+  - It reuses `mirror/{ocireg,scan,sign,spec,allowlist}` rather than the mirror engine itself. Image allowlists live
+    at `security/allowlists/<name>.yaml`.
+
+  Subpackages:
+  - `expand`: pure templating for `${VAR}`, `${VAR:-d}`, `${VAR:o:l}` and `$$`, plus the `PATCHY_TIMESTAMP` built-in.
+    It is fuzzed.
+  - `buildx`: argv and a runner over `scan.ToolRunner`.
+  - `fluxartifact`: staging with gitignore patterns, a deterministic tar.gz, and the Flux manifest with a `{}` config.
 
 ## Conventions
 
-- Go 1.27; cobra + viper (`PATCHY_` env prefix); `log/slog` to stderr (stdout is reserved — agent-runner's event
-  stream lives there); OpenTelemetry with an otelslog fanout that never fails startup.
-- Every package has a `doc.go`; every file starts with the MIT SPDX header (enforced by revive + addlicense).
-- Table-driven stdlib tests, no testify; fakes over mocks; controller-runtime fake client for reconciler tests;
-  envtest suites skip without `KUBEBUILDER_ASSETS` (`mise run envtest`, `mise run e2e`).
-- Conventional Commits; release-please + goreleaser drive releases; `make pr` is the local gate.
-- The harness/runner packages are adapted from `../evolve` (`internal/harness`, `internal/runner`) — keep their
+- Go 1.27; cobra and viper (`PATCHY_` env prefix); `log/slog` to stderr. stdout is reserved, because agent-runner's
+  event stream lives there. OpenTelemetry with an otelslog fanout that never fails startup.
+- Every package has a `doc.go`. Every file starts with the MIT SPDX header (enforced by revive and addlicense).
+- Table-driven stdlib tests, no testify. Prefer fakes to mocks. Use the controller-runtime fake client for reconciler
+  tests. envtest suites skip without `KUBEBUILDER_ASSETS` (`mise run envtest`, `mise run e2e`).
+- Conventional Commits. release-please and goreleaser drive releases. `make pr` is the local gate.
+- The harness and runner packages are adapted from `../evolve` (`internal/harness`, `internal/runner`). Keep their
   "harness builds argv, runner executes, harness parses stdout" separation intact.
 
 ## State machine (the heart of the system)
 
-`api/v1alpha1` owns the phase taxonomy and legal transitions (`transitions.go`: `CanTransition`, `Terminal`,
-`SetPhase`); no phase edge has two writer components. The flow:
-`Opened → Enhanced → Investigating → Queued → Remediating → InReview → Remediated`, with `AwaitingApproval`
-before `Queued` on holds, and `Dismissed`/`HandedOff`/`Failed` terminal (`HandedOff` revivable by approval,
-`Failed` by human retry back to the pre-failure state; `spec.expedite` skips accumulation/min-age and jumps both
-schedulers' queues).
-Accumulation is a condition (`AccumulationComplete`), not a phase. See DESIGN.md for the full flow and
-.claude/plans/ for the transition table with writers.
+`api/v1alpha1` owns the phases and the legal transitions (`transitions.go`: `CanTransition`, `Terminal`, `SetPhase`).
+Every phase edge has exactly one writer component. The flow is
+`Opened → Enhanced → Investigating → Queued → Remediating → InReview → Remediated`:
+
+- `AwaitingApproval` comes before `Queued` when a finding is held.
+- `Dismissed`, `HandedOff` and `Failed` are terminal. `HandedOff` can be revived by an approval. `Failed` can be
+  revived by a human retry, which returns it to the state before the failure.
+- `spec.expedite` skips accumulation and the minimum age, and moves the finding to the front of both schedulers'
+  queues.
+
+Accumulation is a condition (`AccumulationComplete`), not a phase. See DESIGN.md for the full flow, and
+[docs/concepts/lifecycle.md](docs/concepts/lifecycle.md) for the transition table with its writers.

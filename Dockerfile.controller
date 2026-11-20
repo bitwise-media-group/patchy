@@ -1,22 +1,22 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Controller image. One Dockerfile, four images — built by GoReleaser
-# (`dockers_v2` in .goreleaser.yaml), which compiles the binaries first and
-# hands this file a build context containing ONLY those binaries, laid out as
-# $TARGETPLATFORM/<binary> (e.g. linux/amd64/source-controller). There is no
-# Go toolchain or source here: version metadata is already stamped into
-# internal/version by GoReleaser's ldflags, and the same buildx invocation
-# produces the linux/amd64 + linux/arm64 manifest.
+# Image for every cluster service except the agent runners: the controllers,
+# status-server and egress-broker each get their own image from this one
+# Dockerfile. GoReleaser builds them (`dockers_v2` in .goreleaser.yaml). It
+# compiles the binaries first and hands this file a build context that holds
+# ONLY those binaries, laid out as $TARGETPLATFORM/<binary> (for example
+# linux/amd64/source-controller). There is no Go toolchain or source here.
+# GoReleaser's ldflags have already stamped the version into internal/version,
+# and the same buildx run produces the linux/amd64 + linux/arm64 manifest.
 #
-# All four controllers share the same distroless-static runtime: pure Go,
-# CGO off, no external process is ever executed. The remediation-controller
-# pushes agent changesets through the GitHub API (internal/ghpush), so no git
-# binary is needed anywhere.
+# They all share the same distroless-static runtime: pure Go, CGO off, and no
+# external process is ever run. remediation-controller pushes agent changesets
+# through the GitHub API (internal/ghpush), so no git binary is needed.
 #
-# TARGET (the binary to copy) is supplied by the per-image `build_args` in
-# .goreleaser.yaml. Build locally (no publish) with `make snapshot` — needs
-# docker + buildx.
+# TARGET (the binary to copy) comes from each image's `build_args` in
+# .goreleaser.yaml. To build locally without publishing, run `make snapshot`.
+# It needs docker and buildx.
 #
 # Runs as uid 65532 ("nonroot"), matching internal/jobs' runAsUser, and works
 # under readOnlyRootFilesystem.

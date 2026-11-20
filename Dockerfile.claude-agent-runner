@@ -6,27 +6,29 @@
 # the harness resolved for its model. Used for BOTH containers of the ephemeral
 # Job that internal/jobs creates:
 #
-#   initContainer "prepare" — runs /bin/sh with the clone script (needs sh,
-#     git and the GitHub token; the token never reaches the agent container).
-#   container "agent"       — runs `agent-runner` (must be on PATH under that
-#     exact name: internal/jobs sets Command: []string{"agent-runner"}), which
-#     execs `claude -p ...` (internal/harness) and `git` (changeset diffing).
+#   initContainer "prepare": runs /bin/sh with the prepare script. It needs
+#     sh, curl and git: it downloads the repository tarball from
+#     source-controller, checks its digest and makes a local base commit. No
+#     credential reaches it.
+#   container "agent": runs `agent-runner`, which must be on PATH under that
+#     exact name (internal/jobs sets Command: []string{"agent-runner"}). It
+#     runs `claude -p ...` (internal/harness) and `git` (to diff the changeset).
 #
-# So the image must carry: the agent-runner binary, git, /bin/sh, and the
-# claude CLI. claude ships as a self-contained native binary (ripgrep
-# bundled; glibc its only runtime need — its ELF NEEDED set is glibc-only),
-# so the runtime base is wolfi-base: glibc, busybox sh, ca-certificates and
-# the nonroot user, nothing else — no node, no npm, no node_modules. Wolfi
-# over debian-slim because Chainguard rebuilds it against upstream security
-# fixes continuously, so the lint-docker grype gate on base images stays
-# clean (debian's official images lag the security archive until the next
-# image rebuild). The fetch stage below downloads the pinned version and
-# refuses anything whose sha256 does not match the release manifest; only
-# the verified binary reaches the runtime stage.
+# So the image must carry the agent-runner binary, git, curl, /bin/sh and the
+# claude CLI. claude ships as a self-contained native binary with ripgrep
+# bundled. Its only runtime need is glibc (its ELF NEEDED set is glibc-only).
+# So the runtime base is wolfi-base: glibc, busybox sh, ca-certificates and
+# the nonroot user, and nothing else. There is no node, npm or node_modules.
+# We use Wolfi over debian-slim because Chainguard rebuilds it against
+# upstream security fixes all the time, which keeps the lint-docker grype
+# check on base images clean. Debian's official images lag the security
+# archive until the next image rebuild. The fetch stage below downloads the
+# pinned version and rejects anything whose sha256 does not match the release
+# manifest. Only the verified binary reaches the runtime stage.
 #
 # Built by GoReleaser (`dockers_v2` in .goreleaser.yaml): the agent-runner
 # binary is compiled by GoReleaser and arrives in the build context at
-# $TARGETPLATFORM/agent-runner — no Go toolchain or source here.
+# $TARGETPLATFORM/agent-runner. There is no Go toolchain or source here.
 #
 # readOnlyRootFilesystem: internal/jobs runs both containers with a read-only
 # root filesystem, uid 65532, all capabilities dropped. The only writable
@@ -84,8 +86,8 @@ COPY --from=fetch /claude /usr/local/bin/claude
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/agent-runner /usr/local/bin/agent-runner
 
-# No user setup: wolfi-base already ships the nonroot user, uid 65532 —
-# matching internal/jobs' runAsUser (and the distroless "nonroot" convention).
+# No user setup: wolfi-base already ships the nonroot user, uid 65532. That
+# matches internal/jobs' runAsUser and the distroless "nonroot" convention.
 
 # The native claude binary self-updates by default; an image pins a version
 # and runs on a read-only rootfs, so updating must never be attempted.

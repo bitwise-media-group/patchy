@@ -60,7 +60,7 @@ export function RemediationTab({ finding }: { finding: Finding }) {
           <p class="text-faint">No remediation run yet.</p>
         )}
         {finding.activeRun ? (
-          <p class="mt-3 inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink">
+          <p class="mt-3 inline-flex items-center gap-1.5 font-mono text-[12px] text-ink">
             <span class="ps-live-dot" /> {finding.activeRun.kind} <span class="ps-mono-tag">{finding.activeRun.name}</span> is
             running now.
           </p>

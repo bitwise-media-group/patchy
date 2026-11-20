@@ -1,25 +1,31 @@
-/* Patchy design tokens — vendored from the design-system repo.
+/* Patchy design tokens.
  *
  * Canonical source: design-system tokens/themes.css (.theme-patchy /
- * .theme-patchy-light) plus the typography/spacing tokens the kit consumes.
- * That file is the single source of truth — re-copy these values whenever the
- * palette changes. Vendored so the single-file build is self-contained and
- * the project lifts into the source-controller without cross-repo paths.
+ * .theme-patchy-light). Vendored so the single-file build is self-contained;
+ * re-copy these values whenever the palette changes there.
  *
- * Palette metaphor: healthy turf green is progress, warm soil marks the
- * original finding, pale seedling green marks a completed repair, and
- * amber/red are reserved for human attention and failure.
+ * Palette: verdigris on graphite and stone. Verdigris is progress and the
+ * one accent; a lighter verdigris marks completed work; warm stone marks
+ * findings closed without a change; amber and red are reserved for human
+ * attention and failure. Every text tone clears WCAG AA (4.5:1) against
+ * page, surface and surface-2 in both modes.
+ *
+ * The --patchy-green / soil / seedling names predate the palette and are
+ * kept as stable token names: read green as "accent", soil as "closed
+ * without change", seedling as "complete".
  */
 
 :root {
-  /* ---- Typography ---- */
-  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  /* ---- Typography ----
+   * Atkinson Hyperlegible: drawn for low-vision readers, with unambiguous
+   * 0/O and 1/l/I — which matters on a page of SHAs, repo names and ids. */
+  --font-sans: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 
   /* ---- Radii ---- */
   --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
   --radius-pill: 999px;
 
   /* ---- Motion ---- */
@@ -44,101 +50,105 @@
   --border-subtle: var(--patchy-line);
   --border-default: var(--patchy-line-2);
   --focus-ring: var(--patchy-green);
-  --radius-card: 12px;
+  --radius-card: 10px;
 }
 
-/* Dark (default) — damp soil at night, with bright new turf. */
+/* Dark — graphite with a lifted verdigris. */
 .theme-patchy {
-  --patchy-green: #78d64b;
-  --patchy-green-2: #9be66a;
-  --patchy-moss: #46a653;
-  --patchy-seedling: #c7f28a;
-  --patchy-ink-green: #8de05d;
-  --patchy-soil: #a47a55;
-  --patchy-amber: #e7b75f;
-  --patchy-red: #ef716a;
-  --patchy-on-accent: #10200d;
+  color-scheme: dark;
+  --patchy-green: #3dc4a1;
+  --patchy-green-2: #67d6b8;
+  --patchy-moss: #2a9c80;
+  --patchy-seedling: #93e2bd;
+  --patchy-ink-green: #5fd2b2;
+  --patchy-soil: #b9a284;
+  --patchy-amber: #e9b452;
+  --patchy-red: #f27f75;
+  --patchy-on-accent: #032019;
 
   /* Severity ramp — hotter and wider-spectrum than the state tones so
    * severity never collides with lifecycle colours. */
-  --patchy-sev-low: #6bbf45;
-  --patchy-sev-medium: #f2d437;
-  --patchy-sev-high: #fb8b1e;
-  --patchy-sev-critical: #ff4d7e;
+  --patchy-sev-low: #7cc6e8;
+  --patchy-sev-medium: #f0d04a;
+  --patchy-sev-high: #fb9440;
+  --patchy-sev-critical: #ff6b8f;
 
-  --patchy-bg: #0c140e;
-  --patchy-surface: #121d15;
-  --patchy-surface-2: #17251a;
-  --patchy-code: #071009;
-  --patchy-code-2: #0e1811;
-  --patchy-line: #26372a;
-  --patchy-line-2: #354a39;
-  --patchy-fg: #edf7ee;
-  --patchy-muted: #98ab9b;
-  --patchy-faint: #697c6d;
-  --patchy-shadow: 0 20px 52px rgba(2, 8, 4, 0.44);
-  --patchy-shadow-strong: 0 30px 80px rgba(2, 8, 4, 0.62);
-  --shadow-glow: 0 6px 20px rgba(120, 214, 75, 0.28);
+  --patchy-bg: #111615;
+  --patchy-surface: #171d1b;
+  --patchy-surface-2: #1d2522;
+  --patchy-code: #0c1110;
+  --patchy-code-2: #131a18;
+  --patchy-line: #27312d;
+  --patchy-line-2: #36423d;
+  --patchy-line-3: #66756e; /* form-control edges: 3:1 against every surface */
+  --patchy-fg: #e7eeeb;
+  --patchy-muted: #a6b3ad;
+  --patchy-faint: #8b9993;
+  --patchy-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.22);
+  --patchy-shadow-strong: 0 2px 4px rgba(0, 0, 0, 0.3), 0 24px 60px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(61, 196, 161, 0.35);
 
   /* Syntax highlighting — read against --patchy-code-2. */
   --hl-keyword: #c3a2f2;
-  --hl-string: #a8dc8c;
+  --hl-string: #9fdcb0;
   --hl-number: #f2a774;
-  --hl-comment: #6f8574;
+  --hl-comment: #87968f;
   --hl-title: #7fd1e0;
   --hl-type: #e9cf86;
   --hl-attr: #8fbff5;
   --hl-meta: #f0a3c8;
-  --hl-variable: #edf7ee;
-  --hl-add: #9be66a;
-  --hl-add-bg: rgba(120, 214, 75, 0.12);
-  --hl-del: #ef716a;
-  --hl-del-bg: rgba(239, 113, 106, 0.12);
+  --hl-variable: #e7eeeb;
+  --hl-add: #67d6b8;
+  --hl-add-bg: rgba(61, 196, 161, 0.12);
+  --hl-del: #f27f75;
+  --hl-del-bg: rgba(242, 127, 117, 0.12);
 }
 
-/* Light — garden paper, white panels, and a deep accessible turf green. */
+/* Light — stone paper, white panels, deep verdigris. */
 .theme-patchy-light {
-  --patchy-green: #2f7d36;
-  --patchy-green-2: #25672c;
-  --patchy-moss: #367a3c;
-  --patchy-seedling: #3c7630;
-  --patchy-ink-green: #286f30;
-  --patchy-soil: #77583e;
-  --patchy-amber: #9a6700;
-  --patchy-red: #c53b36;
+  color-scheme: light;
+  --patchy-green: #0d7560;
+  --patchy-green-2: #095e4d;
+  --patchy-moss: #0f6b58;
+  --patchy-seedling: #166c46;
+  --patchy-ink-green: #0a6553;
+  --patchy-soil: #77603f;
+  --patchy-amber: #925400;
+  --patchy-red: #b3261e;
   --patchy-on-accent: #ffffff;
 
-  --patchy-sev-low: #256b2e;
-  --patchy-sev-medium: #a38200;
-  --patchy-sev-high: #b04a00;
-  --patchy-sev-critical: #9f1239;
+  --patchy-sev-low: #1f5f8b;
+  --patchy-sev-medium: #7d6000;
+  --patchy-sev-high: #a94700;
+  --patchy-sev-critical: #a3123a;
 
-  --patchy-bg: #f3f7ef;
+  --patchy-bg: #f3f5f4;
   --patchy-surface: #ffffff;
-  --patchy-surface-2: #eaf2e5;
-  --patchy-code: #e1ebdd;
-  --patchy-code-2: #eaf1e6;
-  --patchy-line: #cad8c4;
-  --patchy-line-2: #afc2b0;
-  --patchy-fg: #172219;
-  --patchy-muted: #566859;
-  --patchy-faint: #708073;
-  --patchy-shadow: 0 20px 52px rgba(38, 72, 42, 0.12);
-  --patchy-shadow-strong: 0 30px 80px rgba(38, 72, 42, 0.18);
-  --shadow-glow: 0 6px 20px rgba(47, 125, 54, 0.24);
+  --patchy-surface-2: #edf1ef;
+  --patchy-code: #e5ebe8;
+  --patchy-code-2: #eff3f1;
+  --patchy-line: #dbe2de;
+  --patchy-line-2: #c2ccc7;
+  --patchy-line-3: #7f8b85; /* form-control edges: 3:1 against every surface */
+  --patchy-fg: #131d19;
+  --patchy-muted: #46534d;
+  --patchy-faint: #58665f;
+  --patchy-shadow: 0 1px 2px rgba(19, 29, 25, 0.06), 0 8px 24px rgba(19, 29, 25, 0.06);
+  --patchy-shadow-strong: 0 2px 4px rgba(19, 29, 25, 0.08), 0 24px 60px rgba(19, 29, 25, 0.14);
+  --shadow-glow: 0 0 0 1px rgba(13, 117, 96, 0.3);
 
   /* Syntax highlighting — read against --patchy-code-2. */
   --hl-keyword: #7334c2;
-  --hl-string: #2a6e30;
+  --hl-string: #1f6b3c;
   --hl-number: #a44600;
-  --hl-comment: #6b7b6e;
+  --hl-comment: #5f6c66;
   --hl-title: #0a6577;
-  --hl-type: #8a5c00;
+  --hl-type: #845800;
   --hl-attr: #1d4fb8;
   --hl-meta: #9f1239;
-  --hl-variable: #172219;
-  --hl-add: #25672c;
-  --hl-add-bg: rgba(47, 125, 54, 0.12);
-  --hl-del: #b3322e;
-  --hl-del-bg: rgba(197, 59, 54, 0.1);
+  --hl-variable: #131d19;
+  --hl-add: #095e4d;
+  --hl-add-bg: rgba(13, 117, 96, 0.12);
+  --hl-del: #b3261e;
+  --hl-del-bg: rgba(179, 38, 30, 0.1);
 }

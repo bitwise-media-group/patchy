@@ -32,7 +32,7 @@ export function RunAccountingRows({ harness, model, usage }: { harness?: string;
         <dd>
           <span class="font-mono">{formatTokens(totalTokens(usage))}</span>
           {usageBreakdown(usage) ? (
-            <small class="mt-0.5 block font-mono text-[10px] text-muted">{usageBreakdown(usage)}</small>
+            <small class="mt-0.5 block font-mono text-[12px] text-muted">{usageBreakdown(usage)}</small>
           ) : null}
         </dd>
       </div>
@@ -88,7 +88,7 @@ export function BudgetRows({
               <span class="font-mono">{r.format(r.actual)}</span>
               <span class="text-muted"> of {r.format(r.granted)} granted</span>
               {r.predicted ? (
-                <small class="mt-0.5 block font-mono text-[10px] text-muted">
+                <small class="mt-0.5 block font-mono text-[12px] text-muted">
                   est. {r.format(r.predicted)}
                   {s !== undefined ? (
                     <span

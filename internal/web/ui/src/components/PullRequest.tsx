@@ -17,7 +17,7 @@ export function PullRequestCard({ pr }: { pr: PullRequestStatus }) {
       <Icon name="gitPullRequest" size={17} />
       <span class="flex flex-col">
         <strong class="font-mono text-[13px]">#{pr.number}</strong>
-        <small class="mt-0.5 text-[11px] text-muted">
+        <small class="mt-0.5 text-[12px] text-muted">
           {pr.state ?? "open"}
           {pr.mergedAt ? ` · merged ${formatDate(pr.mergedAt)}` : ""}
         </small>

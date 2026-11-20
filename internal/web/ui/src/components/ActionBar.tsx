@@ -33,11 +33,11 @@ export function ActionBar({
 
   return (
     <div
-      class="sticky bottom-0 mt-6 flex flex-wrap items-center gap-2.5 rounded-xl border border-line-2 bg-[color-mix(in_oklab,var(--patchy-surface)_94%,transparent)] px-4 py-3 shadow-card backdrop-blur-md"
+      class="sticky bottom-0 mt-6 flex flex-wrap items-center gap-2.5 rounded-[10px] border border-line-2 bg-[color-mix(in_oklab,var(--patchy-surface)_94%,transparent)] px-4 py-3 shadow-card backdrop-blur-md"
       role="group"
       aria-label="Actions"
     >
-      <span class="font-mono text-[10.5px] text-faint">Actions available to you:</span>
+      <span class="font-mono text-[12px] text-faint">Actions available to you:</span>
       {verbs.map((verb) => {
         const meta = VERB_META[verb];
         const label =
@@ -67,7 +67,7 @@ export function ActionBar({
       {confirming ? (
         <button
           type="button"
-          class="cursor-pointer border-0 bg-transparent font-mono text-[11px] text-muted underline"
+          class="cursor-pointer border-0 bg-transparent font-mono text-[12px] text-muted underline"
           onClick={() => setConfirming(null)}
         >
           cancel

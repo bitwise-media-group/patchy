@@ -38,14 +38,12 @@ export function ThemeToggle({ mode, onToggle }: { mode: ThemeMode; onToggle: () 
   return (
     <button
       type="button"
-      class="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-fg transition-colors"
+      class="grid size-9 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-muted transition-colors hover:bg-surface-2 hover:text-fg"
       onClick={onToggle}
       aria-label={`Switch to ${goingTo} theme`}
-      aria-pressed={mode === "light"}
       title={`Switch to ${goingTo} theme`}
     >
-      <Icon name={dark ? "sun" : "moon"} size={14} />
-      {dark ? "Light" : "Dark"}
+      <Icon name={dark ? "sun" : "moon"} size={17} />
     </button>
   );
 }

@@ -55,7 +55,7 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
                   <span class="text-muted"> turns, </span>
                   <span class="font-mono">{formatTokens(inv.estimate.tokenBudget)}</span>
                   <span class="text-muted"> output tokens</span>
-                  <small class="mt-0.5 block text-[10px] text-muted">
+                  <small class="mt-0.5 block text-[12px] text-muted">
                     A prediction, not a limit — the remediation tab shows what the run was granted and spent.
                   </small>
                 </dd>
@@ -74,7 +74,7 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
           </div>
         ) : null}
         {finding.activeRun?.kind === "investigation" ? (
-          <p class="mt-3 inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink">
+          <p class="mt-3 inline-flex items-center gap-1.5 font-mono text-[12px] text-ink">
             <span class="ps-live-dot" /> investigation <span class="ps-mono-tag">{finding.activeRun.name}</span> is
             running now.
           </p>

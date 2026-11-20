@@ -156,7 +156,7 @@ function TranscriptStream({
           ))}
         </ol>
       </div>
-      <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted">
+      <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
         {state === "streaming" && reconnecting ? (
           <span class="inline-flex items-center gap-1.5 font-mono text-amber">reconnecting…</span>
         ) : state === "streaming" ? (
@@ -211,7 +211,7 @@ const TurnRow = memo(function TurnRow({ turn, call }: { turn: TranscriptTurn; ca
       );
     case "notice":
       return (
-        <li class="flex items-center gap-2 text-[11px] text-faint">
+        <li class="flex items-center gap-2 text-[12px] text-faint">
           <span class="font-mono">{turn.text}</span>
         </li>
       );
@@ -272,9 +272,9 @@ function TurnLabel({ turn }: { turn: TranscriptTurn }) {
       <span class="ps-label">{TURN_LABEL[turn.kind] ?? turn.kind}</span>
       {turn.tool ? <span class="ps-mono-tag">{turn.tool}</span> : null}
       {turn.path && turn.kind === "tool_use" && turn.text !== turn.path ? (
-        <span class="min-w-0 truncate font-mono text-[11px] text-muted">{turn.path}</span>
+        <span class="min-w-0 truncate font-mono text-[12px] text-muted">{turn.path}</span>
       ) : null}
-      {turn.at ? <time class="text-[10px] text-faint">{clockTime(turn.at)}</time> : null}
+      {turn.at ? <time class="text-[12px] text-faint">{clockTime(turn.at)}</time> : null}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { PullRequestCard } from "./PullRequest";
 function Card({ title, children }: { title: string; children: ComponentChildren }) {
   return (
     <section class="rounded-[11px] border border-line bg-surface px-4 py-3.5">
-      <h3 class="mx-0 mt-0 mb-2 font-mono text-[9.5px] font-semibold tracking-[0.09em] uppercase text-faint">{title}</h3>
+      <h3 class="mx-0 mt-0 mb-2 text-[13px] font-bold text-fg">{title}</h3>
       {children}
     </section>
   );
@@ -97,7 +97,7 @@ export function SidebarMeta({ finding }: { finding: Finding }) {
           {finding.advisories.map((a, i) => (
             <li key={a}>
               <span class="ps-mono-tag">{a}</span>
-              {i === 0 ? <span class="ml-1 text-[10px] text-faint">authoritative</span> : null}
+              {i === 0 ? <span class="ml-1 text-[12px] text-faint">authoritative</span> : null}
             </li>
           ))}
         </ul>

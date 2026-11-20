@@ -86,8 +86,8 @@ export function TimelineTab({ finding }: { finding: Finding }) {
             </span>
             <span class="ps-timeline__body">
               <strong class="block font-mono text-[12px] font-semibold text-fg">{e.title}</strong>
-              {e.detail ? <small class="mt-0.5 block text-[11px] text-muted">{e.detail}</small> : null}
-              <small class="mt-0.5 block font-mono text-[10px] text-faint">
+              {e.detail ? <small class="mt-0.5 block text-[12px] text-muted">{e.detail}</small> : null}
+              <small class="mt-0.5 block font-mono text-[12px] text-faint">
                 {formatDate(e.at)} · {formatAgo(e.at)}
               </small>
             </span>

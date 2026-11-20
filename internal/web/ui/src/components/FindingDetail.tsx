@@ -15,7 +15,7 @@ import { TimelineTab } from "./TimelineTab";
 
 export function MissingFinding({ name }: { name: string }) {
   return (
-    <div class="mx-auto my-20 max-w-[460px] rounded-xl border border-line-2 bg-surface p-7 text-center shadow-card">
+    <div class="mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card">
       <p class="m-0">
         Finding <span class="ps-mono-tag">{name}</span> is no longer present — completed findings expire on a TTL.
       </p>

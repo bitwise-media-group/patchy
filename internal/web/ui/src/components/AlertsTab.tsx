@@ -19,12 +19,12 @@ export function AlertsTab({ finding }: { finding: Finding }) {
           </header>
           {(alert.locations ?? []).map((loc) => (
             <div class="mt-2.5" key={`${loc.path}:${loc.startLine ?? 0}`}>
-              <span class="font-mono text-[11.5px] text-fg [overflow-wrap:anywhere]">
+              <span class="font-mono text-[12.5px] text-fg [overflow-wrap:anywhere]">
                 {loc.path}
                 {loc.startLine ? `:${loc.startLine}${loc.endLine && loc.endLine !== loc.startLine ? `–${loc.endLine}` : ""}` : ""}
               </span>
               {loc.snippet ? (
-                <pre class="mt-1.5 mb-0 overflow-x-auto rounded-[9px] border border-line bg-code px-3 py-2.5 font-mono text-[11px] leading-relaxed text-fg">
+                <pre class="mt-1.5 mb-0 overflow-x-auto rounded-[9px] border border-line bg-code px-3 py-2.5 font-mono text-[12px] leading-relaxed text-fg">
                   {loc.snippet}
                 </pre>
               ) : null}

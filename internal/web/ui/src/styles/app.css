@@ -4,8 +4,8 @@
  * carries: (1) the Tailwind theme mapping onto the vendored --patchy-*
  * tokens, so utilities like bg-turf/text-muted re-tint through the body
  * class theme switch; (2) the few bespoke recipes utilities can't express
- * cleanly (patch mark, pill tones via color-mix, timeline rail, pipeline
- * cells). Every colour still resolves from tokens.css. */
+ * cleanly (pill tones via color-mix, timeline rail, the
+ * metrics strip and tables). Every colour still resolves from tokens.css. */
 
 @import "tailwindcss";
 @import "./tokens.css";
@@ -55,6 +55,7 @@
   --color-code-2: var(--patchy-code-2);
   --color-line: var(--patchy-line);
   --color-line-2: var(--patchy-line-2);
+  --color-line-3: var(--patchy-line-3);
   --color-fg: var(--patchy-fg);
   --color-muted: var(--patchy-muted);
   --color-faint: var(--patchy-faint);
@@ -71,15 +72,14 @@
   }
   body {
     @apply bg-page text-fg font-sans text-[14px] leading-normal;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
   }
   button,
   a {
     -webkit-tap-highlight-color: transparent;
   }
-  a:focus-visible,
-  button:focus-visible,
-  input:focus-visible,
-  select:focus-visible {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
@@ -102,59 +102,22 @@
 }
 
 @layer components {
-  /* ---- patch mark: turf sliding over a soil hole ---- */
-  .patch-mark {
-    position: relative;
-    display: inline-block;
-    flex: 0 0 auto;
-    border-radius: 8px;
-    background: var(--patchy-surface-2);
-    border: 1px solid var(--patchy-line-2);
-    overflow: hidden;
+  /* ---- skip link: first focusable element, visible only on focus ---- */
+  .ps-skip {
+    @apply absolute top-2 left-2 z-50 -translate-y-20 rounded-md bg-turf px-3 py-2 text-[13px] font-semibold text-onaccent no-underline;
   }
-  .patch-mark__hole {
-    position: absolute;
-    width: 48%;
-    height: 30%;
-    left: 18%;
-    bottom: 17%;
-    border-radius: 50%;
-    background: var(--patchy-soil);
-    box-shadow: inset 0 3px 0 color-mix(in oklab, var(--patchy-code) 35%, transparent);
+  .ps-skip:focus {
+    @apply translate-y-0;
   }
-  .patch-mark__turf {
-    position: absolute;
-    width: 49%;
-    height: 29%;
-    right: 12%;
-    bottom: 27%;
-    border-radius: 3px;
-    background: var(--patchy-green);
-    border: 1px solid color-mix(in oklab, var(--patchy-green) 70%, var(--patchy-fg));
-    transform: rotate(-7deg);
-  }
-  .patch-mark__blade {
-    position: absolute;
-    width: 2px;
-    height: 22%;
-    border-radius: 2px;
-    background: var(--patchy-green-2);
-    transform-origin: bottom;
-  }
-  .patch-mark__blade--one {
-    right: 32%;
-    bottom: 54%;
-    transform: rotate(-15deg);
-  }
-  .patch-mark__blade--two {
-    right: 23%;
-    bottom: 52%;
-    transform: rotate(15deg);
+
+  /* ---- text inputs: control edges at 3:1 (WCAG 1.4.11) ---- */
+  .ps-input {
+    @apply min-h-9 rounded-lg border border-line-3 bg-surface px-3 text-[14px] text-fg placeholder:text-faint;
   }
 
   /* ---- pills: tone grammar via color-mix tints ---- */
   .ps-pill {
-    @apply inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-[3px] font-mono text-[10.5px] font-semibold whitespace-nowrap;
+    @apply inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-[2px] font-mono text-[12px] font-medium whitespace-nowrap;
     color: var(--patchy-ink-green);
     background: color-mix(in oklab, var(--patchy-green) 10%, transparent);
     border: 1px solid color-mix(in oklab, var(--patchy-green) 28%, transparent);
@@ -214,19 +177,19 @@
     box-shadow: 0 0 0 4px color-mix(in oklab, var(--patchy-green) 12%, transparent);
   }
   .ps-mono-tag {
-    @apply inline-flex items-center gap-1 rounded-md border border-line bg-code-2 px-1.5 py-0.5 font-mono text-[11px] text-fg no-underline;
+    @apply inline-flex items-center gap-1 rounded-md border border-line bg-code-2 px-1.5 py-0.5 font-mono text-[12px] text-fg no-underline;
     overflow-wrap: anywhere;
   }
   a.ps-mono-tag:hover {
     @apply border-line-2;
   }
   .ps-chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-line-2 bg-surface px-2 py-1 font-mono text-[10.5px] text-muted no-underline;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line-2 bg-surface px-2 py-1 font-mono text-[12px] text-muted no-underline;
   }
 
   /* ---- notes (amber default; green/red variants) ---- */
   .ps-note {
-    @apply mt-4 flex flex-wrap items-center gap-2 rounded-[10px] px-3.5 py-2.5 text-[12.5px] text-amber;
+    @apply mt-4 flex flex-wrap items-center gap-2 rounded-[10px] px-3.5 py-2.5 text-[13.5px] text-amber;
     background: color-mix(in oklab, var(--patchy-amber) 8%, transparent);
     border: 1px solid color-mix(in oklab, var(--patchy-amber) 26%, transparent);
   }
@@ -244,14 +207,14 @@
     @apply inline-flex items-center gap-1 font-semibold text-inherit;
   }
 
-  /* ---- section heading (mono eyebrow) ---- */
+  /* ---- section heading: sentence case, set by weight rather than caps ---- */
   .ps-heading {
-    @apply m-0 font-mono text-[11px] font-semibold tracking-[0.09em] uppercase text-ink;
+    @apply m-0 font-sans text-[15px] leading-snug font-bold text-fg;
   }
 
-  /* ---- standalone field label (the ps-kv dt eyebrow, outside a kv grid) ---- */
+  /* ---- standalone field label (the ps-kv dt, outside a kv grid) ---- */
   .ps-label {
-    @apply font-mono text-[9.5px] tracking-[0.07em] uppercase text-faint;
+    @apply font-sans text-[12.5px] text-muted;
   }
 
   /* ---- key/value grids ---- */
@@ -262,18 +225,18 @@
     @apply grid-cols-1 gap-2;
   }
   .ps-kv dt {
-    @apply font-mono text-[9.5px] tracking-[0.07em] uppercase text-faint;
+    @apply font-sans text-[12.5px] text-muted;
   }
   .ps-kv dd {
-    @apply mx-0 mt-1 mb-0 text-[12.5px] text-fg;
+    @apply mx-0 mt-0.5 mb-0 text-[14px] text-fg;
   }
 
   /* ---- segmented button groups (filters, trend measures) ---- */
   .ps-filter-group {
-    @apply flex rounded-[9px] border border-line bg-surface p-[3px];
+    @apply flex rounded-lg border border-line-3 bg-surface p-[3px];
   }
   .ps-filter-group button {
-    @apply cursor-pointer rounded-[7px] border-0 bg-transparent px-2 py-1.5 font-mono text-[10px] text-muted;
+    @apply cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1 font-sans text-[13px] text-muted hover:text-fg;
   }
   .ps-filter-group button.is-active {
     @apply bg-surface-2 text-fg;
@@ -285,7 +248,7 @@
     @apply flex gap-5 border-b border-line;
   }
   .ps-tabs a {
-    @apply -mb-px border-b-2 border-transparent px-0.5 py-3 text-[13px] font-semibold text-muted no-underline hover:text-fg;
+    @apply -mb-px border-b-2 border-transparent px-0.5 py-3 text-[14px] font-semibold text-muted no-underline hover:text-fg;
   }
   .ps-tabs a.is-active {
     @apply border-turf text-ink;
@@ -293,73 +256,13 @@
 
   /* ---- stat tile ---- */
   .ps-stat {
-    @apply min-h-[92px] border-l border-line px-5 py-4 first:border-l-0;
+    @apply min-h-[88px] border-l border-line px-5 py-4 first:border-l-0;
   }
   .ps-stat strong {
-    @apply block font-mono text-[23px] font-bold text-ink;
+    @apply block font-mono text-[24px] leading-tight font-bold text-fg;
   }
   .ps-stat span {
-    @apply mt-1 block text-[11.5px] text-muted;
-  }
-
-  /* ---- phase pipeline cells (count circle + connecting rail) ---- */
-  .ps-phase {
-    @apply -my-1.5 cursor-pointer rounded-[9px] border-0 bg-transparent p-1.5 text-left text-inherit;
-  }
-  .ps-phase:hover {
-    background: color-mix(in oklab, var(--patchy-green) 5%, transparent);
-  }
-  .ps-phase.is-active {
-    background: color-mix(in oklab, var(--patchy-green) 11%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--patchy-green) 40%, transparent);
-  }
-  .ps-phase__top {
-    @apply flex items-center;
-  }
-  .ps-phase__count {
-    @apply grid size-[27px] flex-none place-items-center rounded-full bg-turf font-mono text-[10.5px] font-bold text-onaccent;
-  }
-  .ps-phase.is-empty .ps-phase__count {
-    @apply border border-line-2 bg-surface text-faint;
-  }
-  .ps-phase__line {
-    @apply mx-2 h-px flex-1 bg-line-2;
-  }
-  .ps-phase strong {
-    @apply mt-2 block pr-2 font-mono text-[10px] font-semibold text-fg;
-    overflow-wrap: anywhere;
-  }
-  .ps-phase--terminal {
-    @apply inline-flex items-center gap-2;
-  }
-  .ps-phase--terminal strong {
-    @apply mt-0;
-  }
-  .ps-phase--terminal .ps-phase__count {
-    @apply size-[22px] border border-line-2 bg-surface text-[9.5px] text-muted;
-  }
-  .ps-phase--terminal:not(.is-empty) .ps-phase__count {
-    @apply border-soil text-soil;
-  }
-
-  /* ---- board & rollup table grids (header and rows must never drift) ---- */
-  .ps-grid-board {
-    @apply grid grid-cols-[minmax(250px,2.3fr)_0.75fr_1.15fr_0.75fr_0.75fr_0.65fr] items-center gap-4 max-lg:min-w-[860px];
-  }
-  .ps-grid-rollup {
-    @apply grid grid-cols-[minmax(180px,1.8fr)_0.7fr_0.8fr_1.2fr_0.9fr_0.8fr] items-center gap-4 max-lg:min-w-[760px];
-  }
-  .ps-grid-rollup-repo {
-    @apply grid grid-cols-[minmax(180px,1.8fr)_0.7fr_1.2fr_0.8fr_0.7fr_0.8fr] items-center gap-4 max-lg:min-w-[760px];
-  }
-  .ps-table-header {
-    @apply min-h-10 border-b border-line px-4.5 font-mono text-[9px] tracking-[0.08em] uppercase text-faint;
-  }
-  .ps-hover-row {
-    @apply border-b border-line last:border-b-0;
-  }
-  .ps-hover-row:hover {
-    background: color-mix(in oklab, var(--patchy-green) 3.5%, var(--patchy-surface));
+    @apply mt-1 block text-[13px] text-muted;
   }
 
   /* ---- confidence track & stacked mix bar ---- */
@@ -441,7 +344,7 @@
 
   /* ---- action buttons ---- */
   .ps-action {
-    @apply inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-[9px] border border-line-2 bg-surface-2 px-3.5 text-[13px] font-semibold text-fg transition-colors disabled:cursor-default disabled:opacity-60;
+    @apply inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-line-3 bg-surface px-3.5 text-[13.5px] font-semibold text-fg transition-colors disabled:cursor-default disabled:opacity-60;
   }
   .ps-action:hover:not(:disabled) {
     @apply border-turf;
@@ -454,6 +357,55 @@
   }
   .ps-action.is-confirming {
     @apply border-amber bg-amber text-onaccent shadow-none;
+  }
+
+  /* ---- metrics: outcome strip ----
+   * One proportional bar for how findings (or runs) ended. 2px surface gaps
+   * separate segments; identity never rides on hue alone — every segment is
+   * restated in the legend beneath it with a count and a share. */
+  .ps-strip {
+    @apply flex h-4 gap-[2px] overflow-hidden rounded-md;
+  }
+  .ps-strip > span {
+    @apply block h-full min-w-[4px];
+  }
+  .ps-strip--thin {
+    @apply h-2 rounded-full;
+  }
+  .ps-swatch {
+    @apply inline-block size-2.5 flex-none rounded-[3px];
+  }
+
+  /* ---- metrics: data tables (real <table>s, so screen readers get
+   * headers, rows and sort state) ---- */
+  .ps-table {
+    @apply w-full border-collapse text-left text-[13.5px];
+  }
+  .ps-table thead th {
+    @apply h-10 border-b border-line bg-surface-2 px-4 text-[12.5px] font-semibold whitespace-nowrap text-muted;
+  }
+  .ps-table tbody :is(th, td) {
+    @apply h-12 border-b border-line px-4 align-middle;
+  }
+  .ps-table tbody tr:last-child :is(th, td) {
+    @apply border-b-0;
+  }
+  .ps-table tbody tr:hover :is(th, td) {
+    background: color-mix(in oklab, var(--patchy-green) 4%, var(--patchy-surface));
+  }
+  .ps-table .num {
+    @apply text-right font-mono whitespace-nowrap;
+  }
+  .ps-sort {
+    @apply inline-flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent p-0 font-[inherit] text-inherit hover:text-fg;
+  }
+  .ps-sort[data-active] {
+    @apply text-fg;
+  }
+
+  /* ---- type-ahead highlight ---- */
+  .ps-match {
+    @apply rounded-[2px] bg-transparent font-bold text-ink;
   }
 
   /* Syntax highlighting: lowlight emits highlight.js class names; every

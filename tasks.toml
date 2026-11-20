@@ -11,11 +11,25 @@
 # (currently empty; see the script for how to accept one with a rationale
 # and a re-review trigger). A bare govulncheck has no ignore mechanism.
 # The e2e module is linted too, with the same config: it is a separate module,
-# so the root `golangci-lint run` never reaches it.
+# so the root `golangci-lint run` never reaches it. Its tidiness is checked
+# first: e2e replaces the root module, so a root dependency bump (or a rebase
+# onto one) leaves e2e/go.mod stale, and golangci-lint then reports only a
+# misleading "no go files to analyze". `go mod tidy -diff` names the drift.
 [go-lint]
 hide = true
 dir = "{{cwd}}"
-run = ["golangci-lint run", "cd e2e && golangci-lint run", "hack/govulncheck.sh"]
+run = [
+  "golangci-lint run",
+  "cd e2e && go mod tidy -diff && golangci-lint run",
+  "hack/govulncheck.sh",
+]
+
+# Overrides the archetype's tidy to cover the e2e module as well, for the
+# same reason: it pins the root module's dependency graph through its replace.
+[tidy]
+description = "tidy the go module graphs (root and e2e)"
+dir = "{{cwd}}"
+run = ["rm -f go.sum", "go mod tidy", "cd e2e && rm -f go.sum && go mod tidy"]
 
 # The e2e suite is a separate module: it boots an envtest kube-apiserver
 # (the CRD state machine), builds the real controller binaries, and drives

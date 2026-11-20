@@ -109,71 +109,16 @@ func run() error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	switch prov {
-	case providerPubSub:
-		if *bearer == "" {
-			return fmt.Errorf(
-				"a Pub/Sub push fixture needs -bearer: the message is composed by Pub/Sub, so there is " +
-					"nothing for the sender to sign and the OIDC token is the only credential")
-		}
-		req.Header.Set("Authorization", "Bearer "+*bearer)
-	case providerWiz:
-		if *devSecret {
-			return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a Wiz fixture needs " +
-				"its webhook token via -bearer or -secret-file")
-		}
-		token := *bearer
-		if token == "" && *secretFile != "" {
-			raw, err := os.ReadFile(*secretFile)
-			if err != nil {
-				return err
-			}
-			token = strings.TrimRight(string(raw), "\r\n")
-		}
-		if token == "" {
-			return fmt.Errorf("a Wiz fixture needs its webhook token via -bearer or -secret-file")
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	case providerGeneric:
-		if *bearer != "" {
-			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; generic deliveries are signed")
-		}
-		if *devSecret {
-			return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a generic fixture needs " +
-				"its Integration's webhookSecret via -secret-file")
-		}
-		if *secretFile == "" {
-			return fmt.Errorf("a generic fixture needs its Integration's webhookSecret via -secret-file")
-		}
-		raw, err := os.ReadFile(*secretFile)
-		if err != nil {
-			return err
-		}
-		secret := []byte(strings.TrimRight(string(raw), "\r\n"))
-		mac := hmac.New(sha256.New, secret)
-		mac.Write(payload)
-		req.Header.Set("X-Patchy-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-		req.Header.Set("X-Patchy-Delivery", deliveryID())
-	default:
-		if *bearer != "" {
-			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; GitHub deliveries are signed")
-		}
-		secret, err := githubSecret(*devSecret, *secretFile)
-		if err != nil {
-			return err
-		}
-		mac := hmac.New(sha256.New, secret)
-		mac.Write(payload)
-		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-		req.Header.Set("X-GitHub-Event", eventType)
-		req.Header.Set("X-GitHub-Delivery", deliveryID())
+	creds := credentials{secretFile: *secretFile, bearer: *bearer, devSecret: *devSecret}
+	if err := authenticate(req, prov, eventType, payload, creds); err != nil {
+		return err
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 
 	fmt.Printf("%s -> %s %s\n", filepath.Base(fixture), eventType, resp.Status)
@@ -183,7 +128,94 @@ func run() error {
 	return nil
 }
 
-// githubSecret resolves the HMAC secret for a GitHub delivery.
+// credentials are the flags a delivery may be authenticated with.
+type credentials struct {
+	secretFile string
+	bearer     string
+	devSecret  bool
+}
+
+// authenticate adds what the provider's route checks: an OIDC bearer for
+// Pub/Sub, the webhook token for Wiz, or an HMAC signature for generic and
+// GitHub deliveries.
+func authenticate(req *http.Request, prov provider, eventType string, payload []byte, c credentials) error {
+	switch prov {
+	case providerPubSub:
+		if c.bearer == "" {
+			return fmt.Errorf(
+				"a Pub/Sub push fixture needs -bearer: the message is composed by Pub/Sub, so there is " +
+					"nothing for the sender to sign and the OIDC token is the only credential")
+		}
+		req.Header.Set("Authorization", "Bearer "+c.bearer)
+		return nil
+	case providerWiz:
+		return authenticateWiz(req, c)
+	case providerGeneric:
+		return authenticateGeneric(req, payload, c)
+	default:
+		if c.bearer != "" {
+			return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; GitHub deliveries are signed")
+		}
+		secret, err := githubSecret(c.devSecret, c.secretFile)
+		if err != nil {
+			return err
+		}
+		mac := hmac.New(sha256.New, secret)
+		mac.Write(payload)
+		req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("X-GitHub-Event", eventType)
+		req.Header.Set("X-GitHub-Delivery", deliveryID())
+		return nil
+	}
+}
+
+// authenticateWiz presents the Wiz webhook token as a bearer credential.
+func authenticateWiz(req *http.Request, c credentials) error {
+	if c.devSecret {
+		return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a Wiz fixture needs " +
+			"its webhook token via -bearer or -secret-file")
+	}
+	token := c.bearer
+	if token == "" && c.secretFile != "" {
+		raw, err := os.ReadFile(c.secretFile)
+		if err != nil {
+			return err
+		}
+		token = strings.TrimRight(string(raw), "\r\n")
+	}
+	if token == "" {
+		return fmt.Errorf("a Wiz fixture needs its webhook token via -bearer or -secret-file")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
+}
+
+// authenticateGeneric signs a generic delivery with the Integration's
+// webhookSecret.
+func authenticateGeneric(req *http.Request, payload []byte, c credentials) error {
+	if c.bearer != "" {
+		return fmt.Errorf("-bearer applies to Pub/Sub and Wiz fixtures; generic deliveries are signed")
+	}
+	if c.devSecret {
+		return fmt.Errorf("-dev-secret is the GitHub HMAC placeholder; a generic fixture needs " +
+			"its Integration's webhookSecret via -secret-file")
+	}
+	if c.secretFile == "" {
+		return fmt.Errorf("a generic fixture needs its Integration's webhookSecret via -secret-file")
+	}
+	raw, err := os.ReadFile(c.secretFile)
+	if err != nil {
+		return err
+	}
+	secret := []byte(strings.TrimRight(string(raw), "\r\n"))
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(payload)
+	req.Header.Set("X-Patchy-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	req.Header.Set("X-Patchy-Delivery", deliveryID())
+	return nil
+}
+
+// githubSecret resolves the HMAC secret for a GitHub delivery. for a GitHub delivery.
 func githubSecret(dev bool, file string) ([]byte, error) {
 	switch {
 	case dev && file != "":

@@ -105,7 +105,9 @@ func (p *externalProcess) validSignature(secret, body []byte, header string) boo
 	return hmac.Equal(mac.Sum(nil), want)
 }
 
-func (p *externalProcess) snapshot() (enhance []pkggeneric.EnhanceRequest, resolve []pkggeneric.ResolveRequest, badSigs int) {
+func (p *externalProcess) snapshot() (
+	enhance []pkggeneric.EnhanceRequest, resolve []pkggeneric.ResolveRequest, badSigs int,
+) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]pkggeneric.EnhanceRequest(nil), p.enhance...),
@@ -195,54 +197,9 @@ func TestGenericWebhookPipeline(t *testing.T) {
 		fnd = items[0]
 		return true
 	})
-	if fnd.Spec.Repository == nil || fnd.Spec.Repository.Name != "acme/orders" {
-		t.Errorf("spec.repository = %+v, want the delivered repo", fnd.Spec.Repository)
-	}
-	if got := fnd.Spec.Advisories[0]; got != "CVE-2026-4242" {
-		t.Errorf("advisories[0] = %q, want the delivered ordering kept", got)
-	}
-	if len(fnd.Spec.Alerts) != 1 || fnd.Spec.Alerts[0].ID != "e2e-wh-1001" {
-		t.Errorf("alerts = %+v, want the delivered alert id", fnd.Spec.Alerts)
-	}
-	if got := fnd.Labels[v1alpha1.LabelSource]; got != "warehouse" {
-		t.Errorf("source label = %q, want the integration name", got)
-	}
-	// The fallback tracker (M7): the warehouse integration has no issues
-	// capability, so the tracking ref must point at the github Integration.
-	if fnd.Spec.TrackingRef == nil || fnd.Spec.TrackingRef.Name != "github" {
-		t.Errorf("trackingRef = %+v, want the github integration via fallback", fnd.Spec.TrackingRef)
-	}
+	checkGenericFinding(t, &fnd)
 
-	// Enhancement fans out to both integrations' endpoints; only cmdb
-	// contributes, and its enrichment is attributed to it.
-	eventually(t, "the finding to be enhanced by the fan-out", func() bool {
-		items := findingsBySource(t, cl, "warehouse")
-		return len(items) == 1 && items[0].Status.Phase == v1alpha1.PhaseEnhanced
-	})
-	fnd = findingsBySource(t, cl, "warehouse")[0]
-	if len(fnd.Status.Enrichments) != 1 || fnd.Status.Enrichments[0].Enhancer != "cmdb" {
-		t.Fatalf("enrichments = %+v, want exactly cmdb's", fnd.Status.Enrichments)
-	}
-	if got := fnd.Status.Enrichments[0].Attributes["system"]; got != "warehouse" {
-		t.Errorf("enrichment attributes = %v, want cmdb's contribution", fnd.Status.Enrichments[0].Attributes)
-	}
-	if len(fnd.Status.Owners) != 1 || fnd.Status.Owners[0] != "octocat" {
-		t.Errorf("owners = %v, want cmdb's octocat", fnd.Status.Owners)
-	}
-	enhanceReqs, _, badSigs := proc.snapshot()
-	if badSigs != 0 {
-		t.Errorf("the external process rejected %d outbound signatures", badSigs)
-	}
-	seen := map[string]bool{}
-	for _, req := range enhanceReqs {
-		seen[req.Integration] = true
-		if req.Issue.Title != "SQL injection in the nightly export" {
-			t.Errorf("enhance request issue = %+v, want the finding's view", req.Issue)
-		}
-	}
-	if !seen["warehouse"] || !seen["cmdb"] {
-		t.Errorf("enhance requests reached %v, want both integrations", seen)
-	}
+	fnd = checkGenericEnhancement(t, cl, proc)
 
 	// The projection gives the generic finding a real tracking issue on the
 	// fallback tracker.
@@ -278,8 +235,76 @@ func TestGenericWebhookPipeline(t *testing.T) {
 		return false
 	})
 
+	checkGenericResolve(t, cl, proc, fnd.Name)
+}
+
+// checkGenericFinding asserts the delivered finding kept what the external
+// process sent, and fell back to the github tracker.
+func checkGenericFinding(t *testing.T, fnd *v1alpha1.Finding) {
+	t.Helper()
+	if fnd.Spec.Repository == nil || fnd.Spec.Repository.Name != "acme/orders" {
+		t.Errorf("spec.repository = %+v, want the delivered repo", fnd.Spec.Repository)
+	}
+	if got := fnd.Spec.Advisories[0]; got != "CVE-2026-4242" {
+		t.Errorf("advisories[0] = %q, want the delivered ordering kept", got)
+	}
+	if len(fnd.Spec.Alerts) != 1 || fnd.Spec.Alerts[0].ID != "e2e-wh-1001" {
+		t.Errorf("alerts = %+v, want the delivered alert id", fnd.Spec.Alerts)
+	}
+	if got := fnd.Labels[v1alpha1.LabelSource]; got != "warehouse" {
+		t.Errorf("source label = %q, want the integration name", got)
+	}
+	// The fallback tracker (M7): the warehouse integration has no issues
+	// capability, so the tracking ref must point at the github Integration.
+	if fnd.Spec.TrackingRef == nil || fnd.Spec.TrackingRef.Name != "github" {
+		t.Errorf("trackingRef = %+v, want the github integration via fallback", fnd.Spec.TrackingRef)
+	}
+}
+
+// checkGenericEnhancement waits for the enhancer fan-out and asserts only
+// cmdb contributed, under its own name, over correctly signed calls. It
+// returns the enhanced finding.
+func checkGenericEnhancement(t *testing.T, cl *cluster, proc *externalProcess) v1alpha1.Finding {
+	t.Helper()
+	// Enhancement fans out to both integrations' endpoints; only cmdb
+	// contributes, and its enrichment is attributed to it.
+	eventually(t, "the finding to be enhanced by the fan-out", func() bool {
+		items := findingsBySource(t, cl, "warehouse")
+		return len(items) == 1 && items[0].Status.Phase == v1alpha1.PhaseEnhanced
+	})
+	fnd := findingsBySource(t, cl, "warehouse")[0]
+	if len(fnd.Status.Enrichments) != 1 || fnd.Status.Enrichments[0].Enhancer != "cmdb" {
+		t.Fatalf("enrichments = %+v, want exactly cmdb's", fnd.Status.Enrichments)
+	}
+	if got := fnd.Status.Enrichments[0].Attributes["system"]; got != "warehouse" {
+		t.Errorf("enrichment attributes = %v, want cmdb's contribution", fnd.Status.Enrichments[0].Attributes)
+	}
+	if len(fnd.Status.Owners) != 1 || fnd.Status.Owners[0] != "octocat" {
+		t.Errorf("owners = %v, want cmdb's octocat", fnd.Status.Owners)
+	}
+	enhanceReqs, _, badSigs := proc.snapshot()
+	if badSigs != 0 {
+		t.Errorf("the external process rejected %d outbound signatures", badSigs)
+	}
+	seen := map[string]bool{}
+	for _, req := range enhanceReqs {
+		seen[req.Integration] = true
+		if req.Issue.Title != "SQL injection in the nightly export" {
+			t.Errorf("enhance request issue = %+v, want the finding's view", req.Issue)
+		}
+	}
+	if !seen["warehouse"] || !seen["cmdb"] {
+		t.Errorf("enhance requests reached %v, want both integrations", seen)
+	}
+	return fnd
+}
+
+// checkGenericResolve dismisses the finding and asserts the verdict reached
+// the warehouse's resolver, signed.
+func checkGenericResolve(t *testing.T, cl *cluster, proc *externalProcess, name string) {
+	t.Helper()
 	// Dismissal drives the verdict write-back to the warehouse's resolver.
-	dismissFinding(t, cl, fnd.Name)
+	dismissFinding(t, cl, name)
 	eventually(t, "the verdict to reach the external process", func() bool {
 		_, resolves, _ := proc.snapshot()
 		return len(resolves) == 1
@@ -380,6 +405,6 @@ func postGeneric(t *testing.T, url, secret, deliveryID string, payload []byte) i
 	if err != nil {
 		t.Fatalf("deliver generic payload: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }

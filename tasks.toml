@@ -10,10 +10,12 @@
 # so it can carry a reviewed acceptance list for advisories with no fix
 # (currently empty; see the script for how to accept one with a rationale
 # and a re-review trigger). A bare govulncheck has no ignore mechanism.
+# The e2e module is linted too, with the same config: it is a separate module,
+# so the root `golangci-lint run` never reaches it.
 [go-lint]
 hide = true
 dir = "{{cwd}}"
-run = ["golangci-lint run", "hack/govulncheck.sh"]
+run = ["golangci-lint run", "cd e2e && golangci-lint run", "hack/govulncheck.sh"]
 
 # The e2e suite is a separate module: it boots an envtest kube-apiserver
 # (the CRD state machine), builds the real controller binaries, and drives

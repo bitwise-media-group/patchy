@@ -35,7 +35,6 @@ const wizWebhookToken = "e2e-wiz-webhook-token"
 // Inventory, which does not exist yet.
 func TestWizWebhookPipeline(t *testing.T) {
 	cl := startCluster(t)
-	ctx := t.Context()
 
 	seedWizIntegration(t, cl)
 
@@ -78,19 +77,31 @@ func TestWizWebhookPipeline(t *testing.T) {
 
 	var fnd v1alpha1.Finding
 	eventually(t, "the issue to become a finding", func() bool {
-		var list v1alpha1.FindingList
-		if err := cl.client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		found := findingsBySource(t, cl, "wiz-issues")
+		if len(found) == 0 {
 			return false
 		}
-		for i := range list.Items {
-			if list.Items[i].Spec.Source == "wiz-issues" {
-				fnd = list.Items[i]
-				return true
-			}
-		}
-		return false
+		fnd = found[0]
+		return true
+	})
+	checkWizFinding(t, &fnd)
+
+	// A Wiz re-notification is byte-identical only when nothing changed; the
+	// delivery dedup window absorbs it either way, and ingest folds updates.
+	if got := postWiz(t, url, wizWebhookToken, issue); got != http.StatusAccepted {
+		t.Fatalf("redelivery = %d, want 202", got)
+	}
+	consistently(t, "the redelivery not to open a second finding", func() bool {
+		return len(findingsBySource(t, cl, "wiz-issues")) == 1
 	})
 
+	wizFollowUps(t, cl, url)
+}
+
+// checkWizFinding asserts what the issue became: a repo-less finding on the
+// normalized cloud resource, carrying the Wiz identity and prose.
+func checkWizFinding(t *testing.T, fnd *v1alpha1.Finding) {
+	t.Helper()
 	// The GCP providerId arrives as an API self-link and must be normalized
 	// to the Cloud Asset Inventory name form at ingest, or the enhancer could
 	// never resolve ownership labels for it.
@@ -120,16 +131,12 @@ func TestWizWebhookPipeline(t *testing.T) {
 			t.Errorf("description missing %q", want)
 		}
 	}
+}
 
-	// A Wiz re-notification is byte-identical only when nothing changed; the
-	// delivery dedup window absorbs it either way, and ingest folds updates.
-	if got := postWiz(t, url, wizWebhookToken, issue); got != http.StatusAccepted {
-		t.Fatalf("redelivery = %d, want 202", got)
-	}
-	consistently(t, "the redelivery not to open a second finding", func() bool {
-		return len(findingsBySource(t, cl, "wiz-issues")) == 1
-	})
-
+// wizFollowUps delivers the AWS issue and the Defend threat, then waits for
+// the enhancer chain to advance the repo-less findings.
+func wizFollowUps(t *testing.T, cl *cluster, url string) {
+	t.Helper()
 	// An issue on an unsupported-for-enhancement platform still ingests: AWS
 	// resources get provider aws and travel the same repo-less route.
 	if got := postWiz(t, url, wizWebhookToken, fixture(t, "wiz.issue.aws.json")); got != http.StatusAccepted {
@@ -223,6 +230,6 @@ func postWiz(t *testing.T, url, token string, payload []byte) int {
 	if err != nil {
 		t.Fatalf("deliver wiz payload: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }

@@ -401,15 +401,15 @@ func TestLoadStatusServer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GET /api/findings: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /api/findings: status %d", resp.StatusCode)
 		}
-		bytes, err := io.Copy(io.Discard, resp.Body)
+		n, err := io.Copy(io.Discard, resp.Body)
 		if err != nil {
 			t.Fatalf("read body: %v", err)
 		}
-		return time.Since(begin), bytes
+		return time.Since(begin), n
 	}
 
 	coldLatency, rawBytes := get("")

@@ -36,8 +36,8 @@ import (
 	"testing"
 	"time"
 
-	batchv1 "k8s.io/api/batch/v1"
 	"github.com/go-logr/logr"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -232,7 +232,7 @@ func freePort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
@@ -305,7 +305,7 @@ func deliver(t *testing.T, url, event string, payload []byte) {
 	if err != nil {
 		t.Fatalf("deliver %s: %v", event, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("deliver %s: status %d, want 202", event, resp.StatusCode)
 	}
@@ -345,8 +345,20 @@ func TestPipeline(t *testing.T) {
 	gh := fakegithub.New()
 	t.Cleanup(gh.Close)
 	cl.githubCredentials(t, gh.URL)
-	ctx := context.Background()
 
+	webhookURL := pipelineControllers(t, cl)
+	fnd := pipelineIngest(t, cl, webhookURL)
+	pipelineEnhance(t, cl, fnd)
+	pipelineProjection(t, gh)
+	repo := pipelineArtifact(t, cl, fnd)
+	pipelineAgentJob(t, cl, fnd, repo)
+	pipelineHandOff(t, cl, webhookURL, fnd)
+}
+
+// pipelineControllers starts the front half of the pipeline and returns the
+// GitHub webhook URL.
+func pipelineControllers(t *testing.T, cl *cluster) string {
+	t.Helper()
 	contextFile := filepath.Join(t.TempDir(), "context.yaml")
 	if err := os.WriteFile(contextFile, []byte(
 		"repos:\n    acme/shop:\n        owners: [octocat]\n        attributes:\n            system: storefront\n",
@@ -366,8 +378,14 @@ func TestPipeline(t *testing.T) {
 	cl.controller(t, "investigation-controller",
 		append([]string{"--finding-min-age", "1s"}, runnerArgs...)...)
 
-	webhookURL := "http://" + listen + "/github/webhooks"
+	return "http://" + listen + "/github/webhooks"
+}
 
+// pipelineIngest delivers two alerts of one finding family and returns the
+// single Finding they accumulate into.
+func pipelineIngest(t *testing.T, cl *cluster, webhookURL string) *v1alpha1.Finding {
+	t.Helper()
+	ctx := context.Background()
 	// 1. The first CodeQL alert creates the Finding.
 	deliver(t, webhookURL, "code_scanning_alert", fixture(t, "code_scanning_alert.created.json"))
 	var fnd v1alpha1.Finding
@@ -403,24 +421,34 @@ func TestPipeline(t *testing.T) {
 	if err := cl.client.List(ctx, &list, client.InNamespace(namespace)); err != nil || len(list.Items) != 1 {
 		t.Fatalf("findings = %d, want 1 (the second alert must accumulate, not create a sibling)", len(list.Items))
 	}
+	return &fnd
+}
 
+// pipelineEnhance waits for the context-controller to enhance the finding.
+func pipelineEnhance(t *testing.T, cl *cluster, fnd *v1alpha1.Finding) {
+	t.Helper()
+	ctx := context.Background()
 	// 3. The context-controller enhances it (Opened → Enhanced).
 	eventually(t, "the finding to be enhanced", func() bool {
 		var cur v1alpha1.Finding
-		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(&fnd), &cur); err != nil {
+		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return false
 		}
 		return len(cur.Status.Enrichments) > 0 &&
 			cur.Status.Phase != v1alpha1.PhaseOpened
 	})
 	var enhanced v1alpha1.Finding
-	if err := cl.client.Get(ctx, client.ObjectKeyFromObject(&fnd), &enhanced); err != nil {
+	if err := cl.client.Get(ctx, client.ObjectKeyFromObject(fnd), &enhanced); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(enhanced.Status.Owners, "octocat") {
 		t.Errorf("owners = %v, want octocat from the static context", enhanced.Status.Owners)
 	}
+}
 
+// pipelineProjection checks the tracking issue projected into the fake GitHub.
+func pipelineProjection(t *testing.T, gh *fakegithub.Server) {
+	t.Helper()
 	// 4. The projection: one tracking issue in the fake GitHub, carrying the
 	//    trimmed human-facing label vocabulary.
 	eventually(t, "the tracking issue to be projected", func() bool {
@@ -441,12 +469,17 @@ func TestPipeline(t *testing.T) {
 			t.Errorf("label %q is retired machine vocabulary; the CR is the state now", l)
 		}
 	}
+}
 
+// pipelineArtifact waits for the gate and the pinned, served artifact.
+func pipelineArtifact(t *testing.T, cl *cluster, fnd *v1alpha1.Finding) *v1alpha1.Repository {
+	t.Helper()
+	ctx := context.Background()
 	// 5. Accumulation closes (2s) and the gate picks the finding up (min age
 	//    1s): Investigating, with the Repository pinned and served.
 	eventually(t, "the finding to reach Investigating", func() bool {
 		var cur v1alpha1.Finding
-		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(&fnd), &cur); err != nil {
+		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return false
 		}
 		return cur.Status.Phase == v1alpha1.PhaseInvestigating
@@ -475,7 +508,13 @@ func TestPipeline(t *testing.T) {
 	if got := fmt.Sprintf("%x", sha256.Sum256(raw)); got != repo.Status.Artifact.Digest {
 		t.Errorf("artifact digest = %s, want %s (what the Job pins)", got, repo.Status.Artifact.Digest)
 	}
+	return &repo
+}
 
+// pipelineAgentJob checks the credential-less analysis Job and its Secret.
+func pipelineAgentJob(t *testing.T, cl *cluster, fnd *v1alpha1.Finding, repo *v1alpha1.Repository) {
+	t.Helper()
+	ctx := context.Background()
 	// 6. The analysis Job and its per-Job Secret exist in the agents
 	//    namespace, and are credential-less.
 	var job batchv1.Job
@@ -510,10 +549,15 @@ func TestPipeline(t *testing.T) {
 	if len(secret.Data["issue.md"]) == 0 {
 		t.Error("per-job secret is missing the issue handoff")
 	}
+}
 
+// pipelineHandOff closes the tracking issue and waits for the hand-off.
+func pipelineHandOff(t *testing.T, cl *cluster, webhookURL string, fnd *v1alpha1.Finding) {
+	t.Helper()
+	ctx := context.Background()
 	// 7. A human closes the tracking issue: any non-terminal phase hands off.
 	var tracked v1alpha1.Finding
-	if err := cl.client.Get(ctx, client.ObjectKeyFromObject(&fnd), &tracked); err != nil {
+	if err := cl.client.Get(ctx, client.ObjectKeyFromObject(fnd), &tracked); err != nil {
 		t.Fatal(err)
 	}
 	if tracked.Status.Tracking == nil || tracked.Status.Tracking.URL == "" {
@@ -537,7 +581,7 @@ func TestPipeline(t *testing.T) {
 	deliver(t, webhookURL, "issues", closePayload)
 	eventually(t, "the closed issue to hand the finding off", func() bool {
 		var cur v1alpha1.Finding
-		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(&fnd), &cur); err != nil {
+		if err := cl.client.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return false
 		}
 		return cur.Status.Phase == v1alpha1.PhaseHandedOff
@@ -865,7 +909,7 @@ func TestForgedSignatureRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("forged delivery: status %d, want 401", resp.StatusCode)
 	}

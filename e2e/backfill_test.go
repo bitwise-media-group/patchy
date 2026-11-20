@@ -50,30 +50,10 @@ func TestBackfill(t *testing.T) {
 		t.Fatalf("findings before backfill = %d (err %v), want 0", len(list.Items), err)
 	}
 
-	stamp := func(at metav1.Time) {
-		t.Helper()
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			var integ v1alpha1.Integration
-			key := types.NamespacedName{Namespace: namespace, Name: "github"}
-			if err := cl.client.Get(ctx, key, &integ); err != nil {
-				return err
-			}
-			integ.Spec.Backfill = &v1alpha1.BackfillRequest{
-				By:           "op@acme.test",
-				At:           at,
-				Repositories: []string{"acme/shop"},
-			}
-			return cl.client.Update(ctx, &integ)
-		})
-		if err != nil {
-			t.Fatalf("stamp spec.backfill: %v", err)
-		}
-	}
-
 	// Second-truncated: metav1.Time serializes at second precision, and the
 	// echo comparison below must survive the round trip.
 	first := metav1.NewTime(time.Now().UTC().Truncate(time.Second))
-	stamp(first)
+	stampBackfill(t, cl, first)
 
 	// The walk ingests both filtered alerts into one finding family and
 	// echoes the request.
@@ -92,16 +72,7 @@ func TestBackfill(t *testing.T) {
 			fnd.Spec.Source, fnd.Spec.Repository)
 	}
 
-	var integ v1alpha1.Integration
-	eventually(t, "status.backfill to echo the request", func() bool {
-		key := types.NamespacedName{Namespace: namespace, Name: "github"}
-		if err := cl.client.Get(ctx, key, &integ); err != nil {
-			return false
-		}
-		st := integ.Status.Backfill
-		return st != nil && st.BackfilledAt != nil && !st.BackfilledAt.Time.Before(first.Time)
-	})
-	st := integ.Status.Backfill
+	st := waitBackfillEcho(t, cl, "status.backfill to echo the request", first)
 	if st.Listed != 2 || st.Ingested != 2 || st.Truncated || st.Error != "" {
 		t.Errorf("status.backfill = %+v, want listed 2 ingested 2 clean", st)
 	}
@@ -109,19 +80,51 @@ func TestBackfill(t *testing.T) {
 	// A second, newer request re-runs the walk; ingestion is idempotent, so
 	// the same alerts fold back into the same finding.
 	second := metav1.NewTime(first.Add(2 * time.Second))
-	stamp(second)
-	eventually(t, "the second backfill to be consumed", func() bool {
-		key := types.NamespacedName{Namespace: namespace, Name: "github"}
-		if err := cl.client.Get(ctx, key, &integ); err != nil {
-			return false
-		}
-		st := integ.Status.Backfill
-		return st != nil && st.BackfilledAt != nil && !st.BackfilledAt.Time.Before(second.Time)
-	})
+	stampBackfill(t, cl, second)
+	waitBackfillEcho(t, cl, "the second backfill to be consumed", second)
 	if err := cl.client.List(ctx, &list, client.InNamespace(namespace)); err != nil || len(list.Items) != 1 {
 		t.Fatalf("findings after re-backfill = %d (err %v), want still 1", len(list.Items), err)
 	}
 	if got := len(list.Items[0].Spec.Alerts); got != 2 {
 		t.Errorf("alerts after re-backfill = %d, want still 2 (no duplicates)", got)
 	}
+}
+
+// stampBackfill writes a backfill request for acme/shop onto the github
+// Integration, as the status page or CLI would.
+func stampBackfill(t *testing.T, cl *cluster, at metav1.Time) {
+	t.Helper()
+	ctx := context.Background()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var integ v1alpha1.Integration
+		key := types.NamespacedName{Namespace: namespace, Name: "github"}
+		if err := cl.client.Get(ctx, key, &integ); err != nil {
+			return err
+		}
+		integ.Spec.Backfill = &v1alpha1.BackfillRequest{
+			By:           "op@acme.test",
+			At:           at,
+			Repositories: []string{"acme/shop"},
+		}
+		return cl.client.Update(ctx, &integ)
+	})
+	if err != nil {
+		t.Fatalf("stamp spec.backfill: %v", err)
+	}
+}
+
+// waitBackfillEcho waits for status.backfill to report a walk at or after
+// since, and returns it.
+func waitBackfillEcho(t *testing.T, cl *cluster, why string, since metav1.Time) *v1alpha1.BackfillStatus {
+	t.Helper()
+	var integ v1alpha1.Integration
+	eventually(t, why, func() bool {
+		key := types.NamespacedName{Namespace: namespace, Name: "github"}
+		if err := cl.client.Get(context.Background(), key, &integ); err != nil {
+			return false
+		}
+		st := integ.Status.Backfill
+		return st != nil && st.BackfilledAt != nil && !st.BackfilledAt.Time.Before(since.Time)
+	})
+	return integ.Status.Backfill
 }

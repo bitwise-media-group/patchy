@@ -70,7 +70,7 @@ func getFindingDetail(t *testing.T, url string) *statusFindingDetail {
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: %d", url, resp.StatusCode)
 	}
@@ -87,7 +87,7 @@ func getDataset(t *testing.T, url string) (*http.Response, *statusDataset) {
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var ds statusDataset
 	if resp.StatusCode == http.StatusOK {
 		if err := json.NewDecoder(resp.Body).Decode(&ds); err != nil {
@@ -107,10 +107,36 @@ func TestStatusServer(t *testing.T) {
 	gh := fakegithub.New()
 	t.Cleanup(gh.Close)
 	cl.githubCredentials(t, gh.URL)
-	ctx := context.Background()
 
+	awaiting, suspendable := statusFixtures(t, cl)
+
+	// The spawner that reacts to the approval.
+	cl.controller(t, "remediation-controller",
+		append([]string{"--max-concurrent-remediations", "1"}, runnerArgs...)...)
+
+	// Instance A: auth mode none (full access, no sign-in).
+	authCfg := filepath.Join(t.TempDir(), "auth.yaml")
+	if err := os.WriteFile(authCfg, []byte("mode: none\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	cl.controller(t, "status-server", "--listen-addr", listen, "--auth-config", authCfg)
+	base := "http://" + listen
+
+	statusCheckList(t, base)
+	statusCheckDetail(t, base, awaiting.Name)
+	statusCheckActions(t, cl, base, awaiting.Name, suspendable.Name)
+	transcriptPath := statusCheckTranscripts(t, cl, base, awaiting.Name)
+	statusCheckUnconfigured(t, cl, awaiting.Name, transcriptPath)
+}
+
+// statusFixtures fabricates the findings, transcript and rollup the status
+// server serves: one finding awaiting approval, one to suspend.
+func statusFixtures(t *testing.T, cl *cluster) (awaiting, suspendable *v1alpha1.Finding) {
+	t.Helper()
+	ctx := context.Background()
 	now := metav1.Now()
-	awaiting := fabricateFinding(t, cl, "finding-approve-1", v1alpha1.LevelHigh,
+	awaiting = fabricateFinding(t, cl, "finding-approve-1", v1alpha1.LevelHigh,
 		"https://127.0.0.1/acme/shop", func(st *v1alpha1.FindingStatus) {
 			st.Phase = v1alpha1.PhaseAwaitingApproval
 			st.PhaseTimes = []v1alpha1.PhaseTime{{Phase: v1alpha1.PhaseAwaitingApproval, At: now}}
@@ -121,7 +147,7 @@ func TestStatusServer(t *testing.T) {
 			}
 		})
 	fabricateTranscript(t, cl, awaiting.Name)
-	suspendable := fabricateFinding(t, cl, "finding-suspend-1", v1alpha1.LevelLow,
+	suspendable = fabricateFinding(t, cl, "finding-suspend-1", v1alpha1.LevelLow,
 		"https://127.0.0.1/acme/shop", func(st *v1alpha1.FindingStatus) {
 			st.Phase = v1alpha1.PhaseOpened
 			st.PhaseTimes = []v1alpha1.PhaseTime{{Phase: v1alpha1.PhaseOpened, At: now}}
@@ -140,19 +166,12 @@ func TestStatusServer(t *testing.T) {
 	if err := cl.client.Status().Update(ctx, rollup); err != nil {
 		t.Fatal(err)
 	}
+	return awaiting, suspendable
+}
 
-	// The spawner that reacts to the approval.
-	cl.controller(t, "remediation-controller",
-		append([]string{"--max-concurrent-remediations", "1"}, runnerArgs...)...)
-
-	// Instance A: auth mode none (full access, no sign-in).
-	authCfg := filepath.Join(t.TempDir(), "auth.yaml")
-	if err := os.WriteFile(authCfg, []byte("mode: none\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	listen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
-	cl.controller(t, "status-server", "--listen-addr", listen, "--auth-config", authCfg)
-	base := "http://" + listen
+// statusCheckList checks the trimmed findings list (mode none: every verb).
+func statusCheckList(t *testing.T, base string) {
+	t.Helper()
 
 	resp, ds := getDataset(t, base+"/api/findings")
 	if resp.StatusCode != http.StatusOK {
@@ -190,10 +209,15 @@ func TestStatusServer(t *testing.T) {
 			}
 		}
 	}
+}
 
+// statusCheckDetail checks the per-finding detail, the 404 for an expired
+// finding, and the metrics summary.
+func statusCheckDetail(t *testing.T, base, awaiting string) {
+	t.Helper()
 	// The per-finding detail carries what the list omits, including the run
 	// detail lifted from the Investigation child.
-	detail := getFindingDetail(t, base+"/api/findings/"+awaiting.Name)
+	detail := getFindingDetail(t, base+"/api/findings/"+awaiting)
 	if detail.Description == "" || len(detail.PhaseTimes) == 0 {
 		t.Errorf("detail = %+v, want description and phaseTimes", detail)
 	}
@@ -216,21 +240,27 @@ func TestStatusServer(t *testing.T) {
 	}
 
 	// The metrics summary (mode none: authentication disabled, so open).
-	resp, ds = getDataset(t, base+"/api/rollups")
+	resp, ds := getDataset(t, base+"/api/rollups")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/rollups: %d", resp.StatusCode)
 	}
 	if len(ds.Findings) != 0 || len(ds.Rollups) != 1 || ds.Rollups[0].Scope.Type != "total" {
 		t.Fatalf("rollups dataset: findings=%d rollups=%+v", len(ds.Findings), ds.Rollups)
 	}
+}
 
+// statusCheckActions approves and suspends through the page and checks the
+// SSE stream reports the change.
+func statusCheckActions(t *testing.T, cl *cluster, base, awaiting, suspendable string) {
+	t.Helper()
+	ctx := context.Background()
 	// SSE: a change publishes findings-changed.
 	events := make(chan string, 8)
 	sseResp, err := http.Get(base + "/events")
 	if err != nil {
 		t.Fatalf("GET /events: %v", err)
 	}
-	t.Cleanup(func() { sseResp.Body.Close() })
+	t.Cleanup(func() { _ = sseResp.Body.Close() })
 	go func() {
 		scanner := bufio.NewScanner(sseResp.Body)
 		for scanner.Scan() {
@@ -248,15 +278,15 @@ func TestStatusServer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("POST %s %s: %v", name, verb, err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return resp
 	}
-	if resp := post(awaiting.Name, "approve"); resp.StatusCode != http.StatusOK {
+	if resp := post(awaiting, "approve"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve: %d", resp.StatusCode)
 	}
 	eventually(t, "the approved finding to be admitted by remediation-controller", func() bool {
 		var f v1alpha1.Finding
-		key := types.NamespacedName{Namespace: namespace, Name: awaiting.Name}
+		key := types.NamespacedName{Namespace: namespace, Name: awaiting}
 		if cl.client.Get(ctx, key, &f) != nil || f.Spec.Approval == nil {
 			return false
 		}
@@ -266,11 +296,11 @@ func TestStatusServer(t *testing.T) {
 		return f.Status.Phase == v1alpha1.PhaseQueued || f.Status.Phase == v1alpha1.PhaseRemediating
 	})
 
-	if resp := post(suspendable.Name, "suspend"); resp.StatusCode != http.StatusOK {
+	if resp := post(suspendable, "suspend"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("suspend: %d", resp.StatusCode)
 	}
 	var f v1alpha1.Finding
-	if err := cl.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: suspendable.Name}, &f); err != nil {
+	if err := cl.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: suspendable}, &f); err != nil {
 		t.Fatal(err)
 	}
 	if !f.Spec.Suspend {
@@ -292,9 +322,14 @@ func TestStatusServer(t *testing.T) {
 			waiting = false
 		}
 	}
+}
 
+// statusCheckTranscripts replays a stored conversation and a compacted long
+// one (with resume), returning the short one's transcript path.
+func statusCheckTranscripts(t *testing.T, cl *cluster, base, awaiting string) string {
+	t.Helper()
 	// The agent transcript: a completed run replays its stored conversation.
-	transcriptPath := "/api/findings/" + awaiting.Name + "/runs/investigation/1/transcript"
+	transcriptPath := "/api/findings/" + awaiting + "/runs/investigation/1/transcript"
 	turns := fetchTranscript(t, base+transcriptPath, "")
 	if len(turns) != 2 {
 		t.Fatalf("transcript returned %d turns, want 2: %+v", len(turns), turns)
@@ -306,6 +341,15 @@ func TestStatusServer(t *testing.T) {
 		t.Errorf("turns[1] = %+v", turns[1])
 	}
 
+	statusCheckLongTranscript(t, cl, base)
+	return transcriptPath
+}
+
+// statusCheckLongTranscript checks a run that streamed past the store bounds
+// replays compacted (head, tail, elision notice) and resumes by seq.
+func statusCheckLongTranscript(t *testing.T, cl *cluster, base string) {
+	t.Helper()
+	ctx := context.Background()
 	// A long run: the live stream carried every turn, but the stored record
 	// is compacted to fit its ConfigMap (head and tail with an elision
 	// notice) and still resumes by seq.
@@ -348,7 +392,12 @@ func TestStatusServer(t *testing.T) {
 	if len(resumed) != 2 || resumed[0].Seq != all[len(all)-2].Seq {
 		t.Errorf("resume after %d returned %+v, want the last 2 turns", resumeAt, resumed)
 	}
+}
 
+// statusCheckUnconfigured starts a server with no auth config and checks it
+// serves nothing.
+func statusCheckUnconfigured(t *testing.T, cl *cluster, awaiting, transcriptPath string) {
+	t.Helper()
 	// Instance B: no auth config at all, so nothing is served.
 	publicListen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "status-server", "--listen-addr", publicListen)
@@ -358,7 +407,7 @@ func TestStatusServer(t *testing.T) {
 		t.Errorf("unconfigured GET /api/findings = %d, want 401", resp.StatusCode)
 	}
 	// The detail route shares the findings gate exactly.
-	if resp, err := http.Get(publicBase + "/api/findings/" + awaiting.Name); err != nil {
+	if resp, err := http.Get(publicBase + "/api/findings/" + awaiting); err != nil {
 		t.Fatalf("GET detail (unconfigured): %v", err)
 	} else {
 		_ = resp.Body.Close()
@@ -379,7 +428,7 @@ func TestStatusServer(t *testing.T) {
 	}
 	// A transcript is finding data, refused exactly as the findings
 	// projection is.
-	resp, err = http.Get(publicBase + transcriptPath)
+	resp, err := http.Get(publicBase + transcriptPath)
 	if err != nil {
 		t.Fatalf("GET transcript (unconfigured): %v", err)
 	}

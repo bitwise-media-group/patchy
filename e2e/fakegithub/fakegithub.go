@@ -94,7 +94,7 @@ func New() *Server {
 	s, mux := newState()
 	// go-github appends /api/v3 for a non-api.github.com base URL.
 	s.Server = httptest.NewServer(http.StripPrefix("/api/v3", mux))
-	s.externalURL = s.Server.URL
+	s.externalURL = s.URL
 	return s
 }
 
@@ -527,8 +527,9 @@ var labelQualifier = regexp.MustCompile(`label:"([^"]+)"`)
 
 func (s *Server) searchIssues(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
-	var want []string
-	for _, m := range labelQualifier.FindAllStringSubmatch(query, -1) {
+	matches := labelQualifier.FindAllStringSubmatch(query, -1)
+	want := make([]string, 0, len(matches))
+	for _, m := range matches {
 		want = append(want, m[1])
 	}
 

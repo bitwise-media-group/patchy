@@ -31,7 +31,9 @@ func sarClient(t *testing.T, calls *int, allow func(user, resource, verb string)
 					t.Fatalf("unexpected create of %T", obj)
 				}
 				*calls++
-				if res := sar.Spec.ResourceAttributes.Resource; res != "findings" && res != "findingrollups" && res != "integrations" {
+				switch res := sar.Spec.ResourceAttributes.Resource; res {
+				case "findings", "findingrollups", "integrations":
+				default:
 					t.Errorf("review resource = %q, want findings, findingrollups or integrations", res)
 				}
 				sar.Status.Allowed = allow(sar.Spec.User, sar.Spec.ResourceAttributes.Resource,

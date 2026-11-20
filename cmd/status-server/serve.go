@@ -90,7 +90,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 	if authCfg == nil {
 		log.LogAttrs(ctx, slog.LevelWarn,
-			"authentication not configured; serving nothing — findings, metrics and actions are unavailable until an auth config is mounted")
+			"authentication not configured; serving nothing — findings, metrics and actions are unavailable "+
+				"until an auth config is mounted")
 	}
 	authn, err := auth.New(ctx, authCfg, log)
 	if err != nil {

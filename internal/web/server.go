@@ -147,7 +147,9 @@ func (s *Server) authorizeMetrics(w http.ResponseWriter, r *http.Request) (viewe
 
 // gate identifies the caller (401 when nobody is), resolves their grants,
 // and admits them when allowed holds (403 naming what they may not do).
-func (s *Server) gate(w http.ResponseWriter, r *http.Request, allowed func(authz.Grants) bool, what string) (viewer, bool) {
+func (s *Server) gate(
+	w http.ResponseWriter, r *http.Request, allowed func(authz.Grants) bool, what string,
+) (viewer, bool) {
 	id, err := s.auth.Identify(w, r)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))

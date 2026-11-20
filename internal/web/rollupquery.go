@@ -185,30 +185,28 @@ func newRepoRow(fr *v1alpha1.FindingRollup) repoRow {
 // first — in a single-organisation install every key shares the owner.
 // Exact name beats name prefix beats word start beats mid-word; owner-only
 // matches come last. A needle containing "/" matches the whole key.
-func locate(key, needle string) (at, score int) {
+func locate(key, needle string) int {
 	slash := -1
 	if !strings.Contains(needle, "/") {
 		slash = strings.LastIndex(key, "/")
 	}
 	name := key[slash+1:]
 	if n := strings.Index(name, needle); n >= 0 {
-		at = slash + 1 + n
 		switch {
 		case n == 0 && len(needle) == len(name):
-			return at, 0
+			return 0
 		case n == 0:
-			return at, 1
+			return 1
 		case strings.ContainsRune("/-_. ", rune(name[n-1])):
-			return at, 2
+			return 2
 		default:
-			return at, 3
+			return 3
 		}
 	}
-	at = strings.Index(key, needle)
-	if at == 0 {
-		return at, 4
+	if strings.HasPrefix(key, needle) {
+		return 4
 	}
-	return at, 5
+	return 5
 }
 
 func compareRows(a, b *repoRow, sort string, descending bool) int {
@@ -296,7 +294,7 @@ func (s *Server) queryRepositories(ctx context.Context, rq repoQuery) (*Reposito
 				continue
 			}
 			row := all[i]
-			_, row.score = locate(row.lower, needle)
+			row.score = locate(row.lower, needle)
 			matches = append(matches, row)
 		}
 	}

@@ -29,7 +29,10 @@ func repoRollup(key string, findings, remediated, failed, spend int64) *v1alpha1
 	r.Status.Bucket.Findings = findings
 	r.Status.Bucket.Phases = map[string]int64{"remediated": remediated, "failed": failed}
 	r.Status.Bucket.Stages = map[string]v1alpha1.StageAggregate{
-		"investigation": {Runs: findings, Succeeded: findings, CostMicroUSD: spend, Outcomes: map[string]int64{"ok": findings}},
+		"investigation": {
+			Runs: findings, Succeeded: findings, CostMicroUSD: spend,
+			Outcomes: map[string]int64{"ok": findings},
+		},
 	}
 	return r
 }
@@ -136,7 +139,7 @@ func TestLocate(t *testing.T) {
 		{"acme/ledger", "acme/le", 1}, // "/" in the needle: whole-key prefix
 	}
 	for _, tc := range tests {
-		if _, got := locate(tc.key, tc.needle); got != tc.score {
+		if got := locate(tc.key, tc.needle); got != tc.score {
 			t.Errorf("locate(%q, %q) score = %d, want %d", tc.key, tc.needle, got, tc.score)
 		}
 	}
@@ -162,11 +165,13 @@ func TestQueryRepositoriesOrderAndPaging(t *testing.T) {
 		t.Errorf("past the end = offset %d, %d rows", page.Offset, len(page.Repositories))
 	}
 
-	if got := keys(query(t, s, "sort=name").Repositories); got[0] != "acme/api-gateway" || got[4] != "payments-org/legacy" {
+	got := keys(query(t, s, "sort=name").Repositories)
+	if got[0] != "acme/api-gateway" || got[4] != "payments-org/legacy" {
 		t.Errorf("by name = %v", got)
 	}
 	// No remediations means no cost per remediation: it sorts last, not first.
-	if got := keys(query(t, s, "sort=costPerRemediation").Repositories); got[0] != "acme/payments-worker" || got[4] != "acme/api-gateway" {
+	got = keys(query(t, s, "sort=costPerRemediation").Repositories)
+	if got[0] != "acme/payments-worker" || got[4] != "acme/api-gateway" {
 		t.Errorf("by cost per remediation = %v", got)
 	}
 	if got := keys(query(t, s, "sort=failed&order=asc").Repositories); got[0] != "acme/ledger" {
@@ -225,10 +230,11 @@ func TestQueryRepositoriesAggregate(t *testing.T) {
 }
 
 func TestRollupSummaryTrimsRepositories(t *testing.T) {
-	objs := []client.Object{
+	objs := make([]client.Object, 0, 2+summaryRepositories+5)
+	objs = append(objs,
 		testRollup(v1alpha1.ScopeTotal, "", "total"),
 		testRollup(v1alpha1.ScopeHarness, "claude-code", "harness-cc"),
-	}
+	)
 	for i := range summaryRepositories + 5 {
 		objs = append(objs, repoRollup(fmt.Sprintf("acme/r%02d", i), int64(i+1), 1, 0, 1))
 	}

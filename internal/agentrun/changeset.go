@@ -56,6 +56,16 @@ func buildChangeset(ctx context.Context, dir, baseSHA, branch string, maxBytes i
 	if len(cs.Upserts) == 0 && len(cs.Deletes) == 0 {
 		return nil, fmt.Errorf("changeset: %s..%s is empty", baseSHA, branch)
 	}
+	// The patch is archival evidence, not push input, so it is spent from
+	// whatever cap the content left over: a change that fits but whose
+	// patch would not still ships, just without the patch.
+	patch, err := gitRaw(ctx, dir, "format-patch", "--binary", "--stdout", "--no-renames", baseSHA+".."+branch)
+	if err != nil {
+		return nil, err
+	}
+	if total+len(patch) <= maxBytes {
+		cs.Patch = string(patch)
+	}
 	return cs, nil
 }
 

@@ -218,3 +218,62 @@ func TestBuildChangesetRejectsEmptyRange(t *testing.T) {
 		t.Error("error = nil, want empty-changeset rejection")
 	}
 }
+
+func TestBuildChangesetPatch(t *testing.T) {
+	f := newRepoFixture(t)
+	f.write("change.txt", "after\n")
+	f.write("blob.bin", string([]byte{0x00, 0xff, 0x10}))
+	f.git("add", ".")
+	f.git("commit", "-m", "fix: patch me")
+
+	cs, err := f.build(5 << 20)
+	if err != nil {
+		t.Fatalf("buildChangeset() error = %v", err)
+	}
+	for _, want := range []string{"Subject: [PATCH] fix: patch me", "+after", "GIT binary patch"} {
+		if !strings.Contains(cs.Patch, want) {
+			t.Errorf("Patch lacks %q:\n%s", want, cs.Patch)
+		}
+	}
+
+	// The patch applies with git am on a fresh checkout of the base.
+	clone := t.TempDir()
+	if out, err := exec.Command("git", "clone", "-q", f.dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v: %s", err, out)
+	}
+	am := exec.Command("git", "-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+		"am", "-q")
+	am.Dir = clone
+	am.Stdin = strings.NewReader(cs.Patch)
+	checkout := exec.Command("git", "checkout", "-q", f.base)
+	checkout.Dir = clone
+	if out, err := checkout.CombinedOutput(); err != nil {
+		t.Fatalf("checkout base: %v: %s", err, out)
+	}
+	if out, err := am.CombinedOutput(); err != nil {
+		t.Fatalf("git am: %v: %s", err, out)
+	}
+	got, err := os.ReadFile(filepath.Join(clone, "change.txt"))
+	if err != nil || string(got) != "after\n" {
+		t.Errorf("change.txt after am = %q, %v", got, err)
+	}
+}
+
+func TestBuildChangesetPatchDroppedOverCap(t *testing.T) {
+	f := newRepoFixture(t)
+	f.write("change.txt", strings.Repeat("x", 100)+"\n")
+	f.git("add", ".")
+	f.git("commit", "-m", "fix: big")
+
+	// Room for the 101-byte content but not for the patch on top of it.
+	cs, err := f.build(200)
+	if err != nil {
+		t.Fatalf("buildChangeset() error = %v", err)
+	}
+	if cs.Patch != "" {
+		t.Errorf("Patch = %d bytes, want dropped over the cap", len(cs.Patch))
+	}
+	if len(cs.Upserts) != 1 {
+		t.Errorf("upserts = %+v, want the content kept", cs.Upserts)
+	}
+}

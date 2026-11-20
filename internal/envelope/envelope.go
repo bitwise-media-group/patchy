@@ -141,6 +141,13 @@ type Changeset struct {
 	CommitMessage string       `json:"commit_message"`
 	Upserts       []FileChange `json:"upserts,omitempty"`
 	Deletes       []string     `json:"deletes,omitempty"`
+	// Patch is base..branch as `git format-patch --binary --stdout`: a
+	// human-readable, `git am`-able rendering of the same change, kept only
+	// for the run archive. It never drives the push. Empty when the runner
+	// predates it or when adding it would have exceeded the changeset cap,
+	// which is spent on the pushable content first. Older controllers
+	// ignore it.
+	Patch string `json:"patch,omitempty"`
 }
 
 // Remediation is the stage-2 event payload.

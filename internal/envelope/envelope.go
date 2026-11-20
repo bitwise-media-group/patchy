@@ -13,11 +13,11 @@ import (
 // Prefix marks an event line on the agent-runner's stdout.
 const Prefix = "PATCHY-EVENT: "
 
-// Version is the current envelope schema version. Version 2 replaced the
-// git-bundle payload with the structured Changeset; version 3 added the
-// investigation event (exploitability/likelihood/impact analyses) and keys
-// events by finding name; version 4 turned the investigation's max_turns and
-// token_budget into the unclamped estimated_max_turns/estimated_token_budget
+// Version is the current envelope schema version. Decode rejects every other
+// version. Version 2 replaced the git-bundle payload with the structured
+// Changeset. Version 3 added the investigation event and keyed events by
+// finding name. Version 4 replaced the investigation's max_turns and
+// token_budget with the unclamped estimated_max_turns/estimated_token_budget
 // and added hold_reasons beside await_approval.
 const Version = 4
 
@@ -82,7 +82,7 @@ type AnalysisResult struct {
 
 // Investigation is the analysis-stage event payload (version 4): the agent's
 // exploitability, likelihood, and impact assessments plus its verdict. The
-// runner never decides continuation — the controller routes on the verdict.
+// runner never decides continuation; the controller routes on the verdict.
 type Investigation struct {
 	Stage
 	ReportMarkdown string         `json:"report_markdown,omitempty"`
@@ -96,11 +96,11 @@ type Investigation struct {
 	// RemediationModel is the stage-2 model the analysis suggested; the
 	// controller clamps it to the allowlist before launching the job.
 	RemediationModel string `json:"remediation_model,omitempty"`
-	// EstimatedMaxTurns/EstimatedTokenBudget are the analysis's PREDICTION of
+	// EstimatedMaxTurns/EstimatedTokenBudget are the analysis's prediction of
 	// what the fix will cost, reported verbatim. They never bind the
-	// remediation — it runs on the grant the controller resolves — and they
-	// are never clamped, because the approval gate and the calibration
-	// averages both read the raw prediction.
+	// remediation, which runs on the grant the controller resolves. They are
+	// never clamped, because the approval gate and the calibration averages
+	// both read the raw prediction.
 	EstimatedMaxTurns    int `json:"estimated_max_turns,omitempty"`
 	EstimatedTokenBudget int `json:"estimated_token_budget,omitempty"`
 	// AwaitApproval marks an approval hold; HoldReasons says why.
@@ -112,8 +112,8 @@ type Investigation struct {
 // v1alpha1.HoldReason; the controller maps one onto the other.
 type HoldReason string
 
-// Approval-hold reasons the runner can raise. Low confidence is absent by
-// design: the controller owns that threshold, not the pod.
+// Approval-hold reasons the runner can raise. Low confidence is absent
+// because the controller owns that threshold, not the pod.
 const (
 	HoldBreakingChangeAvailable HoldReason = "breakingChangeAvailable"
 	HoldExceedsAutomatedTurns   HoldReason = "exceedsAutomatedTurns"
@@ -133,8 +133,8 @@ type FileChange struct {
 // Changeset expresses the agent's committed change as file contents so the
 // controller can push it through the GitHub API without git.
 type Changeset struct {
-	// BaseSHA is the commit the clone was pinned to; the pushed commit's
-	// parent.
+	// BaseSHA is the remote commit the workspace was pinned to, and the
+	// pushed commit's parent.
 	BaseSHA string `json:"base_sha"`
 	// CommitMessage carries the agent's commit message(s); multiple local
 	// commits squash into one API commit.
@@ -159,7 +159,7 @@ type Remediation struct {
 type Event struct {
 	V    int  `json:"v"`
 	Type Type `json:"type"`
-	// Finding context so events are self-contained.
+	// Repo carries the finding's repository so events are self-contained.
 	Repo string `json:"repo"`
 	// Finding names the owning Finding resource.
 	Finding string `json:"finding,omitempty"`

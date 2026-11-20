@@ -35,7 +35,7 @@ func (id Identity) Display() string {
 // Authenticator resolves the requester of an HTTP request.
 type Authenticator interface {
 	// Identify resolves the current session. It may write cookies (token
-	// refresh, SPA state) — hence the ResponseWriter. (nil, nil) means "no
+	// refresh, SPA state), hence the ResponseWriter. (nil, nil) means "no
 	// session"; callers map that to 401 on protected routes.
 	Identify(w http.ResponseWriter, r *http.Request) (*Identity, error)
 	// Register adds the sign-in routes (/oauth2/*, /logout) to mux. Modes

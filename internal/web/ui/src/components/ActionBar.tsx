@@ -1,5 +1,5 @@
 // User actions on a finding. The bar renders nothing when the server granted
-// no verbs (userActions empty/absent) — read-only users never see disabled
+// no verbs (userActions empty/absent), so read-only users never see disabled
 // buttons. Each button asks for a second click to confirm.
 
 import { useEffect, useState } from "preact/hooks";

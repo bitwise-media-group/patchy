@@ -125,8 +125,8 @@ func (c *Client) AddLabels(ctx context.Context, repo Repo, number int, add []str
 	return nil
 }
 
-// RemoveLabel removes one label from the issue. A 404 — the label is
-// already absent — is not an error, so removals are idempotent.
+// RemoveLabel removes one label from the issue. A 404 (the label is
+// already absent) is not an error, so removals are idempotent.
 func (c *Client) RemoveLabel(ctx context.Context, repo Repo, number int, name string) error {
 	resp, err := c.gh.Issues.RemoveLabelForIssue(ctx, repo.Owner, repo.Name, number, name)
 	if err != nil {

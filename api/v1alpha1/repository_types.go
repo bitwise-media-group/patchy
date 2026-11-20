@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RepositoryRef pins what to clone.
+// RepositoryRef pins what to fetch.
 type RepositoryRef struct {
 	// Branch to resolve; source-controller resolves it to a SHA exactly once
 	// and pins status.resolvedSHA.
@@ -15,21 +15,22 @@ type RepositoryRef struct {
 	Branch string `json:"branch,omitempty"`
 }
 
-// RepositorySpec asks source-controller to produce a SHA-pinned clone
-// artifact of one repository.
+// RepositorySpec asks source-controller to produce a SHA-pinned tarball of
+// one repository.
 type RepositorySpec struct {
-	// URL is the normalized https URL of the repository to clone.
+	// URL is the normalized https URL of the repository to fetch.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.url is immutable"
 	URL string `json:"url"`
-	// Ref selects what to clone.
+	// Ref selects what to fetch.
 	// +optional
 	Ref RepositoryRef `json:"ref,omitempty"`
 }
 
-// Artifact is the served clone tarball. The tarball contains the working
-// tree plus its shallow .git directory (agents need git for committing and
-// changeset packaging).
+// Artifact is the served source tarball: the forge's archive of the working
+// tree at the resolved SHA, with no .git directory. The agent Job's init
+// container creates a synthetic git base commit over it for the agent's
+// commit and changeset flow.
 type Artifact struct {
 	// URL the artifact is served at (cluster-internal; the path embeds an
 	// unguessable random id).
@@ -40,7 +41,7 @@ type Artifact struct {
 	// SizeBytes of the tarball.
 	// +optional
 	SizeBytes int64 `json:"sizeBytes,omitempty"`
-	// LastFetchedAt is when the clone was produced.
+	// LastFetchedAt is when the tarball was downloaded from the forge.
 	// +optional
 	LastFetchedAt *metav1.Time `json:"lastFetchedAt,omitempty"`
 }
@@ -48,7 +49,7 @@ type Artifact struct {
 // RepositoryStatus is the repository artifact's observed state.
 type RepositoryStatus struct {
 	// Conditions of the repository (Ready: artifact available; Stalled:
-	// cannot clone or artifact over the size cap).
+	// cannot fetch, or artifact over the size cap).
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// ObservedGeneration is the last spec generation acted on.
@@ -58,7 +59,7 @@ type RepositoryStatus struct {
 	// remediation both work on this tree, and it is the push base.
 	// +optional
 	ResolvedSHA string `json:"resolvedSHA,omitempty"`
-	// Forge names the Forge whose credentials cloned the repository.
+	// Forge names the Forge whose credentials fetched the repository.
 	// +optional
 	Forge *LocalObjectReference `json:"forge,omitempty"`
 	// Artifact is the served tarball.
@@ -74,10 +75,10 @@ type RepositoryStatus struct {
 // +kubebuilder:printcolumn:name="SHA",type=string,JSONPath=`.status.resolvedSHA`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Repository is a SHA-pinned clone artifact: source-controller clones the
-// repository with Forge credentials and serves it as a tarball that agent
-// jobs fetch credential-lessly. Owned by a Finding and garbage-collected
-// with it.
+// Repository is a SHA-pinned source artifact: source-controller downloads
+// the repository's tarball archive at the pinned SHA with Forge credentials
+// and serves it to agent jobs, which fetch it credential-lessly. Owned by a
+// Finding and garbage-collected with it.
 type Repository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

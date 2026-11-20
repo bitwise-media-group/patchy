@@ -357,10 +357,10 @@ func TestColor(t *testing.T) {
 	}
 }
 
-// TestStyledTableEmitsStyling is the counterpart to TestPlainTableHasNoEscapes,
-// and exists because a styling library upgrade can silently stop styling
-// without failing a single content assertion: every other test here asserts
-// text, which unstyled output still satisfies.
+// TestStyledTableEmitsStyling is the counterpart to TestPlainTableHasNoEscapes.
+// A styling library upgrade can silently stop styling without failing a
+// content assertion, because every other test here asserts text, which
+// unstyled output still satisfies.
 func TestStyledTableEmitsStyling(t *testing.T) {
 	var buf bytes.Buffer
 	p := New(&buf, FormatTable, true)
@@ -371,8 +371,8 @@ func TestStyledTableEmitsStyling(t *testing.T) {
 	if !strings.Contains(got, "\x1b") {
 		t.Errorf("styled table emitted no ANSI escapes:\n%q", got)
 	}
-	// Alignment has to survive the escapes: lipgloss measures display width,
-	// which is the whole reason the styled path does not use tabwriter.
+	// Alignment has to survive the escapes. lipgloss measures display width,
+	// which is why the styled path does not use tabwriter.
 	for _, want := range []string{"NAME", "fnd-1", "critical"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("styled table lost %q:\n%q", want, got)

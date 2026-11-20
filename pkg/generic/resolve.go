@@ -6,7 +6,7 @@ package generic
 // AlertRef names one alert of the resolved finding, as the integration
 // originally delivered it.
 type AlertRef struct {
-	// ID is the alert's identifier in the source system — the delivered
+	// ID is the alert's identifier in the source system: the delivered
 	// alertId, or the delivered alertNumber rendered as a string.
 	ID string `json:"id"`
 	// URL is the alert in the source system, when it was delivered.
@@ -15,7 +15,7 @@ type AlertRef struct {
 
 // Verdict is the pipeline's decision on the finding.
 type Verdict struct {
-	// Kind is the decision; "ignore" is the only kind today — the
+	// Kind is the decision. "ignore" is the only kind today: the
 	// investigation judged the finding a false positive or not exploitable.
 	Kind string `json:"kind"`
 	// Reason is a short machine-facing reason code.

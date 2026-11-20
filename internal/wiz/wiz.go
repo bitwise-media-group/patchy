@@ -14,8 +14,9 @@ import (
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
-// Source identifiers stamped into the security-source label — one per feed,
-// so provenance and write-back dispatch can tell an issue from a detection.
+// Source identifiers stamped into the security-source label. There is one per
+// feed so provenance and write-back dispatch can tell an issue from a
+// detection.
 const (
 	// IssuesID identifies the Wiz Issues feed.
 	IssuesID = "wiz-issues"
@@ -72,8 +73,8 @@ var cloudPlatforms = map[string]string{
 }
 
 // actionableTriggers are the lifecycle events that create or refresh a
-// Finding. Resolved is deliberately absent: propagating an external resolve
-// into the state machine is future work, documented as such.
+// Finding. Resolved is absent because propagating an external resolve into
+// the state machine is future work (documented as such).
 var actionableTriggers = map[string]bool{
 	"CREATED":  true,
 	"UPDATED":  true,
@@ -91,7 +92,7 @@ type Options struct {
 // Detect reports which feed a body belongs to by its shape: EventIssue for a
 // top-level issue object, EventThreat for a top-level threat object, "ping"
 // for valid JSON that is neither (Wiz's test delivery). Undecodable bodies
-// are an error — the caller answers 400, not 204.
+// are an error, so the caller answers 400, not 204.
 func Detect(body []byte) (string, error) {
 	var env envelope
 	if err := json.Unmarshal(body, &env); err != nil {
@@ -183,8 +184,8 @@ func (h *DefendHandler) ID() string { return DefendID }
 
 // Findings implements source.Handler: one Finding per supported affected
 // resource, so each accumulates against the resource it concerns. A threat
-// with no resources falls back to one Finding per cloud account — coarse,
-// but a detection with no subject at all is undeliverable and errors.
+// with no resources falls back to one Finding per cloud account. That is
+// coarse, but a detection with no subject at all is undeliverable and errors.
 func (h *DefendHandler) Findings(_ context.Context, event string, payload []byte) ([]source.Finding, error) {
 	if event != EventThreat {
 		return nil, nil
@@ -264,8 +265,8 @@ func meetsMinSeverity(severity, minSeverity string) bool {
 	return severityRank[strings.ToUpper(severity)] >= floor
 }
 
-// issueAdvisories keys accumulation on the security control — the issue's
-// type, so re-notifications of the same misconfiguration on the same
+// issueAdvisories keys accumulation on the security control (the issue's
+// type), so re-notifications of the same misconfiguration on the same
 // resource fold, exactly as SCC's category does. The CR requires at least
 // one advisory, so this never returns empty.
 func issueAdvisories(iss *issue) []string {
@@ -277,8 +278,8 @@ func issueAdvisories(iss *issue) []string {
 	return []string{"wiz-issue:" + iss.ID}
 }
 
-// threatAdvisories keys accumulation on the detection rule — the threat's
-// type — with the MITRE techniques appended as secondary labels.
+// threatAdvisories keys accumulation on the detection rule (the threat's
+// type), with the MITRE techniques appended as secondary labels.
 func threatAdvisories(th *threat) []string {
 	var out []string
 	switch {
@@ -320,8 +321,8 @@ func threatTitle(th *threat) string {
 	return "Wiz threat " + th.ID
 }
 
-// issueResource maps an entity snapshot onto the seam type, or nil when the
-// platform is unsupported or there is no entity at all.
+// issueResource maps an entity snapshot onto a source.CloudResource, or nil
+// when the platform is unsupported or there is no entity at all.
 func issueResource(es *entitySnapshot) *source.CloudResource {
 	if es == nil {
 		return nil
@@ -330,8 +331,8 @@ func issueResource(es *entitySnapshot) *source.CloudResource {
 		es.SubscriptionExternalID, es.Region, es.Name)
 }
 
-// threatResourceOf maps one affected resource onto the seam type, falling
-// back to the threat's own platform when the resource carries none.
+// threatResourceOf maps one affected resource onto a source.CloudResource,
+// falling back to the threat's own platform when the resource carries none.
 func threatResourceOf(th *threat, res *threatResource) *source.CloudResource {
 	platform := res.CloudPlatform
 	if platform == "" {
@@ -350,9 +351,9 @@ func accountResource(th *threat, account string) *source.CloudResource {
 	return cloudResource(th.CloudPlatform, "wiz-account:"+account, "", account, "", account)
 }
 
-// cloudResource builds the seam type, normalizing Google Cloud identifiers
-// to the Cloud Asset Inventory name form. Nil when the platform is
-// unsupported or the resource has no identifier.
+// cloudResource builds a source.CloudResource, normalizing Google Cloud
+// identifiers to the Cloud Asset Inventory name form. It returns nil when the
+// platform is unsupported or the resource has no identifier.
 func cloudResource(platform, providerID, rtype, project, location, displayName string) *source.CloudResource {
 	provider := cloudPlatforms[strings.ToUpper(platform)]
 	if provider == "" || providerID == "" {

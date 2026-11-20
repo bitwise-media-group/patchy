@@ -409,7 +409,7 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
-// TestAvailableDoesNotMutate proves the probe runs against copies — Available
+// TestAvailableDoesNotMutate proves the probe runs against copies. Available
 // is called on every finding in a list render, so a mutating probe would
 // silently corrupt whatever the caller goes on to display or write.
 func TestAvailableDoesNotMutate(t *testing.T) {

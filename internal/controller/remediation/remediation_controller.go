@@ -35,9 +35,7 @@ import (
 // remSchedulerRequest is the singleton request every watch event maps to.
 const remSchedulerRequest = "\x00scheduler"
 
-// CRRunner is the slice of the jobs client the CRD-native remediation
-// engine needs (distinct name: the legacy Runner interface lives in
-// controller.go until the cutover).
+// CRRunner is the subset of the jobs client the remediation engine needs.
 type CRRunner interface {
 	Create(ctx context.Context, spec jobs.Spec) (string, error)
 	Result(ctx context.Context, jobName string) (jobs.RunOutput, error)
@@ -78,7 +76,7 @@ type RemediationReconciler struct {
 	// change between spawn and launch fails the run cleanly instead of
 	// creating an unrunnable Job.
 	Enabled []string
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -130,7 +128,7 @@ func (r *RemediationReconciler) schedule(ctx context.Context) (ctrl.Result, erro
 }
 
 // expedited reads the parent finding's expedite mark (cached client; a miss
-// simply ranks the run normally).
+// ranks the run normally).
 func (r *RemediationReconciler) expedited(ctx context.Context, namespace, finding string) bool {
 	if finding == "" {
 		return false
@@ -143,7 +141,7 @@ func (r *RemediationReconciler) expedited(ctx context.Context, namespace, findin
 }
 
 // grant moves one remediation to Running and its finding to Remediating
-// (edge 11).
+// (Queued→Remediating).
 func (r *RemediationReconciler) grant(ctx context.Context, name string) error {
 	var findingName string
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -290,7 +288,7 @@ func (r *RemediationReconciler) collect(ctx context.Context, rem *v1alpha1.Remed
 	}
 	// Persist before applying: this is the only moment the conversation is
 	// still readable, since the Job's TTL takes the pod and its log with it.
-	// A transcript that cannot be stored is logged and dropped — losing the
+	// A transcript that cannot be stored is logged and dropped: losing the
 	// explanation must never cost the result it explains.
 	transcript, err := transcriptstore.Persist(ctx, r.Client, rem.Namespace,
 		transcriptLabels(rem), rem, remGVK, out.Turns)
@@ -337,7 +335,7 @@ func transcriptLabels(rem *v1alpha1.Remediation) map[string]string {
 }
 
 // succeed pushes the changeset, opens the PR, and moves the finding to
-// InReview (edge 13). The changeset never touches any CR.
+// InReview (Remediating→InReview). The changeset never touches any CR.
 func (r *RemediationReconciler) succeed(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
 	transcript *v1alpha1.TranscriptRef,
@@ -402,7 +400,8 @@ func (r *RemediationReconciler) succeed(
 	})
 }
 
-// handOff records an agent's "not safely fixable" verdict (edge 14).
+// handOff records an agent's "not safely fixable" verdict
+// (Remediating→HandedOff).
 func (r *RemediationReconciler) handOff(
 	ctx context.Context, rem *v1alpha1.Remediation, result *envelope.Remediation,
 	transcript *v1alpha1.TranscriptRef,
@@ -424,11 +423,12 @@ func stageOf(result *envelope.Remediation) *envelope.Stage {
 	return &result.Stage
 }
 
-// fail retries (edge 12) or exhausts (edge 15). reported is the agent's own
-// stage when it emitted one; its accounting survives the failure so the run's
-// turns, tokens and cost still reach the child and the rollups — a failed run
-// spent real money, and the estimate-against-actual averages depend on it
-// being counted. Nil when no event arrived at all.
+// fail retries (Remediating→Queued) or exhausts (Remediating→Failed).
+// reported is the agent's own stage when it emitted one. Its accounting
+// survives the failure so the run's turns, tokens and cost still reach the
+// child and the rollups: a failed run spent real money, and the
+// estimate-against-actual averages depend on it being counted. reported is
+// nil when no event arrived at all.
 func (r *RemediationReconciler) fail(
 	ctx context.Context, rem *v1alpha1.Remediation, outcome, detail string, reported *envelope.Stage,
 	transcript *v1alpha1.TranscriptRef,

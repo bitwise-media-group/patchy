@@ -30,7 +30,7 @@ func TestRunCollectsStdout(t *testing.T) {
 
 func TestRunObserveAndCollect(t *testing.T) {
 	// The observer must see every line while stdout is still collected in
-	// full — observation is a tap on the stream, not a mode switch.
+	// full. Observation is a tap on the stream, not a mode switch.
 	var observed [][]byte
 	res, err := (&Exec{}).Run(context.Background(), sh(`printf 'a\nb\nc\n'`), 5*time.Second,
 		func(line []byte) (bool, string) {
@@ -97,9 +97,9 @@ func TestRunSurfacesExitCode(t *testing.T) {
 }
 
 func TestRunTimeoutKillsProcessGroup(t *testing.T) {
-	// The child ignores nothing, but it is a *grand*child via the subshell —
-	// only a process-group kill reaps it promptly. Timeout keeps the partial
-	// output and is not an error.
+	// The sleep is a grandchild via the subshell, so only a process-group
+	// kill reaps it promptly. Timeout keeps the partial output and is not an
+	// error.
 	spec := sh(`(sleep 60 & echo started; wait)`)
 	start := time.Now()
 	res, err := (&Exec{}).Run(context.Background(), spec, 500*time.Millisecond, nil)
@@ -129,10 +129,8 @@ func TestRunStderrTailOnTimeout(t *testing.T) {
 }
 
 func TestRunStripsANSIEscapes(t *testing.T) {
-	// Agents and the tools they invoke (terraform, linters, ...) print ANSI
-	// color codes; the runner strips them at capture so the bytes that reach
-	// retained logs and reports stay plain text. The printf octal \033 emits
-	// a real escape byte on both stdout and stderr.
+	// The runner strips ANSI color codes at capture. The printf octal \033
+	// emits a real escape byte on both stdout and stderr.
 	spec := sh(`printf '\033[31mred\033[0m plain\n'; printf '\033[1mbold\033[0m err\n' >&2`)
 	res, err := (&Exec{}).Run(context.Background(), spec, 5*time.Second, nil)
 	if err != nil {

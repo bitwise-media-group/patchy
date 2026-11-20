@@ -3,10 +3,10 @@
 
 // Tier-1 microbenchmarks for the status-server dataset path: projecting one
 // Finding, assembling the list dataset at backlog scale, encoding it, the
-// one-finding detail build, and the SSE fan-out. Run via `mise run bench`; the TestComplexity* assertions
-// are opt-in (PATCHY_BENCH_ASSERT=1). The 2M-findings dataset build needs
-// ~16GB and is additionally gated on PATCHY_BENCH_HUGE=1 (run it with
-// -benchtime=1x).
+// one-finding detail build, and the SSE fan-out. Run via `mise run bench`;
+// the TestComplexity* assertions are opt-in (PATCHY_BENCH_ASSERT=1). The
+// 2M-findings dataset build needs ~16GB and is also gated on
+// PATCHY_BENCH_HUGE=1 (run it with -benchtime=1x).
 
 package web
 
@@ -42,8 +42,8 @@ var benchPhaseMix = map[v1alpha1.Phase]int{
 
 // benchServer builds a Server over a fake client holding n findings, n/10
 // rollups, and n/2 investigation children. The list build must read findings
-// and rollups only — the children are seeded so a reintroduced child join
-// would show up in the BuildDataset numbers. The detail path is NOT benched
+// and rollups only; the children are seeded so a reintroduced child join
+// would show up in the BuildDataset numbers. The detail path is not benched
 // here: the fake client deep-copies every child per List regardless of the
 // field index, so it can only show the scan the real informer cache avoids
 // (the e2e load test measures the real thing).
@@ -106,7 +106,7 @@ func maximalFinding() *v1alpha1.Finding {
 	return f
 }
 
-// BenchmarkProjectFinding measures flattening one CR onto the wire type —
+// BenchmarkProjectFinding measures flattening one CR onto the wire type:
 // the per-item cost inside every dataset build.
 func BenchmarkProjectFinding(b *testing.B) {
 	verbs := []string{"approve", "retry", "expedite", "suspend", "resume"}
@@ -176,8 +176,8 @@ type countingWriter struct{ n int64 }
 
 func (w *countingWriter) Write(p []byte) (int, error) { w.n += int64(len(p)); return len(p), nil }
 
-// BenchmarkDatasetEncode measures serializing the assembled dataset —
-// compact against indented, response bytes reported — over 10k findings.
+// BenchmarkDatasetEncode measures serializing the assembled dataset over
+// 10k findings, compact against indented, reporting response bytes.
 func BenchmarkDatasetEncode(b *testing.B) {
 	s := benchServer(b, 10_000)
 	ds, err := s.buildDataset(b.Context(), true, []string{"approve"}, &User{Name: "bench"})
@@ -204,8 +204,8 @@ func BenchmarkDatasetEncode(b *testing.B) {
 }
 
 // BenchmarkSSEFanout measures publishing a change notification to K
-// subscribers whose buffers are already full — the broker's worst case,
-// where every send takes the non-blocking drop path.
+// subscribers whose buffers are already full. That is the broker's worst
+// case, where every send takes the non-blocking drop path.
 func BenchmarkSSEFanout(b *testing.B) {
 	for _, k := range []int{10, 100, 1_000} {
 		b.Run(fmt.Sprintf("subscribers=%d", k), func(b *testing.B) {

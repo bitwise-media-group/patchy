@@ -6,7 +6,7 @@
 // unit reconciler schedules them through the sandboxed agent-Job machinery
 // with bounded concurrency and collects each pod's EVOLVE-EVENT stream onto
 // unit statuses (full-fidelity entries into per-unit ConfigMaps), and the
-// TTL loop deletes finished evaluations after their retention. The phase of
-// an Evaluation is derived from its children's — this package is the single
-// writer for both kinds, so no transition table is involved.
+// TTL loop deletes finished evaluations after their retention. An
+// Evaluation's phase is derived from its children's. This package is the
+// single writer for both kinds, so no transition table is involved.
 package evaluation

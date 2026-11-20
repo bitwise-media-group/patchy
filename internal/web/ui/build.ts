@@ -1,4 +1,4 @@
-// Production build of the status page: ONE self-contained dist/index.html, with
+// Production build of the status page: one self-contained dist/index.html, with
 // every script, stylesheet and asset inlined, which the status-server binary
 // embeds behind the `withui` build tag (internal/web/embed_ui.go).
 //

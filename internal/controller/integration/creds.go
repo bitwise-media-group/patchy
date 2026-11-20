@@ -25,7 +25,7 @@ import (
 var (
 	// ErrNoIntegration: no enabled Integration provides the capability.
 	ErrNoIntegration = integrationcap.ErrNoIntegration
-	// ErrAmbiguousIntegration: several Integrations provide the capability —
+	// ErrAmbiguousIntegration: several Integrations provide the capability.
 	// v1alpha1 requires exactly one per namespace.
 	ErrAmbiguousIntegration = integrationcap.ErrAmbiguousIntegration
 )
@@ -43,9 +43,9 @@ func NewCreds(r client.Reader) *Creds {
 }
 
 // ErrNoCredential reports that the Integration names no credential Secret.
-// Legal — a google-cloud integration authenticates its inbound deliveries by
-// OIDC and calls no API — so callers that only optionally need one check for
-// it rather than treating it as a failure.
+// This is legal (a google-cloud integration authenticates its inbound
+// deliveries by OIDC and calls no API), so callers that only optionally need
+// one check for it rather than treating it as a failure.
 var ErrNoCredential = errors.New("integration has no credential secret")
 
 // secret fetches the Integration's credential Secret.
@@ -98,8 +98,8 @@ func (c *Creds) Client(ctx context.Context, integ *v1alpha1.Integration, repo gh
 }
 
 // App returns the Integration's GitHub App for app-level (JWT) calls like
-// the webhook delivery log. ok is false for a PAT credential — PATs cannot
-// see App webhook deliveries.
+// the webhook delivery log. ok is false for a PAT credential, because PATs
+// cannot see App webhook deliveries.
 func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghclient.App, ok bool, err error) {
 	secret, err := c.secret(ctx, integ)
 	if err != nil {

@@ -24,7 +24,7 @@ const (
 	IntegrationName = "loadgen"
 	// SourceID is the source handler id on every finding.
 	SourceID = "loadgen-scanner"
-	// Namespace the generated objects live in.
+	// Namespace is where the generated objects live.
 	Namespace = "patchy"
 )
 
@@ -32,7 +32,7 @@ const (
 // ordering is deterministic and spread.
 var baseTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// Opts shape a synthetic dataset. The zero value is usable.
+// Opts shapes a synthetic dataset. The zero value is usable.
 type Opts struct {
 	// AlertsPerFinding is the alert count folded into each finding
 	// (default 1, capped at the CRD's 64).
@@ -112,15 +112,15 @@ func repoName(i int, o Opts) string {
 	return fmt.Sprintf("loadgen/repo-%d", i%o.repos())
 }
 
-// advisory is index i's primary advisory — unique per index, so every index
-// is its own accumulation family.
+// advisory is index i's primary advisory. It is unique per index, so every
+// index is its own accumulation family.
 func advisory(i int) string {
 	return fmt.Sprintf("CVE-2026-%06d", i)
 }
 
-// KeyHash is the accumulation-key label value for index i: the exact recipe
-// internal/controller/integration persists (5-byte-hex sha256 over
-// integration|source|scope|advisory).
+// KeyHash is the accumulation-key label value for index i. It must match the
+// recipe internal/controller/integration persists (hex of the first 5 bytes
+// of sha256 over integration|source|scope|advisory).
 func KeyHash(i int, o Opts) string {
 	key := IntegrationName + "|" + SourceID + "|" + RepoURL(i, o) + "|" + advisory(i)
 	sum := sha256.Sum256([]byte(key))
@@ -225,8 +225,9 @@ func Findings(n int, o Opts) []v1alpha1.Finding {
 }
 
 // SourceFinding builds the scanner-side alert whose accumulation key matches
-// Finding(i, o) — ingesting it against an Integration named IntegrationName
-// folds into that family. alert distinguishes deliveries within the family.
+// Finding(i, o): ingesting it against an Integration named IntegrationName
+// folds it into that family. alert distinguishes deliveries within the
+// family.
 func SourceFinding(i, alert int, o Opts) source.Finding {
 	return source.Finding{
 		Source:      SourceID,
@@ -249,7 +250,7 @@ func SourceFinding(i, alert int, o Opts) source.Finding {
 
 // Rollups builds n FindingRollup objects: index 0 is the total scope, the
 // rest are repository scopes, each with a populated bucket, monthly trend,
-// and a full 512-entry ledger — the shape a long-lived deployment carries.
+// and a full 512-entry ledger, the shape a long-lived deployment carries.
 func Rollups(n int) []v1alpha1.FindingRollup {
 	out := make([]v1alpha1.FindingRollup, 0, n)
 	for i := range n {
@@ -358,8 +359,8 @@ func description(i int, o Opts) string {
 	return fmt.Sprintf("Synthetic description for finding %d: %s", i, b)
 }
 
-// rollupName mirrors stats.ScopeObjectName without importing it (loadgen
-// stays a leaf package): total, else repo-<hash>.
+// rollupName follows stats.ScopeObjectName (total, else repo-<hash>) and adds
+// a -<i> suffix. It does not import stats so loadgen stays a leaf package.
 func rollupName(scope v1alpha1.RollupScope, i int) string {
 	if scope.Type == v1alpha1.ScopeTotal {
 		return "total"

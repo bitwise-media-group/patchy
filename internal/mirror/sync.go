@@ -20,8 +20,8 @@ import (
 const (
 	// ActionPushed means the artifact was published (or would be, dry run).
 	ActionPushed = "pushed"
-	// ActionSkippedTagExists means the chart tag already exists — an
-	// existing tag is NEVER replaced.
+	// ActionSkippedTagExists means the chart tag already exists. An
+	// existing tag is never replaced.
 	ActionSkippedTagExists = "skipped-tag-exists"
 	// ActionSkippedCurrent means the target already matches the lock and
 	// carries a valid mirror signature.
@@ -62,7 +62,7 @@ type SyncResult struct {
 
 // Sync converges the registries onto the entry's committed state. Read-only
 // on the working tree: every write goes to a registry. Idempotent per
-// (registry, tag) — an existing chart tag is never replaced, a
+// (registry, tag): an existing chart tag is never replaced, and a
 // current-and-signed image is skipped. Each registry's pushes are signed
 // with its effective signing config (its own block, else the global one).
 func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (*SyncResult, error) {
@@ -130,10 +130,10 @@ func (e *Engine) Sync(ctx context.Context, entry spec.Entry, opts SyncOptions) (
 	return result, nil
 }
 
-// syncChart publishes the chart artifact: re-pull the upstream tgz into
-// memory, trip on any upstream mutation (digest vs lock, tree vs committed
-// vendor) — once — then per registry push unless the tag exists and ensure
-// the mirror signature.
+// syncChart publishes the chart artifact. It re-pulls the upstream tgz into
+// memory and checks once for any upstream mutation (digest vs lock, tree vs
+// committed vendor). Then, per registry, it pushes unless the tag exists
+// and ensures the mirror signature.
 func (e *Engine) syncChart(ctx context.Context, entry spec.Entry, regs []spec.Registry,
 	dryRun bool, gate *upstreamGate) ([]SyncRecord, error) {
 	m := entry.Chart
@@ -300,7 +300,8 @@ func (e *Engine) syncImage(ctx context.Context, entryName, source, digest, targe
 	return rec, nil
 }
 
-// ensurer is the shared verify-then-sign step over the engine's seams.
+// ensurer is the shared verify-then-sign step over the engine's verifier
+// and signer hooks.
 func (e *Engine) ensurer() sign.Ensurer {
 	return sign.Ensurer{Verify: e.verifyFn, NewSigner: e.newSigner}
 }

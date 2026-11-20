@@ -257,9 +257,9 @@ func TestBrokeredEvalDeadlinePastTokenCap(t *testing.T) {
 	}
 }
 
-// TestBrokeredCodexEvalJobShape: a brokered codex eval pod gets the codex
-// wrapper — config.toml written from the gateway env, the token and the
-// placeholder exported under the names its provider reads — and none of
+// TestBrokeredCodexEvalJobShape checks that a brokered codex eval pod gets the
+// codex wrapper (config.toml written from the gateway env, the token and the
+// placeholder exported under the names its provider reads) and none of
 // claude's header plumbing.
 func TestBrokeredCodexEvalJobShape(t *testing.T) {
 	cfg := brokeredConfig()

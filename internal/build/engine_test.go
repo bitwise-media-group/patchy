@@ -101,7 +101,7 @@ func (noTools) Run(context.Context, string, []string, []string) ([]byte, error) 
 }
 func (noTools) Look(string) bool { return false }
 
-// world is one test setup: an in-memory registry, a workdir, the fakes.
+// world is one test setup: an in-memory registry, a workdir and the fakes.
 type world struct {
 	t       *testing.T
 	host    string
@@ -137,7 +137,7 @@ func platformIndex(t *testing.T) v1.ImageIndex {
 }
 
 // inMemoryBuilds swaps the layout loader for one that still reads the
-// layout from disk — checking it round-trips to the fake builder's digest —
+// layout from disk (checking it round-trips to the fake builder's digest)
 // but publishes the builder's in-memory copy. Pushing file-backed layers
 // uses sendfile, which some sandboxes running these tests forbid.
 func inMemoryBuilds(t *testing.T, b *fakeBuilder) {

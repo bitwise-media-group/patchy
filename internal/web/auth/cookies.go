@@ -14,8 +14,8 @@ import (
 )
 
 // Cookie names. The session and state cookies are HttpOnly and carry sealed
-// data; the provider/error/logout cookies are SPA-visible and carry no
-// secrets — they only tell the client what the sign-in surface looks like.
+// data. The provider/error/logout cookies are SPA-visible and carry no
+// secrets; they only tell the client what the sign-in surface looks like.
 const (
 	// cookieSession is the chunked session cookie; chunks after the first
 	// are cookieSession-1, cookieSession-2, ….
@@ -56,7 +56,7 @@ func chunkName(i int) string {
 }
 
 // writeChunked splits value across the session cookie chunks. Leftover
-// chunks from a previously longer session are cleared.
+// chunks from an earlier, longer session are cleared.
 func writeChunked(w http.ResponseWriter, value string, maxAge time.Duration, secure bool) error {
 	chunks := (len(value) + chunkSize - 1) / chunkSize
 	if chunks > maxChunks {
@@ -103,7 +103,7 @@ func clearChunked(w http.ResponseWriter, secure bool) {
 }
 
 // clearCookie expires one cookie. Deletion matches on name and path only, so
-// the hardened attributes here never prevent the clear — they just keep the
+// the hardened attributes here never prevent the clear; they keep the
 // expiring replacement as locked down as what it removes.
 func clearCookie(w http.ResponseWriter, name string, secure bool) {
 	http.SetCookie(w, &http.Cookie{
@@ -117,8 +117,8 @@ func clearCookie(w http.ResponseWriter, name string, secure bool) {
 	})
 }
 
-// setJSONCookie writes an SPA-visible base64url JSON cookie. Not HttpOnly by
-// design — the SPA reads it; it must never carry a secret.
+// setJSONCookie writes an SPA-visible base64url JSON cookie. It is not
+// HttpOnly because the SPA reads it, so it must never carry a secret.
 func setJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Duration, secure bool) error {
 	raw, err := json.Marshal(v)
 	if err != nil {

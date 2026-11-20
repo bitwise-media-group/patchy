@@ -38,7 +38,7 @@ type Env struct {
 
 // Options are the connection inputs, straight from the persistent flags.
 type Options struct {
-	// Kubeconfig is an explicit kubeconfig path; empty uses the standard
+	// Kubeconfig is an explicit kubeconfig path. Empty uses the standard
 	// $KUBECONFIG / ~/.kube/config chain.
 	Kubeconfig string
 	// Context overrides the kubeconfig's current-context.
@@ -81,7 +81,7 @@ func (e *Env) Scope() string {
 }
 
 // Table fetches a server-rendered table for the given resource. names, when
-// non-empty, narrows the request to those objects; selector is an optional
+// non-empty, narrows the request to those objects. selector is an optional
 // label selector.
 //
 // The rows carry the CRD's own print columns, so nothing client-side decides
@@ -104,11 +104,11 @@ func (e *Env) Table(ctx context.Context, plural string, names []string, selector
 		req = req.Param("labelSelector", selector)
 	}
 	// Ask for each row's object metadata alongside the rendered cells. It costs
-	// one field per row and buys real creationTimestamp ordering and reliable
-	// name matching, instead of trying to parse them back out of a rendered
-	// "5d" age cell.
+	// one field per row and gives real creationTimestamp ordering and reliable
+	// name matching, instead of parsing them back out of a rendered "5d" age
+	// cell.
 	//
-	// Set as raw query parameters rather than through VersionedParams: that
+	// Set as raw query parameters rather than through VersionedParams. That
 	// route encodes the options struct via a scheme, and neither TableOptions
 	// (a meta type) nor this CRD's group is registered in client-go's. These
 	// two strings are the wire contract either way.
@@ -126,8 +126,8 @@ func (e *Env) Table(ctx context.Context, plural string, names []string, selector
 }
 
 // RowMeta decodes the object metadata the server attached to a table row.
-// Returns nil when the row carries none, which callers treat as "unknown"
-// rather than an error — a table is still printable without it.
+// It returns nil when the row carries none, which callers treat as "unknown"
+// rather than an error, because a table is still printable without it.
 func RowMeta(row metav1.TableRow) *metav1.PartialObjectMetadata {
 	if len(row.Object.Raw) == 0 {
 		return nil

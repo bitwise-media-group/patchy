@@ -30,7 +30,7 @@ type Granter interface {
 	Allowed(ctx context.Context, id auth.Identity, verb string) (bool, error)
 }
 
-// FullAccess grants everything — the mode-none bypass.
+// FullAccess grants everything: the mode-none bypass.
 type FullAccess struct{}
 
 // Allowed always says yes.

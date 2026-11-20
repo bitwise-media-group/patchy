@@ -347,8 +347,8 @@ func TestGetRejectsFindingFiltersOnOtherNouns(t *testing.T) {
 	}
 }
 
-// TestGetAllCoversEveryKind is the point of the noun: whatever the registry
-// knows about has to appear, or `get all` quietly omits a kind someone added.
+// TestGetAllCoversEveryKind checks that every kind the registry knows appears,
+// so `get all` cannot silently omit a newly added kind.
 func TestGetAllCoversEveryKind(t *testing.T) {
 	objs := make([]client.Object, 0, len(resource.Kinds))
 	for _, kind := range resource.Kinds {
@@ -372,8 +372,8 @@ func TestGetAllCoversEveryKind(t *testing.T) {
 	}
 }
 
-// TestGetAllRegistryOrder pins the reading order: the pipeline's own, findings
-// first, so the listing tells the story in the sequence the state machine does.
+// TestGetAllRegistryOrder pins the reading order to the pipeline's own,
+// findings first, so the listing follows the state machine's sequence.
 func TestGetAllRegistryOrder(t *testing.T) {
 	h := newHarness(t,
 		testFinding("fnd-1", v1alpha1.PhaseQueued),

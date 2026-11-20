@@ -17,8 +17,8 @@ import (
 var errChangesetTooLarge = errors.New("changeset too large")
 
 // buildChangeset expresses base..branch as file contents for the API push.
-// Renames arrive as delete+add (--no-renames); gitlinks are rejected — the
-// GitHub API push cannot express submodule pointer changes.
+// Renames arrive as delete+add (--no-renames). Gitlinks are rejected because
+// the GitHub API push cannot express submodule pointer changes.
 func buildChangeset(ctx context.Context, dir, baseSHA, branch string, maxBytes int) (*envelope.Changeset, error) {
 	cs := &envelope.Changeset{BaseSHA: baseSHA}
 

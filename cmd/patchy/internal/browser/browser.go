@@ -13,10 +13,9 @@ import (
 
 // Open launches url in the default browser.
 //
-// The URL is validated before it reaches a shell-adjacent command: these come
-// from CR status written by a controller, but "it came from the cluster" is not
-// the same as "it is safe to hand to a launcher", and an http(s) check costs
-// nothing.
+// The URL must be http or https before it reaches a shell-adjacent command.
+// These URLs come from CR status written by a controller, but coming from the
+// cluster does not make a value safe to hand to a launcher.
 func Open(url string) error {
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return fmt.Errorf("refusing to open %q: not an http(s) URL", url)
@@ -34,7 +33,7 @@ func Open(url string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("open %s: %w", url, err)
 	}
-	// Deliberately not Wait: the launcher may block for as long as the browser
-	// lives, and the CLI has nothing left to do.
+	// No Wait: the launcher may block for as long as the browser lives, and
+	// the CLI has nothing left to do.
 	return nil
 }

@@ -1,4 +1,4 @@
-// Mirrors the status-server payload (future patchy internal/web/data.go).
+// Mirrors the status-server payload (internal/web/data.go).
 // Field names match the Finding / FindingRollup CRD json tags in
 // patchy api/v1alpha1; optional Go pointers become optional fields here.
 
@@ -124,7 +124,7 @@ export interface Enrichment {
   appliedAt?: string;
 }
 
-// Usage is token and cost accounting — one run's, or the finding's total
+// Usage is token and cost accounting for one run, or the finding's total
 // across every attempt of both stages. Cost is integer micro-USD, matching
 // StageAggregate.
 export interface Usage {
@@ -143,7 +143,7 @@ export type HoldReason =
   | 'exceedsAutomatedTokens';
 
 // Estimate is an investigation's prediction of a remediation's cost. It never
-// limits the run — see Budget.
+// limits the run; see Budget.
 export interface Estimate {
   maxTurns?: number;
   tokenBudget?: number;
@@ -158,8 +158,8 @@ export interface Budget {
   grantedTokenBudget?: number;
 }
 
-// InvestigationSummary mirrors the finding's own investigation status —
-// the bounded verdict fields the list rows render.
+// InvestigationSummary mirrors the finding's own investigation status: the
+// bounded verdict fields the list rows render.
 export interface InvestigationSummary {
   name?: string;
   attempt?: number;
@@ -259,8 +259,8 @@ export interface ActiveRun {
 
 // FindingSummary is the trimmed list row GET /api/findings ships: what the
 // findings table, filters, and stat tiles render, and nothing whose size is
-// unbounded (description, alert snippets, enrichment markdown, run reports —
-// those come from the per-finding detail route when a finding is opened).
+// unbounded (description, alert snippets, enrichment markdown, run reports).
+// Those come from the per-finding detail route when a finding is opened.
 export interface FindingSummary {
   name: string; // metadata.name
   createdAt?: string;
@@ -356,7 +356,7 @@ export interface EstimateAggregate {
 
 // RollupBucket: total and repository scopes carry everything; harness and
 // model scopes carry only stages (a finding has no single harness/model
-// owner) — their findings count is legitimately absent, not zero.
+// owner), so their findings count is absent, not zero.
 export interface RollupBucket {
   findings?: number;
   phases?: Record<string, number>; // terminal phases: remediated, failed, …
@@ -396,10 +396,10 @@ export interface DatasetUser {
 }
 
 // Dataset is the payload behind GET /api/findings (trimmed summaries, no
-// rollups) and GET /api/rollups (the always-public metrics summary: findings
-// empty, no user). The summary carries the total, model and harness shards
-// and only the top repositories; the rest page through
-// GET /api/rollups/repositories (RepositoryPage).
+// rollups) and GET /api/rollups (the metrics summary: findings empty). The
+// summary carries the total, model and harness shards and only the top
+// repositories; the rest page through GET /api/rollups/repositories
+// (RepositoryPage).
 export interface Dataset {
   generatedAt: string;
   namespace?: string;
@@ -454,7 +454,7 @@ export interface OfflineDataset extends Dataset {
 // ---- Configuration view (internal/web/config.go) ----
 //
 // ConfigDataset is the payload behind GET /api/config: the configured
-// Forges, Integrations and enhancers. Never public — the route requires a
+// Forges, Integrations and enhancers. Never public: the route requires a
 // signed-in identity holding native get on integrations.
 
 // ForgeConfig is one Forge's configuration surface.
@@ -522,7 +522,7 @@ export interface EnhancerConfig {
   id: string;
   integration?: string;
   enabled: boolean;
-  // A singleton capability enabled by more than one Integration — a
+  // A singleton capability enabled by more than one Integration: a
   // configuration error the view surfaces rather than resolving.
   ambiguous?: boolean;
 }

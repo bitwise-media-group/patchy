@@ -1,5 +1,6 @@
-// Data access: embedded snapshot (offline), demo (committed kit build), or
-// the live read-only API + SSE refetch signal.
+// Data access: the embedded snapshot (offline), demo mode (the built-in mock
+// data, flagged by window.__PATCHY_STATUS_DEMO__), or the live API plus the
+// SSE refetch signal.
 //
 // Authorization is entirely server-side: the payload arrives with each
 // finding's permitted verbs already resolved for the requesting user, and a
@@ -132,7 +133,7 @@ export async function fetchFindings(persona: Persona = DEFAULT_PERSONA): Promise
   return request<Dataset>("/api/findings");
 }
 
-// fetchFinding loads one finding's full detail — description, alerts,
+// fetchFinding loads one finding's full detail: description, alerts,
 // enrichments, the phase log, and the run reports the list payload omits.
 // Resolves null when the finding is gone (completed findings expire on a
 // TTL); offline modes answer from their full local dataset.
@@ -159,10 +160,10 @@ export async function fetchFinding(
   return (await res.json()) as Finding;
 }
 
-// fetchRollups is the always-public metrics summary: the total, model and
-// harness shards, the top repositories, and how many repositories exist.
-// Also the fallback dataset (namespace, version) when the findings surface
-// is behind authentication the user has not (or cannot) satisfy.
+// fetchRollups is the metrics summary: the total, model and harness shards,
+// the top repositories, and how many repositories exist. The server gates it
+// on its own grant (get on findingrollups). It is also the fallback dataset
+// (namespace, version, user) when a signed-in user may not view findings.
 export async function fetchRollups(): Promise<Dataset> {
   const mode = dataMode();
   if (mode !== "live") {
@@ -204,8 +205,8 @@ export async function postAction(
 }
 
 // postAdmin runs one namespace-wide action from the user menu. In demo mode
-// reset empties the mock dataset and replay is a no-op — enough to show the
-// buttons working.
+// reset empties the mock dataset and replay is a no-op, which is enough to
+// show the buttons working.
 export async function postAdmin(verb: AdminVerb): Promise<void> {
   const mode = dataMode();
   if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
@@ -282,7 +283,7 @@ export async function postBackfill(
   });
 }
 
-// subscribeConfig opens the SSE stream for config-changed signals — a
+// subscribeConfig opens the SSE stream for config-changed signals. It is a
 // separate subscription so the refetch only happens while the
 // configuration view is mounted.
 export function subscribeConfig(onChange: () => void): () => void {
@@ -307,7 +308,7 @@ export function subscribe(onChange: () => void): () => void {
 export interface TranscriptHandlers {
   // onTurn receives each turn once, in order, even across reconnects.
   onTurn: (turn: TranscriptTurn) => void;
-  // onEnd fires when the conversation is complete — a finished run's stored
+  // onEnd fires when the conversation is complete: a finished run's stored
   // record, or a live run whose agent exited.
   onEnd: () => void;
   onError: (err: Error) => void;
@@ -327,8 +328,8 @@ const TRANSCRIPT_REOPENS = 5;
 // the conversation is over. EventSource would otherwise reconnect forever
 // after a completed stream, so `end` also closes the connection.
 //
-// Every turn carries its seq as the SSE id. A dropped connection — or the
-// server evicting a viewer that fell behind the live run — is resumed rather
+// Every turn carries its seq as the SSE id. A dropped connection (or the
+// server evicting a viewer that fell behind the live run) is resumed rather
 // than replayed: EventSource's own reconnect sends Last-Event-ID, and a stream
 // that fails outright is reopened with ?after=<last seq>. Turns at or below the
 // last seq seen are dropped either way, so the conversation never repeats.

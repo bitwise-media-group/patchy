@@ -66,7 +66,7 @@ export function FilterBox({
   label: string;
   empty: (term: string) => ComponentChildren;
   shortcut?: boolean;
-  // Told the trimmed term as it changes — for pages whose suggestions come
+  // Told the trimmed term as it changes, for pages whose suggestions come
   // from the server (they fetch, then a new suggest() identity re-renders).
   onQuery?: (term: string) => void;
 }) {

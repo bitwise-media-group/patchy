@@ -186,7 +186,7 @@ const TURN_LABEL: Record<TurnKind, string> = {
 };
 
 // TurnRow is memoised: turns are immutable once received, so each one is
-// rendered — and highlighted — once, not on every batch that follows it.
+// rendered (and highlighted) once, not on every batch that follows it.
 const TurnRow = memo(function TurnRow({ turn, call }: { turn: TranscriptTurn; call?: TranscriptTurn }) {
   switch (turn.kind) {
     case "text":
@@ -245,8 +245,8 @@ const TurnRow = memo(function TurnRow({ turn, call }: { turn: TranscriptTurn; ca
   }
 });
 
-// readsFile reports whether a tool call only names a file — its text is
-// exactly its path — so its result is that file's content. A call carrying
+// readsFile reports whether a tool call only names a file (its text is
+// exactly its path), so its result is that file's content. A call carrying
 // a body (a write, an edit) or a render hint (a shell command) does not.
 function readsFile(call: TranscriptTurn): boolean {
   return !!call.path && !call.syntax && call.text === call.path;

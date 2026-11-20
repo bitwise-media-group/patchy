@@ -92,7 +92,7 @@ func (a *App) clientFor(id int64) (*Client, error) {
 	return c, nil
 }
 
-// Installations returns one client per installation of the App — the fan-out
+// Installations returns one client per installation of the App: the fan-out
 // for cross-repository sweeps like the reconcile searches.
 func (a *App) Installations(ctx context.Context) ([]*Client, error) {
 	opts := &github.ListOptions{PerPage: 100}
@@ -128,9 +128,8 @@ type InstallationAccount struct {
 	Org bool
 }
 
-// InstallationAccounts returns one entry per installation of the App —
-// the account-shaped fan-out for cross-estate walks like the alert
-// backfill.
+// InstallationAccounts returns one entry per installation of the App: the
+// account-shaped fan-out for cross-estate walks like the alert backfill.
 func (a *App) InstallationAccounts(ctx context.Context) ([]InstallationAccount, error) {
 	opts := &github.ListOptions{PerPage: 100}
 	var out []InstallationAccount

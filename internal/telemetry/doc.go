@@ -4,26 +4,28 @@
 // Package telemetry wires OpenTelemetry tracing, metrics, and structured
 // logging into the patchy binaries and owns their lifecycle.
 //
-// Telemetry is off by default. Init picks one of three modes, flag/config
-// winning over environment: when a directory is configured (Config.Dir, wired
-// by each binary's flags/config) it runs in file mode, writing one JSON file
-// per signal (traces.json, metrics.json, logs.json) via the OTEL stdout
-// exporters — the exact format otel-tui's --from-json-file ingests, so a user
-// can save the directory, ship it to us, and we replay it. When no directory is
-// set but OTEL_* environment variables are, it runs in env mode and defers to
-// contrib/exporters/autoexport (OTLP to a collector, console, or none). With
-// neither, it stays disabled and logging is the plain stderr handler patchy has
-// always used.
+// Telemetry is off by default. Init picks one of three modes, with flags and
+// config winning over the environment:
 //
-// The package installs the global Tracer/Meter/Logger providers, so the
-// instrumented packages reach them through the otel.Tracer/otel.Meter globals
-// and the default slog.Logger rather than importing this package — that
-// one-way dependency keeps telemetry free of cycles with the code it observes.
-// The slog logger fans every record out to both the stderr text handler (gated
-// at the configured verbosity) and an otelslog bridge into the OTEL log
-// pipeline (which accepts debug regardless), so the shipped file captures full
-// diagnostics while stderr stays as quiet as it was before. Logging goes to
-// stderr only; stdout stays reserved for agent-runner's event stream.
+//   - File mode, when a directory is configured (Config.Dir, from each
+//     binary's flags/config): one JSON file per signal (traces.json,
+//     metrics.json, logs.json) via the OTEL stdout exporters. That is the
+//     format otel-tui's --from-json-file reads, so a user can send us the
+//     directory and we can replay it.
+//   - Env mode, when no directory is set but OTEL_* environment variables are:
+//     defers to contrib/exporters/autoexport (OTLP to a collector, console, or
+//     none).
+//   - Disabled otherwise: logging is the plain stderr handler.
+//
+// The package installs the global Tracer/Meter/Logger providers. Instrumented
+// packages reach them through the otel.Tracer/otel.Meter globals and the
+// default slog.Logger rather than importing this package, so telemetry never
+// forms an import cycle with the code it observes. The slog logger fans every
+// record out to the stderr text handler (gated at the configured verbosity)
+// and to an otelslog bridge into the OTEL log pipeline (which accepts debug
+// regardless). The exported file therefore captures full diagnostics while
+// stderr stays at the chosen level. Logging goes to stderr only; stdout is
+// reserved for agent-runner's event stream.
 //
 // Init returns a ShutdownFunc that flushes the providers in order
 // (tracer, meter, logger) and then closes the files; main calls it inline after

@@ -13,7 +13,7 @@ import (
 )
 
 // newFakeGraphQLClient serves both the GHES-style REST prefix (/api/v3) and
-// the GraphQL endpoint (/api/graphql) — newFakeClient's mux strips only the
+// the GraphQL endpoint (/api/graphql). newFakeClient's mux strips only the
 // REST prefix, which would 404 the mutation.
 func newFakeGraphQLClient(t *testing.T, graphql http.HandlerFunc) (*http.ServeMux, *Client) {
 	t.Helper()

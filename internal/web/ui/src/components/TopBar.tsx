@@ -48,7 +48,7 @@ const NAV_LINK =
 const MENU_ITEM =
   "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[13.5px] text-fg hover:bg-surface-2 disabled:cursor-default disabled:opacity-50";
 
-// AccountActions: the namespace-wide demo tools (replay, reset — rendered
+// AccountActions: the namespace-wide demo tools (replay and reset, rendered
 // only when the server granted the verb) and sign-out. Reset arms on the
 // first click and deletes on the second. Shared by the desktop dropdown
 // (as menu items) and the compact menu (as plain buttons).
@@ -222,8 +222,8 @@ export function TopBar({
     ...(configView ? [{ href: hrefForConfig(), label: "Configuration", active: route.view === "config" }] : []),
   ];
 
-  // The provider cookie keeps the account reachable when the dataset
-  // carries no user (e.g. the 403 fallback to public metrics).
+  // The provider cookie keeps the account reachable when there is no
+  // dataset user (e.g. findings and metrics both answered 403).
   const signedIn = Boolean(dataset?.user?.loggedIn || (mode === "live" && readProvider()?.authenticated));
   const userName = dataset?.user?.loggedIn ? dataset.user.name : "account";
   const adminActions = dataset?.user?.adminActions ?? [];

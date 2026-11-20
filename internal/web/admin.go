@@ -19,7 +19,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
-// handleAdmin runs one namespace-wide action (replay, reset) — the demo
+// handleAdmin runs one namespace-wide action (replay, reset), the demo
 // tooling behind the user menu. Same envelope as the per-finding actions:
 // authenticate, resolve the RBAC grant, act.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
@@ -105,12 +105,12 @@ func (s *Server) requestReplay(ctx context.Context, id auth.Identity) error {
 }
 
 // resetAll requests the demo reset by stamping spec.reset on every active
-// Integration; the integration-controller consumes it — permanently
-// deleting the tracking issues, reopening the dismissed code-scanning
-// alerts, deleting every pipeline resource, and dropping its receiver's
-// delivery dedup window — with credentials the status server does not
-// hold. The controller also needs the Findings' issue numbers and
-// repositories, which is why nothing is deleted here first. A namespace
+// Integration. The integration-controller consumes it with credentials the
+// status server does not hold: it permanently deletes the tracking issues,
+// reopens the dismissed code-scanning alerts, deletes every pipeline
+// resource, and drops its receiver's delivery dedup window. The controller
+// also needs the Findings' issue numbers and repositories, which is why
+// nothing is deleted here first. A namespace
 // with no active Integration has nothing on GitHub to clean, so the
 // pipeline resources are deleted directly as a fallback.
 func (s *Server) resetAll(ctx context.Context, id auth.Identity) error {

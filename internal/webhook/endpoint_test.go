@@ -46,9 +46,8 @@ func TestNewServerRejectsIncompleteEndpoints(t *testing.T) {
 	}
 }
 
-// The point of the endpoint model: two providers with entirely different
-// authentication and labelling share one listener, one queue, and one dedup
-// window without knowing about each other.
+// Two providers with different authentication and labelling share one
+// listener, one queue, and one dedup window without knowing about each other.
 func TestMultipleEndpoints(t *testing.T) {
 	secret := []byte("s3cret")
 

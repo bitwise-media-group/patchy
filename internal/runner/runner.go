@@ -156,7 +156,7 @@ func (e *Exec) Run(ctx context.Context, spec CommandSpec, timeout time.Duration,
 		return Result{}, startError(span, err)
 	}
 
-	// Observe-AND-collect: every line is appended to the bounded collection
+	// Observe and collect: every line is appended to the bounded collection
 	// and, independently, handed to the observer. After an abort the stream
 	// keeps draining to EOF so Wait can return once the group kill lands.
 	var collected bytes.Buffer
@@ -181,12 +181,12 @@ func (e *Exec) Run(ctx context.Context, spec CommandSpec, timeout time.Duration,
 	}
 	waitErr := cmd.Wait()
 
-	// Agents and the tools they invoke (terraform, linters, ...) emit ANSI
-	// color codes; strip them here, at the one point all execution output is
-	// captured, so the bytes that flow into retained logs, issue comments,
-	// and reports stay plain text. Stripping is a no-op on the stream-json
-	// runners emit (there a tool's ANSI sits backslash-u escaped inside a
-	// JSON string, not as a raw escape byte), so parsing is unaffected.
+	// Agents and their tools (terraform, linters, ...) emit ANSI color codes.
+	// Strip them here, the one point where all execution output is captured,
+	// so retained logs, issue comments and reports stay plain text. This is a
+	// no-op on runner stream-json (a tool's ANSI sits backslash-u escaped
+	// inside a JSON string, not as a raw escape byte), so parsing is
+	// unaffected.
 	res := Result{
 		Stdout:      ansi.Strip(collected.Bytes()),
 		Aborted:     aborted,

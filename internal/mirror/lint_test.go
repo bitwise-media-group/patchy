@@ -57,10 +57,10 @@ chart:
 %s%s`, discovery, images)
 }
 
-// TestLintTrackRules pins the images.track policy — in particular the
+// TestLintTrackRules pins the images.track policy, in particular the
 // valuesFile fallback and valuesPath resolution, which are re-implemented
-// by the pick path (tracktags.go): a rule lint blesses must be one
-// ApplyTracks can execute, or lint green means nothing.
+// by the pick path (tracktags.go). A rule lint accepts must be one
+// ApplyTracks can execute, or a green lint means nothing.
 func TestLintTrackRules(t *testing.T) {
 	discovery := "discovery:\n  valuesFiles: [values/discovery.yaml]\n"
 	verify := "  verifyUpstream:\n    - match: \"**\"\n      provider: none\n"
@@ -204,7 +204,7 @@ chart:
 }
 
 // TestLintOCIRefsAllow pins the mirror-boundary escape hatch from both
-// sides: a reasoned allow pattern must actually permit the escape (the
+// sides: a reasoned allow pattern must permit the escape (the
 // documented bypass has to work), and allow entries missing their pattern
 // or reason are themselves violations.
 func TestLintOCIRefsAllow(t *testing.T) {
@@ -274,7 +274,7 @@ data:
 }
 
 // TestLintOCIRefsMultiRegistry pins the mirror boundary over several
-// registries: a rendered oci:// ref under ANY configured registry is inside
+// registries: a rendered oci:// ref under any configured registry is inside
 // the mirror; one outside all of them is an escape.
 func TestLintOCIRefsMultiRegistry(t *testing.T) {
 	f := newFixture(t)

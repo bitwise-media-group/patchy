@@ -143,8 +143,8 @@ func TestRunnersBrokered(t *testing.T) {
 }
 
 // TestRunnersGatewayEnv: each brokered runner's gateway env points its CLI at
-// its own broker route — claude through the base-URL override, codex through
-// the rendered config.toml's custom provider.
+// its own broker route. Claude uses the base-URL override, codex the rendered
+// config.toml's custom provider.
 func TestRunnersGatewayEnv(t *testing.T) {
 	runners, err := Runners(newOpts(t,
 		"--claude-agent-image", "claude:1",
@@ -198,7 +198,7 @@ func TestLegacySecretFlagsIgnored(t *testing.T) {
 
 // TestResolveAzureCoverage: like foundry, azure deployment names cannot be
 // derived, so an OpenAI model codex would run without a map entry fails at
-// startup — while claude's models are not the codex runner's problem.
+// startup. Claude's models are not the codex runner's concern.
 func TestResolveAzureCoverage(t *testing.T) {
 	opts := newOpts(t,
 		"--claude-agent-image", "claude:1",
@@ -229,8 +229,8 @@ func TestResolveAzureCoverage(t *testing.T) {
 
 // TestResolveFoundryCoverage: foundry has no derivable model ids, so a model
 // the allowlist (or a stage default) lets claude run without a map entry must
-// fail at startup — the alternative is a mid-run failure with a deployment
-// name Foundry never heard of.
+// fail at startup. Otherwise the run fails midway with a deployment name
+// Foundry does not know.
 func TestResolveFoundryCoverage(t *testing.T) {
 	args := []string{
 		"--claude-agent-image", "claude:1",
@@ -259,7 +259,7 @@ func TestResolveFoundryCoverage(t *testing.T) {
 		t.Fatalf("Resolve with full coverage: %v", err)
 	}
 	// The brokered runner is enabled with no credential Secret in the agent
-	// namespace — enablement is configuration, the broker holds the key.
+	// namespace: enablement is configuration, and the broker holds the key.
 	if !slices.Contains(enabled, "claude") {
 		t.Errorf("enabled = %v, want claude (brokered, no Secret probe)", enabled)
 	}

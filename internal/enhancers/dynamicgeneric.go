@@ -24,17 +24,17 @@ import (
 // multi-instance enhancer yields, because one chain entry can speak for
 // several identities.
 type AttributedEnrichment struct {
-	// ID attributes the enrichment — the label on the sticky comment and
+	// ID attributes the enrichment: the label on the sticky comment and
 	// the tie-breaker in attribute precedence.
 	ID string
 	// Enrichment is the contribution; never nil.
 	Enrichment *enhance.Enrichment
 }
 
-// MultiEnhancer is the internal seam for a chain entry carrying several
-// identities — N generic integrations behind one enhancer. The chain runner
+// MultiEnhancer is the internal interface for a chain entry carrying several
+// identities (N generic integrations behind one enhancer). The chain runner
 // type-asserts for it and prefers it over Enhance, so each identity's
-// enrichment stays separately attributed. It is deliberately internal:
+// enrichment stays separately attributed. It is internal so that
 // pkg/enhance stays a one-plugin-one-identity contract.
 type MultiEnhancer interface {
 	// EnhanceAll returns every identity's contribution, in precedence
@@ -47,7 +47,7 @@ type MultiEnhancer interface {
 // GenericConfig is one generic Integration's enhancer endpoint, as read off
 // the CR (and its Secret) at enhance time.
 type GenericConfig struct {
-	// Name is the Integration's name — the enrichment attribution.
+	// Name is the Integration's name, used as the enrichment attribution.
 	Name string
 	// URL the enhancement request POSTs to.
 	URL string
@@ -67,20 +67,20 @@ type GenericConfigSource func(ctx context.Context) ([]GenericConfig, error)
 // DynamicGeneric fans one enhancement out to every enabled generic
 // integration's endpoint, each call signed with that integration's secret
 // and bounded by its own timeout. Configuration is read per enhancement, the
-// same rule as the cloud wrappers; unlike them there is no client state to
-// memoize — a signed POST is built from scratch every time — so there is no
+// same rule as the cloud wrappers. Unlike them there is no client state to
+// memoize (a signed POST is built from scratch every time), so there is no
 // Close.
 type DynamicGeneric struct {
 	// Configs reads the enabled endpoints. Required.
 	Configs GenericConfigSource
 	// Limit bounds the outbound calls in flight at once. It is shared across
-	// every concurrent enhancement — the reconciler may run several findings
+	// every concurrent enhancement: the reconciler may run several findings
 	// in parallel, and each fans out to every endpoint, so the bound must be
 	// global rather than per-EnhanceAll (which is why this is a semaphore and
 	// not errgroup.SetLimit). Nil means unbounded.
 	Limit *semaphore.Weighted
 	// Do performs one enhancement call; nil means the internal/generic
-	// client. The seam exists for tests, which must not dial anything.
+	// client. The hook exists for tests, which must not dial anything.
 	Do func(ctx context.Context, cfg GenericConfig, req pkggeneric.EnhanceRequest) (*pkggeneric.EnhanceResponse, error)
 }
 
@@ -89,8 +89,8 @@ var (
 	_ MultiEnhancer    = (*DynamicGeneric)(nil)
 )
 
-// ID implements enhance.Enhancer. The id never attributes an enrichment —
-// EnhanceAll attributes each to its integration — it only names the chain
+// ID implements enhance.Enhancer. The id never attributes an enrichment
+// (EnhanceAll attributes each to its integration); it only names the chain
 // entry in logs.
 func (*DynamicGeneric) ID() string { return "generic" }
 
@@ -104,7 +104,7 @@ func (*DynamicGeneric) Enhance(context.Context, enhance.Issue) (*enhance.Enrichm
 // integration, in parallel under Limit, results ordered by integration name
 // so precedence (first repository wins, first attribute wins) is
 // deterministic rather than list-order or completion-order luck.
-// Per-endpoint failures are joined and returned beside the successes — one
+// Per-endpoint failures are joined and returned beside the successes: one
 // slow or broken endpoint must not discard the others' work, only bound it.
 func (d *DynamicGeneric) EnhanceAll(ctx context.Context, issue enhance.Issue) ([]AttributedEnrichment, error) {
 	cfgs, err := d.Configs(ctx)
@@ -173,7 +173,7 @@ func (d *DynamicGeneric) call(
 	return c.Enhance(ctx, req)
 }
 
-// toWireIssue maps the seam's issue view onto the wire contract.
+// toWireIssue maps the pkg/enhance issue view onto the wire contract.
 func toWireIssue(issue enhance.Issue) pkggeneric.Issue {
 	out := pkggeneric.Issue{
 		Number:        issue.Number,
@@ -188,7 +188,7 @@ func toWireIssue(issue enhance.Issue) pkggeneric.Issue {
 	return out
 }
 
-// toEnrichment maps the wire response onto the seam type.
+// toEnrichment maps the wire response onto the pkg/enhance type.
 func toEnrichment(resp *pkggeneric.EnhanceResponse) *enhance.Enrichment {
 	return &enhance.Enrichment{
 		Owners:          resp.Owners,

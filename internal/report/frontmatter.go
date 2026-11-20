@@ -32,8 +32,8 @@ func splitFrontmatter(data []byte) (block []byte, body string, err error) {
 // StripFrontmatter returns the markdown body following a leading ---fenced
 // YAML block, or s unchanged when there is no complete fence. Stored reports
 // keep their frontmatter (it is the machine contract the remediation stage
-// re-parses); presentation seams — the status page, PR bodies, issue
-// comments — call this before rendering.
+// re-parses). Presentation code (the status page, PR bodies, issue comments)
+// calls this before rendering.
 func StripFrontmatter(s string) string {
 	_, body, err := splitFrontmatter([]byte(s))
 	if err != nil {
@@ -42,8 +42,8 @@ func StripFrontmatter(s string) string {
 	return body
 }
 
-// decodeStrict unmarshals the frontmatter block into out, rejecting unknown
-// keys — the prompt promised a schema; hold the model to it.
+// decodeStrict unmarshals the frontmatter block into out and rejects unknown
+// keys, holding the model to the schema the prompt promised.
 func decodeStrict(block []byte, out any) error {
 	dec := yaml.NewDecoder(bytes.NewReader(block))
 	dec.KnownFields(true)
@@ -53,8 +53,8 @@ func decodeStrict(block []byte, out any) error {
 	return nil
 }
 
-// summaryLine captures an indented summary key and its value — the only
-// free-text scalars in the investigation frontmatter.
+// summaryLine captures an indented summary key and its value. Summaries are
+// the only free-text scalars in the investigation frontmatter.
 var summaryLine = regexp.MustCompile(`^([ \t]+summary:[ \t]+)(.*)$`)
 
 // repairSummaries double-quotes unquoted summary values. Models write the
@@ -76,7 +76,7 @@ func repairSummaries(block []byte) ([]byte, bool) {
 		}
 		switch val[0] {
 		case '"', '\'', '|', '>', '&', '*':
-			// Already quoted, a block scalar, or anchored — leave it.
+			// Already quoted, a block scalar, or anchored: leave it.
 			continue
 		}
 		val = strings.ReplaceAll(val, `\`, `\\`)

@@ -38,8 +38,8 @@ type running struct {
 	done   chan error
 }
 
-// eventLog collects events; the harness's single worker emits sequentially,
-// but the listening event races the test goroutine, so guard anyway.
+// eventLog collects events. The harness's single worker emits sequentially,
+// but the listening event races the test goroutine, so it needs a lock.
 type eventLog struct {
 	ch chan Event
 }
@@ -116,14 +116,14 @@ func post(t *testing.T, url string, secret []byte, deliveryID, payload string) i
 }
 
 // drain reads events until count events of kind have arrived, returning
-// only those; interleaved events of other kinds are consumed and dropped.
+// only those. Interleaved events of other kinds are consumed and dropped.
 func drain(t *testing.T, r *running, kind string, count int) []Event {
 	t.Helper()
 	return filter(drainAll(t, r, kind, count), kind)
 }
 
 // drainAll reads events until count events of kind have arrived, returning
-// everything consumed on the way — for tests that assert on interleaved
+// everything consumed on the way. It serves tests that assert on interleaved
 // kinds without racing the pipeline.
 func drainAll(t *testing.T, r *running, kind string, count int) []Event {
 	t.Helper()
@@ -191,8 +191,8 @@ func TestFullPipeline(t *testing.T) {
 }
 
 // assertEnhanceExchange checks the Issue mirrors what production sends for a
-// fresh finding: no tracking-issue number, no labels — title, body, repo and
-// cloudResource only.
+// fresh finding: title, body, repo and cloudResource only, with no
+// tracking-issue number and no labels.
 func assertEnhanceExchange(t *testing.T, enh []pkggeneric.EnhanceRequest) {
 	t.Helper()
 	if len(enh) != 2 {
@@ -267,8 +267,8 @@ func TestBadSignatureAndWrongName401(t *testing.T) {
 
 func TestInvalidFindingRejectsWholeDelivery(t *testing.T) {
 	r := start(t, Config{Name: "dev", Secret: testSecret})
-	// Second finding is invalid (no title): all-or-nothing validation must
-	// keep the valid first one out too.
+	// The second finding is invalid (no title). All-or-nothing validation
+	// must keep the valid first one out too.
 	payload := `{"version":"v1","event":"findings","findings":[
 	  {"repo":{"owner":"a","name":"b"},"alertId":"ok-1","title":"valid","severity":"low"},
 	  {"repo":{"owner":"a","name":"b"},"alertId":"bad-1","severity":"low"}
@@ -315,7 +315,7 @@ func TestDuplicateDeliveryDedups(t *testing.T) {
 	}
 	drain(t, r, "finding", 2)
 	// Redelivery under the same id inside the dedup window is acknowledged
-	// but not reprocessed — same as production.
+	// but not reprocessed, as in production.
 	if got := post(t, r.url, testSecret, "same-id", twoFindings); got != http.StatusAccepted {
 		t.Fatalf("redelivery = %d, want 202", got)
 	}

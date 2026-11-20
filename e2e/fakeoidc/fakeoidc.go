@@ -7,8 +7,8 @@
 // The Security Command Center route authenticates the token Pub/Sub signs, so
 // exercising it end to end needs an issuer the receiver can actually verify
 // against: a discovery document, a JWKS, and a signing key to mint tokens
-// with. Everything else about the flow — the audience check, the service
-// account check, the expiry — is then the real code path rather than a stub.
+// with. Everything else about the flow (the audience check, the service
+// account check, the expiry) is then the real code path rather than a stub.
 package fakeoidc
 
 import (
@@ -80,7 +80,7 @@ func (s *Server) ExpiredToken(email, audience string) (string, error) {
 	return s.token(email, audience, true, time.Now().Add(-time.Minute))
 }
 
-// UnverifiedToken mints one whose email claim is unverified — a claim that
+// UnverifiedToken mints one whose email claim is unverified. Such a claim
 // proves nothing about the caller, so the receiver must not accept it.
 func (s *Server) UnverifiedToken(email, audience string) (string, error) {
 	return s.token(email, audience, false, time.Now().Add(time.Hour))

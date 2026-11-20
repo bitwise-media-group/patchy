@@ -13,7 +13,7 @@ import (
 // Supported map is one the registry knows, every model is supported by at least
 // one harness, and Preferred is always one of those harnesses. A bad
 // Supported/Preferred entry would silently send the wrong --model string to a
-// CLI, so these are load-bearing.
+// CLI.
 func TestBuiltinInvariants(t *testing.T) {
 	seen := map[string]bool{}
 	for _, m := range builtins() {

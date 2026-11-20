@@ -1,8 +1,8 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Tier-1 microbenchmark for the scheduling score — pure arithmetic that must
-// stay O(1); it runs once per verdict routing and once per scheduler
+// Tier-1 microbenchmark for the scheduling score: pure arithmetic that must
+// stay O(1). It runs once per verdict routing and once per scheduler
 // candidate build.
 
 package priority

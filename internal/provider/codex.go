@@ -11,9 +11,9 @@ import (
 // The codex CLI has no env-only channel for a custom request header the way
 // claude has ANTHROPIC_CUSTOM_HEADERS, and its built-in openai provider
 // cannot be extended. A brokered codex run therefore selects a custom model
-// provider declared in config.toml — written in-pod from CodexConfigEnv to
-// ${CODEX_HOME:-$HOME/.codex}/config.toml — whose base_url is the broker's
-// route and whose headers are read from the child process's env at request
+// provider declared in config.toml (written in-pod from CodexConfigEnv to
+// ${CODEX_HOME:-$HOME/.codex}/config.toml). Its base_url is the broker's
+// route and its headers are read from the child process's env at request
 // time:
 //
 //   - BrokerTokenEnv carries the projected caller token, sent as
@@ -34,9 +34,9 @@ const codexProviderID = "patchy-broker"
 
 // CodexConfig renders the config.toml a brokered codex run uses: the custom
 // broker provider (Responses API at <broker>/<route>/v1), with the update
-// check, analytics and feedback uploads off — the broker is the pod's only
-// egress and proxies model traffic alone, the codex analogue of claude's
-// CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
+// check, analytics and feedback uploads off. The broker is the pod's only
+// egress and proxies model traffic alone. This is the codex analogue of
+// claude's CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
 func CodexConfig(c Config) string {
 	base := strings.TrimRight(c.BrokerURL, "/") + "/" + c.Name + "/v1"
 	var b strings.Builder

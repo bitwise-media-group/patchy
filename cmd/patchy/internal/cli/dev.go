@@ -18,7 +18,7 @@ import (
 
 // newDevCmd groups the local test harnesses for generic-integration authors.
 // Everything under `dev` runs on the workstation and never touches a
-// cluster; the persistent kubeconfig flags are inert here, as they are for
+// cluster. The persistent kubeconfig flags are inert here, as they are for
 // `completion`.
 func newDevCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
@@ -39,7 +39,7 @@ func newDevCmd(opts *Options) *cobra.Command {
 
 // devEmitter builds the event sink for a dev command: NDJSON on stdout under
 // -o json (one Event per line, pipeable), otherwise human rendering on
-// stderr — a long-running harness narrates, and nothing must lie to a pipe.
+// stderr, so a long-running harness's narration never pollutes a pipe.
 func devEmitter(opts *Options) (func(devharness.Event), error) {
 	format, err := printer.ParseFormat(opts.Output)
 	if err != nil {
@@ -118,8 +118,8 @@ func findingID(f *source.Finding) string {
 	return fmt.Sprintf("#%d", f.AlertNumber)
 }
 
-// joinAttributes flattens an attribute map for a field line; sorted so
-// transcripts stay diffable.
+// joinAttributes flattens an attribute map for a field line. It sorts the
+// keys so transcripts stay diffable.
 func joinAttributes(attrs map[string]string) string {
 	parts := make([]string, 0, len(attrs))
 	for k, v := range attrs {

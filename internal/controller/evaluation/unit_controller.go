@@ -28,8 +28,8 @@ import (
 	"github.com/bitwise-media-group/patchy/pkg/evaluation"
 )
 
-// schedulerRequest is the singleton request every watch event maps to — one
-// serialized decision point; the controller's default MaxConcurrentReconciles
+// schedulerRequest is the singleton request every watch event maps to: one
+// serialized decision point. The controller's default MaxConcurrentReconciles
 // of 1 provides the mutex.
 const schedulerRequest = "\x00scheduler"
 
@@ -90,8 +90,8 @@ func (r *UnitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // schedule grants free slots to pending units, FIFO with the unit index as
-// the tiebreak (the index rides in the name). Priority is uniform — an
-// evaluation batch has no severity axis — and there is no expedite.
+// the tiebreak (the index rides in the name). Priority is uniform (an
+// evaluation batch has no severity axis), and there is no expedite.
 func (r *UnitReconciler) schedule(ctx context.Context) (ctrl.Result, error) {
 	var list v1alpha1.EvaluationUnitList
 	if err := r.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
@@ -330,7 +330,7 @@ func (r *UnitReconciler) apply(ctx context.Context, unit *v1alpha1.EvaluationUni
 }
 
 // settleOutcome is one terminal unit state: a failure reason, or a result
-// (or both, for ResultTooLarge — the summary survives, the entry does not).
+// (or both, for ResultTooLarge: the summary survives, the entry does not).
 type settleOutcome struct {
 	reason     v1alpha1.UnitFailureReason
 	detail     string

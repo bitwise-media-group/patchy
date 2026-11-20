@@ -16,7 +16,7 @@ import (
 // live viewer sees. They are generous because the live stream is the whole
 // conversation; only the total stays bounded, because the kubelet rotates a
 // container log at 10 MiB by default and a non-follow read of the stage result
-// sees only the current file — an unbounded conversation could rotate the
+// sees only the current file, so an unbounded conversation could rotate the
 // result events out of reach. MaxTurns of zero is unbounded.
 const (
 	DefaultStreamMaxTurnBytes  = 64 << 10
@@ -95,7 +95,8 @@ type Recorder struct {
 
 // NewRecorder returns a recorder that hands each admitted turn to emit.
 // secrets are literal credential values scrubbed from every captured field:
-// the pod holds the model API key and a tool result can echo the environment.
+// the pod can hold secrets (the broker caller token, any credential-named
+// environment variable) and a tool result can echo them.
 func NewRecorder(limits Limits, secrets []string, emit func(Turn)) *Recorder {
 	keep := make([]string, 0, len(secrets))
 	for _, s := range secrets {
@@ -130,8 +131,9 @@ func (r *Recorder) RecordAll(turns []Turn) {
 	}
 }
 
-// Notice emits a recorder-voiced turn — a budget abort, a stage banner. It is
-// bounded like any other turn but is never itself the cause of truncation.
+// Notice emits a recorder-voiced turn, such as a budget abort or a stage
+// banner. It is bounded like any other turn but never itself causes
+// truncation.
 func (r *Recorder) Notice(format string, args ...any) {
 	r.Record(Turn{Role: RoleSystem, Kind: KindNotice, Text: fmt.Sprintf(format, args...)})
 }
@@ -183,7 +185,8 @@ func (r *Recorder) record(t Turn) {
 }
 
 // stop emits the closing notice and halts recording. The notice bypasses the
-// bounds that triggered it — it is the one turn a reader must always see.
+// bounds that triggered it, because it is the one turn a reader must always
+// see.
 func (r *Recorder) stop(format string, args ...any) {
 	r.stopped, r.truncated = true, true
 	r.seq++

@@ -18,7 +18,7 @@ import (
 
 // checkTracks computes the cooldown pick for every image a chart declares
 // under images.track, without writing. Tracked images ride a release train
-// of their own — nothing about the chart version says which tag to mirror,
+// of their own: nothing about the chart version says which tag to mirror,
 // and the chart default is often a mutable tag the pipeline must never
 // lock.
 func (e *Engine) checkTracks(ctx context.Context, entry spec.Entry) ([]TrackPlan, error) {
@@ -121,9 +121,9 @@ func trackPin(entry spec.Entry, i int, rule spec.Track) (TrackPlan, error) {
 }
 
 // ApplyTracks re-picks every tracked pin and splices changed picks into
-// the values files. Wall-clock dependent — upgrade only, never validate,
-// or the byte-identity gate would fail whenever a tag aged past the
-// cooldown between commit and CI.
+// the values files. It depends on the wall clock, so it runs in upgrade
+// only, never validate; otherwise the byte-identity gate would fail
+// whenever a tag aged past the cooldown between commit and CI.
 func (e *Engine) ApplyTracks(ctx context.Context, entry spec.Entry) ([]TrackPlan, error) {
 	plans, err := e.checkTracks(ctx, entry)
 	if err != nil {

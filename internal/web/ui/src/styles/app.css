@@ -1,4 +1,4 @@
-/* Patchy status page — Tailwind entry.
+/* Patchy status page: Tailwind entry.
  *
  * Layout/spacing/typography live as utilities in the components. This file
  * carries: (1) the Tailwind theme mapping onto the vendored --patchy-*
@@ -150,7 +150,7 @@
     background: color-mix(in oklab, var(--patchy-muted) 8%, transparent);
     border-color: var(--patchy-line-2);
   }
-  /* Severity/rating tones — the dedicated ramp, never the state tones. */
+  /* Severity/rating tones: the dedicated ramp, never the state tones. */
   .ps-pill--sev-low {
     color: var(--patchy-sev-low);
     background: color-mix(in oklab, var(--patchy-sev-low) 10%, transparent);
@@ -272,7 +272,7 @@
   .ps-track span {
     @apply block h-full rounded-full bg-turf;
   }
-  /* 2px surface gaps between segments; identity never rides on hue alone —
+  /* 2px surface gaps between segments; identity never rides on hue alone:
    * the tooltip and the share column restate the mix in text. */
   .ps-mixbar {
     @apply flex h-2 gap-[2px] overflow-hidden rounded-full;
@@ -361,7 +361,7 @@
 
   /* ---- metrics: outcome strip ----
    * One proportional bar for how findings (or runs) ended. 2px surface gaps
-   * separate segments; identity never rides on hue alone — every segment is
+   * separate segments; identity never rides on hue alone: every segment is
    * restated in the legend beneath it with a count and a share. */
   .ps-strip {
     @apply flex h-4 gap-[2px] overflow-hidden rounded-md;

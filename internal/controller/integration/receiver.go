@@ -25,7 +25,7 @@ import (
 const GitHubPath = "/" + string(v1alpha1.IntegrationProviderGitHub) + "/webhooks"
 
 // Receiver turns validated provider deliveries into Finding writes. Scanner
-// and cloud findings go through the pkg/source handler seam into the
+// and cloud findings go through the pkg/source handler interface into the
 // Ingestor; tracking events (issues, comments, pull requests) go to the
 // Signals handler. It serves one webhook.Endpoint per provider.
 type Receiver struct {
@@ -50,8 +50,9 @@ type Receiver struct {
 }
 
 // Endpoints are the provider routes this receiver serves. Each names how its
-// deliveries authenticate and how they are labelled; everything downstream —
-// queueing, dedup, dispatch — is the server's, and identical for both.
+// deliveries authenticate and how they are labelled. Everything downstream
+// (queueing, dedup, dispatch) belongs to the server and is the same for
+// every route.
 func (r *Receiver) Endpoints() []webhook.Endpoint {
 	return []webhook.Endpoint{
 		{
@@ -89,13 +90,13 @@ func (r *Receiver) Endpoints() []webhook.Endpoint {
 	}
 }
 
-// Secrets returns every configured github Integration's webhook secret — the
+// Secrets returns every configured github Integration's webhook secret: the
 // candidate set for delivery validation on the GitHub route.
 func (r *Receiver) Secrets(ctx context.Context) [][]byte {
 	return r.credentialSet(ctx, v1alpha1.IntegrationProviderGitHub, r.Creds.WebhookSecret)
 }
 
-// WizTokens returns every configured wiz Integration's webhook bearer token —
+// WizTokens returns every configured wiz Integration's webhook bearer token:
 // the candidate set for delivery validation on the Wiz route.
 func (r *Receiver) WizTokens(ctx context.Context) [][]byte {
 	return r.credentialSet(ctx, v1alpha1.IntegrationProviderWiz, r.Creds.WizWebhookToken)
@@ -103,7 +104,7 @@ func (r *Receiver) WizTokens(ctx context.Context) [][]byte {
 
 // credentialSet collects one inbound-delivery credential from every enabled
 // Integration of a provider. An Integration whose credential cannot be read
-// is logged and skipped — one broken Secret must not take the route down for
+// is logged and skipped, so one broken Secret cannot take the route down for
 // the rest.
 func (r *Receiver) credentialSet(
 	ctx context.Context,
@@ -243,7 +244,8 @@ func alertLabel(f source.Finding) string {
 	return fmt.Sprintf("%s alert %d", f.Repo, f.AlertNumber)
 }
 
-// alertGetter adapts Integration credentials to the ghas.AlertGetter seam.
+// alertGetter adapts Integration credentials to the ghas.AlertGetter
+// interface.
 type alertGetter struct {
 	creds *Creds
 	integ *v1alpha1.Integration

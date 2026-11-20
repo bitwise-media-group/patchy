@@ -135,7 +135,7 @@ func assertArtifactDrift(ctx context.Context, t *testing.T, f *fixture, eng *Eng
 
 // TestEngineArtifactScanPolicy pins the scan.enabled three-way: false
 // scans nothing, true scans unconditionally, auto consults the config
-// media type — a mistake either scans garbage or silently skips a real
+// media type. A mistake either scans garbage or silently skips a real
 // image.
 func TestEngineArtifactScanPolicy(t *testing.T) {
 	ctx := context.Background()
@@ -212,8 +212,8 @@ func artifactScanFixture(t *testing.T, runnable bool, scanBlock string,
 }
 
 // TestEngineArtifactScanOverrides pins the unified scan block on
-// artifacts: failOn and ignoreUnfixed now override the config per entry,
-// as they always did for charts.
+// artifacts: failOn and ignoreUnfixed override the config per entry, as
+// they do for charts.
 func TestEngineArtifactScanOverrides(t *testing.T) {
 	high := scan.Finding{ID: "CVE-HIGH", Severity: "HIGH", Package: "p", Installed: "1", FixedIn: []string{"2"}}
 	unfixed := scan.Finding{ID: "CVE-UNFIXED", Severity: "CRITICAL", Package: "p", Installed: "1"}

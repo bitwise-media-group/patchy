@@ -14,8 +14,8 @@ import (
 )
 
 // VerifyReport is one entry's upstream-provenance outcome. Gaps are
-// subjects a provider-none rule deliberately leaves unverified — reported,
-// never silently dropped, and never failures.
+// subjects a provider-none rule leaves unverified on purpose. They are
+// reported, never silently dropped, and never failures.
 type VerifyReport struct {
 	Verified []string `json:"verified,omitempty"`
 	Gaps     []string `json:"gaps,omitempty"`

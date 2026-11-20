@@ -22,7 +22,7 @@ type IssueRejecter interface {
 // Resolver is the Wiz Issues write-back: an ignore verdict rejects the
 // originating Wiz issue with a note, the cloud analogue of dismissing a
 // code-scanning alert. It exists only when the Integration configures
-// spec.wiz.api; Defend threats have no write-back — a runtime detection is a
+// spec.wiz.api. Defend threats have no write-back: a runtime detection is a
 // record of something that happened, not a state to dismiss.
 type Resolver struct {
 	api IssueRejecter

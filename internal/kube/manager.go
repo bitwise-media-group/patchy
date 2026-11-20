@@ -30,7 +30,7 @@ type Options struct {
 	// config (with the usual KUBECONFIG/service-account fallbacks).
 	Kubeconfig string
 	// LeaderElectionID is the Lease name; empty disables leader election.
-	// Deployments stay replicas:1 + Recreate — the lease is cheap insurance
+	// Deployments stay replicas:1 + Recreate. The lease is cheap insurance
 	// against two replicas racing during a botched rollout.
 	LeaderElectionID string
 	// LeaderElectionNamespace holds the Lease; required when running outside
@@ -40,9 +40,9 @@ type Options struct {
 	Namespaces []string
 	// AgentNamespace confines the Job and Pod informers to the agents
 	// namespace instead of Namespaces. The job controllers' RBAC grants
-	// jobs/pods only there (Role patchy-agent-jobs) — caching those kinds in
-	// the release namespace too would need grants the controllers must not
-	// have, and caching the CR kinds in the agents namespace trips forbidden
+	// jobs/pods only there (Role patchy-agent-jobs). Caching those kinds in the
+	// release namespace too would need grants the controllers must not have,
+	// and caching the CR kinds in the agents namespace trips forbidden
 	// list/watch errors that keep the cache from ever syncing. Empty leaves
 	// every kind on Namespaces.
 	AgentNamespace string
@@ -77,9 +77,9 @@ func RestConfig(kubeconfig string) (*rest.Config, error) {
 		if cfg.QPS == 0 {
 			// Match ctrl.GetConfig's in-cluster behavior: disable the
 			// client-side rate limiter and rely on API priority and fairness.
-			// Left at zero, client-go defaults to 5 QPS — a hidden ceiling
-			// on every controller run with an explicit kubeconfig (e2e, the
-			// load tests, out-of-cluster operation).
+			// Left at zero, client-go defaults to 5 QPS, a hidden ceiling on
+			// every controller run with an explicit kubeconfig (e2e, the load
+			// tests, out-of-cluster operation).
 			cfg.QPS = -1
 		}
 		return cfg, nil
@@ -91,10 +91,10 @@ func RestConfig(kubeconfig string) (*rest.Config, error) {
 	return cfg, nil
 }
 
-// ClientConfig resolves the REST config the way kubectl does — the standard
-// loading rules (explicit path, then $KUBECONFIG, then ~/.kube/config), with an
-// optional context override — and additionally returns the namespace that
-// context selects.
+// ClientConfig resolves the REST config the way kubectl does: the standard
+// loading rules (explicit path, then $KUBECONFIG, then ~/.kube/config) with an
+// optional context override. It also returns the namespace that context
+// selects.
 //
 // Controllers use RestConfig: they run with a ServiceAccount and one identity.
 // ClientConfig is for the CLI, which carries a human's kubeconfig and has to
@@ -147,7 +147,7 @@ func NewManager(opts Options) (ctrl.Manager, error) {
 			Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.Secret{}}},
 		},
 		// managedFields are server-side-apply bookkeeping no controller reads,
-		// and on a Finding they can rival the object itself in size — at a
+		// and on a Finding they can rival the object itself in size. At a
 		// 2M-findings backlog that is gigabytes of informer memory for
 		// nothing. Nothing else is stripped: ingest, projection, and the
 		// enhancers all read spec.alerts (snippets included) from this cache.

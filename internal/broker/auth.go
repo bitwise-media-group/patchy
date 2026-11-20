@@ -32,8 +32,8 @@ type identity struct {
 	pod  string // bound pod name, for audit; may be empty
 }
 
-// verdict is one cached TokenReview outcome. Denials are cached too — a
-// misbehaving caller retrying a bad token must not translate into API-server
+// verdict is one cached TokenReview outcome. Denials are cached too, so a
+// misbehaving caller retrying a bad token does not translate into API-server
 // QPS.
 type verdict struct {
 	id      identity
@@ -92,15 +92,14 @@ func (a *authenticator) authenticate(r *http.Request) (identity, error) {
 	return v.id, nil
 }
 
-// review asks the API server for a verdict on one token.
 func (a *authenticator) review(r *http.Request, token string) verdict {
 	expiry := a.now().Add(a.ttl)
 	tr, err := a.cs.AuthenticationV1().TokenReviews().Create(r.Context(), &authnv1.TokenReview{
 		Spec: authnv1.TokenReviewSpec{Token: token, Audiences: []string{a.audience}},
 	}, metav1.CreateOptions{})
 	if err != nil {
-		// An unreachable API server is not a verdict; do not cache it for the
-		// full TTL or a blip locks every caller out for a minute.
+		// An unreachable API server is not a verdict. Caching it for the full
+		// TTL would let a blip lock every caller out for that long.
 		return verdict{allowed: false, reason: "token review unavailable", expiry: a.now()}
 	}
 	switch {

@@ -5,9 +5,8 @@
 //
 // The grammar is Kubernetes-standard: patchy <verb> <noun> [name...]. Verbs are
 // cobra commands, nouns are resolved through the resource registry, and adding
-// a noun never adds a verb. That is what keeps the surface predictable as the
-// supply-chain nouns (chart, image, allowlist) arrive alongside the pipeline
-// ones.
+// a noun never adds a verb. This keeps the surface predictable as new nouns
+// arrive alongside the pipeline ones.
 //
 // Two rules hold everywhere in this package:
 //
@@ -15,5 +14,5 @@
 //     stdout and nothing else does, so `patchy get findings -o json | jq` works
 //     with logging turned all the way up.
 //   - presentation is decided once, from the output format and whether stdout is
-//     a terminal — never per call site. See internal/printer.
+//     a terminal, never per call site. See internal/printer.
 package cli

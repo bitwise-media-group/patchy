@@ -32,7 +32,7 @@ func (*OSV) Name() string { return "osv" }
 
 // osv-scanner's meaningful exit codes: 1 is the vulnerabilities-found
 // sentinel (a successful scan; it only drives the upstream CLI's exit),
-// 128 means nothing extractable (scratch/distroless — clean, not a
+// and 128 means nothing extractable (scratch or distroless: clean, not a
 // failure).
 const (
 	osvExitVulnsFound = 1
@@ -81,9 +81,9 @@ func (o *OSV) ScanArchive(ctx context.Context, archive string) ([]Finding, error
 	case code == osvExitNoPackages:
 		return nil, nil
 	default:
-		// Any other error means the scan is not authoritative — even
-		// with partial results, reporting them as complete would turn a
-		// broken scan into false assurance.
+		// Any other error means the scan is not authoritative. Even with
+		// partial results, reporting them as complete would turn a broken
+		// scan into false assurance.
 		return nil, err
 	}
 	var out osvOutput

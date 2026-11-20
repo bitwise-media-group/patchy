@@ -31,16 +31,16 @@ type AWSTagsConfig struct {
 type AWSConfigSource func(ctx context.Context) (*AWSTagsConfig, error)
 
 // DynamicAWS is AWSTags with its configuration read from the Integration CR
-// per enhancement instead of captured at process start. A config change — a
-// different aggregator, a new view — takes effect on the next reconcile
-// without a restart. Only the inventory client is stateful — building one
-// verifies the backend remotely — so it is memoized by backend and swapped
+// per enhancement instead of captured at process start. A config change (a
+// different aggregator, a new view) takes effect on the next reconcile
+// without a restart. Only the inventory client is stateful (building one
+// verifies the backend remotely), so it is memoized by backend and swapped
 // (closing the old one) when the backend changes.
 type DynamicAWS struct {
 	// Config reads the capability. Required.
 	Config AWSConfigSource
 	// NewInventory builds an inventory client for a backend; nil means
-	// awsinv.New. The seam exists for tests, which must not dial AWS.
+	// awsinv.New. The hook exists for tests, which must not dial AWS.
 	NewInventory func(ctx context.Context, backend awsinv.Config) (AWSInventory, func() error, error)
 
 	mu        sync.Mutex
@@ -51,9 +51,9 @@ type DynamicAWS struct {
 
 var _ enhance.Enhancer = (*DynamicAWS)(nil)
 
-// ID implements enhance.Enhancer. It deliberately reuses AWSTagsID: this is
-// the same enhancer to everything downstream (enrichment attribution, sticky
-// comments, attribute precedence), only its configuration plumbing differs.
+// ID implements enhance.Enhancer. It reuses AWSTagsID because this is the
+// same enhancer to everything downstream (enrichment attribution, sticky
+// comments, attribute precedence); only its configuration plumbing differs.
 func (*DynamicAWS) ID() string { return AWSTagsID }
 
 // Enhance implements enhance.Enhancer.
@@ -82,7 +82,7 @@ func (d *DynamicAWS) Enhance(ctx context.Context, issue enhance.Issue) (*enhance
 // inventoryFor returns the memoized inventory client for the backend,
 // building one on first use and swapping when the backend changes. An
 // in-flight enhancement racing a swap may fail against the swapped client;
-// that error is retryable by design, so nothing is lost.
+// that error is retryable, so nothing is lost.
 func (d *DynamicAWS) inventoryFor(ctx context.Context, backend awsinv.Config) (AWSInventory, error) {
 	key := backendKey(backend)
 	d.mu.Lock()
@@ -111,7 +111,7 @@ func (d *DynamicAWS) inventoryFor(ctx context.Context, backend awsinv.Config) (A
 	return inventory, nil
 }
 
-// backendKey flattens a backend config into a comparable memo key — the
+// backendKey flattens a backend config into a comparable memo key. The
 // config holds pointers, so comparing it directly would compare identity,
 // not content.
 func backendKey(c awsinv.Config) string {

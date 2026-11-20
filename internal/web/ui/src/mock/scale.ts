@@ -9,7 +9,7 @@ import type { MonthlyBucket, Rollup, StageAggregate } from "../types";
 
 export const TAIL_REPOSITORIES = 11_000;
 
-// mulberry32: tiny seeded PRNG — the same tail on every load.
+// mulberry32: a tiny seeded PRNG, so the tail is the same on every load.
 function prng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

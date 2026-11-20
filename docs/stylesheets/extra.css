@@ -1,4 +1,4 @@
-/* Patchy docs — the status page's design system on Zensical / Material.
+/* Patchy docs: the status page's design system on Zensical / Material.
  *
  * The docs are the product's manual, so they wear the product's clothes:
  * verdigris on graphite and stone, Atkinson Hyperlegible, flat sentence-case
@@ -195,7 +195,7 @@ body {
     color: var(--patchy-ink-green);
 }
 
-/* ---- Chrome: footer — a surface, not an inverted band ---- */
+/* ---- Chrome: footer (a surface, not an inverted band) ---- */
 
 .md-footer,
 .md-footer-meta {
@@ -229,7 +229,7 @@ body {
     max-width: 80ch;
 }
 
-/* Sentence case, hierarchy from weight and size — never caps. */
+/* Sentence case, hierarchy from weight and size, never caps. */
 .md-typeset :is(h1, h2, h3, h4, h5, h6),
 [data-md-color-scheme="slate"] .md-typeset :is(h1, h2, h3, h4, h5, h6) {
     color: var(--patchy-fg);

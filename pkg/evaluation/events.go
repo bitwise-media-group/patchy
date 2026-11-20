@@ -69,7 +69,7 @@ type ItemMetrics struct {
 // ItemEvent carries the per-item payloads. unit_started uses Total/Runs/Mode;
 // item_started uses Index/Label/Runs; item_done (and the baseline pair) uses
 // Index/Label/Status/Detail/Output/Metrics. Local workspace and log paths
-// never appear — they are meaningless outside the pod.
+// never appear, because they are meaningless outside the pod.
 type ItemEvent struct {
 	Index int    `json:"index,omitempty"`
 	Label string `json:"label,omitempty"`
@@ -85,7 +85,7 @@ type ItemEvent struct {
 	Metrics *ItemMetrics `json:"metrics,omitempty"`
 }
 
-// UnitSummary mirrors the client's run.UnitSummary — the rollup reported when
+// UnitSummary mirrors the client's run.UnitSummary: the rollup reported when
 // a unit finishes.
 type UnitSummary struct {
 	Executed      bool     `json:"executed"`

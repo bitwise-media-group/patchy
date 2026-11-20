@@ -22,12 +22,12 @@ type Tailer interface {
 
 // maxLiveTails bounds concurrent upstream log follows. Each one is an open
 // watch against the API server, so the cap protects the apiserver rather than
-// this process — viewers past it fall back to the persisted transcript.
+// this process. Viewers past it fall back to the persisted transcript.
 const maxLiveTails = 8
 
 // tailBufferBytes bounds the turn text a run holds for replay. It matches the
 // recorder's default stream total (plus headroom for its closing notice), so a
-// viewer joining late — or reconnecting — sees the whole conversation rather
+// viewer joining late, or reconnecting, sees the whole conversation rather
 // than only what arrives after they connect.
 const tailBufferBytes = transcript.DefaultStreamMaxTotalBytes + 64<<10
 
@@ -79,7 +79,7 @@ type subscription struct {
 	// the resume point the viewer asked for.
 	Replay []transcript.Turn
 	// Turns delivers what it says next. It closes when the run ends, or when
-	// the viewer fell behind and was evicted — Lagged tells the two apart.
+	// the viewer fell behind and was evicted; Lagged tells the two apart.
 	Turns <-chan transcript.Turn
 
 	hub     *tailHub
@@ -96,8 +96,8 @@ func (s *subscription) Lagged() bool { return s.sub.lagged.Load() }
 func (s *subscription) Close() { s.hub.unsubscribe(s.jobName, s.sub) }
 
 // subscribe attaches a viewer to jobName, starting the follow if this is the
-// first. It returns the conversation so far — the turns with Seq above after,
-// so a resuming viewer is not sent what it already has — plus the channel
+// first. It returns the conversation so far (the turns with Seq above after,
+// so a resuming viewer is not sent what it already has) plus the channel
 // carrying the rest, captured atomically so no turn falls between the two.
 func (h *tailHub) subscribe(jobName string, after int) (*subscription, error) {
 	if h == nil || h.tailer == nil {

@@ -50,7 +50,7 @@ type Config struct {
 	// PushChart pushes a chart tgz to ref, returning the manifest digest
 	// (nil: the helm-layout push).
 	PushChart func(tgz []byte, ref string) (string, error)
-	// Tools runs external tool binaries — scanners and cosign (nil: the
+	// Tools runs external tool binaries, scanners and cosign (nil: the
 	// real PATH).
 	Tools scan.ToolRunner
 	// ImageScanners overrides the enabled scanner roster (nil: built

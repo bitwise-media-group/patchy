@@ -114,8 +114,8 @@ type BuildPolicy struct {
 	Mode PolicyMode `yaml:"mode"`
 	// Enforced pins this layer's policy, as for MirrorPolicy.
 	Enforced bool `yaml:"enforced"`
-	// Images match every image a Dockerfile pulls — FROM, COPY --from,
-	// RUN --mount from=, and the # syntax= frontend — as the canonical
+	// Images match every image a Dockerfile pulls (FROM, COPY --from,
+	// RUN --mount from=, and the # syntax= frontend) as the canonical
 	// repository (normalized, no tag or digest).
 	Images PolicyRules `yaml:"images"`
 }
@@ -190,8 +190,8 @@ func policyKey(kind string) string { return kind + "s" }
 
 // Check evaluates one source against every layer. It returns nil when all
 // layers permit it; otherwise the most severe rejection (a fail layer over
-// a warn one, earlier layers first — enforced layers lead), so a source
-// rejected by several layers is reported once.
+// a warn one, then earlier layers first, with enforced layers leading), so
+// a source rejected by several layers is reported once.
 func (p SourcePolicy) Check(kind, ref string) *PolicyViolation {
 	value := CanonicalSource(kind, ref)
 	var worst *PolicyViolation

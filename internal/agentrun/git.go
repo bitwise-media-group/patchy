@@ -31,14 +31,15 @@ func gitRaw(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// headSHA resolves the clone's current commit. Captured before the
-// remediation branch is created, it is the pinned base the changeset is
-// diffed against and the pushed commit's parent.
+// headSHA resolves the workspace's current commit. Captured before the
+// remediation branch is created, it is the synthetic base commit the init
+// container made over the artifact tarball, and the changeset is diffed
+// against it. The push base is the real remote SHA (Config.BaseSHA).
 func headSHA(ctx context.Context, dir string) (string, error) {
 	return git(ctx, dir, "rev-parse", "HEAD")
 }
 
-// ensureIdentity configures a commit identity when the clone has none, so
+// ensureIdentity configures a commit identity when the workspace has none, so
 // commit.sh can commit.
 func ensureIdentity(ctx context.Context, dir string) error {
 	if _, err := git(ctx, dir, "config", "user.email"); err == nil {

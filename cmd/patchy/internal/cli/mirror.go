@@ -17,9 +17,9 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
-// newMirrorCmd groups the vendored chart/artifact mirroring verbs.
-// Cluster-free like `dev`: everything works on a mirror store checkout and
-// registries; the persistent kubeconfig flags are inert here.
+// newMirrorCmd groups the vendored chart/artifact mirroring verbs. Like
+// `dev`, it needs no cluster: everything works on a mirror store checkout and
+// registries. The persistent kubeconfig flags are inert here.
 func newMirrorCmd(opts *Options) *cobra.Command {
 	f := &mirrorFlags{}
 	cmd := &cobra.Command{
@@ -67,9 +67,9 @@ var mirrorKeys = map[string]string{
 
 // mirrorRoot resolves the store root and the patchy config: the explicit or
 // configured directory (relative paths resolve against the working
-// directory), defaulting to the working directory itself. A mirror.yaml
-// left at the root is the removed store config and fails with the
-// migration.
+// directory), defaulting to the working directory itself. A mirror.yaml left
+// at the root is the removed store config, so it fails with migration
+// instructions.
 func mirrorRoot(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, *config.Loaded, error) {
 	v, loaded, err := loadCLIConfig(cmd, mirrorKeys)
 	if err != nil {

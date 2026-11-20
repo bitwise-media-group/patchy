@@ -79,7 +79,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	// The chain needs the manager's cached client: the dynamic enhancers
 	// read their configuration off their Integrations per enhancement, so a
 	// spec change takes effect without a restart. The generic source also
-	// takes the API reader — signing secrets are never cached.
+	// takes the API reader, because signing secrets are never cached.
 	chain, closeChain, err := buildChain(chainOptions{
 		StaticFile: opts.String("static-context-file"),
 		Assets:     ctxctrl.AssetConfigSource(mgr.GetClient(), namespace),
@@ -133,12 +133,16 @@ type chainOptions struct {
 }
 
 // buildChain assembles the enhancer chain. Order matters: the first enhancer
-// to resolve a repository wins, so the cloud lookups run ahead of the CMDB,
-// which knows about repositories rather than resources (the cloud enhancers
-// are disjoint by provider, so their order is immaterial); the generic
-// fan-out runs after them — the platform's own inventory outranks an
-// external process on repository resolution — and ahead of the static file.
-// The dynamic enhancers are always in the chain — whether they act is their
+// to resolve a repository wins.
+//
+//   - The cloud lookups run first. They are disjoint by provider, so their
+//     relative order does not matter.
+//   - The generic fan-out runs next, because the platform's own inventory
+//     outranks an external process on repository resolution.
+//   - The static file (the CMDB) runs last, because it knows about
+//     repositories rather than resources.
+//
+// The dynamic enhancers are always in the chain. Whether they act is their
 // Integrations' decision, read per enhancement.
 func buildChain(o chainOptions) ([]enhance.Enhancer, func(), error) {
 	gcp := &enhancers.DynamicGoogleCloud{Config: o.Assets}

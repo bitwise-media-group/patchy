@@ -17,13 +17,12 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
-// buildEngineHook adjusts the engine config before the engine is built; a
-// seam for tests to inject fakes (builder, scanners, signer). nil in
-// production.
+// buildEngineHook adjusts the engine config before the engine is built. Tests
+// use it to inject fakes (builder, scanners, signer). It is nil in production.
 var buildEngineHook func(*build.Config)
 
-// newBuildCmd builds, scans, publishes and signs first-party artifacts.
-// Cluster-free like mirror: the persistent kubeconfig flags are inert here.
+// newBuildCmd builds, scans, publishes and signs first-party artifacts. Like
+// mirror, it needs no cluster: the persistent kubeconfig flags are inert here.
 func newBuildCmd(opts *Options) *cobra.Command {
 	var (
 		all              bool
@@ -110,7 +109,7 @@ func newBuildCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			if len(names) == 0 {
-				// --all over an empty build: block. Nothing to do is a
+				// --all over an empty `build:` block. Nothing to do is a
 				// success, so a shared task (`mise run build`) can run it in
 				// a repo that only mirrors.
 				notef(opts.ErrOut, "patchy: the patchy config has no build entries "+
@@ -190,11 +189,10 @@ func selectBuildEntries(eng *build.Engine, names []string, all bool) ([]string, 
 }
 
 // resolveBuildConfig resolves the build config, demanding registries only
-// when the run can publish. Neither a plan (--dry-run) nor an allowlist
-// refresh (--update-allowlists) ever contacts a registry - both build and
-// scan locally, and neither publishes nor signs - so they need none
-// configured: CI and workstations build, scan and regenerate allowlists
-// with no registry URLs anywhere.
+// when the run can publish. A plan (--dry-run) and an allowlist refresh
+// (--update-allowlists) build and scan locally and never publish or sign, so
+// they need no registries configured. CI and workstations can build, scan
+// and regenerate allowlists with no registry URLs anywhere.
 func resolveBuildConfig(f *config.File, local bool) (*spec.Config, *build.Spec, error) {
 	if local {
 		return f.BuildPlanConfig()
@@ -258,7 +256,7 @@ func renderBuildResults(opts *Options, results []build.Result, format printer.Fo
 			continue
 		}
 		if len(r.Records) == 0 && r.Digest != "" {
-			// a dry run with no registries configured: the build itself
+			// A dry run with no registries configured: the build itself.
 			rows = append(rows, []string{r.Name, "", r.Digest, "built", ""})
 			continue
 		}

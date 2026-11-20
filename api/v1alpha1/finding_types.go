@@ -188,12 +188,11 @@ type FindingSpec struct {
 	// Repository the finding belongs to; nil when none has been identified.
 	// integration-controller sets it at ingest for sources that name a
 	// repository. For a cloud finding it starts nil and context-controller
-	// may set it. It is set once and never overwritten. Three things depend
-	// on that:
-	// the rollup ledger re-derives its scope key at reversal time, the
-	// investigation gate's Repository artifact has an immutable spec.url with
-	// no update path, and the agent Jobs snapshot the repo in an annotation.
-	// A mutable value would desynchronize all three silently.
+	// may set it. It is set once and never overwritten, because three things
+	// depend on that: the rollup ledger re-derives its scope key at reversal
+	// time, the investigation gate's Repository artifact has an immutable
+	// spec.url with no update path, and the agent Jobs snapshot the repo in an
+	// annotation. A mutable value would desynchronize all three silently.
 	// +optional
 	Repository *FindingRepository `json:"repository,omitempty"`
 	// CloudResource identifies the cloud resource this finding was raised

@@ -48,9 +48,9 @@ export function RunAccountingRows({ harness, model, usage }: { harness?: string;
 
 // BudgetRows shows the three-way budget picture for a remediation run:
 // what the investigation predicted, what the run was granted, and what it
-// actually spent. The estimate never limits the run — it only decides whether
-// a human had to approve it — so showing it beside the grant is the only way
-// to tell a good estimate from a lucky one.
+// actually spent. The estimate never limits the run; it only decides whether
+// a human had to approve it. Showing it beside the grant is the only way to
+// tell a good estimate from a lucky one.
 export function BudgetRows({
   budget,
   numTurns,
@@ -115,7 +115,7 @@ export function BudgetRows({
   );
 }
 
-// UsageBadges always renders both pills — a finding with no runs yet shows
+// UsageBadges always renders both pills. A finding with no runs yet shows
 // dashes, so the header keeps its shape when accounting lands later.
 export function UsageBadges({ finding }: { finding: Finding }) {
   const u = finding.totalUsage;

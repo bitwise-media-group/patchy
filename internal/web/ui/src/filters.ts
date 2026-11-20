@@ -64,8 +64,8 @@ const PHASE_RANK: Record<Phase, number> = Object.fromEntries([
   ["HandedOff", 22],
 ]) as Record<Phase, number>;
 
-// sortFindings: needs-attention first — severity, then phase progress, then
-// most recently observed.
+// sortFindings puts what needs attention first: severity, then phase
+// progress, then most recently observed.
 export function sortFindings(findings: FindingSummary[]): FindingSummary[] {
   return [...findings].sort((a, b) => {
     const sa = a.severity ? SEVERITY_RANK[a.severity] : 9;

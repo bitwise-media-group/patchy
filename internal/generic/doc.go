@@ -7,11 +7,11 @@
 // signed outbound HTTP client behind both the verdict resolver and the
 // context-enhancer call.
 //
-// Unlike every other source package there is no description template here:
-// the external process authors its own markdown — patchy has no tool-native
-// payload to render, only the normalized contract.
+// Unlike every other source package there is no description template here.
+// The external process authors its own markdown, because patchy has no
+// tool-native payload to render, only the normalized contract.
 //
-// A handler's source id is the Integration's NAME, not a package constant:
+// A handler's source id is the Integration's name, not a package constant:
 // any number of generic integrations coexist, and the name keeps their
 // accumulation keys, labels, sticky comments, and write-back dispatch apart.
 package generic

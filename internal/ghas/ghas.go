@@ -35,18 +35,18 @@ type AlertGetter interface {
 	GetAlert(ctx context.Context, repo ghclient.Repo, number int) (*ghclient.Alert, error)
 }
 
-// AlertDismisser closes a code-scanning alert on the forge — the write-back
-// half of the source, exercised when the investigation returns "ignore".
+// AlertDismisser closes a code-scanning alert on the forge. It is the
+// write-back half of the source, used when the investigation returns
+// "ignore".
 type AlertDismisser interface {
 	DismissAlert(ctx context.Context, repo ghclient.Repo, number int, reason, comment string) error
 }
 
-// Handler is the GHAS source plugin. It serves three directions: ingest,
-// built with New; the verdict write-back, built with NewResolver; and the
-// backfill listing, built with NewLister. They are separate constructors
-// because the repository is per-delivery on the way in (it comes from the
-// payload), per-finding on the way out, and the credential's whole scope
-// for a backfill.
+// Handler is the GHAS source plugin. New builds the ingest handler,
+// NewResolver the verdict write-back, and NewLister the backfill listing.
+// They are separate constructors because the repository comes from the
+// payload on ingest, from the finding on write-back, and is the
+// credential's whole scope for a backfill.
 type Handler struct {
 	alerts  AlertGetter
 	dismiss AlertDismisser
@@ -54,7 +54,7 @@ type Handler struct {
 	enum    AlertEnumerator
 }
 
-// The handler serves both halves of the seam.
+// Handler implements both source interfaces.
 var (
 	_ source.Handler  = (*Handler)(nil)
 	_ source.Resolver = (*Handler)(nil)
@@ -76,9 +76,9 @@ func (h *Handler) ID() string { return ID }
 
 // Resolve implements source.Resolver: it dismisses every code-scanning alert
 // it is handed. The caller groups alerts by source and passes only this
-// handler's own, so a GHAS alert id is always a decimal alert number — one
-// that is not is corrupt state worth surfacing, not another tool's identifier
-// to step over.
+// handler's own, so a GHAS alert id is always a decimal alert number. An id
+// that is not is corrupt state and is reported as an error, not skipped as
+// another tool's identifier.
 func (h *Handler) Resolve(ctx context.Context, alerts []source.AlertRef, v source.Verdict) error {
 	if v.Kind != source.VerdictIgnore || h.dismiss == nil {
 		return nil
@@ -104,7 +104,7 @@ func (h *Handler) Resolve(ctx context.Context, alerts []source.AlertRef, v sourc
 	return errors.Join(errs...)
 }
 
-// delivery is the slice of the code_scanning_alert payload we consume.
+// delivery is the part of the code_scanning_alert payload this source reads.
 type delivery struct {
 	Action string `json:"action"`
 	Alert  struct {
@@ -145,8 +145,8 @@ func (h *Handler) Findings(ctx context.Context, event string, payload []byte) ([
 }
 
 // FindingFromAlert normalizes one code-scanning alert into the
-// source-agnostic finding shape — the single mapping both the webhook path
-// and the backfill lister go through.
+// source-agnostic finding shape. Both the webhook path and the backfill
+// lister use it.
 func FindingFromAlert(repo ghclient.Repo, alert *ghclient.Alert) source.Finding {
 	f := source.Finding{
 		Source:      ID,

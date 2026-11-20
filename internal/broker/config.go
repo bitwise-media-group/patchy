@@ -38,7 +38,7 @@ type Upstream struct {
 	// Credential attaches the upstream credential; nil forwards unmodified.
 	Credential CredentialFunc
 	// BufferBody buffers the request body in memory (bounded by
-	// Config.MaxRequestBytes) before forwarding — required when Credential
+	// Config.MaxRequestBytes) before forwarding. Required when Credential
 	// hashes the payload, as SigV4 does.
 	BufferBody bool
 	// Ready reports whether the route's credential source is usable; readyz
@@ -67,7 +67,6 @@ type Config struct {
 	Upstreams map[string]Upstream
 }
 
-// withDefaults returns cfg with zero knobs defaulted.
 func (c Config) withDefaults() Config {
 	if c.Audience == "" {
 		c.Audience = DefaultAudience
@@ -84,7 +83,6 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// validate rejects a config the engine cannot serve.
 func (c Config) validate() error {
 	if len(c.Upstreams) == 0 {
 		return errors.New("broker: no upstream configured")

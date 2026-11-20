@@ -21,9 +21,8 @@ import (
 // encoded), so allow generous headroom.
 const maxEventLine = 32 << 20
 
-// logReader opens a pod's container log stream; the indirection exists so
-// tests can feed canned or piped logs (the fake clientset cannot serve
-// custom log bodies).
+// logReader opens a pod's container log stream. Tests use it to feed canned
+// or piped logs (the fake clientset cannot serve custom log bodies).
 type logReader interface {
 	Stream(ctx context.Context, pod, container string, follow bool) (io.ReadCloser, error)
 }
@@ -41,16 +40,15 @@ func (p podLogs) Stream(ctx context.Context, pod, container string, follow bool)
 
 // RunOutput is everything one agent Job's log carried: the stage results the
 // controller routes on, and the conversation that produced them. Both come
-// from a single read — the changeset alone can be several MiB, so reading the
-// log twice to separate them would be wasteful.
+// from a single read, because the changeset alone can be several MiB.
 type RunOutput struct {
 	Events []envelope.Event
 	Turns  []transcript.Turn
 }
 
 // Result waits for the agent container to finish, then reads its full logs
-// and returns everything found — the idempotent fallback/reconciliation path.
-// Waiting for termination is what makes the read complete: a non-follow read
+// and returns everything found. It is the idempotent fallback/reconciliation
+// path. Waiting for termination is what makes the read complete: a non-follow read
 // of a still-running container would miss every event emitted after it.
 func (c *Client) Result(ctx context.Context, jobName string) (RunOutput, error) {
 	pod, err := c.waitForAgent(ctx, jobName, true)

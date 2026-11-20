@@ -73,8 +73,8 @@ func Init(ctx context.Context, cfg Config) (*Provider, ShutdownFunc, error) {
 		return installDisabled(base, err)
 	}
 
-	// resource.New may return a best-effort warning; the resource is still
-	// usable, so the error is intentionally ignored.
+	// buildResource may return a best-effort warning; the resource is still
+	// usable, so the error is ignored.
 	res, _ := buildResource(ctx, cfg)
 
 	tp := sdktrace.NewTracerProvider(
@@ -107,7 +107,7 @@ func Init(ctx context.Context, cfg Config) (*Provider, ShutdownFunc, error) {
 }
 
 // installDisabled returns a stderr-only provider; err is the setup failure that
-// forced the fallback, or nil for a deliberately disabled run.
+// forced the fallback, or nil when telemetry is not configured.
 func installDisabled(base slog.Handler, err error) (*Provider, ShutdownFunc, error) {
 	logger := slog.New(base)
 	slog.SetDefault(logger)

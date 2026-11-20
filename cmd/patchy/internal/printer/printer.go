@@ -25,7 +25,7 @@ type Printer struct {
 
 // New builds a Printer.
 func New(out io.Writer, format Format, color bool) *Printer {
-	// Markdown is for pasting elsewhere; styling it would paste escape codes.
+	// Markdown is for pasting elsewhere. Styling it would paste escape codes.
 	if format == FormatMarkdown {
 		color = false
 	}
@@ -43,8 +43,8 @@ func (p *Printer) Color() bool { return p.color }
 func (p *Printer) Out() io.Writer { return p.out }
 
 // Table renders a server-rendered table. Columns the CRD marked
-// priority>0 are held back unless the format is wide — the same rule kubectl
-// applies, and the reason `-o wide` shows issue and PR links.
+// priority>0 are held back unless the format is wide. kubectl applies the
+// same rule, and it is why only `-o wide` shows issue and PR links.
 func (p *Printer) Table(t *metav1.Table) error {
 	cols, rows := visible(t, p.format == FormatWide)
 	if len(rows) == 0 {
@@ -59,7 +59,7 @@ func (p *Printer) Table(t *metav1.Table) error {
 	return p.plainTable(cols, rows)
 }
 
-// Group is one titled table in a multi-kind listing — what `get all` prints.
+// Group is one titled table in a multi-kind listing, as `get all` prints.
 type Group struct {
 	// Title heads the table.
 	Title string
@@ -69,8 +69,8 @@ type Group struct {
 
 // Tables renders several titled tables as one listing, separated by a blank
 // line. Groups with nothing in them are dropped, so a caller can hand over
-// every kind and let the empty ones disappear — a namespace with two findings
-// and no forges should not print five empty headings.
+// every kind and a namespace with two findings and no forges does not print
+// five empty headings.
 func (p *Printer) Tables(groups []Group) error {
 	first := true
 	for _, g := range groups {
@@ -142,8 +142,8 @@ func cell(cells []any, i int) string {
 	}
 }
 
-// plainTable pads with tabwriter. Correct only because nothing here is styled:
-// tabwriter measures bytes, which ANSI escapes would inflate.
+// plainTable pads with tabwriter. This is correct only because nothing here is
+// styled: tabwriter measures bytes, which ANSI escapes would inflate.
 func (p *Printer) plainTable(cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(p.out, 0, 0, 3, ' ', 0)
 	w := &errWriter{w: tw}

@@ -40,9 +40,9 @@ func RemediationDetail(d *printer.Doc, rem *v1alpha1.Remediation, now time.Time)
 }
 
 // Budget renders predicted against granted against actual. The estimate never
-// limits a run — it only decides whether a human had to approve it — so the
-// grant is shown beside it: without both, a run that finished well inside a
-// generous grant looks identical to one that scraped a tight estimate.
+// limits a run; it only decides whether a human had to approve it. The grant
+// is shown beside it because without both, a run that finished well inside a
+// generous grant looks identical to one that barely fit a tight estimate.
 func Budget(d *printer.Doc, p v1alpha1.AgentParameters, st *v1alpha1.StageResult) {
 	if p.MaxTurns == 0 && p.TokenBudget == 0 && p.Estimate == nil {
 		return
@@ -81,7 +81,7 @@ func budgetLine(predicted, granted, actual int64) string {
 }
 
 // SkewPercent renders how far actual ran over (+) or under (-) predicted.
-// The sign is the point — it says which way the estimate was wrong.
+// The sign says which way the estimate was wrong.
 func SkewPercent(predicted, actual int64) string {
 	if predicted <= 0 {
 		return Dash("")

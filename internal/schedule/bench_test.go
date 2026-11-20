@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tier-1 microbenchmarks for the scheduler's slot picking, swept to the full
-// 2M design target — Pick is pure in-memory arithmetic, so the whole backlog
+// 2M design target. Pick is pure in-memory arithmetic, so the whole backlog
 // fits and the n log n curve is measured directly rather than extrapolated.
 
 package schedule
@@ -35,8 +35,8 @@ func benchCandidates(n int) []Candidate {
 
 var benchAging = AgingPolicy{Interval: 24 * time.Hour, Cap: 25}
 
-// BenchmarkPick measures ranking the whole pending set for a slot grant —
-// what each scheduler pass over a brownfield backlog costs.
+// BenchmarkPick measures ranking the whole pending set for a slot grant,
+// which is what each scheduler pass over a brownfield backlog costs.
 func BenchmarkPick(b *testing.B) {
 	for _, n := range []int{1_000, 10_000, 100_000, 2_000_000} {
 		pending := benchCandidates(n)

@@ -33,7 +33,7 @@ const DefaultSessionDuration = 7 * 24 * time.Hour
 var defaultScopes = []string{"openid", "offline_access", "profile", "email", "groups"}
 
 // Duration is a time.Duration that unmarshals from Go duration strings
-// ("168h", "30m") — the YAML decoder has no native duration notion.
+// ("168h", "30m"); the YAML decoder has no native duration type.
 type Duration struct {
 	time.Duration
 }
@@ -116,7 +116,7 @@ type ClaimsConfig struct {
 }
 
 // LoadConfig reads and validates the configuration at path. An empty path or
-// a missing file returns (nil, nil) — the unconfigured posture; the caller
+// a missing file returns (nil, nil), the unconfigured posture; the caller
 // logs the consequence. A present-but-invalid file is an error: a broken
 // configuration must not silently downgrade to no authentication.
 func LoadConfig(path string) (*Config, error) {

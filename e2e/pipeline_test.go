@@ -4,13 +4,13 @@
 // Package e2e drives the real patchy binaries end to end: an envtest
 // kube-apiserver carries the CRD state machine, a fake GitHub API stands in
 // at the network boundary, and recorded webhook deliveries drive the
-// pipeline. It is the check that the pieces fit together as shipped — no
-// test doubles inside the binaries, only at the edges.
+// pipeline. It checks that the pieces fit together as shipped, with test
+// doubles only at the edges and none inside the binaries.
 //
-// What it deliberately does not cover: the agent Jobs never RUN (envtest has
-// no kubelet), so the collect/apply leg — pod-log envelope events in,
-// push + PR out — stays with the controller unit suites and the colima smoke
-// test. Here the Jobs and their Secrets are asserted as created, shaped, and
+// What it does not cover: the agent Jobs never run (envtest has no
+// kubelet), so the collect/apply leg (pod-log envelope events in, push + PR
+// out) stays with the controller unit suites and the colima smoke test.
+// Here the Jobs and their Secrets are asserted as created, shaped, and
 // credential-less.
 //
 // Skipped without KUBEBUILDER_ASSETS (mise run e2e provisions it).
@@ -59,8 +59,8 @@ const (
 )
 
 // runnerArgs configures both per-harness runner images on a job controller.
-// Both runners are brokered — enabled by configuration, requiring only the
-// broker URL (nothing dials it here: no Job ever runs under envtest).
+// Both runners are brokered: enabled by configuration, they need only the
+// broker URL (nothing dials it here, since no Job runs under envtest).
 var runnerArgs = []string{
 	"--claude-agent-image", "patchy/claude-agent-runner:e2e",
 	"--codex-agent-image", "patchy/codex-agent-runner:e2e",
@@ -177,8 +177,8 @@ func startCluster(t *testing.T) *cluster {
 			t.Fatalf("create namespace %s: %v", ns, err)
 		}
 	}
-	// No model credential is created in the agent namespace: the claude and
-	// codex runners are both brokered — enabled by configuration — so a
+	// No model credential is created in the agent namespace. The claude and
+	// codex runners are both brokered (enabled by configuration), so a
 	// finding routes to whichever the chosen model belongs to, and an agent
 	// pod never holds a credential to find.
 	return cl
@@ -338,7 +338,7 @@ func eventually(t *testing.T, why string, cond func() bool) {
 // TestPipeline drives the shipped binaries through the front half of the
 // pipeline: scanner webhooks in, Finding CR out, accumulation, enhancement,
 // issue projection, the investigation gate, the SHA-pinned artifact, and the
-// credential-less agent Job — then a human close signal hands the finding
+// credential-less agent Job. Then a human close signal hands the finding
 // off.
 func TestPipeline(t *testing.T) {
 	cl := startCluster(t)
@@ -389,7 +389,7 @@ func TestPipeline(t *testing.T) {
 		t.Errorf("advisories = %v, want CWE-79", fnd.Spec.Advisories)
 	}
 
-	// 2. A second alert of the same finding family folds in — still one
+	// 2. A second alert of the same finding family folds in: still one
 	//    Finding, now tracking both alerts.
 	deliver(t, webhookURL, "code_scanning_alert", fixture(t, "code_scanning_alert.second.json"))
 	eventually(t, "the second alert to accumulate", func() bool {
@@ -477,7 +477,7 @@ func TestPipeline(t *testing.T) {
 	}
 
 	// 6. The analysis Job and its per-Job Secret exist in the agents
-	//    namespace — and are credential-less.
+	//    namespace, and are credential-less.
 	var job batchv1.Job
 	eventually(t, "the investigation job to be created", func() bool {
 		var jobsList batchv1.JobList
@@ -547,7 +547,7 @@ func TestPipeline(t *testing.T) {
 // ---- scheduling ------------------------------------------------------------
 
 // fabricateFinding creates a Finding and drives its status to the given
-// phase — the test stands in for the earlier pipeline stages.
+// phase, standing in for the earlier pipeline stages.
 func fabricateFinding(t *testing.T, cl *cluster, name string, severity v1alpha1.Level,
 	repoURL string, mutate func(*v1alpha1.FindingStatus)) *v1alpha1.Finding {
 	t.Helper()
@@ -638,8 +638,8 @@ func TestRemediationPriorityOrder(t *testing.T) {
 		}
 	}
 
-	// Both Remediations exist, Pending, before the scheduler starts — the
-	// grant decision then depends on priority alone, not arrival order. Each
+	// Both Remediations exist, Pending, before the scheduler starts, so the
+	// grant decision depends on priority alone, not arrival order. Each
 	// carries a spawner-resolved (model, harness): the critical one runs an
 	// OpenAI model on the codex harness, so its Job must run the codex runner.
 	mkRem := func(fnd *v1alpha1.Finding, prio int32, model, harness string) {
@@ -706,7 +706,7 @@ func TestRemediationPriorityOrder(t *testing.T) {
 	}
 
 	// The low-priority one keeps waiting for the slot (the Job above never
-	// completes — envtest has no kubelet).
+	// completes: envtest has no kubelet).
 	for range 10 {
 		var rem v1alpha1.Remediation
 		key := types.NamespacedName{Namespace: namespace, Name: low.Name + "-rem-1"}
@@ -725,7 +725,7 @@ func TestRemediationPriorityOrder(t *testing.T) {
 // TestSignalsRollupTTL drives the tail of the lifecycle with fabricated
 // findings: a merged remediation PR completes one (edge 16), an /approve
 // comment queues a held one (edge 10), the completed finding rolls into the
-// all-time statistics, and the TTL deletes it — leaving the rollup behind.
+// all-time statistics, and the TTL deletes it, leaving the rollup behind.
 func TestSignalsRollupTTL(t *testing.T) {
 	cl := startCluster(t)
 	gh := fakegithub.New()
@@ -837,8 +837,8 @@ func TestSignalsRollupTTL(t *testing.T) {
 
 // ---- security --------------------------------------------------------------
 
-// TestForgedSignatureRejected is the check the whole webhook surface rests
-// on: an unsigned or wrongly-signed delivery must never reach a handler.
+// TestForgedSignatureRejected checks the property the whole webhook surface
+// depends on: an unsigned or wrongly-signed delivery never reaches a handler.
 func TestForgedSignatureRejected(t *testing.T) {
 	cl := startCluster(t)
 	gh := fakegithub.New()

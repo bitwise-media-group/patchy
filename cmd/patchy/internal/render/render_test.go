@@ -56,10 +56,8 @@ func testInvestigation() *v1alpha1.Investigation {
 	}
 }
 
-// TestInvestigationViewsAgree is the reason this package exists: describe and
-// review previously each rendered an investigation their own way, and the two
-// spellings of "render a rating" had already diverged. Both depths must report
-// the same verdict and the same ratings.
+// TestInvestigationViewsAgree checks that describe and review, which share
+// this package, report the same verdict and the same ratings.
 func TestInvestigationViewsAgree(t *testing.T) {
 	inv := testInvestigation()
 	detail := doc(func(d *printer.Doc) { render.InvestigationDetail(d, inv, testClock) })
@@ -234,8 +232,8 @@ func TestFindingURL(t *testing.T) {
 }
 
 // TestRemediationBudget pins the three-way budget line. The grant must appear
-// beside the estimate: a run that finished well inside a generous grant reads
-// identically to one that scraped a tight estimate without it.
+// beside the estimate. Without it, a run that finished well inside a generous
+// grant reads identically to one that barely fit a tight estimate.
 func TestRemediationBudget(t *testing.T) {
 	rem := &v1alpha1.Remediation{
 		ObjectMeta: metav1.ObjectMeta{
@@ -266,8 +264,7 @@ func TestRemediationBudget(t *testing.T) {
 }
 
 // TestInvestigationHoldReasons guards against the hold note describing the
-// wrong decision: before hold reasons existed it was hardcoded to the
-// breaking-change wording, which would misdescribe a budget hold entirely.
+// wrong decision, such as giving a budget hold the breaking-change wording.
 func TestInvestigationHoldReasons(t *testing.T) {
 	tests := []struct {
 		name    string

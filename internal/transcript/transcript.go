@@ -11,9 +11,9 @@ import (
 	"unicode/utf8"
 )
 
-// Prefix marks a turn line on the agent-runner's stdout. It is deliberately
-// distinct from envelope.Prefix: the controller's result path scans for stage
-// results, and a run's few hundred turns must not ride that slice.
+// Prefix marks a turn line on the agent-runner's stdout. It differs from
+// envelope.Prefix so the controller's result path, which scans for stage
+// results, never has to decode a run's few hundred turns.
 const Prefix = "PATCHY-TURN: "
 
 // Version is the current turn schema version.
@@ -33,8 +33,8 @@ const (
 // Kind discriminates what a turn carries.
 type Kind string
 
-// The turn kinds. Notice is the recorder's own voice — session banners,
-// truncation, and budget aborts — and never the agent's.
+// The turn kinds. Notice is the recorder's own voice (session banners,
+// truncation, and budget aborts), never the agent's.
 const (
 	KindText       Kind = "text"
 	KindThinking   Kind = "thinking"
@@ -117,8 +117,8 @@ func HasPrefix(line []byte) bool {
 
 // Truncated reports whether any turn in a recorded transcript was cut, so a
 // reader can be told the record is partial. It is derived from the turns
-// themselves rather than reported alongside them: what survived into storage
-// is the only honest account of what was kept.
+// themselves rather than reported alongside them, because only what survived
+// into storage reliably shows what was kept.
 func Truncated(turns []Turn) bool {
 	for _, t := range turns {
 		if t.Truncated {
@@ -144,8 +144,8 @@ func Truncate(s string, limit int) (string, bool) {
 
 // Compact bounds a recorded conversation for storage. Each turn is capped at
 // MaxTurnBytes; when the turns exceed MaxTurns or their text exceeds
-// MaxTotalBytes, the head and the tail are kept — how the run started and how
-// it ended — and one notice in between says how many turns were elided. Zero
+// MaxTotalBytes, the head and the tail are kept (how the run started and how
+// it ended) and one notice in between says how many turns were elided. Zero
 // fields take StoreDefaults; negative fields disable that bound. Turns keep
 // their original Seq, so a stored record and the live stream agree on
 // numbering; the notice reuses the Seq of the first turn it replaces.

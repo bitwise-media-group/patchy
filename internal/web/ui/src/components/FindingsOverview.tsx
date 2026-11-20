@@ -1,6 +1,6 @@
 // The top of the findings page: a sentence saying how much is in progress
 // and what needs a person (each clause filters the list to it), then the
-// lifecycle rail — every phase with its live count, a filter toggle each.
+// lifecycle rail: every phase with its live count, each a filter toggle.
 // The rail is eight cells on a wide screen and four by two on a phone.
 
 import type { ComponentChildren } from "preact";

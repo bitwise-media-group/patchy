@@ -11,7 +11,7 @@ import (
 
 // Recommendation is the investigation's verdict. The values are the same
 // vocabulary internal/labels stamps on the tracking issue
-// (security-recommendation: <value>) — one vocabulary, no mapping.
+// (security-recommendation: <value>), so no mapping is needed.
 type Recommendation string
 
 // The investigation verdicts.
@@ -27,11 +27,10 @@ type Level string
 var validLevels = []Level{"low", "medium", "high", "critical"}
 
 // Rating grades one investigation dimension. "none" is an assessed
-// "not applicable / no realistic risk" — distinct from an absent rating,
+// "not applicable / no realistic risk", distinct from an absent rating,
 // which fails validation.
 type Rating string
 
-// validRatings is the rating vocabulary.
 var validRatings = []Rating{"none", "low", "medium", "high", "critical"}
 
 // Analysis is one investigation dimension: the rating plus a short
@@ -41,7 +40,7 @@ type Analysis struct {
 	Summary string `yaml:"summary"`
 }
 
-// Investigation is the parsed investigation report — the analysis stage's
+// Investigation is the parsed investigation report: the analysis stage's
 // contract, carrying the three assessed dimensions the scheduler's priority
 // derives from.
 type Investigation struct {
@@ -55,16 +54,16 @@ type Investigation struct {
 	Recommendation Recommendation `yaml:"recommendation"`
 	Priority       Level          `yaml:"priority"`
 	Severity       Level          `yaml:"severity"`
-	// Confidence is the likelihood the recommendation is right — for
-	// remediate, the likelihood of full remediation without breaking
+	// Confidence is the likelihood the recommendation is right. For
+	// remediate, it is the likelihood of full remediation without breaking
 	// functionality. Pointer so absence is detectable.
 	Confidence *float64 `yaml:"confidence"`
 	// BreakingChangeAvailable marks that a better fix exists but would
 	// break external callers; the pipeline then holds for approval.
 	BreakingChangeAvailable bool `yaml:"breaking_change_available"`
 	// Model, MaxTurns and TokenBudget are required iff Recommendation is
-	// remediate. The model is clamped to the allowlist; the turn and token
-	// figures are an ESTIMATE and never limit the run they describe.
+	// remediate. The model is clamped to the allowlist. The turn and token
+	// figures are an estimate and never limit the run they describe.
 	Model       string `yaml:"model"`
 	MaxTurns    int    `yaml:"max_turns"`
 	TokenBudget int    `yaml:"token_budget"`

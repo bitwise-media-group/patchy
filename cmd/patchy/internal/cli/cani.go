@@ -49,9 +49,9 @@ func newCanICmd(opts *Options) *cobra.Command {
 }
 
 // verbResource resolves which resource a verb is checked on: the per-finding
-// verbs on findings, the integration-scoped ones (backfill, replay, reset)
-// on integrations — the same resource the admission policy's authorizer
-// names. get/list mean the findings read gate.
+// verbs on findings, and the integration-scoped ones (backfill, replay,
+// reset) on integrations. This matches the resource the admission policy's
+// authorizer names. get/list mean the findings read gate.
 func verbResource(verb string) (string, bool) {
 	switch {
 	case containsFold(action.ActionVerbs, verb), strings.EqualFold(verb, "get"), strings.EqualFold(verb, "list"):
@@ -121,9 +121,9 @@ func runCanI(ctx context.Context, opts *Options, verb string) error {
 // whoami asks the API server which identity this kubeconfig authenticates as.
 //
 // Every authenticated user may perform this review about themselves, so it
-// needs no grant. It is worth a round trip because the answer is what lands in
-// spec.approval.by — a kubeconfig's context name is a local label and often has
-// nothing to do with the username the cluster sees.
+// needs no grant. The answer is what lands in spec.approval.by. A kubeconfig's
+// context name is a local label and often differs from the username the
+// cluster sees.
 func whoami(ctx context.Context, opts *Options, env *kubecfg.Env) string {
 	callCtx, cancel := opts.Timeout(ctx)
 	defer cancel()
@@ -141,9 +141,8 @@ func whoami(ctx context.Context, opts *Options, env *kubecfg.Env) string {
 
 // canI runs a SelfSubjectAccessReview for one verb on one resource.
 //
-// Self- rather than plain SubjectAccessReview matters: asking about yourself
-// needs no grant, whereas asking about another user is privileged and the CLI
-// has no business doing it.
+// It uses the Self- form because asking about yourself needs no grant.
+// Asking about another user is privileged, and the CLI has no reason to.
 func canI(ctx context.Context, opts *Options, env *kubecfg.Env, resource, verb string) (bool, error) {
 	callCtx, cancel := opts.Timeout(ctx)
 	defer cancel()

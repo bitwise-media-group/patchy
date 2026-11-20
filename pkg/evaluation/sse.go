@@ -37,8 +37,8 @@ type UnitStatusWire struct {
 	Detail string `json:"detail,omitempty"`
 	// Summary is the bounded digest once the unit settled.
 	Summary *ResultSummary `json:"summary,omitempty"`
-	// Result is the full unit result — Entry included — present once the
-	// unit settled with one.
+	// Result is the full unit result, Entry included, present once the unit
+	// settled with one.
 	Result *UnitResult `json:"result,omitempty"`
 }
 

@@ -97,7 +97,7 @@ func TestHandleConfigGate(t *testing.T) {
 		{"no session", stubAuth{}, stubGranter{}, http.StatusUnauthorized},
 		{
 			// View alone is not enough: the configuration surface has its
-			// own gate (get on integrations), and is never public.
+			// own gate (get on integrations).
 			"view without config grant",
 			stubAuth{id: operator},
 			stubGranter{grants: authz.Grants{View: true}},
@@ -192,7 +192,7 @@ func TestWireBackfillPending(t *testing.T) {
 		{"stale echoes only", &v1alpha1.BackfillStatus{BackfilledAt: &older, AttemptedAt: &older}, true},
 		{"succeeded", &v1alpha1.BackfillStatus{BackfilledAt: &req, AttemptedAt: &req}, false},
 		// A failed attempt clears pending even though the controller keeps
-		// retrying — the trigger must re-enable for a corrected request.
+		// retrying; the trigger must re-enable for a corrected request.
 		{"attempted and failed", &v1alpha1.BackfillStatus{AttemptedAt: &req, Error: "bad filter"}, false},
 		// A status written before attemptedAt existed still clears on the
 		// backfilledAt echo alone.

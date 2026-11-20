@@ -175,7 +175,7 @@ func registryNames(regs []Registry) string {
 // Signing configures how published OCI artifacts are signed: keyless
 // (ambient OIDC, Fulcio certificate, transparency log) or a KMS key. The
 // top-level block is the default; a per-registry signing block replaces it
-// wholesale — the two are never merged field-by-field.
+// wholesale. The two are never merged field-by-field.
 type Signing struct {
 	// Provider is "keyless" or "kms".
 	Provider string          `yaml:"provider"`
@@ -184,7 +184,7 @@ type Signing struct {
 }
 
 // KeylessSigning pins the certificate identity the mirror's own signatures
-// carry — used both to sign and to self-verify for publish idempotency.
+// carry, used both to sign and to self-verify for publish idempotency.
 type KeylessSigning struct {
 	CertificateIdentity   string `yaml:"certificateIdentity"`
 	CertificateOidcIssuer string `yaml:"certificateOidcIssuer"`
@@ -209,8 +209,8 @@ type Update struct {
 	// CooldownDays is how long a tag must have been published before a
 	// tracked-image pick may adopt it (default 3): a tag published this
 	// recently can still be yanked or hot-fixed, and the mirror should
-	// not be what discovers that. Kept short on purpose — every day here
-	// is a day the platform knowingly runs behind on security patches.
+	// not be what discovers that. Keep it short: every day here is a day
+	// the platform knowingly runs behind on security patches.
 	CooldownDays *int `yaml:"cooldownDays"`
 }
 

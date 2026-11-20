@@ -3,9 +3,9 @@
 
 // Package stats is the pure arithmetic behind the all-time FindingRollup
 // objects: micro-USD cost parsing, per-scope delta computation, and
-// exactly-once ledger application. Everything here is table-testable — the
-// rollup reconciler supplies objects and writes results, this package never
-// touches the cluster.
+// exactly-once ledger application. The rollup reconciler supplies objects and
+// writes results; this package never touches the cluster, so all of it is
+// table-testable.
 package stats
 
 import (
@@ -80,8 +80,8 @@ type StageDelta struct {
 	Turns int64
 	// Estimate is what the investigation predicted this run would cost, when
 	// it predicted anything. Nil contributes nothing to the estimate
-	// aggregate — including its Runs denominator, which is what keeps the
-	// predicted and actual sums covering the same set of runs.
+	// aggregate, not even to its Runs denominator, so the predicted and
+	// actual sums always cover the same set of runs.
 	Estimate *EstimateDelta
 }
 
@@ -194,15 +194,18 @@ func applyStage(b *v1alpha1.RollupBucket, d StageDelta) {
 }
 
 // FindingDelta is one finding's terminal contribution (total and repository
-// scopes only — a finding has no single harness/model owner). Three shapes:
-// a count (Phase + Count), a swap between terminal phases (Phase +
-// PrevPhase), and a reversal when a revival moved the finding back into
-// flight (PrevPhase + Uncount, no Phase).
+// scopes only, since a finding has no single harness/model owner). It has
+// three shapes:
+//
+//   - a count: Phase + Count;
+//   - a swap between terminal phases: Phase + PrevPhase;
+//   - a reversal, when a revival moved the finding back into flight:
+//     PrevPhase + Uncount, no Phase.
 type FindingDelta struct {
-	// Phase bucket to increment (kebab-free lowercase: remediated, failed,
+	// Phase bucket to increment, as PhaseKey renders it (remediated, failed,
 	// dismissed, handedoff, deleted); empty on a pure reversal.
 	Phase string
-	// PrevPhase, when non-empty, is decremented — the previously counted
+	// PrevPhase, when non-empty, is decremented: the previously counted
 	// phase no longer holds (revived, or completed again differently).
 	PrevPhase string
 	// Recommendation histogram key (remediate/ignore/manual) to increment;
@@ -217,8 +220,8 @@ type FindingDelta struct {
 	Count bool
 	// Uncount reverses a prior count (findings--) after a revival.
 	Uncount bool
-	// First marks the finding's first terminal entry ever — attempts and the
-	// monthly trend line are counted once, and never reversed.
+	// First marks the finding's first terminal entry ever. Attempts and the
+	// monthly trend line are counted once and never reversed.
 	First bool
 }
 
@@ -301,8 +304,8 @@ func Apply(
 	if slices.Contains(st.Recent, ledgerKey) {
 		return false
 	}
-	// Upgraded in place: every bump has been additive, so an older bucket is
-	// already a valid newer one — it just has no history for the new fields.
+	// Upgraded in place: every schema bump has been additive, so an older
+	// bucket is already a valid newer one with no history for the new fields.
 	if st.SchemaVersion < v1alpha1.RollupSchemaVersion {
 		st.SchemaVersion = v1alpha1.RollupSchemaVersion
 	}

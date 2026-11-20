@@ -1,4 +1,4 @@
-/* Patchy design tokens — docs-site copy.
+/* Patchy design tokens: docs-site copy.
  *
  * Canonical source: design-system tokens/themes.css (.theme-patchy /
  * .theme-patchy-light), also vendored by the status page at
@@ -22,7 +22,7 @@
 :root {
   /* ---- Typography ----
    * Atkinson Hyperlegible: drawn for low-vision readers, with unambiguous
-   * 0/O and 1/l/I — which matters on a page of SHAs, repo names and ids. */
+   * 0/O and 1/l/I, which matters on a page of SHAs, repo names and ids. */
   --font-sans: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 
@@ -39,7 +39,7 @@
   --dur-slow: 360ms;
 }
 
-/* Shared semantic aliases — both schemes. */
+/* Shared semantic aliases (both schemes). */
 [data-md-color-scheme="slate"],
 [data-md-color-scheme="default"] {
   --color-primary: var(--patchy-green);
@@ -57,7 +57,7 @@
   --radius-card: 10px;
 }
 
-/* Dark (Material "slate") — graphite with a lifted verdigris. */
+/* Dark (Material "slate"): graphite with a lifted verdigris. */
 [data-md-color-scheme="slate"] {
   color-scheme: dark;
   --patchy-green: #3dc4a1;
@@ -70,7 +70,7 @@
   --patchy-red: #f27f75;
   --patchy-on-accent: #032019;
 
-  /* Severity ramp — hotter and wider-spectrum than the state tones so
+  /* Severity ramp: hotter and wider-spectrum than the state tones so
    * severity never collides with lifecycle colours. */
   --patchy-sev-low: #7cc6e8;
   --patchy-sev-medium: #f0d04a;
@@ -92,7 +92,7 @@
   --patchy-shadow-strong: 0 2px 4px rgba(0, 0, 0, 0.3), 0 24px 60px rgba(0, 0, 0, 0.45);
   --shadow-glow: 0 0 0 1px rgba(61, 196, 161, 0.35);
 
-  /* Syntax highlighting — read against --patchy-code-2. */
+  /* Syntax highlighting, read against --patchy-code-2. */
   --hl-keyword: #c3a2f2;
   --hl-string: #9fdcb0;
   --hl-number: #f2a774;
@@ -108,7 +108,7 @@
   --hl-del-bg: rgba(242, 127, 117, 0.12);
 }
 
-/* Light (Material "default") — stone paper, white panels, deep verdigris. */
+/* Light (Material "default"): stone paper, white panels, deep verdigris. */
 [data-md-color-scheme="default"] {
   color-scheme: light;
   --patchy-green: #0d7560;
@@ -141,7 +141,7 @@
   --patchy-shadow-strong: 0 2px 4px rgba(19, 29, 25, 0.08), 0 24px 60px rgba(19, 29, 25, 0.14);
   --shadow-glow: 0 0 0 1px rgba(13, 117, 96, 0.3);
 
-  /* Syntax highlighting — read against --patchy-code-2. */
+  /* Syntax highlighting, read against --patchy-code-2. */
   --hl-keyword: #7334c2;
   --hl-string: #1f6b3c;
   --hl-number: #a44600;

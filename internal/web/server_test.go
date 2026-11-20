@@ -152,7 +152,7 @@ func TestFindingsRequiresSessionAndViewGrant(t *testing.T) {
 }
 
 // TestFindingDetailAuthAndNotFound pins the detail route to the same view
-// gate as the list — finding data must not leak through the per-name path —
+// gate as the list (finding data must not leak through the per-name path)
 // and maps an absent (TTL-expired) finding onto 404.
 func TestFindingDetailAuthAndNotFound(t *testing.T) {
 	cases := []struct {
@@ -223,8 +223,8 @@ func TestFindingDetailAuthAndNotFound(t *testing.T) {
 	}
 }
 
-// Metrics are never public: both routes need an identity (401 without one)
-// holding native get on findingrollups (403 without it) — the same shape of
+// Both metrics routes need an identity (401 without one)
+// holding native get on findingrollups (403 without it): the same shape of
 // gate as findings, on its own resource.
 func TestMetricsRequireAuthorization(t *testing.T) {
 	routes := []string{"/api/rollups", "/api/rollups/repositories"}

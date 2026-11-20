@@ -153,9 +153,9 @@ func TestGenericWebhookPipeline(t *testing.T) {
 	findings := fixture(t, "generic.findings.json")
 
 	// Authentication first: the route must fail closed before anything is
-	// ingested. Note the last two cases — a real secret on the wrong
+	// ingested. The last two cases (a real secret on the wrong
 	// integration's path, and a real secret on a source-disabled
-	// integration's path — both 401: candidates are strictly per-name.
+	// integration's path) both 401: candidates are strictly per-name.
 	t.Run("rejects deliveries it cannot authenticate", func(t *testing.T) {
 		for _, tt := range []struct{ name, path, secret string }{
 			{"no signature at all", url("warehouse"), ""},

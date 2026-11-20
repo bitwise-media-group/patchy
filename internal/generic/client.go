@@ -29,8 +29,8 @@ const defaultTimeout = 60 * time.Second
 const maxResponseBody = 1 << 20
 
 // Sign computes the SignatureHeader value for a body: "sha256=<hex>" of the
-// HMAC-SHA256 under the integration's shared secret. Exported because both
-// sides of the contract need it — patchy signs outbound calls here, and
+// HMAC-SHA256 under the integration's shared secret. It is exported because
+// both sides of the contract need it: patchy signs outbound calls here, and
 // test/replay tooling signs inbound deliveries the same way.
 func Sign(secret, body []byte) string {
 	mac := hmac.New(sha256.New, secret)
@@ -61,7 +61,7 @@ type Client struct {
 }
 
 // NewClient builds a Client. Construction makes no network call, so it
-// cannot fail on an endpoint outage — only on missing configuration.
+// cannot fail on an endpoint outage, only on missing configuration.
 func NewClient(o ClientOptions) (*Client, error) {
 	if o.URL == "" {
 		return nil, errors.New("generic: an endpoint url is required")
@@ -110,8 +110,8 @@ func (c *Client) post(ctx context.Context, v any) (int, []byte, error) {
 	return resp.StatusCode, payload, nil
 }
 
-// Enhance delivers one enhancement request; (nil, nil) when the endpoint
-// answers 204 or an empty body — nothing to contribute.
+// Enhance delivers one enhancement request. It returns (nil, nil) when the
+// endpoint answers 204 or an empty body, meaning nothing to contribute.
 func (c *Client) Enhance(ctx context.Context, req pkggeneric.EnhanceRequest) (*pkggeneric.EnhanceResponse, error) {
 	status, body, err := c.post(ctx, req)
 	if err != nil {
@@ -128,8 +128,8 @@ func (c *Client) Enhance(ctx context.Context, req pkggeneric.EnhanceRequest) (*p
 }
 
 // Resolver is the generic write-back: it tells the external process what the
-// pipeline decided, over the same signed channel. Idempotency is the
-// process's obligation — the contract says so, and patchy retries.
+// pipeline decided, over the same signed channel. The process must be
+// idempotent: the contract says so, and patchy retries.
 type Resolver struct {
 	c           *Client
 	integration string

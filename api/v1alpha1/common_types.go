@@ -71,9 +71,9 @@ type LocalSecretReference struct {
 
 // ProxyConfig routes the referencing resource's GitHub traffic through an
 // HTTP/HTTPS forward proxy, for example when a GitHub Enterprise Cloud
-// organisation only accepts traffic from allowlisted IPs. When set, it overrides the process
-// HTTPS_PROXY/HTTP_PROXY/NO_PROXY environment for this resource's traffic.
-// When unset, the environment applies.
+// organisation only accepts traffic from allowlisted IPs. When set, it
+// overrides the process HTTPS_PROXY/HTTP_PROXY/NO_PROXY environment for this
+// resource's traffic. When unset, the environment applies.
 type ProxyConfig struct {
 	// URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
 	// and https. Do not embed credentials in the URL. Put them in the

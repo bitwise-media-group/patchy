@@ -4,8 +4,8 @@
 // Package generic is the wire contract of patchy's generic integration: the
 // JSON shapes and headers an external process exchanges with patchy when it
 // acts as a finding source, a verdict resolver, or a context enhancer. The
-// process can be anything that speaks HTTP — a scheduled job querying a
-// warehouse store, an internal CMDB, a vendor bridge — registered as an
+// process can be anything that speaks HTTP (a scheduled job querying a
+// warehouse store, an internal CMDB, a vendor bridge), registered as an
 // Integration with spec.provider: generic.
 //
 // Three exchanges, all JSON bodies signed with the integration's shared
@@ -19,7 +19,8 @@
 //     URL for each opened finding; the response body is an EnhanceResponse
 //     (204 or an empty body contributes nothing).
 //
-// The full protocol — validation rules, semantics, and worked signature
-// examples — is documented in docs/integrations/generic.md. The exported API
-// is deliberately self-contained and depends on nothing under internal/.
+// The full protocol (validation rules, semantics, and worked signature
+// examples) is documented in docs/integrations/generic.md. External processes
+// import this package, so the exported API is self-contained and depends on
+// nothing under internal/.
 package generic

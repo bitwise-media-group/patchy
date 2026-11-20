@@ -20,10 +20,10 @@ import (
 // runs (see its header). It hand-writes the two stdout schemas this package
 // decodes, so it can only be kept honest by decoding its real output: nothing
 // else in the build reaches a shell script. Both failure modes are silent at
-// the source — a stale envelope version fails every dev run with "agent job
-// produced no <stage> event", a stale turn version drops the conversation
-// while the run stays green — which is exactly why this is a test and not a
-// comment asking the next person to remember.
+// the source. A stale envelope version fails every dev run with "agent job
+// produced no <stage> event"; a stale turn version drops the conversation
+// while the run stays green. That is why this is a test and not a comment
+// asking the next person to remember.
 const fakeAgentScript = "../../hack/fake-agent/agent-runner"
 
 // runFakeAgent executes the script for one phase and returns what the
@@ -177,7 +177,7 @@ func TestFakeAgentTranscript(t *testing.T) {
 			out := runFakeAgent(t, phase)
 
 			// A stale turn schema decodes as nothing at all, and the run still
-			// succeeds — the conversation just never reaches the status page.
+			// succeeds; the conversation just never reaches the status page.
 			if len(out.Turns) == 0 {
 				t.Fatalf("no turns decoded (stale turn version in %s?)", fakeAgentScript)
 			}

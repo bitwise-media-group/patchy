@@ -19,7 +19,7 @@ import (
 var ErrUnauthenticated = errors.New("delivery failed authentication")
 
 // Authenticator validates one delivery before it is queued. body is the raw
-// bytes as received — signature schemes are computed over exactly those, so
+// bytes as received. Signature schemes are computed over exactly those, so
 // it must not be re-serialized before it gets here.
 //
 // Returning a non-nil error rejects the delivery with 401; the error is
@@ -37,18 +37,17 @@ func (f AuthenticatorFunc) Authenticate(ctx context.Context, r *http.Request, bo
 }
 
 // Decoder extracts the event type and delivery id from an authenticated
-// request. Providers differ on where those live — GitHub uses headers, a
-// Pub/Sub push carries the id in the body and needs no type at all — so the
+// request. Providers differ on where those live (GitHub uses headers, a
+// Pub/Sub push carries the id in the body and needs no type at all), so the
 // endpoint supplies the rule rather than the server assuming one.
 //
 // An empty event type rejects the delivery with 400. An empty delivery id
-// skips deduplication, which is the honest answer when a provider does not
-// give one.
+// skips deduplication, for providers that do not give one.
 type Decoder func(r *http.Request, body []byte) (eventType, deliveryID string, err error)
 
-// Endpoint is one provider's receiver route. The whole point of the type is
-// that patchy exposes a single internet-facing port: providers differ in how
-// they authenticate and label a delivery, not in how it is queued and handled.
+// Endpoint is one provider's receiver route. patchy exposes a single
+// internet-facing port: providers differ in how they authenticate and label a
+// delivery, not in how it is queued and handled.
 type Endpoint struct {
 	// Path the provider POSTs to, e.g. "/github/webhooks".
 	Path string
@@ -72,7 +71,7 @@ type HMACAuthenticator struct {
 	// SecretsFor returns the candidate secrets for a delivery.
 	SecretsFor func(ctx context.Context) [][]byte
 	// SecretsForRequest returns the candidate secrets for a delivery whose
-	// candidate set depends on the request — a wildcard route whose path
+	// candidate set depends on the request: a wildcard route whose path
 	// names the integration the secret belongs to. When set it supersedes
 	// SecretsFor. Returning an empty set fails authentication, so an
 	// unknown path segment is indistinguishable from a bad signature.

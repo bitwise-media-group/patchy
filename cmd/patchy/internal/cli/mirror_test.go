@@ -101,8 +101,8 @@ func TestMirrorSelectionValidation(t *testing.T) {
 }
 
 func TestMirrorValidateLintOnly(t *testing.T) {
-	// Lint is the one stage that runs without registries: exercise the
-	// full command path end-to-end.
+	// Lint is the one stage that runs without registries, so it can
+	// exercise the full command path end-to-end.
 	t.Chdir(t.TempDir())
 	writeMirrorStore(t)
 	out, err := execDev(t, "mirror", "validate", "demo", "--only", "lint")

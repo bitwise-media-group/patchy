@@ -1,9 +1,9 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command agent-runner is the coding-agent runtime that executes inside the
-// ephemeral Job pod: it drives the classification and remediation harness
-// stages against a pre-cloned repository and reports results as an event
+// Command agent-runner is the coding-agent runtime inside the ephemeral Job
+// pod. It runs one harness stage (investigate or remediate) against the
+// repository tree the init container fetched, and reports results as an event
 // stream on stdout. It never talks to GitHub.
 package main
 
@@ -38,7 +38,7 @@ func run() int {
 	cfg.Log = log
 
 	if err := agentrun.New(cfg, &runner.Exec{}).Run(ctx); err != nil {
-		// The failure was already emitted as a fatal envelope event; exit 2
+		// The failure was already emitted as a fatal envelope event. Exit 2
 		// so the Job is marked failed for the controller's orphan handling.
 		log.LogAttrs(ctx, slog.LevelError, "agent run failed", slog.Any("error", err))
 		return 2

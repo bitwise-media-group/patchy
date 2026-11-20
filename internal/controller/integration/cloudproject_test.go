@@ -39,7 +39,7 @@ func withFallback() *v1alpha1.Integration {
 
 // A cloud finding's repository is resolved by the enhancer chain at Opened.
 // Opening its issue before then would file it on the fallback repository
-// permanently — an issue cannot be moved once created.
+// permanently, because an issue cannot be moved once created.
 func TestProjectionDefersUnresolvedCloudFinding(t *testing.T) {
 	tracker := newFakeTracker()
 	r, c := newProjector(t, tracker,
@@ -95,7 +95,7 @@ func TestRepoLessFindingProjectsToFallback(t *testing.T) {
 }
 
 // Without a fallback the finding stays kubectl- and status-page-only. That is
-// a deliberate configuration choice, not an error to retry.
+// the operator's configuration choice, not an error to retry.
 func TestRepoLessFindingWithoutFallbackIsNotProjected(t *testing.T) {
 	tracker := newFakeTracker()
 	r, _ := newProjector(t, tracker, testIntegration(), projectableCloud(v1alpha1.PhaseEnhanced))

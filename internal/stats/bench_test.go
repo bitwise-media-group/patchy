@@ -3,8 +3,8 @@
 
 // Tier-1 microbenchmarks for the rollup arithmetic. Apply runs inside every
 // conflict-retry write to the single `total` FindingRollup, so its cost sits
-// on the terminal-drain critical path — though at µs scale it is dwarfed by
-// the API round-trips the drain ceiling actually comes from.
+// on the terminal-drain critical path. At µs scale it is still dwarfed by the
+// API round-trips that set the drain ceiling.
 
 package stats
 
@@ -19,7 +19,7 @@ import (
 var benchNow = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
 // benchStatus is a rollup status with ledger entries, both stage buckets,
-// and months of trend line — the long-lived deployment shape.
+// and months of trend line: the shape of a long-lived deployment.
 func benchStatus(ledger int) *v1alpha1.FindingRollupStatus {
 	st := &v1alpha1.FindingRollupStatus{
 		SchemaVersion: v1alpha1.RollupSchemaVersion,
@@ -79,8 +79,8 @@ func benchApply(b *testing.B, ledger int, stage *StageDelta, finding *FindingDel
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {
 		if !Apply(st, keys[i%len(keys)], stage, finding, benchNow, month) {
-			// The ledger wrapped and evicted this key's earlier entry — the
-			// 512-cap guarantees keys 1024 apart never collide.
+			// The ledger wrapped and evicted this key's earlier entry: the
+			// 512 cap guarantees keys 1024 apart never collide.
 			b.Fatal("delta was refused as a duplicate")
 		}
 	}

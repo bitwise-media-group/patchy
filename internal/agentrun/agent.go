@@ -37,8 +37,8 @@ type Agent struct {
 	exec Executor
 	// newSessionID is replaceable for tests.
 	newSessionID func() string
-	// scrub is literal secret values registered for transcript redaction
-	// beyond what the environment heuristic finds — the broker caller token,
+	// scrub holds literal secret values registered for transcript redaction
+	// beyond what the environment heuristic finds: the broker caller token,
 	// whose env var names (ANTHROPIC_CUSTOM_HEADERS, PATCHY_BROKER_TOKEN)
 	// the heuristic does not flag.
 	scrub []string
@@ -61,8 +61,8 @@ type remediationParams struct {
 }
 
 // Run executes the configured phase. It returns an error only for fatal,
-// before-any-stage failures (also emitted as a fatal event); stage outcomes
-// — including failed stages — are envelope events with a nil return, so the
+// before-any-stage failures (also emitted as a fatal event). Stage outcomes,
+// including failed stages, are envelope events with a nil return, so the
 // controller, not the Job status, routes the issue.
 func (a *Agent) Run(ctx context.Context) error {
 	if err := a.prepare(); err != nil {
@@ -71,7 +71,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	if a.cfg.Phase == PhaseInvestigate {
-		// The analysis stage: one event, no continuation — the controller
+		// The analysis stage: one event, no continuation. The controller
 		// routes on the verdict.
 		ev := a.investigate(ctx)
 		a.emit(envelope.Event{Type: envelope.TypeInvestigation, Investigation: ev})
@@ -129,8 +129,8 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		ev.Detail = err.Error()
 		return ev
 	}
-	// HEAD at startup is the pinned base the init container fetched; the
-	// changeset is diffed against it and the pushed commit parents it.
+	// HEAD at startup is the synthetic base commit the init container made
+	// over the fetched tarball. The changeset is diffed against it.
 	baseSHA, err := headSHA(ctx, a.cfg.repoDir())
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -190,7 +190,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		return ev
 	}
 	// Raw, frontmatter included: the report is the machine contract as well
-	// as the human artifact. Presentation seams strip the fence before
+	// as the human artifact. Presentation layers strip the fence before
 	// rendering (report.StripFrontmatter).
 	ev.ReportMarkdown = string(raw)
 	ev.Confidence = *rem.Confidence
@@ -212,9 +212,9 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 
 // observe builds the runner's per-line observer: the transcript recorder and
 // the output-token budget kill switch, over the one pass the runner makes.
-// Either half may be absent — a harness that cannot report usage, a budget of
-// zero, a harness that cannot transcribe — and when both are, the observer is
-// nil and the runner does no per-line work at all.
+// Either half may be absent (a harness that cannot report usage, a budget of
+// zero, a harness that cannot transcribe). When both are, the observer is nil
+// and the runner does no per-line work at all.
 //
 // Recording happens before the budget check so the turn that tripped the limit
 // is in the transcript that explains why the run stopped.
@@ -255,10 +255,10 @@ func (a *Agent) recorder(h harness.Harness) *transcript.Recorder {
 // the projected caller token to the egress broker: for claude the
 // ANTHROPIC_CUSTOM_HEADERS entry, for codex the env var its rendered
 // config.toml reads the broker header from (written here, before the
-// stage). The token file is read fresh each stage — the kubelet rotates the
+// stage). The token file is read fresh each stage: the kubelet rotates the
 // projection, and a long remediation must not present a token captured at
 // pod start. The raw token is registered for transcript scrubbing before any
-// stage output can echo it. Nil on non-brokered runs.
+// stage output can echo it. It returns nil on non-brokered runs.
 func (a *Agent) brokerEnv(h harness.Harness) ([]string, error) {
 	if a.cfg.BrokerTokenFile == "" {
 		return nil, nil
@@ -284,10 +284,10 @@ func (a *Agent) brokerEnv(h harness.Harness) ([]string, error) {
 	return env, nil
 }
 
-// codexBrokerEnv writes the rendered config.toml — every stage, so a stage
-// that edited it cannot redirect the next — and returns the child env its
-// broker provider reads: the caller token for the broker header and the
-// non-secret placeholder the provider's env_key names.
+// codexBrokerEnv writes the rendered config.toml and returns the child env
+// its broker provider reads: the caller token for the broker header and the
+// non-secret placeholder the provider's env_key names. It rewrites the file
+// every stage, so a stage that edited it cannot redirect the next.
 func (a *Agent) codexBrokerEnv(token string) ([]string, error) {
 	if a.cfg.CodexConfig == "" {
 		return nil, errors.New("brokered codex run has no PATCHY_CODEX_CONFIG")
@@ -308,14 +308,14 @@ func (a *Agent) codexBrokerEnv(token string) ([]string, error) {
 // credentialValues returns the literal secret values to scrub from a
 // transcript: the harness's own credential variables, plus anything else in
 // the environment named like a credential, plus any explicitly registered
-// values (extra) whose env var names the heuristic cannot flag — the broker
-// caller token rides ANTHROPIC_CUSTOM_HEADERS or PATCHY_BROKER_TOKEN. A tool result that dumps the
-// environment would otherwise put them in a ConfigMap the status page serves.
+// values (extra) whose env var names the heuristic cannot flag, such as the
+// broker caller token, which rides ANTHROPIC_CUSTOM_HEADERS or
+// PATCHY_BROKER_TOKEN. A tool result that dumps the environment would
+// otherwise put them in a ConfigMap the status page serves.
 //
-// The harness keys are the authoritative half — runnercfg validates the
-// injected credential's variable against exactly that set at startup, so the
-// model key is always covered. The name heuristic is defence in depth for
-// whatever else an operator forwards.
+// The harness keys cover a model credential a non-brokered runner injects
+// under one of them. The name heuristic is defence in depth for whatever else
+// an operator forwards.
 func credentialValues(h harness.Harness, extra ...string) []string {
 	wanted := make(map[string]bool, len(h.EnvKeys()))
 	for _, k := range h.EnvKeys() {
@@ -343,10 +343,10 @@ func credentialValues(h harness.Harness, extra ...string) []string {
 var credentialWords = []string{"TOKEN", "KEY", "SECRET", "PASSWORD", "CREDENTIALS"}
 
 // credentialNamed reports whether an environment variable's name marks it as
-// a credential. It over-matches on purpose — a redacted non-secret costs a
-// reader nothing, a leaked secret costs a rotation — but skips patchy's own
-// PATCHY_* configuration, which holds no credentials and does hold numbers
-// (token budgets) common enough to redact real transcript text by accident.
+// a credential. It over-matches, because a redacted non-secret costs a reader
+// nothing and a leaked secret costs a rotation. It skips patchy's own PATCHY_*
+// configuration, which holds no credentials and does hold numbers (token
+// budgets) common enough to redact real transcript text by accident.
 func credentialNamed(name string) bool {
 	upper := strings.ToUpper(name)
 	if strings.HasPrefix(upper, "PATCHY_") {
@@ -383,7 +383,7 @@ func budgetWatcher(h harness.Harness, budget int) func([]byte) (bool, string) {
 
 // investigate runs the analysis stage and folds everything into the event
 // payload. It parses the investigation contract and never decides
-// continuation — the controller routes on the verdict.
+// continuation; the controller routes on the verdict.
 func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	ev := &envelope.Investigation{Stage: envelope.Stage{
 		Harness: a.cfg.InvestigateHarness,
@@ -471,9 +471,9 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		// The agent's raw suggested (canonical) model rides the envelope; the
 		// remediation spawner clamps it to the allowlist and resolves the
 		// harness that runs it. The turn and token figures ride it verbatim,
-		// unclamped: they are the agent's ESTIMATE of the fix's cost, and
-		// clamping them would destroy the very signal the approval gate and
-		// the calibration averages are reading.
+		// unclamped: they are the agent's estimate of the fix's cost, and
+		// clamping them would destroy the signal the approval gate and the
+		// calibration averages read.
 		ev.RemediationModel = inv.Model
 		ev.EstimatedMaxTurns = inv.MaxTurns
 		ev.EstimatedTokenBudget = inv.TokenBudget
@@ -483,11 +483,11 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	return ev
 }
 
-// holdReasons decides why — if at all — a remediate verdict must wait for a
+// holdReasons decides why, if at all, a remediate verdict must wait for a
 // human before it runs. An estimate above the automated budget is a hold
 // rather than a clamp: that budget is the line past which spend needs
 // authorizing, and approving grants the estimate rather than merely
-// permitting the automated amount. Confidence is NOT judged here; the
+// permitting the automated amount. Confidence is not judged here; the
 // controller owns that threshold.
 func (a *Agent) holdReasons(inv *report.Investigation) []envelope.HoldReason {
 	var reasons []envelope.HoldReason
@@ -506,13 +506,13 @@ func (a *Agent) holdReasons(inv *report.Investigation) []envelope.HoldReason {
 // remediationInput validates that the controller-provided analysis is present
 // and parseable, and resolves what this run may spend.
 //
-// The investigation's numbers are NOT read as limits. They are an estimate:
+// The investigation's numbers are not read as limits. They are an estimate:
 // the controller already compared them to the automated budget, held it for
 // approval if they exceeded it, and resolved the grant it passed per-Job. A
-// low estimate must never starve the run — that is exactly the failure this
-// separation exists to prevent. The model and harness are likewise not read
-// from here: the controller resolved them, so the pod runs what its runner
-// image was built for.
+// low estimate must never starve the run; preventing that is why the
+// estimate and the grant are separate. The model and harness are not read
+// from here either: the controller resolved them, so the pod runs what its
+// runner image was built for.
 func (a *Agent) remediationInput() (remediationParams, error) {
 	raw, err := os.ReadFile(a.cfg.inputInvestigation())
 	if err != nil {
@@ -527,8 +527,8 @@ func (a *Agent) remediationInput() (remediationParams, error) {
 
 // grant resolves the remediation's spend. The controller's per-Job grant wins
 // when present; otherwise the run gets the automated budget, which is the
-// floor every remediation is entitled to. Either way the manual budget binds
-// — the runner is what actually spends the money, so it re-checks rather than
+// floor every remediation is entitled to. Either way the manual budget binds:
+// the runner is what actually spends the money, so it re-checks rather than
 // trusting the grant it was handed.
 func (a *Agent) grant() (maxTurns, budget int) {
 	maxTurns, budget = a.cfg.GrantedMaxTurns, a.cfg.GrantedTokenBudget
@@ -560,13 +560,13 @@ func (a *Agent) grant() (maxTurns, budget int) {
 }
 
 // cliModel translates a canonical model id into the CLI model-id the given
-// harness's --model flag expects. The controller-rendered model map wins —
+// harness's --model flag expects. The controller-rendered model map wins:
 // behind a brokered provider the CLI needs the provider's ids (Bedrock
 // inference profiles, Foundry deployment names), not the registry's
 // first-party ones. The controller validated the model against the registry
 // before launching, so the final fallback to the bare (provider-stripped) id
-// only defends against an unknown id — which is also what the fake harness
-// receives and ignores.
+// only defends against an unknown id. The fake harness also receives that
+// fallback, and ignores it.
 func (a *Agent) cliModel(canonical, harnessID string) string {
 	if id, ok := a.cfg.ModelMap[canonical]; ok {
 		return id
@@ -636,7 +636,7 @@ func (a *Agent) fillStage(st *envelope.Stage, h harness.Harness, res runner.Resu
 // stageOutcome folds run error, timeout, and the harness's runtime-error
 // gate into an outcome; OK means the stage's report can be trusted to exist.
 // A run that exhausted its turn or token limit is reported as budget
-// exceeded rather than a generic runtime error — it names the cause, and it
+// exceeded rather than a generic runtime error: that names the cause, and it
 // is the same outcome the runner's own kill switch raises.
 func stageOutcome(h harness.Harness, res runner.Result, runErr error) (envelope.Outcome, string) {
 	if runErr != nil {

@@ -163,7 +163,7 @@ func TestResolveDevSecretFlagBreaksTie(t *testing.T) {
 		t.Errorf("provenance = %q, want it to name the file", provenance)
 	}
 
-	// Neither resolved: nil without error — the caller decides what that means.
+	// Neither resolved: nil without error. The caller decides what that means.
 	got, _, err = resolveDevSecret(parseDevGeneric(t), "", "")
 	if err != nil || got != nil {
 		t.Errorf("resolveDevSecret(empty) = %q, %v; want nil, nil", got, err)

@@ -4,10 +4,10 @@
 // Command egress-broker serves the egress credential broker: the reverse
 // proxy agent pods send all model-API traffic through. It validates each
 // caller's projected ServiceAccount token via TokenReview, then injects or
-// signs the model credential outbound (Anthropic API key, Bedrock SigV4,
-// Vertex OAuth, Foundry key/Entra) — which is what keeps agent pods fully
-// credential-less. Not a controller: no reconcilers, no leases, and no
-// Kubernetes access beyond TokenReview.
+// signs the model credential outbound (Anthropic key or token, Bedrock SigV4,
+// Vertex OAuth, Foundry key/Entra, OpenAI key, Azure key/Entra). This is what
+// keeps agent pods free of credentials. It is not a controller: no
+// reconcilers, no leases, and no Kubernetes access beyond TokenReview.
 package main
 
 import (

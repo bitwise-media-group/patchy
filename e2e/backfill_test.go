@@ -24,7 +24,7 @@ import (
 // alerts that predate webhook coverage are seeded on the fake, a
 // spec.backfill request with an exact-repo filter is stamped, and the
 // integration-controller lists and ingests exactly the filtered alerts,
-// echoing the request on status.backfill. A re-stamp is idempotent —
+// echoing the request on status.backfill. A re-stamp is idempotent:
 // ingestion folds the same alerts back into the same finding.
 func TestBackfill(t *testing.T) {
 	cl := startCluster(t)
@@ -33,9 +33,9 @@ func TestBackfill(t *testing.T) {
 	cl.githubCredentials(t, gh.URL)
 	ctx := context.Background()
 
-	// The pre-existing estate: two alerts in acme/shop (one finding family —
-	// the fake serves every alert with the same rule), one in acme/other
-	// that the filter must exclude.
+	// The pre-existing estate: two alerts in acme/shop (one finding family,
+	// since the fake serves every alert with the same rule), one in
+	// acme/other that the filter must exclude.
 	gh.SeedAlert("acme", "shop", 41)
 	gh.SeedAlert("acme", "shop", 42)
 	gh.SeedAlert("acme", "other", 7)

@@ -20,8 +20,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/action"
 )
 
-// cliNote records where an approval came from, mirroring the status page's own
-// note so the provenance of an approval is legible on the finding.
+// cliNote records where an approval came from. It mirrors the status page's
+// own note so the finding shows the approval's provenance.
 const cliNote = "Approved from the patchy CLI."
 
 // verbHelp is the one-line description of each action.
@@ -103,9 +103,9 @@ func runAction(ctx context.Context, opts *Options, f *actionFlags, verb, noun st
 		return errUsage(errors.New("actions need a single namespace; drop --all-namespaces or pass -n"))
 	}
 
-	// Ask before writing. The admission policy is what actually enforces this,
-	// but a local check turns "the server rejected your update" into a sentence
-	// that names the verb you are missing.
+	// Ask before writing. The admission policy enforces this, but a local
+	// check turns "the server rejected your update" into a message that names
+	// the missing verb.
 	allowed, err := opts.access(ctx, env, "findings", verb)
 	if err != nil {
 		return err
@@ -182,8 +182,8 @@ func applyToAll(ctx context.Context, opts *Options, env *kubecfg.Env,
 		}
 	}
 	if len(failures) > 0 {
-		// Propagate one failure so exitCode can classify the run; the detail
-		// of each is already on stderr.
+		// Propagate one failure so exitCode can classify the run. Each
+		// failure's detail is already on stderr.
 		return fmt.Errorf("%d of %d findings failed: %w", len(failures), len(targets), failures[0])
 	}
 	return nil
@@ -217,9 +217,8 @@ func applyOne(ctx context.Context, opts *Options, env *kubecfg.Env,
 	return changed, err
 }
 
-// confirm asks before a bulk write. Naming the count and the verb is the whole
-// point — a selector that matched more than expected is the mistake this
-// catches.
+// confirm asks before a bulk write. It names the count and the verb to catch
+// a selector that matched more than expected.
 func confirm(opts *Options, verb string, targets []string) error {
 	notef(opts.ErrOut, "About to %s %d findings:\n", verb, len(targets))
 	for _, t := range targets {

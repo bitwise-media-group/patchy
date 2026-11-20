@@ -28,13 +28,12 @@ func repoLessFinding(phase v1alpha1.Phase) *v1alpha1.Finding {
 }
 
 // A repository-scoped rollup has no key to file a repo-less finding under.
-// Until cloud findings existed this branch was unreachable, because every
-// GHAS finding has a repository; now it is routine, so the accounting has to
-// be right rather than merely untested.
+// Every GHAS finding has a repository, but repo-less cloud findings are
+// routine.
 //
-// "Right" means: the total scope counts it, the repository scope does not,
-// and both scopes still settle — an unsettled scope holds its finalizer and
-// the finding never goes away.
+// The total scope must count it, the repository scope must not, and both
+// scopes must still settle: an unsettled scope holds its finalizer and the
+// finding never goes away.
 func TestRepoLessFindingCountsOnlyAtTotalScope(t *testing.T) {
 	r, c := newReconciler(t, repoLessFinding(v1alpha1.PhaseHandedOff))
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "patchy", Name: "finding-aa-1"}}
@@ -111,7 +110,7 @@ func TestRepoLessFindingRevivalIsBalanced(t *testing.T) {
 }
 
 // A cloud finding that did resolve a repository is accounted for exactly like
-// a code finding — the resolution happened before any of this, so nothing
+// a code finding. The resolution happened before any of this, so nothing
 // here needs to know it was ever repo-less.
 func TestResolvedCloudFindingCountsAtBothScopes(t *testing.T) {
 	fnd := repoLessFinding(v1alpha1.PhaseRemediated)

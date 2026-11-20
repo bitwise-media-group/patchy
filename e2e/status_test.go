@@ -99,7 +99,7 @@ func getDataset(t *testing.T, url string) (*http.Response, *statusDataset) {
 
 // TestStatusServer drives the shipped status-server binary against the
 // envtest cluster: the split public/authenticated API, the SSE change
-// signal, and — with the real remediation-controller running — the proof
+// signal, and (with the real remediation-controller running) the proof
 // that a status-page approval is spec-only: the controller, not the server,
 // moves AwaitingApproval → Queued.
 func TestStatusServer(t *testing.T) {
@@ -145,7 +145,7 @@ func TestStatusServer(t *testing.T) {
 	cl.controller(t, "remediation-controller",
 		append([]string{"--max-concurrent-remediations", "1"}, runnerArgs...)...)
 
-	// Instance A: auth mode none — full access, no sign-in.
+	// Instance A: auth mode none (full access, no sign-in).
 	authCfg := filepath.Join(t.TempDir(), "auth.yaml")
 	if err := os.WriteFile(authCfg, []byte("mode: none\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -261,7 +261,7 @@ func TestStatusServer(t *testing.T) {
 			return false
 		}
 		// The spawner admits to Queued and may immediately grant the slot
-		// (Remediating) — either proves the server wrote spec only and the
+		// (Remediating). Either proves the server wrote spec only and the
 		// controller moved the phase.
 		return f.Status.Phase == v1alpha1.PhaseQueued || f.Status.Phase == v1alpha1.PhaseRemediating
 	})
@@ -307,8 +307,8 @@ func TestStatusServer(t *testing.T) {
 	}
 
 	// A long run: the live stream carried every turn, but the stored record
-	// is compacted to fit its ConfigMap — head and tail with an elision
-	// notice — and still resumes by seq.
+	// is compacted to fit its ConfigMap (head and tail with an elision
+	// notice) and still resumes by seq.
 	const longTurns = 1200
 	stored := fabricateLongTranscript(t, cl, "finding-long-1", longTurns)
 	if stored.Turns > int32(transcript.DefaultStoreMaxTurns) || !stored.Truncated {
@@ -349,7 +349,7 @@ func TestStatusServer(t *testing.T) {
 		t.Errorf("resume after %d returned %+v, want the last 2 turns", resumeAt, resumed)
 	}
 
-	// Instance B: no auth config at all — nothing is served.
+	// Instance B: no auth config at all, so nothing is served.
 	publicListen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "status-server", "--listen-addr", publicListen)
 	publicBase := "http://" + publicListen
@@ -434,8 +434,8 @@ func fabricateTranscript(t *testing.T, cl *cluster, finding string) {
 }
 
 // fabricateLongTranscript writes a completed Investigation whose conversation
-// ran far past the store bounds — n turns, some larger than a stored turn may
-// be — through transcriptstore.Persist, exactly as the investigation
+// ran far past the store bounds (n turns, some larger than a stored turn may
+// be) through transcriptstore.Persist, exactly as the investigation
 // controller collects a run.
 func fabricateLongTranscript(t *testing.T, cl *cluster, finding string, n int) *v1alpha1.TranscriptRef {
 	t.Helper()

@@ -1,4 +1,4 @@
-// The metrics summary for whatever is in view — everything, one repository,
+// The metrics summary for whatever is in view: everything, one repository,
 // a set of matching repositories, one model, or one harness. One layout
 // for every slice: a sentence that says what happened, the outcome strip,
 // the key figures (with the slice's share of the whole when sliced), then

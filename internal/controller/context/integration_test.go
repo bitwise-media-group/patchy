@@ -210,8 +210,8 @@ func TestGenericEnhancerConfigSource(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "warehouse-creds", Namespace: "patchy"},
 				Data:       map[string][]byte{"webhookSecret": []byte("wh-secret")},
 			},
-			// cmdb's Secret is deliberately absent: the config must still
-			// list it, secret-less, so the failure stays attributed.
+			// cmdb's Secret is absent. The config must still list it,
+			// secret-less, so the failure stays attributed.
 		).Build()
 
 	cfgs, err := GenericEnhancerConfigSource(c, c, "patchy", nil)(t.Context())

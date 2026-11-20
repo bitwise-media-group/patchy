@@ -26,8 +26,8 @@ import (
 // AssetConfigSource reads the cloudAssetInventory capability off the
 // namespace's google-cloud Integration, through the manager's informer cache.
 // Read per enhancement rather than captured at startup, so an operator
-// changing the Integration needs no controller restart — the same rule the
-// receiver applies to webhook secrets.
+// changing the Integration needs no controller restart. The receiver applies
+// the same rule to webhook secrets.
 //
 // No capability configured is a nil config (the enhancer stands aside); two
 // Integrations claiming it is an error (the singleton rule), which fails the
@@ -85,12 +85,12 @@ func AWSTagsConfigSource(r client.Reader, namespace string) enhancers.AWSConfigS
 // in the namespace: the Integration list through the informer cache, each
 // signing secret through the API reader (Secrets are never cached, the
 // cluster-wide rule). Generic is the one capability exempt from the
-// singleton rule, so this Lists rather than Selects — every enabled
+// singleton rule, so this Lists rather than Selects: every enabled
 // integration enhances, each under its own name.
 //
 // A Secret that cannot be read does not drop its integration from the list:
 // the config is returned secret-less, the call fails for that endpoint
-// alone, and the per-endpoint error carries the integration's name — one
+// alone, and the per-endpoint error carries the integration's name. One
 // broken Secret must not silently skip an enhancer, nor take down the rest.
 func GenericEnhancerConfigSource(
 	r client.Reader, secrets client.Reader, namespace string, log *slog.Logger,
@@ -137,18 +137,17 @@ func webhookSecret(ctx context.Context, r client.Reader, integ *v1alpha1.Integra
 }
 
 // CachedGenericSource caches src's answer for ttl. The generic source is the
-// one config source whose read is not free — every call re-Lists the
+// one config source whose read is not free. Every call re-Lists the
 // Integrations and re-reads each signing Secret through the API reader
-// (Secrets are never cached, the cluster-wide rule) — and it runs once per
+// (Secrets are never cached, the cluster-wide rule), and it runs once per
 // enhanced finding, which a brownfield backlog turns into an API-server
 // hammer. The cloud config sources read only the informer cache and stay
 // uncached.
 //
 // A miss refreshes under the lock, so concurrent reconciles share one
-// upstream read (free singleflight). Errors are never cached — a failed read
-// is retried by the next caller. Secret rotation propagates within ttl;
-// ttl<=0 disables caching entirely. now is the clock seam; nil means
-// time.Now.
+// upstream read (free singleflight). Errors are never cached: the next
+// caller retries a failed read. Secret rotation propagates within ttl;
+// ttl<=0 disables caching entirely. now tells time; nil means time.Now.
 func CachedGenericSource(
 	src enhancers.GenericConfigSource, ttl time.Duration, now func() time.Time,
 ) enhancers.GenericConfigSource {

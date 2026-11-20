@@ -18,9 +18,9 @@ import (
 // ResourceReviewer answers "may this identity <verb> <resource>?" through
 // SubjectAccessReviews, cached briefly per identity+verb. It is the
 // resource-parameterized sibling of Reviewer (which is findings-specific and
-// grant-shaped); the evaluation API uses it with native verbs only —
-// create/get/delete on evaluations — so RBAC is the whole authorization
-// surface, no admission-policy change involved.
+// grant-shaped). The evaluation API uses it with native verbs only
+// (create/get/delete on evaluations), so RBAC is the whole authorization
+// surface and no admission-policy change is involved.
 type ResourceReviewer struct {
 	client    client.Client
 	namespace string

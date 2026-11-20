@@ -23,9 +23,9 @@ import (
 // The Table request is the one code path that cannot be exercised without a
 // real API server: it negotiates a content type, hand-builds query parameters,
 // and decodes a wire format no fake client produces. It is also the default
-// output of `patchy get`, so a break here breaks the whole command — which is
-// precisely what happened when the query parameters were first built through a
-// scheme that had never heard of TableOptions.
+// output of `patchy get`, so a break here breaks the whole command. Building
+// the query parameters through a scheme that does not know TableOptions is
+// one such break.
 
 const tableNamespace = "patchy"
 
@@ -154,8 +154,8 @@ func TestTable(t *testing.T) {
 	})
 
 	// Every noun the registry offers has to be tabulatable, or `patchy get
-	// <that noun>` fails at the first request — and `patchy get all`, which
-	// walks the whole registry, reports the failure for every kind it added.
+	// <that noun>` fails at the first request, and `patchy get all`, which
+	// walks the whole registry, reports the failure.
 	t.Run("every kind tabulates", func(t *testing.T) {
 		for _, kind := range resource.Kinds {
 			if _, err := env.Table(t.Context(), kind.Plural, nil, ""); err != nil {

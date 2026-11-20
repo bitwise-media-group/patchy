@@ -17,7 +17,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
 
-// emptyPayloadHash is the SHA-256 of an empty body, hex-encoded — SigV4's
+// emptyPayloadHash is the hex-encoded SHA-256 of an empty body: SigV4's
 // required payload hash for a bodyless request.
 const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
@@ -25,10 +25,10 @@ const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49599
 const bedrockService = "bedrock"
 
 // Bedrock is the Amazon Bedrock route: SigV4-sign each request with the
-// broker's ambient AWS identity (IRSA / EKS Pod Identity / env credentials —
+// broker's ambient AWS identity (IRSA, EKS Pod Identity or env credentials:
 // whatever config.LoadDefaultConfig resolves) and forward. The route buffers
-// bodies: SigV4 signs a hash of the payload, so the whole body must be in
-// hand before the request leaves.
+// bodies because SigV4 signs a hash of the payload, so the whole body must be
+// in hand before the request leaves.
 func Bedrock(ctx context.Context, target *url.URL, region string) (Upstream, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {

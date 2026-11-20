@@ -118,8 +118,8 @@ func Derive(findings []Finding, prev *spec.Allowlist, today time.Time, newDays i
 	return entries, stats
 }
 
-// lapsed reports whether expiredAt is on or before today, matching lint's
-// "expired — re-review required" boundary. An unparseable date is left for
+// lapsed reports whether expiredAt is on or before today, the same boundary
+// at which Lint reports an entry as expired. An unparseable date is left for
 // lint to reject rather than silently replaced.
 func lapsed(expiredAt string, today time.Time) bool {
 	expiry, err := time.Parse("2006-01-02", expiredAt)
@@ -148,7 +148,7 @@ var prereleaseRE = regexp.MustCompile(`(?i)-(rc|alpha|beta|pre|dev)`)
 
 // statement builds the machine-fact statement for one finding ID across
 // the images reporting it: the affected packages, the minimal released
-// upgrade that clears it, and what the locked images actually ship.
+// upgrade that clears it, and what the locked images ship.
 func statement(rows []Finding) string {
 	pkgs := uniqueSorted(rows, func(f Finding) string { return f.Package }, sort.Strings)
 	installed := uniqueSorted(rows, func(f Finding) string { return f.Installed }, sortVersions)
@@ -169,11 +169,11 @@ func statement(rows []Finding) string {
 	sortVersions(fixes)
 
 	// Advisories often list a chain of fixed-in versions across several
-	// release branches. The useful number is the lowest release ABOVE
-	// what the image ships — the minimal upgrade that clears it — not the
-	// newest in the chain. Normalise the installed version for comparison
-	// only (v1.2.3, go1.26.4, 28.5.2+incompatible); the statement still
-	// quotes what the scanner reported.
+	// release branches. The useful number is the lowest release above what
+	// the image ships (the minimal upgrade that clears it), not the newest
+	// in the chain. Normalise the installed version for comparison only
+	// (v1.2.3, go1.26.4, 28.5.2+incompatible); the statement still quotes
+	// what the scanner reported.
 	maxInstalled := ""
 	for _, v := range installed {
 		n := normalizeVersion(v)
@@ -202,10 +202,10 @@ func statement(rows []Finding) string {
 		strings.Join(pkgs, "/"), fixed, strings.Join(installed, "/"), foundIn(rows))
 }
 
-// foundIn names where the affected package sits — the binary it is
-// compiled into, or the lockfile/package database declaring it — grouped
-// by image when the rows carry one (a mirror entry ships several). Sorted
-// throughout so regeneration is byte-stable; empty when no scanner
+// foundIn names where the affected package sits (the binary it is compiled
+// into, or the lockfile or package database declaring it), grouped by image
+// when the rows carry one (a mirror entry ships several). Output is sorted
+// throughout so regeneration is byte-stable, and empty when no scanner
 // reported a location.
 func foundIn(rows []Finding) string {
 	byImage := map[string][]string{}

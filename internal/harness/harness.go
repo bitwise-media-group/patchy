@@ -24,10 +24,11 @@ type Usage struct {
 
 // Sandbox is the filesystem/execution posture a run requires, declared
 // harness-neutrally so agentrun states intent once and each harness renders it
-// in its own vocabulary: claude as an allow/deny tool grammar, codex (once the
-// pod's kernel sandbox is confirmed) as a --sandbox mode backed by mounted
-// execpolicy rules. A harness that has no way to express a posture renders it
-// as its default — the request is advisory, not a guarantee every CLI can keep.
+// in its own vocabulary. claude renders it as an allow/deny tool grammar.
+// codex does not render it: it runs every posture as danger-full-access,
+// because its sandbox needs syscalls the pod's seccomp profile blocks (see
+// codex.go). A harness that has no way to express a posture renders it as its
+// default: the request is advisory, not a guarantee every CLI can keep.
 type Sandbox int
 
 const (
@@ -35,7 +36,8 @@ const (
 	// is the zero value, so a bare PromptRequest stays unrestricted.
 	SandboxDefault Sandbox = iota
 	// SandboxReadOnly is the investigation posture: read the tree and write
-	// only the report — no source edits, no mutating commands, no network tools.
+	// only the report. No source edits, no mutating commands, no network
+	// tools.
 	SandboxReadOnly
 	// SandboxWorkspaceWrite is the remediation posture: edit the workspace
 	// freely; network tools stay denied.
@@ -67,7 +69,7 @@ type AgentResult struct {
 }
 
 // Harness is the required surface every agent CLI implements. A harness
-// drives a model — it does not own one; the model a run targets is supplied
+// drives a model but does not own one; the model a run targets is supplied
 // as a harness-specific CLI id on the PromptRequest.
 type Harness interface {
 	ID() string        // registry key, e.g. "claude"
@@ -111,11 +113,11 @@ type UsageScanner interface {
 
 // TurnScanner is the optional capability of projecting the live output stream
 // onto the harness-neutral conversation vocabulary; it powers the transcript
-// the status page replays. A harness without it simply produces no transcript.
+// the status page replays. A harness without it produces no transcript.
 //
-// Each CLI's stream is shaped differently — claude nests content blocks under
-// an assistant message, codex flattens them into typed items — so normalising here is the only place the difference can
-// be absorbed once.
+// Each CLI's stream is shaped differently (claude nests content blocks under
+// an assistant message, codex flattens them into typed items), so the
+// difference is absorbed here, once.
 type TurnScanner interface {
 	// ScanTurns returns the turns one stream line carries, in order, or nil
 	// for a line that carries none. One line can yield several: a single

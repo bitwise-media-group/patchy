@@ -118,7 +118,7 @@ func TestStatementMinimalFix(t *testing.T) {
 		{
 			name: "minimal fix above installed",
 			// The Go stdlib pattern: fixes across branches, image ships
-			// go1.26.4 — the useful number is 1.26.5, not the 1.27 rc.
+			// go1.26.4. The useful number is 1.26.5, not the 1.27 rc.
 			rows: []Finding{{
 				ID: "GO-1", Package: "stdlib", Installed: "go1.26.4",
 				FixedIn: []string{"1.25.9", "1.26.5", "1.27.0-rc.2"},

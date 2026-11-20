@@ -44,7 +44,7 @@ type User struct {
 	// AdminActions are the granted demo-tooling verbs (replay, reset) the
 	// user menu renders. Absent means none.
 	AdminActions []string `json:"adminActions,omitempty"`
-	// ConfigView reports native get on integrations — whether the
+	// ConfigView reports native get on integrations: whether the
 	// configuration view is reachable for this user.
 	ConfigView bool `json:"configView,omitempty"`
 	// IntegrationActions are the granted integration-scoped verbs
@@ -65,7 +65,7 @@ type FindingSummary struct {
 	Source      string      `json:"source,omitempty"`
 	Repository  *Repository `json:"repository,omitempty"`
 	// CloudResource is set on a finding raised against infrastructure rather
-	// than repository code — it is the row's identity when there is no
+	// than repository code. It is the row's identity when there is no
 	// repository to name.
 	CloudResource     *CloudResource        `json:"cloudResource,omitempty"`
 	Advisories        []string              `json:"advisories"`
@@ -91,9 +91,9 @@ type FindingSummary struct {
 }
 
 // Finding is the full flattened metadata+spec+status projection of one
-// Finding — the payload behind GET /api/findings/{name}. It is the summary's
+// Finding, the payload behind GET /api/findings/{name}. It is the summary's
 // superset (same JSON keys for the shared fields; the lockstep tests pin
-// both), plus the unbounded detail the list deliberately drops.
+// both), plus the unbounded detail the list drops.
 type Finding struct {
 	Name        string      `json:"name"`
 	CreatedAt   string      `json:"createdAt,omitempty"`
@@ -215,7 +215,7 @@ type Enrichment struct {
 	AppliedAt  string            `json:"appliedAt,omitempty"`
 }
 
-// InvestigationSummary mirrors the Finding's own investigation status —
+// InvestigationSummary mirrors the Finding's own investigation status: the
 // bounded verdict fields the list rows render (recommendation, confidence).
 type InvestigationSummary struct {
 	Name           string   `json:"name,omitempty"`
@@ -235,7 +235,7 @@ type InvestigationSummary struct {
 }
 
 // Investigation is the summary plus the report markdown and run accounting
-// lifted from the Investigation child — detail-route only.
+// lifted from the Investigation child. Detail route only.
 type Investigation struct {
 	InvestigationSummary
 	Report   string `json:"report,omitempty"`
@@ -243,7 +243,7 @@ type Investigation struct {
 	Model    string `json:"model,omitempty"`
 	NumTurns int32  `json:"numTurns,omitempty"`
 	Usage    *Usage `json:"usage,omitempty"`
-	// SessionID is the agent CLI's own session identifier — a correlation key
+	// SessionID is the agent CLI's own session identifier: a correlation key
 	// for operators reading model-provider logs, not a handle anything can be
 	// fetched with (the CLI session dies with the pod).
 	SessionID string `json:"sessionID,omitempty"`
@@ -263,7 +263,7 @@ type RemediationSummary struct {
 }
 
 // Remediation is the summary plus the report markdown and run accounting
-// lifted from the Remediation child — detail-route only.
+// lifted from the Remediation child. Detail route only.
 type Remediation struct {
 	RemediationSummary
 	Report   string  `json:"report,omitempty"`
@@ -279,7 +279,7 @@ type Remediation struct {
 }
 
 // TranscriptSummary tells the client whether a run has a conversation worth
-// opening, without shipping it inside the dataset — a finding list carrying
+// opening, without shipping it inside the dataset. A finding list carrying
 // every run's full transcript would be orders of magnitude larger than the
 // page needs.
 type TranscriptSummary struct {
@@ -287,7 +287,7 @@ type TranscriptSummary struct {
 	Truncated bool  `json:"truncated,omitempty"`
 }
 
-// Usage is token and cost accounting — one run's, or the finding's total
+// Usage is token and cost accounting: one run's, or the finding's total
 // across every attempt of both stages. Cost is integer micro-USD, matching
 // the rollup wire type.
 type Usage struct {
@@ -337,7 +337,7 @@ type ActiveRun struct {
 }
 
 // Rollup is one scope's all-time statistics, identified by scope.key ("" is
-// the total scope) — never by object name.
+// the total scope), never by object name.
 type Rollup struct {
 	Scope          RollupScope              `json:"scope"`
 	FirstProcessed string                   `json:"firstProcessed,omitempty"`
@@ -397,11 +397,11 @@ type MonthlyBucket struct {
 }
 
 // buildDataset assembles the list payload from the cached client: trimmed
-// finding summaries only — no Investigation/Remediation children are read,
+// finding summaries only. No Investigation/Remediation children are read,
 // so the build cost scales with finding count alone. userActions is stamped
-// uniformly — RBAC grants are namespace-scoped, and the client intersects
-// with each finding's state machine itself. withFindings=false produces the
-// metrics summary instead (no findings).
+// uniformly because RBAC grants are namespace-scoped; the client intersects
+// them with each finding's state machine itself. withFindings=false produces
+// the metrics summary instead (no findings).
 func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []string, user *User) (*Dataset, error) {
 	ds := &Dataset{
 		GeneratedAt: s.now().UTC().Format(time.RFC3339),
@@ -428,9 +428,9 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 	if err := s.client.List(ctx, &findings, client.InNamespace(s.namespace)); err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
-	// Newest first, stable across refetches. Second-truncated to match the
-	// projected RFC3339 stamps the previous wire-side sort compared, so
-	// sub-second neighbours still order by name.
+	// Newest first, stable across refetches. Truncated to the second, the
+	// precision of the projected RFC3339 stamps, so findings the client
+	// shows with the same time order by name.
 	sortStamp := func(f *v1alpha1.Finding) time.Time {
 		if t := f.Status.FirstObservedAt; t != nil && !t.IsZero() {
 			return t.Truncate(time.Second)
@@ -453,7 +453,7 @@ func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []st
 // addRollupSummary fills the metrics summary: every total, model and
 // harness shard (their count is bounded by configuration), the top
 // repositories by findings closed, and how many repositories exist. Order
-// is stable — by scope type, then key — with the repositories last in
+// is stable (by scope type, then key), with the repositories last in
 // findings order.
 func (s *Server) addRollupSummary(ctx context.Context, ds *Dataset) error {
 	items, err := s.listRollups(ctx)
@@ -551,7 +551,7 @@ type runDetails struct {
 }
 
 // loadRunDetails lists one finding's children through the RunFindingIndex.
-// Errors degrade gracefully — reports and usage are absent, the finding
+// Errors degrade gracefully: reports and usage are absent but the finding
 // still renders (a deployment whose RBAC predates the child read grant, or
 // whose cache lacks the index, must not lose the whole page).
 func (s *Server) loadRunDetails(ctx context.Context, finding string) runDetails {
@@ -602,7 +602,7 @@ func (d *runDetails) addStage(finding string, st *v1alpha1.StageResult) {
 
 // attach lifts the child-only fields (report, harness, model, usage, and
 // the cross-attempt total) onto one finding's projection. An absent child
-// (expired, deleted) simply leaves them empty.
+// (expired, deleted) leaves them empty.
 func (d *runDetails) attach(f *v1alpha1.Finding, out *Finding) {
 	if inv := f.Status.Investigation; inv != nil && out.Investigation != nil {
 		if child := d.inv[inv.Name]; child != nil {
@@ -660,7 +660,7 @@ func wireTranscript(ref *v1alpha1.TranscriptRef) *TranscriptSummary {
 }
 
 // stageUsage converts a stage's usage block onto the wire type, or nil when
-// the harness reported nothing. A malformed cost string parses as zero —
+// the harness reported nothing. A malformed cost string parses as zero, and
 // the tokens still render.
 func stageUsage(st *v1alpha1.StageResult) *Usage {
 	u := Usage{

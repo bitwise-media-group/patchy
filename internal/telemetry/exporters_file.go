@@ -16,11 +16,10 @@ import (
 
 // fileExporters opens one JSON file per signal under cfg.Dir and wires the
 // stdout exporters to them. Each signal owns its own file, so the trace, metric,
-// and log pipelines never contend on a shared writer. The files default to
-// compact (one JSON value per line) — pretty-printing would split a record
-// across writes — which is the shape otel-tui's --from-json-file expects. The
-// returned closers close the files; the caller invokes them after the providers
-// have flushed.
+// and log pipelines never contend on a shared writer. The files are compact
+// (one JSON value per line), the shape otel-tui's --from-json-file expects;
+// pretty-printing would split a record across writes. The caller runs the
+// returned closers after the providers have flushed.
 func fileExporters(cfg Config) (signalExporters, error) {
 	if err := os.MkdirAll(cfg.Dir, 0o755); err != nil {
 		return signalExporters{}, fmt.Errorf("create telemetry dir %s: %w", cfg.Dir, err)

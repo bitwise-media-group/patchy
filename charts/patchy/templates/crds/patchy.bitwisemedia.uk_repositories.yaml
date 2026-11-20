@@ -42,10 +42,10 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Repository is a SHA-pinned clone artifact: source-controller clones the
-          repository with Forge credentials and serves it as a tarball that agent
-          jobs fetch credential-lessly. Owned by a Finding and garbage-collected
-          with it.
+          Repository is a SHA-pinned source artifact: source-controller downloads
+          the repository's tarball archive at the pinned SHA with Forge credentials
+          and serves it to agent jobs, which fetch it credential-lessly. Owned by a
+          Finding and garbage-collected with it.
         properties:
           apiVersion:
             description: |-
@@ -66,11 +66,11 @@ spec:
             type: object
           spec:
             description: |-
-              RepositorySpec asks source-controller to produce a SHA-pinned clone
-              artifact of one repository.
+              RepositorySpec asks source-controller to produce a SHA-pinned tarball of
+              one repository.
             properties:
               ref:
-                description: Ref selects what to clone.
+                description: Ref selects what to fetch.
                 properties:
                   branch:
                     description: |-
@@ -80,7 +80,7 @@ spec:
                 type: object
               url:
                 description: URL is the normalized https URL of the repository to
-                  clone.
+                  fetch.
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
@@ -101,7 +101,8 @@ spec:
                       container.
                     type: string
                   lastFetchedAt:
-                    description: LastFetchedAt is when the clone was produced.
+                    description: LastFetchedAt is when the tarball was downloaded
+                      from the forge.
                     format: date-time
                     type: string
                   sizeBytes:
@@ -120,7 +121,7 @@ spec:
               conditions:
                 description: |-
                   Conditions of the repository (Ready: artifact available; Stalled:
-                  cannot clone or artifact over the size cap).
+                  cannot fetch, or artifact over the size cap).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -177,7 +178,7 @@ spec:
                   type: object
                 type: array
               forge:
-                description: Forge names the Forge whose credentials cloned the repository.
+                description: Forge names the Forge whose credentials fetched the repository.
                 properties:
                   name:
                     description: Name of the referent.

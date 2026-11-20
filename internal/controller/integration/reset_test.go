@@ -108,7 +108,7 @@ func TestRunReset(t *testing.T) {
 	if want := []string{"acme/orders#7"}; !slices.Equal(fc.deleted, want) {
 		t.Errorf("deleted issues = %v, want %v", fc.deleted, want)
 	}
-	// Only the dismissed finding's own alert (#42) is restored — never a
+	// Only the dismissed finding's own alert (#42) is restored: never a
 	// repository-wide sweep, and never alerts of non-dismissed findings.
 	if want := []string{"acme/orders#42"}; !slices.Equal(fc.opened, want) {
 		t.Errorf("reopened alerts = %v, want %v", fc.opened, want)

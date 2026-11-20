@@ -62,7 +62,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.Duration("investigate-timeout", 15*time.Minute, "wall-clock limit for the analysis stage")
 	f.Int("investigate-max-turns", 25, "agent turns allowed for the analysis stage")
 	f.Int("investigate-token-budget", 150000, "output-token budget for the analysis stage")
-	// The remediation budgets are rendered into the ANALYSIS prompt: they tell
+	// The remediation budgets are rendered into the analysis prompt: they tell
 	// the agent what its estimate will buy unattended and what a human can
 	// approve. They must match the remediation controller's own configuration.
 	f.Int("remediate-auto-max-turns", 80, "turns an unattended fix gets; the analysis prompt's approval line")

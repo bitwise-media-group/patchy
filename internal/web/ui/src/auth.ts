@@ -2,10 +2,10 @@
 // sign-in works through three small SPA-readable cookies; the session itself
 // lives in HttpOnly cookies the client never touches:
 //
-//   patchy-auth-provider — {provider, authenticated, autoLogin} (base64url
-//                          JSON). Absent means sign-in is not configured.
-//   patchy-auth-error    — human-readable sign-in failure, shown once.
-//   patchy-auth-logout   — marker set by sign-out; suppresses autoLogin.
+//   patchy-auth-provider: {provider, authenticated, autoLogin} (base64url
+//                         JSON). Absent means sign-in is not configured.
+//   patchy-auth-error:    human-readable sign-in failure, shown once.
+//   patchy-auth-logout:   marker set by sign-out; suppresses autoLogin.
 
 export interface AuthProvider {
   provider: string;
@@ -40,7 +40,7 @@ function deleteCookie(name: string): void {
 }
 
 // readProvider returns the sign-in surface descriptor, or null when the
-// server has no authentication configured (rollups-only posture).
+// server offers no sign-in (only the OIDC mode sets the cookie).
 export function readProvider(): AuthProvider | null {
   const p = readJSONCookie<AuthProvider>(PROVIDER_COOKIE);
   return p && typeof p.provider === "string" ? p : null;

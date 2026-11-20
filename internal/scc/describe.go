@@ -14,14 +14,14 @@ import (
 )
 
 // maxProperties caps how many detector properties are rendered. Some
-// detectors emit a large bag; the description is read by a human and an agent,
-// and neither is served by an unbounded table.
+// detectors emit many, and neither the human nor the agent reading the
+// description needs an unbounded table.
 const maxProperties = 24
 
 // renderDescription turns the notification into the Finding's markdown
-// description. Mapping rather than dumping the payload is deliberate: the
-// description is a document two audiences read, so the shape is the source's
-// decision even though the prose is the detector's.
+// description. It maps fields rather than dumping the payload: a human and an
+// agent both read the description, so the source controls its shape while the
+// detector supplies the prose.
 func renderDescription(n *notification) (string, error) {
 	f := &n.Finding
 	view := templates.SCCFinding{
@@ -77,9 +77,9 @@ func resourceName(n *notification) string {
 	return n.Resource.Name
 }
 
-// properties flattens sourceProperties into sorted key/value pairs. The values
-// are arbitrary JSON, so they are formatted rather than typed; nested objects
-// render as their Go form, which is ugly but honest and rare.
+// properties flattens sourceProperties into sorted key/value pairs, at most
+// maxProperties. The values are arbitrary JSON, so they are formatted rather
+// than typed. Nested objects (rare) render in their Go %v form.
 func properties(src map[string]any) []templates.SCCKV {
 	if len(src) == 0 {
 		return nil

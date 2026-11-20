@@ -52,14 +52,14 @@ const (
 	// (hold/hand-off/failure) was posted.
 	AnnotationProjectedNotice = "patchy.bitwisemedia.uk/projected-notice"
 	// AnnotationResolvedSource records the phase whose verdict was written
-	// back to the originating source. Separate from the notice annotation on
-	// purpose: telling the scanner and telling the humans are independent, so
-	// a failure of either must not suppress the other.
+	// back to the originating source. It is separate from the notice
+	// annotation because telling the scanner and telling the humans are
+	// independent, so a failure of either must not suppress the other.
 	AnnotationResolvedSource = "patchy.bitwisemedia.uk/resolved-source"
 )
 
-// trackerClient is the tracking-system surface the projection needs — a
-// slice of ghclient.Client; tests substitute a fake.
+// trackerClient is the subset of ghclient.Client the projection needs; tests
+// substitute a fake.
 type trackerClient interface {
 	Create(ctx context.Context, repo ghclient.Repo, req ghclient.IssueRequest) (*ghclient.Issue, error)
 	GetIssue(ctx context.Context, repo ghclient.Repo, number int) (*ghclient.Issue, error)
@@ -83,11 +83,11 @@ type FindingReconciler struct {
 	// Namespace the Findings live in.
 	Namespace string
 	// Concurrency is the number of findings projected in parallel; <=1 means
-	// serial. Kept conservative by default — every projection may spend
-	// GitHub API requests, and parallelism multiplies burst pressure on the
+	// serial. The default is conservative: every projection may spend GitHub
+	// API requests, and parallelism multiplies burst pressure on the
 	// installation's rate limit.
 	Concurrency int
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// ClientFor overrides the tracker-client construction in tests.
 	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (trackerClient, error)
@@ -114,9 +114,9 @@ func (r *FindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	// The verdict write-back is independent of the tracking projection: a
-	// finding with no tracking issue — repo-less, or with tracking disabled
-	// entirely — must still have its alerts resolved in the tool they came
+	// The verdict write-back is independent of the tracking projection. A
+	// finding with no tracking issue (repo-less, or with tracking disabled
+	// entirely) must still have its alerts resolved in the tool they came
 	// from, or they sit open there after patchy has closed them here.
 	if err := r.resolveSource(ctx, &fnd); err != nil {
 		return ctrl.Result{}, err
@@ -176,17 +176,16 @@ func (r *FindingReconciler) closeAccumulation(ctx context.Context, fnd *v1alpha1
 //
 // The guard lives here, not in Reconcile: closeAccumulation runs first and is
 // the only writer of the AccumulationComplete condition the investigation
-// gate blocks on. Skipping this function is safe; skipping the reconcile is
-// not — it would strand every deferred finding at Enhanced, silently.
+// gate blocks on. Skipping this function is safe. Skipping the reconcile is
+// not: it would silently strand every deferred finding at Enhanced.
 func (r *FindingReconciler) project(ctx context.Context, fnd *v1alpha1.Finding) error {
 	if fnd.Spec.TrackingRef == nil {
 		return nil // no tracker configured
 	}
 	// A cloud finding's repository is resolved by the enhancer chain, which
 	// runs at Opened. Projecting before then would open the issue on the
-	// fallback repository and strand it there — an issue cannot move once
-	// created, so waiting one phase is the difference between the right
-	// repository and a permanent misfile.
+	// fallback repository and strand it there. An issue cannot move once
+	// created, so waiting one phase avoids a permanent misfile.
 	if fnd.Spec.CloudResource != nil && fnd.Spec.Repository == nil &&
 		fnd.Status.Phase == v1alpha1.PhaseOpened {
 		return nil
@@ -228,7 +227,7 @@ func (r *FindingReconciler) project(ctx context.Context, fnd *v1alpha1.Finding) 
 //
 // The fallback is what makes a repo-less cloud finding visible to the humans
 // who triage it. Without one such a finding exists only in kubectl and the
-// status page — it can still be handed off, but to nobody who will see it.
+// status page. It can still be handed off, but to nobody who will see it.
 func trackingRepo(fnd *v1alpha1.Finding, integ *v1alpha1.Integration) (ghclient.Repo, error) {
 	if fnd.Spec.Repository != nil {
 		return parseOwnerRepo(fnd.Spec.Repository.Name)
@@ -294,7 +293,7 @@ func (r *FindingReconciler) createIssue(
 	if err != nil {
 		return fmt.Errorf("create tracking issue: %w", err)
 	}
-	// The issue exists; the link write must survive status contention — a
+	// The issue exists, so the link write must survive status contention. A
 	// dropped link would make the next reconcile duplicate the issue, so
 	// re-Get and retry conflicts here rather than surfacing them.
 	tracking := &v1alpha1.TrackingStatus{
@@ -409,8 +408,8 @@ func (r *FindingReconciler) projectComments(
 
 // projectEnrichments keeps one sticky comment per enhancer up to date: an
 // enrichment's markdown lands in a marker-headed comment that is edited in
-// place when the content moves, never re-posted. Attributes carry no comment
-// — they project as labels via projectedLabels.
+// place when the content moves, never re-posted. Attributes carry no
+// comment; they project as labels via projectedLabels.
 func (r *FindingReconciler) projectEnrichments(
 	ctx context.Context, fnd *v1alpha1.Finding, tracker trackerClient, repo ghclient.Repo, number int,
 ) error {
@@ -528,12 +527,12 @@ func (r *FindingReconciler) notify(
 }
 
 // resolveAlerts tells each source what the pipeline decided about its own
-// alerts — GHAS dismisses them, a cloud source would mute them.
+// alerts: GHAS dismisses them, a cloud source would mute them.
 //
 // Alerts are grouped by the source that produced them and handed to that
 // source's resolver, so provenance is a recorded fact rather than something
 // inferred from the shape of an id. A source that implements no write-back is
-// simply skipped: reading is a complete source.
+// skipped: reading alone is a complete source.
 func (r *FindingReconciler) resolveAlerts(ctx context.Context, fnd *v1alpha1.Finding) error {
 	verdict := source.Verdict{
 		Kind:    source.VerdictIgnore,
@@ -600,19 +599,19 @@ func (r *FindingReconciler) resolverFor(
 	default:
 		// Security Command Center findings would be muted here once
 		// integration-controller holds a Google Cloud write credential; the
-		// seam is in place and internal/scc implements source.Handler only.
-		// Wiz Defend threats have no write-back by design: a runtime
-		// detection is a record, not a state to dismiss.
+		// hook is in place and internal/scc implements source.Handler only.
+		// Wiz Defend threats have no write-back: a runtime detection is a
+		// record, not a state to dismiss.
 		//
-		// Any other source id is a generic integration's name — that is
+		// Any other source id is a generic integration's name, which is
 		// what makes generic write-back a lookup rather than a new case.
 		return r.genericResolverFor(ctx, fnd, sourceID)
 	}
 }
 
 // genericResolverFor builds the write-back for a generic source, or nil when
-// the named Integration is gone, is not generic, or has the resolver off —
-// exactly the "reading is a complete source" posture of the typed providers.
+// the named Integration is gone, is not generic, or has the resolver off.
+// This matches the typed providers, where reading alone is a complete source.
 func (r *FindingReconciler) genericResolverFor(
 	ctx context.Context, fnd *v1alpha1.Finding, sourceID string,
 ) (source.Resolver, error) {
@@ -646,7 +645,8 @@ func (r *FindingReconciler) genericResolverFor(
 	return generic.NewResolver(c, integ.Name), nil
 }
 
-// wizClientFor resolves the Wiz write-back seam, honouring the test override.
+// wizClientFor builds the Wiz write-back client, honouring the WizAPI test
+// override.
 func (r *FindingReconciler) wizClientFor(
 	ctx context.Context, integ *v1alpha1.Integration,
 ) (wiz.IssueRejecter, error) {
@@ -665,7 +665,7 @@ func (r *FindingReconciler) wizClientFor(
 	})
 }
 
-// toAlertRefs adapts the CR's alerts to the seam's shape.
+// toAlertRefs adapts the CR's alerts to the pkg/source shape.
 func toAlertRefs(alerts []v1alpha1.Alert) []source.AlertRef {
 	out := make([]source.AlertRef, 0, len(alerts))
 	for _, a := range alerts {
@@ -806,7 +806,8 @@ func parseOwnerRepo(full string) (ghclient.Repo, error) {
 	return ghclient.Repo{Owner: owner, Name: name}, nil
 }
 
-// clientFor resolves the tracker-client seam.
+// clientFor builds the tracker client: ClientFor when set (tests), else
+// Creds.Client.
 func (r *FindingReconciler) clientFor(
 	ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo,
 ) (trackerClient, error) {

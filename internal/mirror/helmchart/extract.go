@@ -21,8 +21,8 @@ import (
 
 // Extract unpacks a chart tgz into destDir the way tar -xzf does, minus
 // the hazards: entry paths must stay inside destDir (no absolute paths, no
-// .. traversal), and only regular files and directories are materialized —
-// a chart archive has no business carrying symlinks or devices.
+// .. traversal), and only regular files and directories are materialized,
+// since a chart archive has no reason to carry symlinks or devices.
 func Extract(tgz []byte, destDir string) error {
 	gz, err := gzip.NewReader(bytes.NewReader(tgz))
 	if err != nil {

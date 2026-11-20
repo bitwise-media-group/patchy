@@ -122,7 +122,7 @@ func TestRegenerateKeepsLockedDigestWhenTagRebuilt(t *testing.T) {
 }
 
 // TestRegenerateResolvesNewTagsFresh: only a source new to the lock
-// resolves its tag — a chart bump to an image tag the lock has never seen
+// resolves its tag. A chart bump to an image tag the lock has never seen
 // picks up that tag's current digest.
 func TestRegenerateResolvesNewTagsFresh(t *testing.T) {
 	f := newFixture(t)

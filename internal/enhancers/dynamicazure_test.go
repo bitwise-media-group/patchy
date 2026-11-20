@@ -70,9 +70,9 @@ func TestDynamicAzureConfigErrorSurfaces(t *testing.T) {
 	}
 }
 
-// One client per scope: reused across enhancements — including across fresh
+// One client per scope: reused across enhancements (including across fresh
 // reads of the same Integration, since the memo key is the management group
-// string itself — and swapped (the old one closed) when the operator moves to
+// string itself) and swapped (the old one closed) when the operator moves to
 // another management group.
 func TestDynamicAzureMemoizesClientByManagementGroup(t *testing.T) {
 	h := &dynamicAzureHarness{

@@ -19,8 +19,8 @@ import (
 
 // wizWebhookToken is the shared bearer token the wiz Integration's automation
 // actions present. The fixtures under fixtures/webhooks/wiz.* are hand-built
-// to the automation-rule body templates documented in docs/integrations/wiz.md
-// — that document is the payload contract the decoder is tested against.
+// to the automation-rule body templates documented in docs/integrations/wiz.md.
+// That document is the payload contract the decoder is tested against.
 const wizWebhookToken = "e2e-wiz-webhook-token"
 
 // TestWizWebhookPipeline drives Wiz Issues and Wiz Defend deliveries through
@@ -29,8 +29,8 @@ const wizWebhookToken = "e2e-wiz-webhook-token"
 //
 // No google-cloud Integration is seeded, so the asset-inventory enhancer
 // stands aside and the findings travel the repo-less route: ingested,
-// enhanced (with RepositoryUnresolved), ready for handoff — the same proof
-// the SCC test makes. The Integration-driven enhancer configuration itself is
+// enhanced (with RepositoryUnresolved), ready for handoff. This is the same
+// proof the SCC test makes. The Integration-driven enhancer configuration is
 // covered by unit tests; exercising it here would need a fake Cloud Asset
 // Inventory, which does not exist yet.
 func TestWizWebhookPipeline(t *testing.T) {

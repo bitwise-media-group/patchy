@@ -57,11 +57,11 @@ type GateReconciler struct {
 	// Concurrency is the number of findings gated in parallel; <=1 means
 	// serial. Safe to raise: child names are deterministic per attempt, the
 	// create tolerates AlreadyExists, and the phase advance runs under
-	// conflict retry — two racing reconciles converge on one lease.
+	// conflict retry, so two racing reconciles converge on one lease.
 	Concurrency int
 	// Parameters bound the analysis stage (model/turns/budget), from flags.
 	Parameters v1alpha1.AgentParameters
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -239,7 +239,7 @@ func (r *GateReconciler) openInvestigation(ctx context.Context, fnd *v1alpha1.Fi
 
 // retryRevert consumes a human retry of a failed investigation: the finding
 // recovers to Enhanced and the gate re-admits it on the next reconcile,
-// opening the next attempt. Consumption is implicit — the transition clears
+// opening the next attempt. Consumption is implicit: the transition clears
 // status.completedAt, so RetryRequested turns false without a spec write.
 func (r *GateReconciler) retryRevert(ctx context.Context, fnd *v1alpha1.Finding) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -301,8 +301,8 @@ func (r *GateReconciler) park(ctx context.Context, fnd *v1alpha1.Finding, reason
 // revive parked findings without human action; a Repository turning Ready
 // resumes its finding).
 //
-// The Forge watch is the fan-out bomb of this controller — one Forge event
-// re-queues every Enhanced finding — so it is bounded twice: the phase field
+// The Forge watch is this controller's largest fan-out (one Forge event
+// re-queues every Enhanced finding), so it is bounded twice: the phase field
 // index turns the selection from a full scan into a lookup, and the
 // generation predicate drops the status-only Forge updates (the source
 // controller's validation writes) that cannot change resolution. Forge

@@ -42,8 +42,8 @@ func Stage(d *printer.Doc, st *v1alpha1.StageResult, now time.Time) {
 		Field("Usage", Usage(st.Usage))
 }
 
-// Outcome reports how an agent run ended. Worth surfacing next to the report
-// because it explains an empty one far better than the empty report does.
+// Outcome reports how an agent run ended. It sits next to the report because
+// it explains an empty report.
 func Outcome(st *v1alpha1.StageResult) string {
 	if st == nil {
 		return ""
@@ -77,8 +77,8 @@ func Usage(u v1alpha1.UsageSummary) string {
 	return s
 }
 
-// Body is the report as a human should read it: the machine frontmatter is a
-// contract between stages, not prose, so it comes off unless asked for.
+// Body is the report as a human should read it. The machine frontmatter is a
+// contract between stages, not prose, so it is stripped unless raw is set.
 func Body(rep string, raw bool) string {
 	if raw {
 		return rep
@@ -104,8 +104,8 @@ func Age(t, now time.Time) string {
 	}
 }
 
-// Timestamp renders an absolute time with its age. A detail view wants both:
-// "when" and "how long ago" answer different questions.
+// Timestamp renders an absolute time with its age. A detail view needs both,
+// because "when" and "how long ago" answer different questions.
 func Timestamp(t *metav1.Time, now time.Time) string {
 	if t == nil || t.IsZero() {
 		return ""

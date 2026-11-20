@@ -7,8 +7,8 @@
 // EvaluationUnit children, schedules them through the sandboxed agent-Job
 // machinery with bounded concurrency, collects each pod's result stream onto
 // CR statuses and per-unit results ConfigMaps, and expires finished
-// evaluations on a TTL. Optional: deployments that never submit remote
-// evaluations simply do not run it.
+// evaluations on a TTL. It is optional: deployments that never submit remote
+// evaluations do not run it.
 package main
 
 import (

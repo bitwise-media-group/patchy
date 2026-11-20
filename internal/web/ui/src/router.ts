@@ -1,5 +1,5 @@
-// Hash routing — works from a static file server, over file://, and inside
-// the embedded server without rewrites.
+// Hash routing, so the page works from a static file server, over file://,
+// and inside the embedded server without rewrites.
 //
 //   #/                    findings list
 //   #/finding/{name}      finding detail (optional /{tab})

@@ -24,7 +24,7 @@ const configHelp = "The patchy config merges from, least to most preferred: /etc
 	"an inherited key."
 
 // configOptions locates the layered patchy config. Zero values mean the
-// real working directory, $HOME and /etc/patchy; tests point it at temp
+// real working directory, $HOME and /etc/patchy. Tests point it at temp
 // directories so a developer's own config never leaks in.
 var configOptions config.Options
 
@@ -43,17 +43,17 @@ func loadPatchyConfig() (*config.Loaded, error) {
 
 // loadCLIConfig layers the environment and the merged patchy config files
 // under a command's flags: explicit flag > PATCHY_* environment > merged
-// config files > flag default. Each command group claims a config block —
-// `dev:` for the dev commands, `mirror:` for the mirror commands — and the
-// key replacer maps dots and dashes to underscores, so `dev.enhance-url`
-// answers to PATCHY_DEV_ENHANCE_URL and `mirror.directory` to
+// config files > flag default. Each command group claims a config block
+// (`dev:` for the dev commands, `mirror:` for the mirror commands). The key
+// replacer maps dots and dashes to underscores, so `dev.enhance-url` answers
+// to PATCHY_DEV_ENHANCE_URL and `mirror.directory` to
 // PATCHY_MIRROR_DIRECTORY. keys maps each flag name to its config key.
 //
-// Viper only ever sees the flag-backed keys' merged values; the layering
-// itself is the config package's (viper lowercases keys, which would
-// corrupt user-defined ones). Only the cluster-free command groups are
-// viper-resolved; the rest of the CLI reads plain flags, because a
-// kubeconfig-backed verb already has kubectl's own configuration story.
+// Viper only ever sees the flag-backed keys' merged values. The config
+// package does the layering, because viper lowercases keys, which would
+// corrupt user-defined ones. Only the cluster-free command groups resolve
+// through viper. The rest of the CLI reads plain flags, because a
+// kubeconfig-backed verb already has kubectl's own configuration.
 func loadCLIConfig(cmd *cobra.Command, keys map[string]string) (*viper.Viper, *config.Loaded, error) {
 	loaded, err := loadPatchyConfig()
 	if err != nil {
@@ -92,7 +92,7 @@ func noteConfigSources(opts *Options, loaded *config.Loaded) {
 // resolveDevSecret turns the resolved secret/secret-file pair into key
 // bytes. An explicitly-set flag wins over the other source arriving from the
 // environment or config file; two values with no explicit flag to break the
-// tie are ambiguous. Both empty returns nil — the caller decides whether
+// tie are ambiguous. Both empty returns nil, and the caller decides whether
 // that means "generate one" (the harness) or "required" (the one-shots).
 func resolveDevSecret(cmd *cobra.Command, secret, secretFile string) ([]byte, string, error) {
 	if secret != "" && secretFile != "" {
@@ -111,7 +111,7 @@ func resolveDevSecret(cmd *cobra.Command, secret, secretFile string) ([]byte, st
 		if err != nil {
 			return nil, "", fmt.Errorf("read secret file: %w", err)
 		}
-		// Editors append a newline; a trailing one is never part of the key.
+		// Editors append a newline. A trailing one is never part of the key.
 		key := strings.TrimRight(string(raw), "\r\n")
 		if key == "" {
 			return nil, "", fmt.Errorf("secret file %s is empty", secretFile)

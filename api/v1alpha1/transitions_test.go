@@ -232,8 +232,8 @@ func TestRetryRequested(t *testing.T) {
 }
 
 // TestEveryEdgeReachable pins the shape of the table itself: every phase in
-// the enum appears as a key, and every target of every edge is a known phase
-// — a typo in the table cannot silently orphan a phase.
+// the enum appears as a key, and every target of every edge is a known phase,
+// so a typo in the table cannot silently orphan a phase.
 func TestEveryEdgeReachable(t *testing.T) {
 	known := map[Phase]bool{
 		PhaseOpened: true, PhaseEnhanced: true, PhaseInvestigating: true,

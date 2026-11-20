@@ -63,10 +63,10 @@ func Satisfies(version, constraint string) (bool, error) {
 //
 // Registries often publish one release under both spellings (cert-manager
 // tags every chart as 1.21.3 and v1.21.3). Semver ranks those equal, so
-// among same-version candidates the one spelled like current wins —
-// otherwise a v-prefixed pin would flip to the bare tag on whichever
-// spelling the registry happened to list first, and the bare tag no longer
-// matches the version inside the artifact.
+// among same-version candidates the one spelled like current wins.
+// Otherwise a v-prefixed pin would flip to the bare tag whenever the
+// registry happened to list that spelling first, and the bare tag no
+// longer matches the version inside the artifact.
 func Newest(current string, candidates []string, constraint string) (string, bool, error) {
 	best, err := semver.NewVersion(current)
 	if err != nil {
@@ -104,9 +104,8 @@ func sameSpelling(a, b string) bool {
 
 // DefaultConstraint derives the allowed range from a pinned version: the
 // pin's own release train, ">=<pin> <<major+1>.0.0". A tracked image with
-// no explicit constraint follows its current major forward — crossing a
-// major boundary is a deliberate hand edit of the pin, never a machine
-// pick.
+// no explicit constraint follows its current major forward. Crossing a
+// major boundary takes a hand edit of the pin, never a machine pick.
 func DefaultConstraint(pin string) (string, error) {
 	v, err := semver.NewVersion(pin)
 	if err != nil {

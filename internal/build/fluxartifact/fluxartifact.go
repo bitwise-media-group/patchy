@@ -218,7 +218,6 @@ func Package(dir string, annotations map[string]string) (v1.Image, error) {
 	})
 }
 
-// sha256Hash digests raw bytes.
 func sha256Hash(b []byte) v1.Hash {
 	sum := sha256.Sum256(b)
 	return v1.Hash{Algorithm: "sha256", Hex: hex.EncodeToString(sum[:])}

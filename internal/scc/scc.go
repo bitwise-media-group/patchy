@@ -17,8 +17,8 @@ import (
 const ID = "gcp-scc"
 
 // EventType is the event discriminator for this source. SCC's endpoint
-// carries exactly one kind of delivery, so unlike a GitHub webhook there is no
-// header to read it from — the route itself is the discriminator.
+// carries one kind of delivery, so unlike a GitHub webhook there is no header
+// to read it from: the route itself is the discriminator.
 const EventType = "scc.notification"
 
 // CloudProvider is the platform value stamped on every finding's cloud
@@ -46,9 +46,9 @@ var patchySeverity = map[string]string{
 }
 
 // skippedClasses are finding classes that are not security findings about a
-// resource. SCC_ERROR reports that a detector could not run — an operational
-// problem for whoever owns the SCC configuration, not something to triage or
-// remediate.
+// resource. SCC_ERROR reports that a detector could not run. That is an
+// operational problem for whoever owns the SCC configuration, not something to
+// triage or remediate.
 var skippedClasses = map[string]bool{"SCC_ERROR": true}
 
 // Options configure the handler.
@@ -63,8 +63,8 @@ type Options struct {
 
 // Handler is the Security Command Center source plugin. It does not implement
 // source.Resolver: muting a finding needs a Google Cloud write credential the
-// integration-controller does not hold, so the write-back is deliberately
-// absent rather than present and failing.
+// integration-controller does not hold, so there is no write-back rather than
+// one that always fails.
 type Handler struct {
 	opts Options
 }
@@ -117,8 +117,8 @@ func (h *Handler) Findings(_ context.Context, event string, payload []byte) ([]s
 }
 
 // Decode unwraps a Pub/Sub push envelope into the SCC notification it
-// carries. Exported so the receiver can read the delivery id off the same
-// body it validates, without decoding twice in two places.
+// carries. Only Findings calls it; the receiver reads the delivery id with
+// DeliveryID instead.
 func Decode(payload []byte) (*notification, error) {
 	var env pushEnvelope
 	if err := json.Unmarshal(payload, &env); err != nil {
@@ -140,7 +140,7 @@ func Decode(payload []byte) (*notification, error) {
 
 // DeliveryID reads the Pub/Sub message id from a push envelope, for the
 // receiver's dedup window. An undecodable body yields "", which the receiver
-// treats as "cannot dedup" rather than an error — the body is validated
+// treats as "cannot dedup" rather than an error. The body is validated
 // downstream.
 func DeliveryID(payload []byte) string {
 	var env pushEnvelope
@@ -177,10 +177,9 @@ func (h *Handler) meetsMinSeverity(severity string) bool {
 }
 
 // advisories extracts the categorization identifiers, most authoritative
-// first. SCC findings mostly carry no CVE — a misconfiguration is not a
-// vulnerability — so the category fallback is the common case, not the
-// exception, and it is what keys accumulation. The CR requires at least one,
-// so this never returns empty.
+// first. Most SCC findings carry no CVE (a misconfiguration is not a
+// vulnerability), so the category is the common case and is what keys
+// accumulation. The CR requires at least one, so this never returns empty.
 func advisories(f *finding) []string {
 	var out []string
 	if f.Vulnerability != nil && f.Vulnerability.CVE != nil && f.Vulnerability.CVE.ID != "" {
@@ -190,8 +189,8 @@ func advisories(f *finding) []string {
 		out = append(out, "category:"+f.Category)
 	}
 	if len(out) == 0 {
-		// A finding with neither is malformed, but dropping it silently would
-		// be worse than tracking it against its own name.
+		// A finding with neither is malformed. Track it against its own name
+		// rather than drop it silently.
 		out = append(out, "scc:"+lastSegment(f.Name))
 	}
 	return out
@@ -230,9 +229,10 @@ func humanize(category string) string {
 	return strings.Join(words, " ")
 }
 
-// cloudResource maps the notification's resource block onto the seam type.
-// finding.resourceName is authoritative for the identifier — the resource
-// block is a convenience projection and can be sparse.
+// cloudResource maps the notification's resource block onto
+// source.CloudResource. finding.resourceName is authoritative for the
+// identifier; the resource block is a convenience projection and can be
+// sparse.
 func cloudResource(n *notification) *source.CloudResource {
 	name := n.Finding.ResourceName
 	if name == "" {

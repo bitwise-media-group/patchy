@@ -68,7 +68,7 @@ func TestAWSTagsResolvesRepository(t *testing.T) {
 	if !reflect.DeepEqual(got.Repository, want) {
 		t.Errorf("Repository = %+v, want %+v", got.Repository, want)
 	}
-	// The context is carried whether or not a repository resolved — and the
+	// The context is carried whether or not a repository resolved, and the
 	// tags themselves are the enrichment.
 	wantAttrs := map[string]string{
 		"aws-account": "123456789012", "resource-type": "AWS::S3::Bucket",
@@ -81,9 +81,8 @@ func TestAWSTagsResolvesRepository(t *testing.T) {
 	}
 }
 
-// A URL is the only form that can name a self-hosted forge, so a resource
-// carrying one means it deliberately — and an AWS tag value can carry the
-// scheme verbatim.
+// A URL is the only form that can name a self-hosted forge, so it wins when a
+// resource carries one. An AWS tag value can carry the scheme verbatim.
 func TestAWSTagsURLSupersedesTriple(t *testing.T) {
 	inventory := &fakeInventory{tags: map[string]string{
 		"scm-repository-org":  "acme",
@@ -160,8 +159,8 @@ func TestAWSTagsMissingResourceIsFinal(t *testing.T) {
 	}
 }
 
-// Anything else might succeed next time, so it errors — which is what makes
-// the context-controller hold the finding rather than advance it.
+// Anything else might succeed next time, so it errors. That makes the
+// context-controller hold the finding rather than advance it.
 func TestAWSTagsTransientFailureErrors(t *testing.T) {
 	inventory := &fakeInventory{err: errors.New("deadline exceeded")}
 	if _, err := newAWSEnhancer(t, inventory, LabelKeys{}).
@@ -202,8 +201,8 @@ func TestAWSTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
 	}
 }
 
-// Finding status is a bounded surface: the tag attributes are capped, and
-// deterministically — sorted by key — so retries do not flap the status.
+// Finding status is a bounded surface: the tag attributes are capped
+// deterministically (sorted by key), so retries do not flap the status.
 func TestAWSTagsCapsTagAttributes(t *testing.T) {
 	tags := map[string]string{}
 	for i := range 40 {

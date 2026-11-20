@@ -28,8 +28,8 @@ type Issue struct {
 func (i Issue) String() string { return i.Message }
 
 // Lint enforces the accepted-risk policy: every entry carries an id, a
-// statement and a parseable expiry, expiries are in the future (re-review
-// on schedule is the whole forcing function) and within maxDays of today.
+// statement and a parseable expiry, and expiries are in the future (so
+// entries get reviewed again on schedule) and within maxDays of today.
 func Lint(a *spec.Allowlist, today time.Time, maxDays int) []Issue {
 	if a == nil {
 		return nil

@@ -30,7 +30,7 @@ const (
 	LevelCritical Level = "critical"
 )
 
-// Recommendation is the investigation's verdict — the same vocabulary the
+// Recommendation is the investigation's verdict, in the same vocabulary the
 // agent writes in its report frontmatter (internal/report.Recommendation).
 type Recommendation string
 
@@ -43,7 +43,7 @@ const (
 
 // Label keys. Every patchy label is "<key>: <value>"; the multi-valued
 // advisory key emits one label per value. This is the full human-facing
-// vocabulary the issue projection renders — the Finding CR is the state, so
+// vocabulary the issue projection renders. The Finding CR holds the state, so
 // no machine or usage labels exist.
 const (
 	KeySource         = "security-source"
@@ -70,9 +70,10 @@ type Set struct {
 }
 
 // Parse builds a Set from raw GitHub label names. It is tolerant: labels
-// without the security- prefix, unknown keys, and unparseable values are
-// ignored — issues carry human labels too, and a foreign security-* label
-// must never wedge the pipeline.
+// without a "key:" form, unknown keys, and security-context values with no
+// "=" are ignored, and other values are kept as written without validation.
+// Issues carry human labels too, and a foreign security-* label must never
+// wedge the pipeline.
 func Parse(names []string) Set {
 	var s Set
 	for _, name := range names {
@@ -109,8 +110,8 @@ func Parse(names []string) Set {
 	return s
 }
 
-// Name renders a single label name ("key: value"), enforcing MaxLen — the
-// form used for GitHub label filters and search queries.
+// Name renders a single label name ("key: value"), enforcing MaxLen. It is
+// the form used for GitHub label filters and search queries.
 func Name(key, value string) string {
 	name := key + sep + value
 	if len(name) > MaxLen {

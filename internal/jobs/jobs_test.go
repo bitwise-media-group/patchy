@@ -652,13 +652,13 @@ func TestSanitizeLabelValue(t *testing.T) {
 	}
 }
 
-// TestReservedEnvCoversEveryCredentialChannel: every credential env var a
-// harness accepts must also be reserved here. The two lists live in different
-// packages — harness owns what a CLI authenticates with, jobs owns what the
-// Job spec refuses to carry as a literal — and only this test keeps them from
-// drifting. An accepted-but-unreserved name is a real leak: an operator could
-// select it with --<harness>-secret-env while a controller-global Config.Env
-// entry of the same name puts the credential into the Job spec in plaintext.
+// TestReservedEnvCoversEveryCredentialChannel checks that every credential env
+// var a harness accepts is also reserved here. The two lists live in different
+// packages (harness owns what a CLI authenticates with, jobs owns what the
+// Job spec refuses to carry as a literal), and only this test keeps them from
+// drifting. An accepted-but-unreserved name is a real leak: a non-brokered
+// runner's SecretEnv could name it while a controller-global Config.Env entry
+// of the same name puts the credential into the Job spec in plaintext.
 func TestReservedEnvCoversEveryCredentialChannel(t *testing.T) {
 	for _, h := range harness.All() {
 		for _, env := range h.EnvKeys() {

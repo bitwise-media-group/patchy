@@ -15,7 +15,7 @@ import (
 )
 
 // StaticFile enhances issues from a YAML map of repositories to ownership,
-// attributes, and optional free-form markdown — the stand-in for a CMDB:
+// attributes, and optional free-form markdown. It stands in for a CMDB:
 //
 //	repos:
 //	    acme/shop:

@@ -19,7 +19,7 @@ import (
 // family lookup would find nothing, accumulation would open generation 1
 // alongside the still-live generation, and every open finding in the estate
 // would get a second tracking issue. If this test fails, the input string
-// changed — that is the bug, not the expectation.
+// changed: that is the bug, not the expectation.
 // Verify the expectation independently rather than trusting the code that
 // produced it:
 //
@@ -122,8 +122,8 @@ func TestIngestCloudFinding(t *testing.T) {
 	}
 	fnd := found[0]
 
-	// The whole point: a cloud finding arrives without a repository, and the
-	// enhancer chain decides later whether it gets one.
+	// A cloud finding arrives without a repository; the enhancer chain
+	// decides later whether it gets one.
 	if fnd.Spec.Repository != nil {
 		t.Errorf("spec.repository = %+v, want nil for a cloud finding", fnd.Spec.Repository)
 	}

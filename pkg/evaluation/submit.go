@@ -40,7 +40,7 @@ type HarnessOption struct {
 }
 
 // JudgeSpec binds the in-pod LLM judge. V1 constraint: the judge model must
-// be runnable by the unit's own harness — the client validates this before
+// be runnable by the unit's own harness. The client validates this before
 // submitting.
 type JudgeSpec struct {
 	// Model is the canonical provider-qualified judge model id.
@@ -51,8 +51,8 @@ type JudgeSpec struct {
 
 // UnitSpec is one evaluation unit: a skill evaluated on one model at one
 // tier. The triggers/evals spec documents travel in the workspace bundle
-// (the evals/<skill>/ tree), not here — the pod loads them with its own
-// loaders, keeping submissions small and bundles self-contained.
+// (the evals/<skill>/ tree), not here. The pod loads them with its own
+// loaders, which keeps submissions small and bundles self-contained.
 type UnitSpec struct {
 	// Skill under evaluation and the plugin it belongs to.
 	Skill  string `json:"skill"`

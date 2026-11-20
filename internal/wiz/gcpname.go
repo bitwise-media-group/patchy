@@ -24,7 +24,7 @@ var versionSegment = regexp.MustCompile(`^v\d+((alpha|beta)\d*)?$`)
 //
 // Storage self-links use a bucket shorthand ("/storage/v1/b/<bucket>") whose
 // asset name drops the collection segment. A name already in asset form
-// passes through; anything unrecognized is returned unchanged — the value
+// passes through. Anything unrecognized is returned unchanged: the value
 // still works as a stable accumulation scope, it just may not resolve in
 // Cloud Asset Inventory (the enhancer's display-name fallback covers that).
 func NormalizeGCPName(providerID string) string {
@@ -42,7 +42,6 @@ func NormalizeGCPName(providerID string) string {
 	var service string
 	switch {
 	case host == "www.googleapis.com":
-		// The service is the first path segment.
 		service, path, ok = cutSegment(path)
 		if !ok {
 			return providerID
@@ -52,7 +51,6 @@ func NormalizeGCPName(providerID string) string {
 	default:
 		return providerID
 	}
-	// Drop the version segment when present.
 	if seg, remainder, found := cutSegment(path); found && versionSegment.MatchString(seg) {
 		path = remainder
 	}

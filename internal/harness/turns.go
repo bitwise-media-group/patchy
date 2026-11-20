@@ -45,7 +45,7 @@ func renderToolInput(raw json.RawMessage) string {
 
 // renderToolCall renders a tool call for the transcript: the text a reader
 // sees, the file it targets, and how to render the text. File-writing calls
-// keep their body — an Edit is a diff, a Write is the content — because a
+// keep their body (an Edit is a diff, a Write is the content) because a
 // remediation transcript that names a file but omits the change is not an
 // account of the change. Bash keeps its command as shell. Anything else falls
 // back to renderToolInput's one-argument projection.
@@ -99,7 +99,7 @@ func renderToolCall(name string, raw json.RawMessage) (text, path string, syntax
 }
 
 // editDiff renders a string replacement as a unified-diff-style hunk body:
-// every old line removed, every new line added. It is a display, not a patch —
+// every old line removed, every new line added. It is a display, not a patch:
 // the edit tools carry no line numbers or context to anchor one.
 func editDiff(before, after string) string {
 	var b strings.Builder

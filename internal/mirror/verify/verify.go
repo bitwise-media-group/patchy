@@ -11,8 +11,9 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/mirror/spec"
 )
 
-// ToolRunner executes the cosign binary; a seam so tests can can its
-// invocations. scan.ExecRunner satisfies it.
+// ToolRunner executes the cosign binary. It is an interface so tests can
+// record its invocations and return canned results. scan.ExecRunner
+// satisfies it.
 type ToolRunner interface {
 	// Run executes name with args and extra environment, returning stdout.
 	Run(ctx context.Context, name string, args, env []string) (stdout []byte, err error)
@@ -29,7 +30,7 @@ type Subject struct {
 	// empty means keyless.
 	KeyRef string
 	// HashAlgorithm overrides the payload digest for key verification
-	// ("", "sha256", "sha384" or "sha512" — some publishers sign with
+	// ("", "sha256", "sha384" or "sha512"; some publishers sign with
 	// sha512).
 	HashAlgorithm string
 	// IdentityRegexp matches the certificate identity for keyless
@@ -52,7 +53,7 @@ type Subject struct {
 }
 
 // UpstreamSubject translates a manifest verifyUpstream rule for ref.
-// Provider none is the caller's business — it is a documented gap, never a
+// Provider none is the caller's business: it is a documented gap, never a
 // verification.
 func UpstreamSubject(ref string, rule spec.VerifyRule) (Subject, error) {
 	s := Subject{Ref: ref, SignatureRepository: rule.SignatureRepository}
@@ -113,16 +114,14 @@ func MirrorSubject(ref string, signing *spec.Signing) (Subject, error) {
 	return s, nil
 }
 
-// Verify checks the subject by shelling out to the cosign binary, whose
-// bundle-format default drives the same discovery the old in-process path
-// did: sigstore bundles via referrers when present, legacy .sig tags
-// otherwise (upstreams may still publish those). The CLI additionally checks claims (--check-claims
-// defaults true) — strictly stronger than the previous nil ClaimVerifier,
-// and desirable.
+// Verify checks the subject by shelling out to the cosign binary. Its
+// bundle-format default discovers sigstore bundles via referrers when
+// present and legacy .sig tags otherwise (upstreams may still publish
+// those). The CLI also checks claims (--check-claims defaults to true).
 func Verify(ctx context.Context, runner ToolRunner, s Subject) error {
 	// Defense in depth behind the Subject constructors: cosign treats an
 	// identity with neither subject nor regexp as an unconstrained match,
-	// so an empty keyless subject would verify against ANY signer.
+	// so an empty keyless subject would verify against any signer.
 	if s.KeyRef == "" && s.Identity == "" && s.IdentityRegexp == "" {
 		return fmt.Errorf("verify %s: keyless verification requires a certificate identity or identity regexp", s.Ref)
 	}

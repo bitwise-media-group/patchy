@@ -1,6 +1,6 @@
 // Type-ahead ranking shared by every filter box. A linear scan over
-// pre-lowercased keys — fast enough for tens of thousands of repositories
-// per keystroke, with no index to keep in sync.
+// pre-lowercased keys is fast enough for tens of thousands of repositories
+// per keystroke, and leaves no index to keep in sync.
 
 const BOUNDARY = /[/\-_.\s]/;
 

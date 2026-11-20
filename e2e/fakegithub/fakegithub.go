@@ -53,8 +53,8 @@ type comment struct {
 type Server struct {
 	*httptest.Server
 
-	// externalURL is the address clients reach the fake at — stamped into
-	// the absolute URLs it hands out (the tarball redirect).
+	// externalURL is the address clients reach the fake at. It is stamped
+	// into the absolute URLs the fake hands out (the tarball redirect).
 	externalURL string
 
 	mu            sync.Mutex
@@ -62,13 +62,13 @@ type Server struct {
 	comments      map[int][]comment
 	nextCommentID int64
 	dismissed     map[int]string
-	// alerts are the seeded code-scanning alerts the list endpoints serve —
+	// alerts are the seeded code-scanning alerts the list endpoints serve:
 	// the pre-existing estate a backfill walks. The get/update endpoints
-	// keep fabricating alerts on the fly for webhook-driven flows.
+	// still fabricate alerts on the fly for webhook-driven flows.
 	alerts []seededAlert
-	pulls         map[int]*pull
-	git           gitData
-	next          int
+	pulls  map[int]*pull
+	git    gitData
+	next   int
 	// Now stamps created_at; tests override it to age issues instantly.
 	Now func() time.Time
 }
@@ -98,8 +98,8 @@ func New() *Server {
 	return s
 }
 
-// NewStandalone builds the fake without starting a listener — the handler
-// for a caller-owned http.Server (the `mise run fakegithub` dev server).
+// NewStandalone builds the fake without starting a listener. It returns the
+// handler for a caller-owned http.Server (the `mise run fakegithub` dev server).
 // externalURL is the address clients will reach that server at. The embedded
 // httptest.Server stays nil: Close and URL are not available in this mode.
 func NewStandalone(externalURL string) (*Server, http.Handler) {
@@ -257,8 +257,8 @@ func alertBody(owner, repo string, number int, state string, embedRepo bool) map
 }
 
 // listAlerts serves the seeded alerts matching keep, honouring the state
-// filter (default open; a dismissed alert leaves the open listing). One
-// page — the fake never sets a Link header, so clients stop after it.
+// filter (default open; a dismissed alert leaves the open listing). It
+// serves one page: the fake never sets a Link header, so clients stop there.
 func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, keep func(seededAlert) bool, embedRepo bool) {
 	wantState := r.URL.Query().Get("state")
 	if wantState == "" {

@@ -10,7 +10,7 @@ import (
 )
 
 // Anthropic is the first-party route: inject the credential from a mounted
-// Secret file and forward otherwise unchanged — the anthropic-version and
+// Secret file and forward otherwise unchanged. The anthropic-version and
 // anthropic-beta headers the CLI sends pass through, so prompt caching and
 // beta features survive the hop. An API key rides x-api-key; bearer=true
 // sends Authorization: Bearer instead, which is how a `claude setup-token`

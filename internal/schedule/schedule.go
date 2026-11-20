@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Package schedule ranks pending agent runs for bounded-concurrency slot
-// grants. It is pure arithmetic — the scheduler reconcilers list candidates
-// from the cluster, ask Pick for the winners, and write the grants — so
-// slot policy is fully table-testable and slot accounting is always cluster
-// state, never controller memory.
+// grants. It is pure arithmetic: the scheduler reconcilers list candidates
+// from the cluster, ask Pick for the winners, and write the grants. Slot
+// policy is therefore fully table-testable, and slot accounting is always
+// cluster state, never controller memory.
 package schedule
 
 import (
@@ -29,8 +29,8 @@ type Candidate struct {
 }
 
 // AgingPolicy lifts long-waiting candidates so a flood of high-priority work
-// cannot starve low-priority findings forever, while the cap keeps genuinely
-// critical items on top.
+// cannot starve low-priority findings forever, while the cap keeps critical
+// items on top.
 type AgingPolicy struct {
 	// Interval grants one effective-priority point per elapsed interval.
 	Interval time.Duration
@@ -49,8 +49,8 @@ func (p AgingPolicy) effective(c Candidate, now time.Time) int32 {
 
 // Pick returns the names of the freeSlots highest-ranked candidates, ordered
 // expedited first, then effective-priority descending, then QueuedAt
-// ascending, then Name — a total, deterministic order so concurrent deciders
-// agree.
+// ascending, then Name. The order is total and deterministic so concurrent
+// deciders agree.
 func Pick(pending []Candidate, freeSlots int, now time.Time, aging AgingPolicy) []string {
 	if freeSlots <= 0 || len(pending) == 0 {
 		return nil

@@ -76,22 +76,22 @@ func (s Scan) EffectiveEnabled() bool {
 }
 
 // AllowlistPolicy is the accepted-risk block, in the config (defaults) and
-// on every entry (overrides). Pointers keep "unset — inherit" distinct from
-// an explicit false, 0 or "".
+// on every entry (overrides). Pointers keep "unset, so inherit" distinct
+// from an explicit false, 0 or "".
 type AllowlistPolicy struct {
 	// MaxDays bounds every allowlist entry's expired_at horizon (default
-	// 90) — expiry forces re-review instead of accepted-forever CVEs.
+	// 90). Expiry forces re-review instead of accepted-forever CVEs.
 	MaxDays *int `yaml:"maxDays"`
 	// NewDays is the expiry stamped on new derived entries (default 90).
 	// Surviving entries keep the date they were first accepted with, so
-	// regeneration never rolls a live acceptance forward — except one
-	// whose date has already lapsed (on or before today), which is renewed
-	// to this horizon as a fresh acceptance, reviewed as a date change in
-	// the diff.
+	// regeneration never rolls a live acceptance forward. The exception is
+	// an entry whose date has already lapsed (on or before today): it is
+	// renewed to this horizon as a fresh acceptance, reviewed as a date
+	// change in the diff.
 	NewDays *int `yaml:"newDays"`
 	// Generate regenerates the entry's allowlist from a fresh scan (mirror
 	// upgrade, build --update-allowlists); the PR review is where the
-	// risk is actually accepted (default false).
+	// risk is accepted (default false).
 	Generate *bool `yaml:"generate"`
 	// Preamble is whole-file context rendered as comments atop the
 	// generated allowlist (default none).
@@ -167,7 +167,7 @@ func (e ScanEnabled) Valid() bool {
 	return false
 }
 
-// ScanOverride is an entry's scan block — a chart or artifact manifest's,
+// ScanOverride is an entry's scan block: a chart or artifact manifest's,
 // or a build entry's. Every field is optional; unset fields inherit the
 // config's scan block, then the built-in defaults.
 type ScanOverride struct {
@@ -271,8 +271,8 @@ func pick[T any](entry, global *T, def T) T {
 }
 
 // HasImageFields reports whether the override sets a field that only an
-// image scan consumes (failOn, ignoreUnfixed, allowlist) — meaningless on
-// an entry with no images to scan.
+// image scan consumes (failOn, ignoreUnfixed, allowlist). Such fields mean
+// nothing on an entry with no images to scan.
 func (o ScanOverride) HasImageFields() bool {
 	return len(o.FailOn) > 0 || o.IgnoreUnfixed != nil || o.Allowlist.IsSet()
 }

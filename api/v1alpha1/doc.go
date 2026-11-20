@@ -14,8 +14,8 @@
 //   - The pipeline: Finding is the authoritative state machine (phases and
 //     legal transitions live in transitions.go); Investigation and Remediation
 //     are one-per-attempt immutable children recording each agent run;
-//     Repository is the SHA-pinned clone artifact source-controller serves to
-//     agent jobs as a tarball.
+//     Repository is the SHA-pinned repository tarball source-controller
+//     serves to agent jobs.
 //   - Statistics: FindingRollup objects accumulate all-time counters that
 //     survive the TTL deletion of completed Findings. There is one per scope
 //     value (total, repository, harness, model).

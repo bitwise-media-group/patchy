@@ -3,9 +3,10 @@
 
 // Command investigation-controller turns enhanced Findings into analysis
 // agent runs: it gates on the accumulation window and minimum age, resolves
-// forge coverage, materializes the SHA-pinned repository artifact, runs the
-// investigation agent Job (bounded concurrency, severity-priority order),
-// and routes each verdict — queue for remediation, hold for approval,
+// forge coverage, creates the Repository that source-controller turns into a
+// SHA-pinned artifact, runs the investigation agent Job (bounded
+// concurrency, severity-priority order),
+// and routes each verdict: queue for remediation, hold for approval,
 // dismiss, or hand to humans.
 package main
 

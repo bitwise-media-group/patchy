@@ -187,8 +187,8 @@ func TestBuildDatasetProjection(t *testing.T) {
 			t.Errorf("finding summary JSON is missing %q", key)
 		}
 	}
-	// The unbounded detail stays off the list payload — that is the whole
-	// point of the split (the detail route carries it).
+	// The unbounded detail stays off the list payload; the detail route
+	// carries it.
 	for _, key := range []string{
 		"description", "alerts", "overflowAlerts", "related", "approval",
 		"phaseTimes", "tracking", "enrichments", "totalUsage",

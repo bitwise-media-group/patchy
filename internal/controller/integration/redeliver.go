@@ -26,14 +26,14 @@ const (
 )
 
 // sweepDeliveries scans the App webhook's delivery log over the lookback
-// window and asks GitHub to redeliver: every delivery that never got a 2xx
-// (the standing sweep), or — replayAll, the demo reset path — every
+// window and asks GitHub to redeliver every delivery that never got a 2xx
+// (the standing sweep), or, with replayAll (the demo reset path), every
 // delivery regardless of outcome. Duplicates are safe either way: the
 // receiver dedups per delivery GUID and ingestion is idempotent. The sweep
 // never fails the reconcile; the outcome (including errors) lands on the
-// returned status. scanned reports whether the log walk itself succeeded —
-// false means nothing was attempted and the caller should not consider a
-// requested replay handled.
+// returned status. scanned reports whether the log walk itself succeeded.
+// False means nothing was attempted and the caller must not treat a
+// requested replay as handled.
 func (r *IntegrationReconciler) sweepDeliveries(
 	ctx context.Context, integ *v1alpha1.Integration, now time.Time, replayAll bool,
 ) (st *v1alpha1.RedeliveryStatus, scanned bool) {
@@ -161,7 +161,7 @@ func pickRedeliveries(deliveries []ghclient.Delivery, maxAttempts int) []int64 {
 }
 
 // pickReplays selects the newest attempt of every logical delivery (GUID)
-// in the window, successful or not — the full replay. deliveries must be
+// in the window, successful or not (the full replay). deliveries must be
 // newest-first.
 func pickReplays(deliveries []ghclient.Delivery) []int64 {
 	seen := make(map[string]bool)

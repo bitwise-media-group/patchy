@@ -3,20 +3,14 @@
 
 package version
 
-// Version is injected at build time via -ldflags (see tasks.toml and
-// .goreleaser.yaml).
-//
-// Version defaults to dev when no release metadata is supplied.
+// Version is injected at build time via -ldflags (see hack/build.sh and
+// .goreleaser.yaml). It defaults to dev when no release metadata is supplied.
 var Version = "dev"
 
-// Commit is injected at build time via -ldflags (see tasks.toml and
-// .goreleaser.yaml).
-//
-// Commit defaults to none when no release metadata is supplied.
+// Commit is injected at build time via -ldflags. It defaults to none when no
+// release metadata is supplied.
 var Commit = "none"
 
-// BuildDate is injected at build time via -ldflags (see tasks.toml and
-// .goreleaser.yaml).
-//
-// BuildDate defaults to unknown when no release metadata is supplied.
+// BuildDate is injected at build time via -ldflags. It defaults to unknown
+// when no release metadata is supplied.
 var BuildDate = "unknown"

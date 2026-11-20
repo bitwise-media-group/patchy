@@ -51,7 +51,7 @@ func TestSourcePolicyCheck(t *testing.T) {
 }
 
 // TestSourcePolicyLayers: every layer must permit a source, and a source
-// several layers reject is reported once — by a fail layer over a warn one.
+// several layers reject is reported once, by a fail layer over a warn one.
 func TestSourcePolicyLayers(t *testing.T) {
 	enforced := (&BuildPolicy{Mode: PolicyWarn, Enforced: true,
 		Images: PolicyRules{Allow: []string{"registry.example.com/**"}}}).Layer("toolchain, enforced")

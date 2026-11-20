@@ -193,9 +193,9 @@ func TestFromEnvBrokerFields(t *testing.T) {
 	}
 }
 
-// TestFromEnvResolvesModelAliases: hand-set aliases and the built-in default
-// resolve pod-side — the prompt and the envelope only ever name concrete
-// versions. Aliases that land on one version collapse.
+// TestFromEnvResolvesModelAliases checks that hand-set aliases and the
+// built-in default resolve pod-side, so the prompt and the envelope only ever
+// name concrete versions. Aliases that land on one version collapse.
 func TestFromEnvResolvesModelAliases(t *testing.T) {
 	env := map[string]string{
 		"PATCHY_REPO":              "acme/shop",
@@ -219,9 +219,10 @@ func TestFromEnvResolvesModelAliases(t *testing.T) {
 	}
 }
 
-// TestCodexBrokerEnv: a brokered codex stage writes the rendered config.toml
-// into CODEX_HOME and carries the fresh caller token and the placeholder
-// under the env names that config's provider reads — no claude env.
+// TestCodexBrokerEnv checks that a brokered codex stage writes the rendered
+// config.toml into CODEX_HOME and carries the fresh caller token and the
+// placeholder under the env names that config's provider reads, with no
+// claude env.
 func TestCodexBrokerEnv(t *testing.T) {
 	ws := newWorkspace(t)
 	tokenFile := filepath.Join(t.TempDir(), "token")

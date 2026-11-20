@@ -1,4 +1,4 @@
-// Monthly trend — single-series magnitude, so one hue and no legend; the
+// Monthly trend: single-series magnitude, so one hue and no legend; the
 // toggle names the measure. The peak month is labelled directly, every bar
 // carries its value on hover, and a visually hidden table restates the
 // series for screen readers.

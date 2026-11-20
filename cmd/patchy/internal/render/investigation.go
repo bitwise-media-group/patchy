@@ -13,12 +13,12 @@ import (
 )
 
 // holdNotes explains why a finding is waiting, in the terms a human needs to
-// act on it — the reason names alone do not say what is being decided. A hold
+// act on it. The reason names alone do not say what is being decided. A hold
 // can have several reasons at once, so they are joined rather than ranked.
 //
-// The fallback covers an investigation stamped by an older controller, which
-// set the flag without recording why; breaking-change was the only hold that
-// existed then.
+// The fallback covers a stored investigation stamped by an older controller,
+// which set the flag without recording why. breaking-change was the only hold
+// that existed then.
 func holdNotes(inv *v1alpha1.Investigation) string {
 	if !inv.Status.AwaitApproval {
 		return ""
@@ -89,7 +89,7 @@ func InvestigationDetail(d *printer.Doc, inv *v1alpha1.Investigation, now time.T
 	Stage(d, inv.Status.Stage, now)
 }
 
-// InvestigationReview renders the verdict and the report — what a human reads
+// InvestigationReview renders the verdict and the report: what a human reads
 // when deciding whether to act on the agent's conclusion.
 func InvestigationReview(d *printer.Doc, inv *v1alpha1.Investigation, raw bool) {
 	d.Section(fmt.Sprintf("Investigation %s (attempt %d)", inv.Name, inv.Spec.Attempt)).

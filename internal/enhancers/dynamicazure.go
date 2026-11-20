@@ -32,16 +32,16 @@ type AzureTagsConfig struct {
 type AzureConfigSource func(ctx context.Context) (*AzureTagsConfig, error)
 
 // DynamicAzure is AzureTags with its configuration read from the Integration
-// CR per enhancement instead of captured at process start. A config change —
-// a different management group — takes effect on the next reconcile without a
-// restart. Only the inventory client is stateful — building one verifies the
-// scope remotely — so it is memoized by management group and swapped (closing
+// CR per enhancement instead of captured at process start. A config change
+// (a different management group) takes effect on the next reconcile without
+// a restart. Only the inventory client is stateful (building one verifies the
+// scope remotely), so it is memoized by management group and swapped (closing
 // the old one) when the scope changes.
 type DynamicAzure struct {
 	// Config reads the capability. Required.
 	Config AzureConfigSource
 	// NewInventory builds an inventory client for a scope; nil means
-	// azureinv.New. The seam exists for tests, which must not dial Azure.
+	// azureinv.New. The hook exists for tests, which must not dial Azure.
 	NewInventory func(ctx context.Context, cfg azureinv.Config) (AzureInventory, func() error, error)
 
 	mu              sync.Mutex
@@ -52,9 +52,9 @@ type DynamicAzure struct {
 
 var _ enhance.Enhancer = (*DynamicAzure)(nil)
 
-// ID implements enhance.Enhancer. It deliberately reuses AzureTagsID: this is
-// the same enhancer to everything downstream (enrichment attribution, sticky
-// comments, attribute precedence), only its configuration plumbing differs.
+// ID implements enhance.Enhancer. It reuses AzureTagsID because this is the
+// same enhancer to everything downstream (enrichment attribution, sticky
+// comments, attribute precedence); only its configuration plumbing differs.
 func (*DynamicAzure) ID() string { return AzureTagsID }
 
 // Enhance implements enhance.Enhancer.
@@ -82,9 +82,9 @@ func (d *DynamicAzure) Enhance(ctx context.Context, issue enhance.Issue) (*enhan
 
 // inventoryFor returns the memoized inventory client for the management
 // group, building one on first use and swapping when the scope changes. The
-// group string is its own memo key — no pointers to flatten. An in-flight
+// group string is its own memo key (no pointers to flatten). An in-flight
 // enhancement racing a swap may fail against the swapped client; that error
-// is retryable by design, so nothing is lost.
+// is retryable, so nothing is lost.
 func (d *DynamicAzure) inventoryFor(ctx context.Context, managementGroup string) (AzureInventory, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

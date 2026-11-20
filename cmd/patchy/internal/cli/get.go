@@ -141,8 +141,8 @@ func runGet(ctx context.Context, opts *Options, f *getFlags, noun string, names 
 	}
 	opts.debugf("listing %s in %s (selector %q)", kind.Plural, env.Scope(), selector)
 
-	// The machine-facing formats want the objects themselves; nothing about a
-	// rendered table would survive `| jq` anyway.
+	// The machine-facing formats want the objects themselves. A rendered
+	// table is no use to `| jq`.
 	if p.Format().Structured() {
 		return getObjects(ctx, opts, env, p, kind, f, names, selector)
 	}
@@ -168,12 +168,12 @@ func runGet(ctx context.Context, opts *Options, f *getFlags, noun string, names 
 	return p.Table(table)
 }
 
-// runGetAll lists every kind at once: the whole pipeline in one screen, which
-// is what `kubectl get all` is for and what a triage session opens with.
+// runGetAll lists every kind at once: the whole pipeline in one screen, like
+// `kubectl get all`.
 //
 // The finding-only filters are refused rather than applied to the findings
-// table alone — a listing where one table is narrowed and the rest are not
-// reads as a filtered view of everything, which it would not be.
+// table alone. A listing where one table is narrowed and the rest are not
+// would read as a filtered view of everything.
 func runGetAll(ctx context.Context, opts *Options, f *getFlags, names []string) error {
 	if len(names) > 0 {
 		return errUsage(errors.New("all lists every kind, so it takes no names; " +
@@ -339,8 +339,8 @@ func getObjects(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer
 	if f.needsObjects() {
 		kept := objs[:0]
 		for _, o := range objs {
-			// Non-findings cannot be filtered by these flags and cannot reach
-			// here anyway — runGet refuses the combination up front.
+			// Non-findings cannot be filtered by these flags and never reach
+			// here, because runGet refuses the combination up front.
 			if fnd, ok := o.(*v1alpha1.Finding); !ok || matchesFinding(fnd, f) {
 				kept = append(kept, o)
 			}
@@ -359,8 +359,8 @@ func getObjects(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer
 	return p.Objects(items, objectRefs(kind, objs))
 }
 
-// objectRefs renders each object as `<plural>.<group>/<name>` — what -o name
-// prints, and what kubectl accepts back as an argument.
+// objectRefs renders each object as `<plural>.<group>/<name>`. This is what
+// -o name prints, and what kubectl accepts back as an argument.
 func objectRefs(kind resource.Kind, objs []client.Object) []string {
 	out := make([]string, 0, len(objs))
 	for _, o := range objs {
@@ -520,7 +520,7 @@ func sortRows(t *metav1.Table, key string) {
 		byCell("Priority", true)
 	case "phase":
 		byCell("Phase", false)
-	default: // age — newest first, which is what a triage session wants
+	default: // age: newest first
 		sort.SliceStable(t.Rows, func(a, b int) bool {
 			ma, mb := kubecfg.RowMeta(t.Rows[a]), kubecfg.RowMeta(t.Rows[b])
 			if ma == nil || mb == nil {
@@ -534,7 +534,7 @@ func sortRows(t *metav1.Table, key string) {
 	}
 }
 
-// cellAt reads one cell defensively; a short row is not worth a panic.
+// cellAt reads one cell defensively, so a short row cannot panic.
 func cellAt(row metav1.TableRow, i int) any {
 	if i < len(row.Cells) {
 		return row.Cells[i]

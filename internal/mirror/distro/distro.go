@@ -25,9 +25,9 @@ const DefaultRegistry = "ghcr.io"
 
 // Derive reads a flattened distribution-manifests filesystem (a tar
 // stream) and derives one extra image per named component from the newest
-// version tree present — the version the release-frozen artifact's
-// operator actually deploys. artifactRef appears in the derived reasons so
-// a reviewer can trace where each pin came from.
+// version tree present, which is the version the release-frozen artifact's
+// operator deploys. artifactRef appears in the derived reasons so a
+// reviewer can trace where each pin came from.
 func Derive(archive io.Reader, components []string, registry, artifactRef string) ([]spec.ExtraImage, error) {
 	if registry == "" {
 		registry = DefaultRegistry
@@ -94,10 +94,10 @@ func readManifestFiles(archive io.Reader) (map[string][]byte, error) {
 
 // newestVersion finds the product root carrying the requested component
 // manifests and its newest version directory (<product>/<version>/...).
-// Distribution artifacts carry sibling trees the derive must ignore —
-// flux-operator-manifests ships image-variant lists (flux-images/) and VEX
-// data (flux-vex/) beside the controller manifests — so only trees holding
-// at least one <product>/<version>/<component>.yaml qualify.
+// Distribution artifacts carry sibling trees the derive must ignore (for
+// example, flux-operator-manifests ships image-variant lists in flux-images/
+// and VEX data in flux-vex/ beside the controller manifests), so only trees
+// holding at least one <product>/<version>/<component>.yaml qualify.
 func newestVersion(files map[string][]byte, components []string) (product, version string, err error) {
 	wanted := map[string]bool{}
 	for _, c := range components {

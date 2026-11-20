@@ -13,8 +13,8 @@ export interface Outcome {
   tone: Tone;
 }
 
-// Keys are the server's rollup histogram vocabulary (all lowercase —
-// internal/stats.PhaseKey lower-cases the phase). Order is the reading
+// Keys are the server's rollup histogram vocabulary, all lowercase
+// (internal/stats.PhaseKey lower-cases the phase). Order is the reading
 // order: the good outcome first, then closed-without-change, then the ones
 // that needed people, then failure.
 const PHASES: [string, string, Tone][] = [

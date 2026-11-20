@@ -31,9 +31,9 @@ type Finding struct {
 	FixedIn []string `json:"fixedIn,omitempty"`
 	// Scanner names the reporter (osv, grype).
 	Scanner string `json:"scanner"`
-	// Locations are the in-image paths the package was found in — the
+	// Locations are the in-image paths the package was found in (the
 	// binary a Go module is compiled into, the lockfile or package
-	// database that declares it — sorted and deduplicated.
+	// database that declares it), sorted and deduplicated.
 	Locations []string `json:"locations,omitempty"`
 	// Image is the reference the finding was reported against, stamped by
 	// the caller when one scan covers several images (a mirror entry);
@@ -44,7 +44,7 @@ type Finding struct {
 // Fixed reports whether any fixed version is known.
 func (f Finding) Fixed() bool { return len(f.FixedIn) > 0 }
 
-// MergeLocations unions two location lists, sorted and deduplicated — for
+// MergeLocations unions two location lists, sorted and deduplicated, for
 // callers collapsing repeat reports of one finding.
 func MergeLocations(a, b []string) []string {
 	return sortedUnique(append(slices.Clone(a), b...))
@@ -70,7 +70,7 @@ type ImageScanner interface {
 	ScanImage(ctx context.Context, ref string) ([]Finding, error)
 }
 
-// ArchiveScanner scans a local docker-archive tarball — an image that
+// ArchiveScanner scans a local docker-archive tarball: an image that
 // exists only on disk, like a fresh build no registry has seen yet.
 type ArchiveScanner interface {
 	// Name identifies the scanner in findings and narration.
@@ -80,7 +80,7 @@ type ArchiveScanner interface {
 }
 
 // Blocking applies a resolved policy's blocking rule: severity in failOn,
-// and — under ignoreUnfixed — only findings a released fix exists for.
+// and, under ignoreUnfixed, only findings a released fix exists for.
 // Allowlist suppression (Suppress) is a separate, later step.
 func Blocking(findings []Finding, policy spec.ScanPolicy) []Finding {
 	var out []Finding
@@ -96,12 +96,12 @@ func Blocking(findings []Finding, policy spec.ScanPolicy) []Finding {
 	return out
 }
 
-// ToolRunner executes external scanner binaries; a seam so tests can can
-// their output.
+// ToolRunner executes external scanner binaries. It is an interface so
+// tests can supply canned output.
 type ToolRunner interface {
 	// Run executes name with args and extra environment, returning
-	// stdout. A non-zero exit with useful stdout (grype gating) is NOT
-	// an error here; runners return stdout and the exit error together.
+	// stdout. A non-zero exit can still carry useful stdout (grype
+	// gating), so runners return stdout and the exit error together.
 	Run(ctx context.Context, name string, args, env []string) (stdout []byte, err error)
 	// Look reports whether the binary is available.
 	Look(name string) bool
@@ -178,7 +178,7 @@ func SeverityIn(severity string, list []string) bool {
 }
 
 // Suppress splits findings into kept and allowlisted, matching an entry's
-// ID against each finding's ID and aliases — so an allowlist written
+// ID against each finding's ID and aliases, so an allowlist written
 // against one scanner's ID family keeps working under another.
 func Suppress(findings []Finding, allow *spec.Allowlist) (kept, suppressed []Finding) {
 	if allow == nil || len(allow.Vulnerabilities) == 0 {

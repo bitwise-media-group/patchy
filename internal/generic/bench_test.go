@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tier-1 microbenchmark for decoding and validating a generic findings
-// delivery — the per-batch cost in front of ingest when an external process
+// delivery: the per-batch cost in front of ingest when an external process
 // bulk-delivers a brownfield backlog.
 
 package generic

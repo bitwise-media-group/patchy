@@ -61,15 +61,14 @@ func runBrowse(ctx context.Context, opts *Options, noun, name string, printURL b
 	return openURL(opts, &reviewFlags{printURL: printURL}, url, fmt.Sprintf("%s %s", kind.Singular, name))
 }
 
-// resourceURL picks the destination that matters for each kind: where a human
-// would go to act on it.
+// resourceURL picks the page where a human would go to act on each kind.
 func resourceURL(ctx context.Context, env *kubecfg.Env, obj any) (string, error) {
 	switch typed := obj.(type) {
 	case *v1alpha1.Finding:
 		return render.FindingURL(typed), nil
 	case *v1alpha1.Investigation:
-		// An investigation has no page of its own; its finding's issue is
-		// where its conclusions were posted.
+		// An investigation has no page of its own. Its conclusions are posted
+		// on its finding's issue.
 		return owningFindingURL(ctx, env, typed.Spec.FindingRef.Name)
 	case *v1alpha1.Remediation:
 		if pr := typed.Status.PullRequest; pr != nil && pr.URL != "" {

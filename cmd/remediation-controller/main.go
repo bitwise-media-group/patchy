@@ -1,10 +1,11 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command remediation-controller picks up context-enhanced security-finding
-// issues, runs the classification/remediation coding agent in an ephemeral
-// Kubernetes Job, and performs every GitHub side effect on its behalf —
-// issue updates, alert dismissal, branch pushes, and pull requests.
+// Command remediation-controller admits approved and revived Findings to the
+// remediation queue, runs the remediation coding agent in an ephemeral
+// Kubernetes Job in priority order, and pushes the agent's changeset and opens
+// the pull request through the forge write path (the only write credential).
+// It also hosts the rollup statistics and finding TTL loop.
 package main
 
 import (

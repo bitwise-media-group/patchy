@@ -29,7 +29,7 @@ const DefaultMaxBody = 25 << 20
 
 // dedupTTL bounds how long a delivery ID is treated as a duplicate.
 // Redeliveries reuse the original ID, so this must be long enough to
-// absorb a duplicate burst yet short enough that a deliberate redelivery
+// absorb a duplicate burst yet short enough that a requested redelivery
 // (the GitHub UI, or the Integration's sweep/replay) is handled again.
 const dedupTTL = 5 * time.Minute
 
@@ -61,8 +61,8 @@ type Event struct {
 	Path string
 }
 
-// Handler consumes validated deliveries. Handle runs on a worker goroutine;
-// returning an error records the failure but is not retried here — the
+// Handler consumes validated deliveries. Handle runs on a worker goroutine.
+// Returning an error records the failure but is not retried here: the
 // reconcile loop is the retry mechanism.
 type Handler interface {
 	Handle(ctx context.Context, e Event) error
@@ -105,10 +105,10 @@ type queued struct {
 	handler Handler
 }
 
-// NewServer builds a Server; defaults are applied here so the zero Config
-// fields need no ceremony at call sites. It fails rather than serving an
-// endpoint that cannot authenticate or label its deliveries — an unauthicated
-// internet-facing route is not something to discover at runtime.
+// NewServer builds a Server and applies defaults for zero Config fields. It
+// fails rather than serving an endpoint that cannot authenticate or label its
+// deliveries: an unauthenticated internet-facing route is not something to
+// discover at runtime.
 func NewServer(cfg Config, log *slog.Logger) (*Server, error) {
 	if len(cfg.Endpoints) == 0 {
 		return nil, errors.New("webhook: no endpoints configured")
@@ -145,7 +145,7 @@ func NewServer(cfg Config, log *slog.Logger) (*Server, error) {
 
 // ResetDedup drops the delivery dedup window, so redeliveries of
 // already-seen IDs are handled as new. Called when an Integration's
-// reset or replay request is consumed — both make the provider resend
+// reset or replay request is consumed: both make the provider resend
 // deliveries whose IDs the receiver has already recorded.
 func (s *Server) ResetDedup() { s.seen.reset() }
 
@@ -160,8 +160,8 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // Serve runs the accept loop on a caller-owned listener; Run is Serve with
-// the listener bound from cfg.Addr. A caller that needs the bound address —
-// an ephemeral-port test, the CLI dev harness printing its webhook URL —
+// the listener bound from cfg.Addr. A caller that needs the bound address
+// (an ephemeral-port test, the CLI dev harness printing its webhook URL)
 // listens itself and hands the listener in.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	mux := http.NewServeMux()
@@ -263,7 +263,7 @@ func (s *Server) receiver(e Endpoint) http.HandlerFunc {
 		}
 
 		// Dedup keys include the request path: two providers' id spaces are
-		// unrelated — as are two integrations' behind one wildcard route —
+		// unrelated (as are two integrations' behind one wildcard route),
 		// and a collision between them would silently drop a delivery.
 		key := r.URL.Path + "|" + deliveryID
 		if deliveryID != "" && !s.seen.add(key) {

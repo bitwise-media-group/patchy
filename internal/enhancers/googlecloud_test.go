@@ -77,8 +77,8 @@ func TestGoogleCloudLabelsResolvesRepository(t *testing.T) {
 	}
 }
 
-// A URL is the only form that can name a self-hosted forge, so a resource
-// carrying one means it deliberately.
+// A URL is the only form that can name a self-hosted forge, so it wins when a
+// resource carries one.
 func TestGoogleCloudLabelsURLSupersedesTriple(t *testing.T) {
 	assets := &fakeAssets{labels: map[string]string{
 		"scm-repository-org":  "acme",
@@ -171,8 +171,8 @@ func TestGoogleCloudLabelsMissingResourceIsFinal(t *testing.T) {
 	}
 }
 
-// Anything else might succeed next time, so it errors — which is what makes
-// the context-controller hold the finding rather than advance it.
+// Anything else might succeed next time, so it errors. That makes the
+// context-controller hold the finding rather than advance it.
 func TestGoogleCloudLabelsTransientFailureErrors(t *testing.T) {
 	assets := &fakeAssets{err: errors.New("deadline exceeded")}
 	if _, err := newEnhancer(t, assets, LabelKeys{}).

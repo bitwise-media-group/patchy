@@ -40,10 +40,10 @@ const (
 	// findings.
 	VerbBackfill = action.VerbBackfill
 	// VerbReplay is the custom RBAC verb (on integrations) behind the
-	// replay action (redeliver the webhook delivery log — demo tooling).
+	// replay action (redeliver the webhook delivery log; demo tooling).
 	VerbReplay = action.VerbReplay
 	// VerbReset is the custom RBAC verb (on integrations) behind the reset
-	// action (delete every pipeline resource — demo tooling).
+	// action (delete every pipeline resource; demo tooling).
 	VerbReset = action.VerbReset
 )
 
@@ -62,23 +62,23 @@ var IntegrationVerbs = action.IntegrationVerbs
 // group is the API group carrying the custom verbs.
 const group = "patchy.bitwisemedia.uk"
 
-// defaultTTL bounds how stale a cached grant may be. Short on purpose: a
-// revoked approver should lose the buttons within seconds, and four SARs
-// per user per window are cheap.
+// defaultTTL bounds how stale a cached grant may be. It is short so a
+// revoked approver loses the buttons within seconds; the eleven SARs per
+// identity per window (see Reviewer.Grants) are cheap.
 const defaultTTL = 20 * time.Second
 
-// cacheLimit bounds the grant cache; at the limit the cache resets rather
-// than evicting piecemeal — grants rebuild in one round of reviews.
+// cacheLimit bounds the grant cache. At the limit the cache resets rather
+// than evicting piecemeal; grants rebuild in one round of reviews.
 const cacheLimit = 1024
 
 // Grants is what one identity may do in the server's namespace. RBAC is
 // namespace-scoped, so grants apply uniformly across findings.
 type Grants struct {
-	// View reports native get on findings — the dashboard read gate.
+	// View reports native get on findings: the dashboard read gate.
 	View bool
-	// Metrics reports native get on findingrollups — the metrics read gate.
+	// Metrics reports native get on findingrollups: the metrics read gate.
 	Metrics bool
-	// Config reports native get on integrations — the configuration-view
+	// Config reports native get on integrations: the configuration-view
 	// read gate.
 	Config bool
 	// Verbs are the granted custom action verbs, in ActionVerbs order.
@@ -156,7 +156,7 @@ func NewReviewer(c client.Client, namespace string, ttl time.Duration) *Reviewer
 
 // Grants resolves the identity's grants: native get on findings for View,
 // on findingrollups for Metrics and on integrations for Config, then one
-// review per custom verb on its own resource (~11 SARs per identity per TTL
+// review per custom verb on its own resource (11 SARs per identity per TTL
 // window).
 func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error) {
 	key := cacheKey(id)

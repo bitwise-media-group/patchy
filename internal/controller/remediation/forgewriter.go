@@ -14,7 +14,7 @@ import (
 )
 
 // forgeWriter is the production ForgeWriter: resolve the Forge covering the
-// repository through the shared internal/forge seam, mint a per-operation
+// repository through the shared internal/forge package, mint a per-operation
 // scoped write token for the push, and drive the PR through the same
 // installation client. This controller is the only holder of forge write
 // scope.
@@ -29,7 +29,7 @@ func NewForgeWriter(forges *forge.Store) ForgeWriter {
 }
 
 // Push implements ForgeWriter. The Git Data pusher targets the resolved
-// Forge's baseURL — the same endpoint every other call on that Forge uses —
+// Forge's baseURL (the same endpoint every other call on that Forge uses),
 // so a GHES or fake forge is honoured on the write path too.
 func (w *forgeWriter) Push(ctx context.Context, namespace, repoURL, branch string, cs *envelope.Changeset) error {
 	res, err := w.forges.Resolve(ctx, namespace, repoURL)

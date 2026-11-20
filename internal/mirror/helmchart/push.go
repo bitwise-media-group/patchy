@@ -17,8 +17,8 @@ import (
 // the byte-identical archive as the content layer, the chart metadata as
 // the config blob. Returns the pushed manifest digest.
 //
-// Push never checks for an existing tag — the caller owns the
-// never-replace rule (an existing tag must be skipped, not overwritten).
+// Push never checks for an existing tag. The caller owns the never-replace
+// rule (an existing tag must be skipped, not overwritten).
 func Push(tgz []byte, ref string) (string, error) {
 	opts := []registry.ClientOption{registry.ClientOptWriter(io.Discard)}
 	parsed, err := name.ParseReference(ref)

@@ -56,7 +56,7 @@ func genericDecoder(r *http.Request, body []byte) (eventType, deliveryID string,
 
 // genericSecretsFor returns the candidate secret for a delivery on the
 // wildcard route: the webhook secret of the Integration the path names, and
-// only that one — integration A's secret must never validate a delivery
+// only that one. Integration A's secret must never validate a delivery
 // addressed to B. An unknown name, a disabled source, or an unreadable
 // Secret all yield an empty set, which fails authentication without leaking
 // which of those it was.
@@ -79,9 +79,9 @@ func (r *Receiver) genericSecretsFor(ctx context.Context, req *http.Request) [][
 }
 
 // handleGeneric routes one validated generic delivery through the named
-// Integration's source handler. The capability is re-checked here — the auth
-// hook already did, but the Integration can change between the 202 and the
-// worker picking the delivery up.
+// Integration's source handler. The auth hook already checked the
+// capability, but the Integration can change between the 202 and the worker
+// picking the delivery up, so it is checked again here.
 func (r *Receiver) handleGeneric(ctx context.Context, e webhook.Event) error {
 	name, ok := generic.NameFromPath(e.Path)
 	if !ok {
@@ -101,8 +101,8 @@ func (r *Receiver) handleGeneric(ctx context.Context, e webhook.Event) error {
 
 // genericIntegration fetches the named Integration when it is an enabled
 // generic source: (nil, nil) when it does not exist, is not generic, is
-// suspended, or has the source capability off — the caller treats all four
-// the same, and an attacker probing the route cannot tell them apart.
+// suspended, or has the source capability off. The caller treats all four
+// the same, so an attacker probing the route cannot tell them apart.
 func (r *Receiver) genericIntegration(ctx context.Context, name string) (*v1alpha1.Integration, error) {
 	if name == "" {
 		return nil, nil

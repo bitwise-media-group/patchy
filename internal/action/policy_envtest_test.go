@@ -117,8 +117,8 @@ func applyPolicy(t *testing.T, admin client.Client) {
 	}
 	for _, u := range objs {
 		if err := admin.Create(t.Context(), u); err != nil && !apierrors.IsAlreadyExists(err) {
-			// A CEL compile error surfaces here, which is exactly what this
-			// suite exists to catch before the manifest reaches a cluster.
+			// A CEL compile error surfaces here, which is what this suite
+			// exists to catch before the manifest reaches a cluster.
 			t.Fatalf("apply %s %s: %v", u.GetKind(), u.GetName(), err)
 		}
 	}
@@ -128,7 +128,7 @@ func applyPolicy(t *testing.T, admin client.Client) {
 //
 // It probes rather than reading policy status: envtest runs only the API server
 // and etcd, so nothing populates the type-checking status a real cluster would
-// show. Probing is the stronger check anyway — it proves the admission chain is
+// show. Probing is the stronger check anyway: it proves the admission chain is
 // rejecting, which is the property every test below depends on. Without it a
 // fast test can write during the propagation window and record a false pass.
 func (e *policyEnv) waitForPolicy(t *testing.T) {
@@ -421,8 +421,8 @@ func TestPolicyAllowsTheControllers(t *testing.T) {
 	env := startPolicyEnv(t)
 	env.seed(t, "controller-target", v1alpha1.PhaseOpened)
 
-	// envtest installs no patchy RBAC, so the SA needs its normal grant first —
-	// otherwise plain RBAC denies the write before admission ever runs and the
+	// envtest installs no patchy RBAC, so the SA needs its normal grant first.
+	// Otherwise plain RBAC denies the write before admission ever runs and the
 	// test would pass for the wrong reason.
 	c := env.userClient(t, "system:serviceaccount:patchy:patchy-integration-controller")
 

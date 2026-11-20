@@ -115,8 +115,8 @@ func TestListFilters(t *testing.T) {
 	}
 }
 
-// The filter reaches the enumerator too — it prunes whole installations
-// there — and a caller stop or enumerator truncation surfaces as
+// The filter reaches the enumerator too, which prunes whole installations
+// with it. A caller stop or enumerator truncation surfaces as
 // complete=false.
 func TestListPropagation(t *testing.T) {
 	e := enumeratorOf(ghclient.Repo{Owner: "acme", Name: "shop"}, ghclient.Repo{Owner: "acme", Name: "site"})

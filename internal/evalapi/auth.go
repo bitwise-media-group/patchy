@@ -24,7 +24,7 @@ const (
 	ModeOIDC = "oidc"
 )
 
-// Config is the evaluation API's auth configuration — a trimmed sibling of
+// Config is the evaluation API's auth configuration, a trimmed sibling of
 // web/auth.Config: no sessions, no cookies, no client secret (evolve is a
 // public PKCE client; the API only verifies tokens).
 type Config struct {
@@ -39,7 +39,7 @@ type Config struct {
 type OIDCConfig struct {
 	// IssuerURL for discovery.
 	IssuerURL string `yaml:"issuerURL"`
-	// ClientID the token audience must match — the public client evolve
+	// ClientID the token audience must match: the public client evolve
 	// logs in as.
 	ClientID string `yaml:"clientID"`
 	// Scopes advertised to clients via /auth/info.
@@ -49,7 +49,7 @@ type OIDCConfig struct {
 }
 
 // LoadConfig reads and validates the auth config. Unlike the status server
-// there is no unconfigured fallback — every route except auth/info is
+// there is no unconfigured fallback: every route except auth/info is
 // authenticated, so a missing file is a startup error.
 func LoadConfig(path string) (*Config, error) {
 	if path == "" {

@@ -221,7 +221,7 @@ func TestHubWithoutTailerRefuses(t *testing.T) {
 func jobName(i int) string { return "job-" + string(rune('a'+i)) }
 
 func TestHubReplayIsNotCappedByTurnCount(t *testing.T) {
-	// The recorder no longer caps turns, so neither may the replay: a viewer
+	// The recorder does not cap turns, so neither may the replay: a viewer
 	// joining a long run late still gets the whole conversation.
 	tl := newCountingTailer()
 	h := testHub(tl)

@@ -231,8 +231,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 
 	// The HTTP server runs in every replica; only the reconcilers are gated
-	// on leader election. Moot at replicas:1 with strategy Recreate, but the
-	// API stays up through a lease handover either way.
+	// on leader election. This does not matter at replicas:1 with strategy
+	// Recreate, but it keeps the API up through a lease handover.
 	httpSrv := &http.Server{
 		Addr:              opts.ListenAddr,
 		Handler:           srv.Handler(),

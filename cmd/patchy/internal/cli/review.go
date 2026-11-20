@@ -89,8 +89,8 @@ func runReview(ctx context.Context, opts *Options, f *reviewFlags, noun, name st
 	return reviewRun(callCtx, opts, env, p, f, kind, name)
 }
 
-// reviewFinding shows both stages of one finding together — the usual "what
-// happened to this?" question, answered without having to know child names.
+// reviewFinding shows both stages of one finding together. It answers "what
+// happened to this?" without the caller having to know child names.
 func reviewFinding(ctx context.Context, opts *Options, env *kubecfg.Env, p *printer.Printer,
 	f *reviewFlags, name string,
 ) error {

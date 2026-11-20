@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Command replay delivers a recorded webhook fixture to a running
-// integration-controller — the local stand-in for whichever provider sent it.
+// integration-controller, standing in locally for whichever provider sent it.
 //
 //	replay -url http://localhost:30079/github/webhooks -secret-file my.secret \
 //	    -event code_scanning_alert ../fixtures/webhooks/code_scanning_alert.created.json
@@ -13,8 +13,8 @@
 //	replay -dev-secret ../fixtures/webhooks/code_scanning_alert.created.json
 //
 // A Security Command Center fixture is a Pub/Sub push envelope, which
-// authenticates with a bearer token rather than an HMAC — Pub/Sub composes the
-// message, so there is nothing for the sender to sign. Supply one Google
+// authenticates with a bearer token rather than an HMAC: Pub/Sub composes the
+// message, so there is nothing for the sender to sign. Supply a token Google
 // issued for the audience the Integration expects:
 //
 //	replay -bearer "$(gcloud auth print-identity-token \
@@ -29,7 +29,7 @@
 //
 // A generic fixture is signed like a GitHub one but into the generic
 // contract's header (X-Patchy-Signature-256), and its route carries the
-// Integration's name — supply it with -generic-name:
+// Integration's name. Supply it with -generic-name:
 //
 //	replay -generic-name warehouse -secret-file warehouse.secret \
 //	    ../fixtures/webhooks/generic.findings.json
@@ -227,7 +227,7 @@ func providerOf(path string) provider {
 }
 
 // defaultPath is the receiver route for the fixture's provider. genericName
-// is the path segment of a generic delivery — the Integration's name — and
+// is the path segment of a generic delivery (the Integration's name) and
 // is ignored by every other provider.
 func defaultPath(p provider, genericName string) string {
 	switch p {

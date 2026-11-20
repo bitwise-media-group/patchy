@@ -428,11 +428,11 @@ type IntegrationSpec struct {
 	// (PAT, dev) or keys "appID" + "privateKey" (GitHub App), plus
 	// "webhookSecret" for receiver HMAC validation, plus optional keys
 	// "proxyUsername" + "proxyPassword" when spec.github.proxy needs basic
-	// auth. For wiz: key
-	// "webhookToken" (the shared bearer token deliveries carry), plus keys
-	// "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
-	// generic: key "webhookSecret", the shared HMAC secret signing both
-	// inbound deliveries and patchy's outbound resolver/enhancer calls.
+	// auth. For wiz: key "webhookToken" (the shared bearer token deliveries
+	// carry), plus keys "clientId" + "clientSecret" when spec.wiz.api enables
+	// write-back. For generic: key "webhookSecret", the shared HMAC secret
+	// signing both inbound deliveries and patchy's outbound resolver/enhancer
+	// calls.
 	// Required for github, wiz, and generic, and optional otherwise. A
 	// google-cloud integration holds no credential, since Pub/Sub
 	// authenticates itself with a signed OIDC token. It stays permitted for

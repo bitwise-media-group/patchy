@@ -10,9 +10,9 @@ import (
 	"github.com/google/go-github/v93/github"
 )
 
-// FindPRByHead returns the open pull request whose head is branch, or nil —
-// the idempotency check before creating a remediation PR (a crash between
-// push and status write must not open a duplicate).
+// FindPRByHead returns the open pull request whose head is branch, or nil.
+// It is the idempotency check before creating a remediation PR (a crash
+// between push and status write must not open a duplicate).
 func (c *Client) FindPRByHead(ctx context.Context, repo Repo, branch string) (*PR, error) {
 	prs, _, err := c.gh.PullRequests.List(ctx, repo.Owner, repo.Name, &github.PullRequestListOptions{
 		State:       "open",

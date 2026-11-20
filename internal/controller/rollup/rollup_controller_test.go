@@ -171,7 +171,7 @@ func TestChildDeletionReleasesFinalizersAfterAggregation(t *testing.T) {
 	switch {
 	case errors.IsNotFound(err):
 		// All rollup finalizers released and only FinalizerJobs remained with
-		// another owner — acceptable outcome depending on fake GC ordering.
+		// another owner. This is acceptable, depending on fake GC ordering.
 	case err != nil:
 		t.Fatalf("Get: %v", err)
 	default:

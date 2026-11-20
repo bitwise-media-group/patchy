@@ -21,8 +21,8 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
-// Repository rollups are the one scope that grows with the estate — an
-// organisation can carry tens of thousands — so they never ship whole. The
+// Repository rollups are the one scope that grows with the estate (an
+// organisation can carry tens of thousands), so they never ship whole. The
 // summary (GET /api/rollups) carries the total, model and harness shards and
 // the top repositories; everything else is answered here, a page at a time:
 // the metrics filter's type-ahead, the sortable repository table, a single
@@ -32,7 +32,7 @@ import (
 // (the objects are only read), which stays in low milliseconds at 10k+.
 
 const (
-	// summaryRepositories is how many repositories the summary carries — the
+	// summaryRepositories is how many repositories the summary carries: the
 	// first page of the metrics table, by findings.
 	summaryRepositories    = 10
 	defaultRepositoryLimit = 10
@@ -182,7 +182,7 @@ func newRepoRow(fr *v1alpha1.FindingRollup) repoRow {
 // locate ranks a needle's match in a key (lower is better); see
 // ui/src/typeahead.ts, which this mirrors so the type-ahead orders the same
 // against the server and offline. For "owner/name" keys the name is searched
-// first — in a single-organisation install every key shares the owner.
+// first, since in a single-organisation install every key shares the owner.
 // Exact name beats name prefix beats word start beats mid-word; owner-only
 // matches come last. A needle containing "/" matches the whole key.
 func locate(key, needle string) int {
@@ -246,7 +246,7 @@ func compareRows(a, b *repoRow, sort string, descending bool) int {
 }
 
 // listRollups reads every shard from the cache without deep copies. Callers
-// must treat the objects as read-only — projectRollup only reads them, and
+// must treat the objects as read-only: projectRollup only reads them, and
 // sumRollups builds fresh maps.
 func (s *Server) listRollups(ctx context.Context) ([]v1alpha1.FindingRollup, error) {
 	var list v1alpha1.FindingRollupList

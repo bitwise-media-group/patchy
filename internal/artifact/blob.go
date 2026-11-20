@@ -19,15 +19,15 @@ import (
 
 // Blob errors the upload API maps onto HTTP statuses.
 var (
-	// ErrDigestMismatch: the uploaded bytes do not hash to the digest they
-	// were uploaded under.
+	// ErrDigestMismatch means the uploaded bytes do not hash to the digest
+	// they were uploaded under.
 	ErrDigestMismatch = errors.New("artifact: digest mismatch")
-	// ErrBlobTooLarge: the upload exceeded the configured cap.
+	// ErrBlobTooLarge means the upload exceeded the configured cap.
 	ErrBlobTooLarge = errors.New("artifact: blob too large")
 )
 
 // blobEntry is one content-addressed workspace bundle. Unlike repository
-// tarballs, blobs are NOT reproducible server-side (only the client can
+// tarballs, blobs are not reproducible server-side (only the client can
 // rebuild one), so the index is rebuilt from disk on restart and entries
 // expire by last access rather than by owner.
 type blobEntry struct {
@@ -36,9 +36,9 @@ type blobEntry struct {
 	lastAccess time.Time
 }
 
-// blobDigest reports whether id is a well-formed blob digest (64 hex chars —
-// repository tarball ids are 32, so the length discriminates the two file
-// families sharing the directory).
+// blobDigest reports whether id is a well-formed blob digest (64 hex chars).
+// Repository tarball ids are 32 hex chars, so the length tells apart the two
+// kinds of file sharing the directory.
 func blobDigest(id string) bool {
 	if len(id) != 64 {
 		return false
@@ -48,7 +48,8 @@ func blobDigest(id string) bool {
 }
 
 // rescanBlobs rebuilds the blob index from the files on disk, using each
-// file's mtime as its last access. Called under no lock (construction only).
+// file's mtime as its last access. It takes no lock, so call it only during
+// construction.
 func (s *Store) rescanBlobs() error {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
@@ -75,8 +76,8 @@ func (s *Store) rescanBlobs() error {
 // PutBlob stores the tarball read from r under its sha256 digest,
 // idempotently: a digest already present is not re-read. The stream is
 // hashed while writing and discarded on mismatch (ErrDigestMismatch) or when
-// it exceeds maxBytes (ErrBlobTooLarge; 0 means unbounded). Returns whether
-// the blob was newly created.
+// it exceeds maxBytes (ErrBlobTooLarge; 0 means unbounded). It reports
+// whether the blob was newly created.
 func (s *Store) PutBlob(digest string, r io.Reader, maxBytes int64) (bool, error) {
 	if !blobDigest(digest) {
 		return false, fmt.Errorf("artifact: malformed blob digest %q", digest)

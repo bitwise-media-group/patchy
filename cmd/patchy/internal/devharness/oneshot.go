@@ -14,8 +14,8 @@ import (
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
-// CanonicalVerdict is the verdict write-back patchy sends today, verbatim
-// from the integration-controller's resolveAlerts: dismissal after an
+// CanonicalVerdict is the verdict write-back patchy sends, copied verbatim
+// from the integration-controller's resolveAlerts. Dismissal after an
 // investigation recommended ignore is the only path that resolves.
 var CanonicalVerdict = source.Verdict{
 	Kind:    source.VerdictIgnore,
@@ -23,9 +23,9 @@ var CanonicalVerdict = source.Verdict{
 	Comment: "Dismissed by patchy: investigation recommended ignore.",
 }
 
-// ParseFindings validates one findings payload — the same wire envelope the
-// webhook receives, so fixture files work in both places — through the real
-// source handler, under the given integration name.
+// ParseFindings validates one findings payload through the real source
+// handler, under the given integration name. The payload is the same wire
+// envelope the webhook receives, so fixture files work in both places.
 func ParseFindings(ctx context.Context, name string, payload []byte) ([]source.Finding, error) {
 	event, err := generic.Detect(payload)
 	if err != nil {
@@ -66,11 +66,11 @@ func Resolve(ctx context.Context, c *generic.Client, name string, findings []sou
 }
 
 // issueFor is the view of a finding an enhancer receives. It mirrors what
-// the context controller sends for a fresh finding: enhanceInput
+// the context controller sends for a fresh finding. enhanceInput
 // (internal/controller/context) sets only Title, Body (the description),
-// Repo and CloudResource — Number exists only once a tracking issue does,
-// and Labels are never populated — and toWireIssue (internal/enhancers) maps
-// that onto the wire.
+// Repo and CloudResource. Number exists only once a tracking issue does, and
+// Labels are never populated. toWireIssue (internal/enhancers) maps that onto
+// the wire.
 func issueFor(f source.Finding) pkggeneric.Issue {
 	issue := pkggeneric.Issue{
 		Title:         f.Title,
@@ -84,8 +84,8 @@ func issueFor(f source.Finding) pkggeneric.Issue {
 }
 
 // alertRef identifies a finding for write-back: the delivered alertId, else
-// the alert number as a string — the same rule the controller's toAlertRefs
-// applies.
+// the alert number as a string. This is the same rule the controller's
+// toAlertRefs applies.
 func alertRef(name string, f source.Finding) source.AlertRef {
 	id := f.AlertID
 	if id == "" {

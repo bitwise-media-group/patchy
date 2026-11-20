@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// HeadSHA is the commit every un-pushed branch resolves to — the SHA
+// HeadSHA is the commit every un-pushed branch resolves to, and so the SHA
 // source-controller pins Repositories to (gitdata.go's fixed base).
 const HeadSHA = BaseSHA
 

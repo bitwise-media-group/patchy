@@ -1,4 +1,4 @@
-// Formatting helpers. Absent figures render as "—", never as false zeros.
+// Formatting helpers. Absent figures render as a dash, never as false zeros.
 
 import type { Level, Phase, Recommendation, Usage } from "./types";
 
@@ -165,7 +165,7 @@ export function formatCount(n?: number): string {
 
 // skew is how far an actual figure ran over (positive) or under (negative)
 // its prediction, as a 0-centred ratio. Undefined when there is nothing to
-// compare against — a zero prediction has no meaningful percentage.
+// compare against: a zero prediction has no meaningful percentage.
 export function skew(predicted?: number, actual?: number): number | undefined {
   if (!predicted || actual === undefined) return undefined;
   return actual / predicted - 1;

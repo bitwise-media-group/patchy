@@ -5,9 +5,9 @@
 // one page per command, for humans, search engines and LLMs.
 //
 // It sits under cmd/patchy because cmd/patchy/internal/cli is importable only
-// from there, and it is deliberately not a cmd/ entrypoint: hack/build.sh
-// builds everything under cmd/, and cobra/doc pulls in a markdown-to-roff
-// renderer that has no business in a shipped binary's SBOM.
+// from there. It is not a top-level cmd/ entrypoint because hack/build.sh
+// builds everything there, and cobra/doc pulls in a markdown-to-roff renderer
+// that does not belong in a shipped binary's SBOM.
 //
 // Run it through the docs task rather than by hand:
 //
@@ -50,11 +50,11 @@ func run(dir, format string) error {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
 
-	// The tree is walked for its metadata alone — no command ever runs — so
+	// The tree is walked for its metadata alone (no command runs), so
 	// nothing here should reach a real stream.
 	root := cli.NewRoot(&cli.Options{Out: io.Discard, ErrOut: io.Discard})
-	// Cobra attaches `completion` during Execute, which never runs here — so
-	// ask for it explicitly, or the reference omits a command the binary has.
+	// Cobra attaches `completion` during Execute, which never runs here. Ask
+	// for it explicitly, or the reference omits a command the binary has.
 	root.InitDefaultCompletionCmd()
 	root.DisableAutoGenTag = true // keep the output reproducible
 

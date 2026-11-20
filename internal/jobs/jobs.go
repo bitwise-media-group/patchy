@@ -51,7 +51,7 @@ const (
 	inputMount   = "/patchy/input"
 )
 
-// Per-Job Secret keys. No forge credential ever appears here — the init
+// Per-Job Secret keys. No forge credential ever appears here: the init
 // container fetches a digest-verified tarball from the artifact server.
 const (
 	secretKeyIssue         = "issue.md"
@@ -60,7 +60,7 @@ const (
 
 // Broker caller-token projection: the volume a brokered runner's agent
 // container mounts and the path agent-runner reads the projected
-// ServiceAccount token from. The init container never mounts it — the
+// ServiceAccount token from. The init container never mounts it, so the
 // prepare step is identity-free.
 const (
 	volBrokerToken  = "broker-token"
@@ -77,8 +77,8 @@ const runAsUser = 65532
 
 // prepareScript is the init container's shell: a credential-less fetch of
 // the SHA-pinned tree tarball from source-controller's artifact server
-// (digest-verified end to end), followed by a synthetic git base commit —
-// the agent's commit/diff flow needs a local base, and diffs against the
+// (digest-verified end to end), followed by a synthetic git base commit.
+// The agent's commit/diff flow needs a local base, and diffs against the
 // synthetic commit are identical to diffs against the real remote SHA the
 // controller pushes on. No forge credential exists anywhere in the pod.
 const prepareScript = `set -eu
@@ -99,28 +99,29 @@ if [ -f /patchy/input/investigation.md ]; then
 fi
 `
 
-// Runner is one harness's agent-runner deployment surface: the container image
-// bundling that harness's CLI and the Secret its model credential is injected
-// from. A Job picks its Runner by the harness resolved for its model, so a
-// claude Job runs the claude image (brokered: no credential in the pod) and a
-// codex Job the codex image with the OpenAI credential.
+// Runner is one harness's agent-runner deployment: the container image that
+// bundles the harness's CLI, and how the pod reaches its model. A Job picks
+// its Runner by the harness resolved for its model. The shipped runners
+// (claude, codex) are both Brokered, so their pods hold no credential. The
+// Secret fields remain for a generic, non-brokered runner; no shipped runner
+// uses them.
 type Runner struct {
 	Image     string // the agent-runner image bundling this harness's CLI
 	Secret    string // name of the Secret holding the model credential
 	SecretKey string // key within it (default "api-key")
 	// SecretEnv is the env var the credential is injected into the agent
-	// container as: ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN for claude,
-	// OPENAI_API_KEY for codex. The fake runner needs no credential and may
-	// leave Secret empty.
+	// container as (for example ANTHROPIC_API_KEY). The fake runner needs no
+	// credential and leaves Secret empty.
 	SecretEnv string
 	// Brokered routes this runner's model traffic through the egress
-	// credential broker: the pod gets no model credential at all — only an
-	// audience-bound projected ServiceAccount token — plus the gateway Env
-	// below. The Secret* fields are ignored when set.
+	// credential broker. The pod gets no model credential at all, only an
+	// audience-bound projected ServiceAccount token, plus the gateway Env
+	// below. The Secret fields are ignored when this is set.
 	Brokered bool
-	// Env is per-runner gateway/provider environment (base-URL overrides,
-	// skip-auth switches, the model map), values only, controller-built.
-	// It wins over Config.Env but can never name a credential channel.
+	// Env is the runner's gateway and provider environment (base-URL
+	// overrides, skip-auth switches, the model map): values only, built by
+	// the controller. It wins over Config.Env but can never name a credential
+	// channel.
 	Env map[string]string
 }
 
@@ -132,7 +133,7 @@ type Config struct {
 	TTL            time.Duration // ttlSecondsAfterFinished
 	// Runners is the per-harness runner fleet, keyed by harness id
 	// ("claude"/"codex"/"fake"). A Job whose Spec.Harness is not a key here
-	// fails to build — the controller resolves and enables harnesses before a
+	// fails to build; the controller resolves and enables harnesses before a
 	// Job is ever created.
 	Runners map[string]Runner
 	// Env is extra PATCHY_* configuration passed through to every runner
@@ -179,8 +180,8 @@ type Spec struct {
 	TokenBudget int64
 	// Calibration is pre-serialized JSON describing how earlier estimates
 	// compared to reality, passed opaquely to the investigation prompt. Empty
-	// omits it. This package deliberately does not know its shape — it is
-	// prompt garnish, not job configuration.
+	// omits it. This package does not know its shape: it is prompt garnish,
+	// not job configuration.
 	Calibration string
 }
 
@@ -214,8 +215,8 @@ func New(cs kubernetes.Interface, cfg Config, log *slog.Logger) *Client {
 }
 
 // runnerFor returns the runner configured for a Job's harness, or an error
-// naming the harness when none is configured (a controller bug — harnesses are
-// enabled at startup, before any Job is built).
+// naming the harness when none is configured. That is a controller bug:
+// harnesses are enabled at startup, before any Job is built.
 func (c *Client) runnerFor(harnessID string) (Runner, error) {
 	r, ok := c.cfg.Runners[harnessID]
 	if !ok {
@@ -248,8 +249,8 @@ func (c *Client) Create(ctx context.Context, spec Spec) (string, error) {
 	}
 
 	// Create is idempotent: the Secret and Job contents are deterministic
-	// per (finding, kind, attempt), so a duplicate reconcile — or a retry
-	// after a partial launch — adopts what already exists instead of
+	// per (finding, kind, attempt), so a duplicate reconcile, or a retry
+	// after a partial launch, adopts what already exists instead of
 	// failing on AlreadyExists.
 	secrets := c.cs.CoreV1().Secrets(c.cfg.Namespace)
 	secret, err := secrets.Create(ctx, buildSecret(name, c.cfg.Namespace, spec), metav1.CreateOptions{})
@@ -289,8 +290,8 @@ func (c *Client) Create(ctx context.Context, spec Spec) (string, error) {
 	return name, nil
 }
 
-// buildSecret holds everything the init container needs: the handoff
-// markdown files.
+// buildSecret builds the per-Job Secret. It holds everything the init
+// container needs: the handoff markdown files.
 func buildSecret(name, namespace string, spec Spec) *corev1.Secret {
 	data := map[string][]byte{
 		secretKeyIssue: []byte(spec.IssueMarkdown),
@@ -367,9 +368,9 @@ func volumes(secretName string) []corev1.Volume {
 }
 
 // podVolumes is volumes plus, for a brokered runner, the projected broker
-// caller token. The projection works despite automountServiceAccountToken
-// being off on the agent ServiceAccount — that suppresses only the default
-// API token — and the pod's FSGroup keeps the file readable at uid 65532.
+// caller token. The projection works even though automountServiceAccountToken
+// is off on the agent ServiceAccount (that suppresses only the default API
+// token), and the pod's FSGroup keeps the file readable at uid 65532.
 func (c *Client) podVolumes(secretName string, runner Runner, tokenTTL int64) []corev1.Volume {
 	vols := volumes(secretName)
 	if !runner.Brokered {
@@ -393,9 +394,9 @@ func (c *Client) podVolumes(secretName string, runner Runner, tokenTTL int64) []
 
 // findingTokenTTL sizes a finding Job's caller-token expiry. agent-runner
 // re-reads the projected file each stage (the kubelet rotates it), so the
-// TTL only needs headroom over one rotation window — but it must still
-// comfortably outlive the Job deadline so a token minted at pod start works
-// even if rotation lags.
+// TTL only needs headroom over one rotation window. It must still outlive
+// the Job deadline so a token minted at pod start works even if rotation
+// lags.
 func findingTokenTTL(deadline time.Duration) int64 {
 	ttl := int64((deadline + 15*time.Minute).Seconds())
 	return max(ttl, 3600)
@@ -403,7 +404,7 @@ func findingTokenTTL(deadline time.Duration) int64 {
 
 // prepareContainer fetches the artifact tarball and stages the handoff
 // files. No credential of any kind reaches it. It runs the same image as the
-// agent container — the init only needs /bin/sh, curl, and git, which both
+// agent container: the init only needs /bin/sh, curl, and git, which both
 // runner images carry.
 func (c *Client) prepareContainer(runner Runner, spec Spec, res corev1.ResourceRequirements) corev1.Container {
 	env := []corev1.EnvVar{
@@ -427,8 +428,8 @@ func (c *Client) prepareContainer(runner Runner, spec Spec, res corev1.ResourceR
 	}
 }
 
-// agentContainer runs agent-runner. No GitHub credential reaches it — that
-// is the isolation model. A brokered runner additionally mounts the
+// agentContainer runs agent-runner. No GitHub credential reaches it; that
+// is the isolation model. A brokered runner also mounts the
 // projected caller token (agent container only; the init stays
 // identity-free).
 func (c *Client) agentContainer(runner Runner, spec Spec, res corev1.ResourceRequirements) corev1.Container {
@@ -453,15 +454,15 @@ func (c *Client) agentContainer(runner Runner, spec Spec, res corev1.ResourceReq
 // reservedEnv are the names Create owns; Config.Env entries with these names
 // are ignored so per-Job values (and the no-GitHub-token invariant) always
 // win. Every model credential channel (claude's and codex's alike) is
-// reserved regardless of which one a runner injects — credentials reach the
-// pod only via the secretKeyRef, never as a plaintext value in the Job spec.
-// GH_TOKEN and GITHUB_TOKEN are reserved for the no-GitHub-token invariant:
-// no GitHub credential may ride in on the controller-global Env.
+// reserved regardless of which one a runner injects: a credential reaches
+// the pod only via the secretKeyRef, never as a plaintext value in the Job
+// spec. GH_TOKEN and GITHUB_TOKEN are reserved for the no-GitHub-token
+// invariant: no GitHub credential may ride in on the controller-global Env.
 // The per-Job harness/model vars are reserved too: they are resolved per Job
 // and set from the Spec, so a controller-global Env copy must never shadow
 // them. The gateway names a brokered runner's Env owns (base-URL overrides,
-// skip-auth switches, the caller-token channel) are folded in below from
-// provider.GatewayEnvNames — Config.Env can never shadow those either.
+// skip-auth switches, the caller-token channel) are added in init from
+// provider.GatewayEnvNames, so Config.Env can never shadow those either.
 var reservedEnv = map[string]bool{
 	"HOME":                        true,
 	"PATCHY_WORKSPACE":            true,
@@ -494,8 +495,8 @@ func init() {
 
 // credentialChannelEnv is every env var name any harness accepts a model
 // credential on. Runner.Env is controller-built and provider-validated, but
-// a credential must still never ride the per-runner env — the broker holds
-// credentials, the pod holds none. Defense in depth, matching the
+// a credential must still never ride the per-runner env: the broker holds
+// credentials, the pod holds none. This is defense in depth, matching the
 // reservedEnv posture for Config.Env.
 var credentialChannelEnv = func() map[string]bool {
 	out := map[string]bool{}
@@ -558,8 +559,8 @@ func (c *Client) agentEnv(runner Runner, spec Spec) []corev1.EnvVar {
 
 	// The controller-global Env under the full reserved filter, then the
 	// per-runner gateway env on top (runner wins). Runner.Env is
-	// controller-built, so it may name the reserved gateway vars — that is
-	// its purpose — but never a credential channel.
+	// controller-built, so it may name the reserved gateway vars (that is
+	// its purpose) but never a credential channel.
 	extra := make(map[string]string, len(c.cfg.Env)+len(runner.Env))
 	for k, v := range c.cfg.Env {
 		if !reservedEnv[k] {

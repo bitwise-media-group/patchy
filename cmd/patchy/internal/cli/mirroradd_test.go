@@ -113,7 +113,7 @@ func TestStayInMajor(t *testing.T) {
 		wantErr bool
 	}{
 		{"1.2.3", ">=1.2.3 <2.0.0", false},
-		// A v-prefixed pin must produce the same constraint — both halves
+		// A v-prefixed pin must produce the same constraint. Both halves
 		// of the range are prefix-free.
 		{"v1.2.3", ">=1.2.3 <2.0.0", false},
 		{"0.5.0", ">=0.5.0 <1.0.0", false},
@@ -133,8 +133,8 @@ func TestStayInMajor(t *testing.T) {
 }
 
 // TestScaffoldsSurviveTheStrictParser round-trips every scaffold through
-// the same strict loaders the pipeline uses: a scaffold the parser rejects
-// bricks the store it just created.
+// the same strict loaders the pipeline uses. A scaffold the parser rejects
+// breaks the store it just created.
 func TestScaffoldsSurviveTheStrictParser(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "patchy.yaml"), scaffoldConfig(), 0o644); err != nil {
@@ -167,7 +167,7 @@ func TestScaffoldsSurviveTheStrictParser(t *testing.T) {
 		t.Fatalf("scaffolded chart manifest does not parse: %v", err)
 	}
 	// The default publish path must come from the engine, not the
-	// scaffold: a hardcoded publish block would silently defeat a store's
+	// scaffold. A hardcoded publish block would silently override a store's
 	// configured namespaces.
 	if cm.Publish.ChartRepo != "" {
 		t.Errorf("chart scaffold pins publish.chartRepo = %q", cm.Publish.ChartRepo)
@@ -194,8 +194,8 @@ func TestScaffoldsSurviveTheStrictParser(t *testing.T) {
 	}
 }
 
-// TestScaffoldBuildExampleValidates uncomments the scaffold's build:
-// example and runs it through BuildConfig: a documented example that does
+// TestScaffoldBuildExampleValidates uncomments the scaffold's `build:`
+// example and runs it through BuildConfig. A documented example that does
 // not validate teaches the wrong shape.
 func TestScaffoldBuildExampleValidates(t *testing.T) {
 	scaffold := string(scaffoldConfig())
@@ -222,8 +222,8 @@ func TestScaffoldBuildExampleValidates(t *testing.T) {
 }
 
 // TestMirrorAddBrokenConfigPropagates pins the init gate: only a missing
-// project config may earn a scaffold — a broken one must surface as the
-// error it is, not be papered over (or overwritten) with a fresh file.
+// project config gets a scaffold. A broken one must surface as an error,
+// not be hidden (or overwritten) by a fresh file.
 func TestMirrorAddBrokenConfigPropagates(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(".patchy", 0o755); err != nil {
@@ -242,8 +242,8 @@ func TestMirrorAddBrokenConfigPropagates(t *testing.T) {
 	}
 }
 
-// TestMirrorRejectsLegacyStoreConfig pins the breaking change: a mirror.yaml
-// at the store root fails with the migration instead of being ignored.
+// TestMirrorRejectsLegacyStoreConfig: a mirror.yaml at the store root fails
+// with migration instructions instead of being ignored.
 func TestMirrorRejectsLegacyStoreConfig(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeMirrorStore(t)

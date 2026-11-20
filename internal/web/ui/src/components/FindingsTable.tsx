@@ -1,5 +1,5 @@
 // The findings list. On wide screens a six-column table; on narrow ones
-// each finding stacks — what it is, then its state — with nothing to scroll
+// each finding stacks (what it is, then its state) with nothing to scroll
 // sideways. Rows are list items whose title is the link, stretched over the
 // whole row, so the pull-request link inside stays a separate, valid link.
 

@@ -56,8 +56,8 @@ func (e *Engine) lintSourcePolicy(entry spec.Entry, fail func(string, ...any)) {
 	}
 }
 
-// lintScan validates the entry's scan block — the same shape for both
-// kinds — and returns its resolved policy.
+// lintScan validates the entry's scan block (the same shape for both
+// kinds) and returns its resolved policy.
 func (e *Engine) lintScan(entry spec.Entry, fail func(string, ...any)) spec.ScanPolicy {
 	o := scanOverride(entry)
 	if !o.Enabled.Valid() {
@@ -84,7 +84,7 @@ func (e *Engine) lintChart(entry spec.Entry, fail func(string, ...any)) {
 
 	// Tracked images: the tag is machine-picked into a values file, so
 	// the rule must name both an image and a path that already resolves
-	// there — the pick replaces a value, it never invents one.
+	// there. The pick replaces a value; it never invents one.
 	for i, rule := range m.Images.Track {
 		prefix := fmt.Sprintf("images.track[%d]", i)
 		if rule.Image == "" {
@@ -219,7 +219,7 @@ func (e *Engine) insideMirror(ref string) bool {
 }
 
 // ociRefsIn collects whole string scalars starting with oci:// across all
-// documents — whole scalars only, which skips prose mentions in CRD
+// documents. Matching only whole scalars skips prose mentions in CRD
 // descriptions.
 func ociRefsIn(rendered []byte) []string {
 	var refs []string

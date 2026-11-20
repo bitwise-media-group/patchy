@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-// transport is the shared upstream transport. ResponseHeaderTimeout bounds a
-// hung upstream (headers, not the streamed body — SSE responses run for as
-// long as the agent thinks); everything else keeps http.DefaultTransport's
-// pooling behavior.
+// newTransport builds the upstream transport. ResponseHeaderTimeout bounds a
+// hung upstream. It covers headers only, not the streamed body, because SSE
+// responses run for as long as the agent thinks. Everything else keeps
+// http.DefaultTransport's pooling behavior.
 func newTransport() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.ResponseHeaderTimeout = 5 * time.Minute
@@ -36,8 +36,8 @@ type route struct {
 // newRoute builds the reverse proxy for one upstream. The Rewrite points the
 // request at the target (the mux already stripped the route prefix), drops
 // the caller's broker token and any inbound authorization the upstream must
-// not see, and the credential transport attaches the real credential last —
-// so nothing caller-controlled can survive into the authenticated request.
+// not see. The credential transport attaches the real credential last, so
+// nothing caller-controlled can survive into the authenticated request.
 func newRoute(name string, u Upstream, log *slog.Logger) *route {
 	rt := &route{name: name, upstream: u}
 	rt.proxy = &httputil.ReverseProxy{
@@ -59,12 +59,11 @@ func newRoute(name string, u Upstream, log *slog.Logger) *route {
 }
 
 // stripCallerHeaders removes the broker token and every credential-shaped
-// header the caller may have sent: the skip-auth CLI paths leave
+// header the caller may have sent. The skip-auth CLI paths leave
 // Authorization empty and the placeholder paths (claude's first-party route,
 // every codex route) fill it with a non-secret stand-in, but nothing stops a
-// compromised pod from setting a real one,
-// and a SigV4 signature must be computed over exactly the headers the broker
-// controls.
+// compromised pod from setting a real one. A SigV4 signature must also be
+// computed over exactly the headers the broker controls.
 func stripCallerHeaders(h http.Header) {
 	h.Del(TokenHeader)
 	h.Del("Authorization")

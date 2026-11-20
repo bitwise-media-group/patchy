@@ -10,8 +10,8 @@ import (
 
 // dedup remembers delivery IDs for a TTL, holding at most cap entries
 // (evicting oldest-first). The window absorbs GitHub's duplicate submissions
-// of a single delivery burst, but must stay short: a redelivery — manual or
-// requested by the Integration's sweep/replay — reuses the original delivery
+// of a single delivery burst, but must stay short: a redelivery (manual or
+// requested by the Integration's sweep/replay) reuses the original delivery
 // GUID, and an ID remembered past the TTL would silently swallow it.
 // Handlers are idempotent, so an expired duplicate slipping through is safe.
 type dedup struct {
@@ -42,8 +42,8 @@ func (d *dedup) add(id string) bool {
 		if now.Sub(at) < d.ttl {
 			return false
 		}
-		// Refresh the expired entry; it keeps its ring slot, so it may be
-		// evicted before its new TTL elapses — the bound wins over the
+		// Refresh the expired entry. It keeps its ring slot, so it may be
+		// evicted before its new TTL elapses: the bound wins over the
 		// window, and idempotent handlers make that harmless.
 		d.seen[id] = now
 		return true

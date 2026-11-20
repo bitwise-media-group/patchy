@@ -65,7 +65,7 @@ func (a *App) Deliveries(ctx context.Context, visit func(Delivery) bool) (comple
 // Redeliver asks GitHub to redeliver one App webhook delivery attempt.
 func (a *App) Redeliver(ctx context.Context, deliveryID int64) error {
 	_, _, err := a.gh.Apps.RedeliverHookDelivery(ctx, deliveryID)
-	// The endpoint answers 202 Accepted — go-github's AcceptedError — on
+	// The endpoint answers 202 Accepted (go-github's AcceptedError) on
 	// success: the redelivery is queued, not performed inline.
 	var accepted *github.AcceptedError
 	if err != nil && !errors.As(err, &accepted) {

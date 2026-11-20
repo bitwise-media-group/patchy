@@ -17,9 +17,9 @@ import (
 const maxTags = 24
 
 // renderIssueDescription turns an issue delivery into the Finding's markdown
-// description. Mapping rather than dumping the payload is deliberate: the
-// description is a document two audiences read, so the shape is the source's
-// decision even though the prose is Wiz's.
+// description. It maps fields rather than dumping the payload because the
+// description is read by both a human and an agent, so patchy controls the
+// shape even though the prose is Wiz's.
 func renderIssueDescription(env *envelope) (string, error) {
 	iss := env.Issue
 	view := templates.WizIssue{
@@ -99,7 +99,7 @@ func renderThreatDescription(env *envelope) (string, error) {
 	return templates.RenderWizThreatDescription(view)
 }
 
-// entityName is the identifier the description shows for an issue's entity —
+// entityName is the identifier the description shows for an issue's entity:
 // the same normalized name the Finding's cloud resource carries, falling
 // back to the raw providerId (or Wiz graph id) for unsupported platforms.
 func entityName(es *entitySnapshot) string {

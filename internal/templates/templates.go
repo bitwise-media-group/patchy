@@ -43,28 +43,28 @@ type InvestigatePrompt struct {
 	ReportPath    string
 	AllowedModels []string
 	// AutoMaxTurns/AutoTokenBudget is what a remediation gets unattended, and
-	// the line past which an estimate needs human approval — NOT a cap.
+	// the line past which an estimate needs human approval. It is not a cap.
 	AutoMaxTurns    int
 	AutoTokenBudget int
 	// ManualMaxTurns/ManualTokenBudget is the most a human-approved run can
-	// get. Rendered so the agent knows asking beyond it buys nothing.
+	// get. It is rendered so the agent knows asking for more gains nothing.
 	ManualMaxTurns    int
 	ManualTokenBudget int
 	// Calibration is how earlier estimates compared to reality; nil omits the
-	// section (a cold start has nothing honest to say).
+	// section (a cold start has no history to report).
 	Calibration *Calibration
 }
 
 // Calibration reports how previous remediations compared to what the
 // investigation predicted, so the next estimate can correct for the observed
 // skew. It is derived from a FindingRollup's remediation stage aggregate and
-// carried to the pod as JSON — the runner has no Kubernetes access, so this
+// carried to the pod as JSON. The runner has no Kubernetes access, so this
 // travels as configuration like every other fact it needs.
 type Calibration struct {
 	// Scope describes where the figures came from, e.g. "owner/repo" or
 	// "all repositories" when the per-repository history was too thin.
 	Scope string `json:"scope,omitempty"`
-	// Runs the averages are drawn from.
+	// Runs is the number of runs the averages are drawn from.
 	Runs int64 `json:"runs"`
 	// AvgPredictedTurns/AvgActualTurns and the token pair are whole-number
 	// averages over those runs.

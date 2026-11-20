@@ -18,10 +18,9 @@ import (
 )
 
 // ErrNotFound reports that Cloud Asset Inventory has no record of the
-// resource. This is a permanent answer, not a transient one: the resource may
-// have been deleted between the finding being raised and this lookup, or it
-// may sit outside the configured scope. Callers use it to decide against
-// retrying.
+// resource. It is a permanent answer: the resource may have been deleted since
+// the finding was raised, or sit outside the configured scope. Callers do not
+// retry it.
 var ErrNotFound = errors.New("resource not found in cloud asset inventory")
 
 // Labels are one resource's labels, plus enough identity to log about it.
@@ -33,9 +32,9 @@ type Labels struct {
 	Labels map[string]string
 }
 
-// Client reads resource labels from Cloud Asset Inventory. There is no
-// interface here on purpose: the consumer declares the one-method seam it
-// needs and this satisfies it.
+// Client reads resource labels from Cloud Asset Inventory. This package
+// declares no interface for it: the consumer declares the one-method
+// interface it needs, and Client satisfies it.
 type Client struct {
 	api   *asset.Client
 	scope string
@@ -43,8 +42,8 @@ type Client struct {
 
 // New builds a client searching within scope, which must name an
 // organization, folder, or project ("organizations/123", "folders/456",
-// "projects/foo"). Credentials come from Application Default Credentials —
-// in-cluster that means workload identity, so no key file exists anywhere.
+// "projects/foo"). Credentials come from Application Default Credentials. In
+// cluster that means workload identity, so no key file exists anywhere.
 func New(ctx context.Context, scope string) (*Client, error) {
 	if err := ValidateScope(scope); err != nil {
 		return nil, err
@@ -56,8 +55,8 @@ func New(ctx context.Context, scope string) (*Client, error) {
 	return &Client{api: api, scope: scope}, nil
 }
 
-// ValidateScope reports whether scope is one Asset Inventory accepts.
-// Checked at construction so a typo fails at startup rather than on the first
+// ValidateScope reports whether scope is one Asset Inventory accepts. It runs
+// at construction so a typo fails at startup rather than on the first
 // finding.
 func ValidateScope(scope string) error {
 	for _, prefix := range []string{"organizations/", "folders/", "projects/"} {
@@ -79,15 +78,15 @@ func (c *Client) Close() error {
 
 // LabelsFor returns the labels of one resource, named as Security Command
 // Center names it. When the exact name misses and the caller supplied a
-// display name, one fallback search by display name runs — the safety net
-// for sources (Wiz) whose identifiers cannot always be rewritten into Asset
-// Inventory's spelling. The fallback demands a unique hit: two resources
-// with the same display name is ambiguity, and guessing an owner would be
-// worse than handing the finding to a human.
+// display name, one fallback search by display name runs. It covers sources
+// (Wiz) whose identifiers cannot always be rewritten into Asset Inventory's
+// form. The fallback requires a unique hit: two resources with the same
+// display name are ambiguous, and guessing an owner would be worse than
+// handing the finding to a human.
 //
-// Errors are classified for the caller: ErrNotFound is final, everything else
-// is worth retrying. That distinction is what lets the enhancer chain decide
-// between advancing a finding and holding it for another try.
+// ErrNotFound is final; every other error is worth retrying. The enhancer
+// chain uses that to decide between advancing a finding and holding it for
+// another try.
 func (c *Client) LabelsFor(ctx context.Context, resourceName, displayName string) (*Labels, error) {
 	if resourceName == "" {
 		return nil, ErrNotFound
@@ -106,8 +105,8 @@ func (c *Client) search(ctx context.Context, query, resourceName string, unique 
 	it := c.api.SearchAllResources(ctx, &assetpb.SearchAllResourcesRequest{
 		Scope: c.scope,
 		Query: query,
-		// Only the labels matter. Asking for less keeps the response small
-		// and the permission this needs as narrow as it can be.
+		// Only the labels matter. A narrow mask keeps the response small and
+		// the required permission narrow.
 		ReadMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "labels"}},
 	})
 	res, err := it.Next()
@@ -127,9 +126,9 @@ func (c *Client) search(ctx context.Context, query, resourceName string, unique 
 }
 
 // classify wraps an Asset Inventory error, marking the permanent ones so a
-// caller does not retry something that will never succeed. Everything else —
-// including PermissionDenied, which is usually a workload-identity binding
-// that has not propagated yet — stays retryable.
+// caller does not retry something that will never succeed. Everything else
+// stays retryable, including PermissionDenied (usually a workload-identity
+// binding that has not propagated yet).
 func classify(resourceName string, err error) error {
 	switch status.Code(err) {
 	case codes.NotFound, codes.InvalidArgument:

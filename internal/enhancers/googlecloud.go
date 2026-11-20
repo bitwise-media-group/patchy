@@ -19,7 +19,7 @@ import (
 // whose code provisions the thing that is wrong.
 //
 // Google Cloud label values are lowercase alphanumerics, hyphens and
-// underscores, capped at 63 characters — which a URL cannot survive. Hence
+// underscores, capped at 63 characters, which a URL cannot survive. Hence
 // the triple: an org and a name both fit comfortably, and the URL form is
 // there for security marks, whose values are far less constrained.
 const (

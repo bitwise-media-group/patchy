@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// loadConfig decodes a Config fixture strictly and resolves it — the same
+// loadConfig decodes a Config fixture strictly and resolves it, the same
 // two steps the CLI's layered config performs before handing a Config in.
 func loadConfig(t *testing.T, path string) (*Config, error) {
 	t.Helper()
@@ -69,8 +69,8 @@ func assertConfigRegistries(t *testing.T, c *Config) {
 	if primary.Name != "primary" || primary.URL != "registry.example.com/org/platform" {
 		t.Errorf("primary = %+v", primary)
 	}
-	// artifactNamespace is absent from the file; the default fills in —
-	// per element (ghcr declares no namespaces at all).
+	// artifactNamespace is absent from the file; the default fills in per
+	// element (ghcr declares no namespaces at all).
 	if primary.ArtifactNamespace != "artifacts" {
 		t.Errorf("artifactNamespace = %q, want default artifacts", primary.ArtifactNamespace)
 	}
@@ -444,7 +444,7 @@ func TestScanEnabledDecode(t *testing.T) {
 
 // TestManifestScanBlocks pins the one scan shape across both manifest
 // kinds: the keys charts and artifacts already used still load, and each
-// kind now accepts the other's keys too.
+// kind accepts the other's keys too.
 func TestManifestScanBlocks(t *testing.T) {
 	dir := t.TempDir()
 	chart := filepath.Join(dir, "chart.yaml")

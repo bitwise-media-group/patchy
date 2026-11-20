@@ -1,4 +1,4 @@
-// Demo configuration dataset — what GET /api/config would project for a
+// Demo configuration dataset: what GET /api/config would project for a
 // small estate. Deep-cloned per call so demo backfills can mutate freely.
 
 import type { ConfigDataset } from "../types";

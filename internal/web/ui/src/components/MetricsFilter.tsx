@@ -1,6 +1,6 @@
 // The metrics filter: the shared FilterBox over every slice the rollups can
-// answer — a repository, a model, a harness, or every repository matching
-// the typed term (summed). Models and harnesses are few and come with the
+// answer (a repository, a model, a harness, or every repository matching
+// the typed term, summed). Models and harnesses are few and come with the
 // summary; repositories can number tens of thousands, so their matches are
 // asked of the server as you type (debounced, stale requests cancelled) and
 // only the best few come back with a count of the rest.

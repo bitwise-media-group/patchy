@@ -38,7 +38,7 @@ func (f *fakeLogs) Stream(_ context.Context, pod, container string, follow bool)
 	return io.NopCloser(strings.NewReader(f.body)), nil
 }
 
-// jobPod is a pod whose agent container has finished — readable by Result.
+// jobPod is a pod whose agent container has finished, so Result can read it.
 func jobPod(jobName string) *corev1.Pod {
 	return jobPodInState(jobName, corev1.PodSucceeded, corev1.ContainerState{
 		Terminated: &corev1.ContainerStateTerminated{},
@@ -59,7 +59,7 @@ func jobPodInState(jobName string, phase corev1.PodPhase, agent corev1.Container
 	}
 }
 
-// bareJob is a Job object with no terminal condition — still running.
+// bareJob is a Job object with no terminal condition: still running.
 func bareJob(jobName string) *batchv1.Job {
 	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "patchy-agents"}}
 }

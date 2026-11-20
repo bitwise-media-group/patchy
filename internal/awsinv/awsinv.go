@@ -18,11 +18,10 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-// ErrNotFound reports that the inventory has no record of the resource. This
-// is a permanent answer, not a transient one: the resource may have been
-// deleted between the finding being raised and this lookup, it may be of a
-// type the inventory does not record, or it may not be indexed yet. Callers
-// use it to decide against retrying.
+// ErrNotFound reports that the inventory has no record of the resource. It is
+// a permanent answer: the resource may have been deleted since the finding
+// was raised, be of a type the inventory does not record, or not be indexed
+// yet. Callers do not retry it.
 var ErrNotFound = errors.New("resource not found in aws inventory")
 
 // Tags are one resource's tags, plus enough identity to log about it.
@@ -38,7 +37,7 @@ type Tags struct {
 type ConfigAggregator struct {
 	// Name of the aggregator.
 	Name string
-	// Region the aggregator lives in.
+	// Region is the aggregator's region.
 	Region string
 }
 
@@ -58,8 +57,8 @@ type Config struct {
 }
 
 // Validate reports whether the configuration names exactly one usable
-// backend. Checked at construction so a bad Integration fails at client
-// build rather than on the first finding.
+// backend. New calls it so a bad Integration fails at client build rather
+// than on the first finding.
 func (c Config) Validate() error {
 	switch {
 	case c.ConfigAggregator != nil && c.ResourceExplorer != nil:
@@ -97,8 +96,8 @@ func viewRegion(arn string) (string, error) {
 		"awsinv: view ARN %q must be arn:<partition>:resource-explorer-2:<region>:<account>:view/<name>/<id>", arn)
 }
 
-// configAPI is the slice of the AWS Config client the backend uses; a seam
-// for tests, which must not dial AWS.
+// configAPI is the part of the AWS Config client the backend uses. Tests
+// replace it so they never dial AWS.
 type configAPI interface {
 	SelectAggregateResourceConfig(ctx context.Context, in *configservice.SelectAggregateResourceConfigInput,
 		opts ...func(*configservice.Options)) (*configservice.SelectAggregateResourceConfigOutput, error)
@@ -106,7 +105,7 @@ type configAPI interface {
 		opts ...func(*configservice.Options)) (*configservice.DescribeConfigurationAggregatorsOutput, error)
 }
 
-// explorerAPI is the slice of the Resource Explorer client the backend uses.
+// explorerAPI is the part of the Resource Explorer client the backend uses.
 type explorerAPI interface {
 	Search(ctx context.Context, in *resourceexplorer2.SearchInput,
 		opts ...func(*resourceexplorer2.Options)) (*resourceexplorer2.SearchOutput, error)
@@ -114,9 +113,9 @@ type explorerAPI interface {
 		opts ...func(*resourceexplorer2.Options)) (*resourceexplorer2.GetViewOutput, error)
 }
 
-// Client reads resource tags from one of the two inventories. There is no
-// interface here on purpose: the consumer declares the one-method seam it
-// needs and this satisfies it.
+// Client reads resource tags from one of the two inventories. This package
+// declares no interface for it: the consumer declares the one-method
+// interface it needs, and Client satisfies it.
 type Client struct {
 	aggregator string
 	config     configAPI
@@ -125,10 +124,10 @@ type Client struct {
 }
 
 // New builds a client for the configured backend and verifies the backend is
-// usable — the aggregator exists, or the view exists and includes the tags
-// property (without it every lookup would "succeed" tagless, which must fail
-// loudly here instead). Credentials come from the SDK default chain — EKS
-// Pod Identity or IRSA on EKS, web-identity federation elsewhere — so no key
+// usable: the aggregator exists, or the view exists and includes the tags
+// property. Without that property every lookup would "succeed" with no tags,
+// so New fails instead. Credentials come from the SDK default chain (EKS Pod
+// Identity or IRSA on EKS, web-identity federation elsewhere), so no key
 // material exists anywhere.
 func New(ctx context.Context, cfg Config) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
@@ -156,8 +155,8 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	return c, nil
 }
 
-// Close releases nothing — the SDK clients hold no connection of their own —
-// and exists so the enhancer can treat both cloud clients alike.
+// Close releases nothing, since the SDK clients hold no connection of their
+// own. It exists so the enhancer can treat both cloud clients alike.
 func (c *Client) Close() error { return nil }
 
 // verify asks the backend whether it can answer at all.
@@ -194,9 +193,9 @@ func (c *Client) verify(ctx context.Context) error {
 // exact identifier in both inventories, so there is no fallback search: a
 // miss means the resource is unrecorded, not misspelled.
 //
-// Errors are classified for the caller: ErrNotFound is final, everything
-// else is worth retrying. That distinction is what lets the enhancer chain
-// decide between advancing a finding and holding it for another try.
+// ErrNotFound is final; every other error is worth retrying. The enhancer
+// chain uses that to decide between advancing a finding and holding it for
+// another try.
 func (c *Client) TagsFor(ctx context.Context, arn string) (*Tags, error) {
 	if arn == "" {
 		return nil, ErrNotFound
@@ -239,8 +238,8 @@ func (c *Client) configTags(ctx context.Context, arn string) (*Tags, error) {
 }
 
 // explorerTags runs one view search. id: is the exact-identifier filter, but
-// the search itself still ranks rather than matches, so the ARN is compared
-// against each hit before any of them counts.
+// the search ranks rather than matches, so each hit's ARN is compared before
+// it counts.
 func (c *Client) explorerTags(ctx context.Context, arn string) (*Tags, error) {
 	out, err := c.explorer.Search(ctx, &resourceexplorer2.SearchInput{
 		QueryString: aws.String("id:" + arn),
@@ -273,8 +272,9 @@ func (c *Client) explorerTags(ctx context.Context, arn string) (*Tags, error) {
 	return nil, fmt.Errorf("%w: %s", ErrNotFound, arn)
 }
 
-// normalizeTags accepts the shapes the two inventories spell tags in — a
-// key/value object list (either casing) or a plain map — and returns a map.
+// normalizeTags accepts the shapes the two inventories use for tags (a
+// key/value object list in either casing, or a plain map) and returns a map.
+// It returns nil when there are no tags.
 func normalizeTags(v any) map[string]string {
 	tags := map[string]string{}
 	switch t := v.(type) {
@@ -314,10 +314,10 @@ func first(m map[string]any, keys ...string) any {
 }
 
 // classify wraps an inventory error, marking the permanent ones so a caller
-// does not retry something that will never succeed. Everything else —
-// including AccessDenied, which is usually an identity binding that has not
-// propagated yet, and a missing aggregator or view, which an operator can
-// still fix — stays retryable.
+// does not retry something that will never succeed. Everything else stays
+// retryable, including AccessDenied (usually an identity binding that has
+// not propagated yet) and a missing aggregator or view (an operator can
+// still fix it).
 func classify(arn string, err error) error {
 	var api smithy.APIError
 	if errors.As(err, &api) && api.ErrorCode() == "InvalidExpressionException" {

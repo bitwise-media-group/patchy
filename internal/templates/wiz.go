@@ -5,7 +5,7 @@ package templates
 
 // WizKV is one ordered key/value fact. Wiz hands resource tags over as
 // unordered maps; the source sorts them into slices so the rendered markdown
-// is stable and the goldens mean something.
+// is stable and the golden tests are deterministic.
 type WizKV struct {
 	Key   string
 	Value string
@@ -25,7 +25,7 @@ type WizEntity struct {
 	// Subscription is the enclosing cloud account, with its display name.
 	Subscription     string
 	SubscriptionName string
-	// Region the resource lives in.
+	// Region is the resource's region.
 	Region string
 	// ConsoleURL links to the resource in its provider's console.
 	ConsoleURL string
@@ -33,9 +33,9 @@ type WizEntity struct {
 	Tags []WizKV
 }
 
-// WizIssue is the data the Wiz Issues description template renders — a
+// WizIssue is the data the Wiz Issues description template renders: a
 // flattened, presentation-ready view of the delivery. The source decides
-// what is worth showing, the template decides how it looks.
+// what to show, the template decides how it looks.
 type WizIssue struct {
 	// ID is the Wiz issue id.
 	ID string
@@ -93,7 +93,7 @@ type WizThreat struct {
 }
 
 // RenderWizIssueDescription renders a Wiz issue as the Finding's markdown
-// description — the body a human reads on the tracking issue and the handoff
+// description: the body a human reads on the tracking issue and the handoff
 // an agent investigates.
 func RenderWizIssueDescription(i WizIssue) (string, error) {
 	return render("finding_wiz_issue.md.tmpl", i)

@@ -10,8 +10,8 @@ import (
 )
 
 // Provider is a model vendor: the entity that owns and prices a family of
-// models (Anthropic, OpenAI). It is distinct from a harness — the CLI that
-// drives a model — because several harnesses can in principle run one vendor's
+// models (Anthropic, OpenAI). It is distinct from a harness (the CLI that
+// drives a model) because several harnesses can in principle run one vendor's
 // model, and the vendor id keys pricing while the harness id keys execution.
 type Provider struct {
 	ID   string `json:"id"`   // registry key, e.g. "anthropic"
@@ -24,8 +24,8 @@ type Provider struct {
 // in it.
 //
 // Supported maps each harness id that can run this model to the CLI-specific
-// model-id string that harness's --model flag expects — this is where any
-// harness/vendor id divergence lives. Preferred is the harness chosen when
+// model-id string that harness's --model flag expects. Any harness/vendor id
+// divergence lives here. Preferred is the harness chosen when
 // several supported harnesses are enabled; it is always a key of Supported.
 //
 // InputUSD/OutputUSD are USD per 1M tokens (standard tier, cache-miss rates);
@@ -51,7 +51,7 @@ type Model struct {
 // Key is the canonical, provider-qualified id ("anthropic/claude-sonnet-5").
 func (m Model) Key() string { return m.ID }
 
-// BareID is the id without its provider prefix ("claude-sonnet-5") — the
+// BareID is the id without its provider prefix ("claude-sonnet-5"): the
 // vendor's own model id, independent of the executing harness.
 func (m Model) BareID() string {
 	if _, id, ok := strings.Cut(m.ID, "/"); ok {

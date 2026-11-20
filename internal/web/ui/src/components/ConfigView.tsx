@@ -1,12 +1,12 @@
-// The configuration view: how patchy is wired up in this namespace — the
-// Integrations findings arrive through, the context enhancers they enable,
+// The configuration view: how patchy is wired up in this namespace, meaning
+// the Integrations findings arrive through, the context enhancers they enable,
 // and the Forges code is fetched and changed through. One page rather than
 // sub-tabs (there are only ever a handful of each), opening with a health
 // summary and the flow between the three, so "is everything connected?" is
 // answered before any detail.
 //
 // Read-only except the backfill trigger, which renders only when the server
-// granted the backfill verb (user.integrationActions) — read-only users
+// granted the backfill verb (user.integrationActions), so read-only users
 // never see a disabled button. The trigger's two-click confirm follows
 // ActionBar's idiom (no modals).
 

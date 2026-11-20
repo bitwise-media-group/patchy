@@ -38,11 +38,11 @@ func Providers() []Provider {
 // can be recorded without changing the type.
 func builtins() []Model {
 	return []Model{
-		// Anthropic — driven by Claude Code.
+		// Anthropic, driven by Claude Code.
 		// Superseded versions stay registered: Findings, Investigations and
 		// rollups record the concrete id a run used, and pricing those needs
 		// the entry. The family aliases (anthropic/claude-opus, ...) resolve
-		// to the newest version registered here — see resolve.go.
+		// to the newest version registered here (see resolve.go).
 		//
 		// Model is flat-rate. Haiku 5.5 prices prompts over 100K tokens at
 		// $0.50/$2.50 (cache reads $0.05); the base tier is registered, so a
@@ -105,10 +105,10 @@ func builtins() []Model {
 			Preferred: HarnessClaude,
 		},
 
-		// OpenAI — driven by Codex. The codex CLI reports no cost of its own,
+		// OpenAI, driven by Codex. The codex CLI reports no cost of its own,
 		// so unlike the Anthropic rates (a cross-check on a figure the claude
 		// harness already reports) these are the only thing that prices a
-		// codex run at all — see agentresult.stageCost.
+		// codex run at all (see agentresult.stageCost).
 		// The GPT-5.6 family is three named tiers rather than a size suffix:
 		// Luna is the nano-like tier, Terra the mini-like one, Sol the flagship.
 		{
@@ -140,8 +140,8 @@ func builtins() []Model {
 
 // AllModels returns the canonical model registry with any per-provider config
 // override applied. overrides maps a provider id to a replacement model list
-// (replace, not merge — partial merges create "which price won?" ambiguity);
-// only models whose ProviderID is overridden are replaced.
+// (replace, not merge: partial merges make it unclear which price won); only
+// models whose ProviderID is overridden are replaced.
 func AllModels(overrides map[string][]Model) []Model {
 	if len(overrides) == 0 {
 		return builtins()
@@ -198,8 +198,8 @@ func IsProviderID(id string) bool {
 }
 
 // KnownHarnessIDs is the set of harness ids the registry may name in a
-// Supported map, in registry order — the deterministic tiebreak order for
-// harness resolution when a model's preferred harness is not enabled.
+// Supported map, in registry order. That order is the deterministic tiebreak
+// for harness resolution when a model's preferred harness is not enabled.
 var KnownHarnessIDs = []string{HarnessClaude, HarnessCodex, HarnessFake}
 
 // IsKnownHarnessID reports whether id names a harness the registry knows.

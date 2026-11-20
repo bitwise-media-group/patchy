@@ -23,8 +23,8 @@ const jobNameLabel = "batch.kubernetes.io/job-name"
 const podPollInterval = 2 * time.Second
 
 // Tailer reads agent Job output. It is the read-only half of Client, split out
-// so a component that only watches a run — the status server following a live
-// transcript — needs nothing but pod read access, and never the create/delete
+// so a component that only watches a run (the status server following a live
+// transcript) needs nothing but pod read access, and never the create/delete
 // authority or the credential configuration a Client carries.
 type Tailer struct {
 	cs        kubernetes.Interface
@@ -42,8 +42,8 @@ func NewTailer(cs kubernetes.Interface, namespace string) *Tailer {
 // fn errors. Unlike Result it waits only for the agent container to start, so
 // a caller can join a run already in progress. The follow sets no TailLines,
 // so it replays the container log from the start: fn sees every turn the run
-// has emitted so far, then the rest as they arrive. (A log rotated by the
-// kubelet is the one exception — only the current file is read.)
+// has emitted so far, then the rest as they arrive. The one exception is a log
+// the kubelet has rotated: only the current file is read.
 //
 // Envelope events are skipped: a live viewer wants the conversation, and the
 // stage result is the owning controller's to apply.
@@ -70,10 +70,10 @@ func (t *Tailer) Tail(ctx context.Context, jobName string, fn func(transcript.Tu
 }
 
 // waitForAgent polls until jobName's pod exists and its agent container has
-// started — or, when terminated is true, finished — and returns the pod name.
-// The wait matters: while the prepare init container clones the repo the
-// agent container sits in PodInitializing, and opening its log stream then is
-// rejected by the kubelet ("is waiting to start").
+// started (or, when terminated is true, finished) and returns the pod name.
+// The wait matters: while the prepare init container fetches the repository
+// the agent container sits in PodInitializing, and the kubelet rejects a log
+// stream opened then ("is waiting to start").
 func (t *Tailer) waitForAgent(ctx context.Context, jobName string, terminated bool) (string, error) {
 	for {
 		pod, err := t.findPod(ctx, jobName)
@@ -101,7 +101,7 @@ func (t *Tailer) waitForAgent(ctx context.Context, jobName string, terminated bo
 			if terminal := pod.Status.Phase == corev1.PodSucceeded ||
 				pod.Status.Phase == corev1.PodFailed; terminal && !started {
 				// The pod died before the agent ever ran (init failure,
-				// deadline kill, eviction) — there are no logs to read.
+				// deadline kill, eviction), so there are no logs to read.
 				reason := "no status"
 				if agent != nil && agent.State.Waiting != nil && agent.State.Waiting.Reason != "" {
 					reason = agent.State.Waiting.Reason

@@ -60,14 +60,14 @@ type Config struct {
 	ModelAllowlist []string
 	// BrokerTokenFile is the projected ServiceAccount token file the pod
 	// authenticates to the egress broker with; empty on a non-brokered run.
-	// It is read fresh per stage — the kubelet rotates the projection.
+	// It is read fresh per stage because the kubelet rotates the projection.
 	BrokerTokenFile string
 	// CodexConfig is the config.toml a brokered codex run writes to
 	// CodexHome before each stage (provider.CodexConfig, carried as
 	// PATCHY_CODEX_CONFIG); empty on claude and non-brokered runs.
 	CodexConfig string
 	// CodexHome is where the codex CLI reads config.toml from:
-	// $CODEX_HOME, else $HOME/.codex — the CLI's own resolution.
+	// $CODEX_HOME, else $HOME/.codex (the CLI's own resolution).
 	CodexHome string
 	// ModelMap translates canonical model ids to the provider-specific CLI
 	// ids a brokered provider expects (Bedrock inference profiles, Foundry
@@ -82,9 +82,9 @@ type Config struct {
 	// The remediation budget, split by who authorized the run.
 	//
 	// RemediateAutoMaxTurns/RemediateAutoTokenBudget is what patchy will spend
-	// UNATTENDED: every remediation gets at least this, whatever the
+	// unattended: every remediation gets at least this, whatever the
 	// investigation predicted (including when it predicted nothing). It is
-	// also the line past which a fix stops being automatic — an estimate above
+	// also the line past which a fix stops being automatic: an estimate above
 	// it holds the finding for a human instead of queueing it.
 	RemediateAutoMaxTurns    int
 	RemediateAutoTokenBudget int
@@ -93,7 +93,7 @@ type Config struct {
 	// that estimate, so this bounds what one approval can authorize.
 	RemediateManualMaxTurns    int
 	RemediateManualTokenBudget int
-	// GrantedMaxTurns/GrantedTokenBudget are what the controller granted THIS
+	// GrantedMaxTurns/GrantedTokenBudget are what the controller granted this
 	// run, already resolved against the estimate and the manual bound. Zero
 	// means "no per-run grant" and falls back to the automated budget.
 	GrantedMaxTurns    int
@@ -112,12 +112,12 @@ type Config struct {
 	// remediation stage may emit.
 	ChangesetMaxBytes int
 
-	// Transcript bounds the conversation the recorder streams to stdout — what
-	// a live viewer sees. They are stream limits, not storage limits: the
-	// controller compacts the persisted record to fit its ConfigMap
-	// independently (transcript.Compact). Zero takes the transcript package's
-	// stream default (for MaxTurns, unbounded) and negative disables that
-	// bound.
+	// The Transcript* fields bound the conversation the recorder streams to
+	// stdout, which is what a live viewer sees. They are stream limits, not
+	// storage limits: the controller compacts the persisted record to fit its
+	// ConfigMap independently (transcript.Compact). Zero takes the transcript
+	// package's stream default (for MaxTurns, unbounded) and negative disables
+	// that bound.
 	TranscriptMaxTurnBytes  int
 	TranscriptMaxTurns      int
 	TranscriptMaxTotalBytes int

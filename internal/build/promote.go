@@ -71,8 +71,8 @@ type PromoteResult struct {
 // requires the build's digest to carry a valid signature under that
 // registry's signing config, and adds Tag to the same digest. Tags still
 // never move: a Tag already on that digest is skipped-current, one on
-// another digest fails the entry. Nothing is signed — the build already
-// is, and that signature is what was verified.
+// another digest fails the entry. Nothing is signed: the build already is,
+// and that signature is what was verified.
 func (e *Engine) Promote(ctx context.Context, entryName string, opts PromoteOptions) (*PromoteResult, error) {
 	entry, err := e.Entry(entryName)
 	if err != nil {
@@ -131,7 +131,7 @@ func (e *Engine) Promote(ctx context.Context, entryName string, opts PromoteOpti
 
 // promoteIn resolves one registry's promotion: the newest build matching
 // from, its digest and revision, and whether tag already holds it (Action
-// skipped-current) — an empty Action means the tag is still to be added.
+// skipped-current). An empty Action means the tag is still to be added.
 func (e *Engine) promoteIn(ctx context.Context, entry Entry, repo, from, tag string) (PromoteRecord, error) {
 	rec := PromoteRecord{Ref: repo + ":" + tag}
 	tags, err := e.reg.Tags(ctx, repo)

@@ -18,15 +18,15 @@ import (
 // ResolveRunners returns the harness ids that are enabled given the configured
 // runner fleet and the credentials present in the agent namespace. A runner is
 // enabled when its credential Secret exists and carries the configured key; the
-// fake runner (no Secret) is always enabled when configured. Enumeration is by
-// get-by-name only — the job controllers hold no list/watch on Secrets, by
-// design — so this probes each configured runner's Secret individually.
+// fake runner (no Secret) is always enabled when configured. The job
+// controllers may only get Secrets by name (they hold no list/watch on
+// Secrets), so this probes each configured runner's Secret individually.
 //
-// restrict, when non-empty, pins the enabled set to exactly those harness ids
-// (still verifying each is a configured runner with a usable credential, so an
-// operator who names a harness gets a clear error rather than a silently
-// dropped one). When empty, the enabled set is every configured runner whose
-// credential is present — the "any harness with credentials" default.
+// restrict, when non-empty, pins the enabled set to exactly those harness ids.
+// Each is still verified as a configured runner with a usable credential, so
+// an operator who names a harness gets a clear error rather than a silently
+// dropped one. When empty, the enabled set is every configured runner whose
+// credential is present.
 func ResolveRunners(ctx context.Context, cs kubernetes.Interface, namespace string,
 	runners map[string]Runner, restrict []string) ([]string, error) {
 	candidates := slices.Sorted(maps.Keys(runners))
@@ -67,8 +67,8 @@ func ResolveRunners(ctx context.Context, cs kubernetes.Interface, namespace stri
 // credentialPresent reports whether a runner's model credential is usable: the
 // fake runner needs none; otherwise the Secret must exist and carry the
 // configured key. A missing Secret is not an error (the caller decides whether
-// absence disables the harness or fails startup); a Secret present but missing
-// its key is always an error — a positive misconfiguration.
+// absence disables the harness or fails startup). A Secret present but missing
+// its key is always an error, because it is a positive misconfiguration.
 func credentialPresent(ctx context.Context, cs kubernetes.Interface, namespace string, r Runner) (bool, error) {
 	if r.Brokered {
 		// A brokered runner is enabled by configuration: no credential exists

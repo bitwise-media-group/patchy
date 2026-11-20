@@ -208,7 +208,7 @@ func (r *cannedRunner) Look(string) bool { return r.have }
 
 // TestVerifyRejectsUnconstrainedIdentity pins the defense-in-depth guard:
 // cosign treats an identity with neither subject nor regexp as matching
-// any signer, so Verify must refuse the shape outright — before any exec —
+// any signer, so Verify must refuse the shape outright, before any exec,
 // rather than "verifying" against the whole world.
 func TestVerifyRejectsUnconstrainedIdentity(t *testing.T) {
 	runner := &cannedRunner{have: true}

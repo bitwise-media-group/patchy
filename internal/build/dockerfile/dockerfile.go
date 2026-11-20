@@ -57,9 +57,9 @@ const buildArgSyntax = "BUILDKIT_SYNTAX"
 // prior stage or scratch, each COPY --from and RUN --mount from= naming an
 // image rather than a stage, and the frontend image (# syntax= or the
 // BUILDKIT_SYNTAX build arg). References are expanded the way BuildKit
-// expands them — global ARGs (defaults overridden by build args) plus the
-// automatic platform args for FROM, the stage's ARG and ENV for its flags —
-// once per platform, deduplicated in first-seen order.
+// expands them (FROM uses the global ARGs, with build args overriding
+// defaults, plus the automatic platform args; flags use the stage's ARG and
+// ENV), once per platform, deduplicated in first-seen order.
 func Sources(in Input) ([]Source, error) {
 	res, err := parser.Parse(bytes.NewReader(in.Content))
 	if err != nil {

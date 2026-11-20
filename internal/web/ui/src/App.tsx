@@ -115,7 +115,7 @@ export function App() {
   }, [detailName, loadDetail, persona]);
 
   // The configuration view lazily fetches its own dataset and refetches on
-  // config-changed signals — but only while the view is active, so idle
+  // config-changed signals, but only while the view is active, so idle
   // sessions cost nothing.
   const configActive = route.view === "config";
   const [config, setConfig] = useState<ConfigDataset | null>(null);
@@ -171,8 +171,8 @@ export function App() {
   }, [findingsBlocked, authError]);
 
   // One findings-changed signal refetches the list and, when a detail view
-  // is open, that one finding — both requests are cheap now that the list is
-  // trimmed and the detail is a single object.
+  // is open, that one finding. Both requests are cheap: the list is trimmed
+  // and the detail is a single object.
   useEffect(
     () =>
       subscribe(() => {
@@ -275,7 +275,7 @@ export function App() {
 
   // authPanel explains why the findings surface is unavailable. With a
   // provider it offers sign-in; without one (the server has no auth config)
-  // it says so — no dead buttons.
+  // it says so rather than showing a dead button.
   const authPanel = () => {
     if (findingsBlocked !== "unauthenticated") {
       // Signed in but not authorized: offer sign-out so the user can switch

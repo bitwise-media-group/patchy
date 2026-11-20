@@ -97,8 +97,8 @@ func TestSetPreservesQuoting(t *testing.T) {
 }
 
 func TestSetWholeFileByteIdentity(t *testing.T) {
-	// Everything but the token — comments, the trailing comment on the
-	// name line, indentation — must be byte-identical.
+	// Everything but the token (comments, the trailing comment on the
+	// name line, indentation) must be byte-identical.
 	got, err := Set([]byte(valuesFixture), ".extra.quoted", "0.165.0", "9.9.9")
 	if err != nil {
 		t.Fatalf("Set: %v", err)

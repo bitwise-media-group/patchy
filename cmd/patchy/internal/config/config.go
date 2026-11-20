@@ -17,12 +17,12 @@ import (
 var Extensions = []string{"yaml", "yml", "json", "toml"}
 
 // ErrAmbiguous reports one location holding the config in more than one
-// format; the CLI treats it as a usage error.
+// format. The CLI treats it as a usage error.
 var ErrAmbiguous = errors.New("ambiguous config")
 
-// Options locates the config roots. Every field is injectable so tests can
-// point the search at temp directories; zero values resolve to the real
-// process working directory, the user's home, and /etc/patchy.
+// Options locates the config roots. Tests set the fields to point the search
+// at temp directories. Zero values resolve to the real process working
+// directory, the user's home, and /etc/patchy.
 type Options struct {
 	// Workdir is the project root the four workdir locations hang off
 	// and relative config paths resolve against (default: os.Getwd).
@@ -86,8 +86,8 @@ func (o Options) locations() []location {
 type Loaded struct {
 	// File is the merged config, strictly decoded.
 	File *File
-	// Merged is the merged generic map — what viper layers flags and
-	// environment over for the flag-backed keys.
+	// Merged is the merged generic map. Viper layers flags and environment
+	// over it for the flag-backed keys.
 	Merged map[string]any
 	// Sources lists the loaded layers in precedence order (least
 	// preferred first), as display paths.
@@ -103,12 +103,12 @@ type Loaded struct {
 }
 
 // HasProjectLayer reports whether any loaded layer lives in the working
-// directory (as opposed to /etc or $HOME) — mirror add scaffolds a project
+// directory (as opposed to /etc or $HOME). mirror add scaffolds a project
 // patchy.yaml only when none does.
 func (l *Loaded) HasProjectLayer() bool { return l.projectLayers > 0 }
 
 // Path resolves a config path (mirror.directory, a dockerfile, a manifests
-// path) against the working directory; every layer's relative paths mean
+// path) against the working directory, so every layer's relative paths mean
 // the same thing.
 func (l *Loaded) Path(p string) string {
 	if p == "" || filepath.IsAbs(p) {
@@ -145,7 +145,7 @@ func Load(o Options) (*Loaded, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse config %s: %w", shown, err)
 		}
-		// Strict per-layer decode: an unknown key is reported against the
+		// Strict per-layer decode, so an unknown key is reported against the
 		// file that carries it, not the merged result.
 		layerFile, err := decodeFile(Merge(nil, m))
 		if err != nil {
@@ -170,8 +170,8 @@ func Load(o Options) (*Loaded, error) {
 	return loaded, nil
 }
 
-// find probes every location, rejecting ambiguity and loading a file that
-// two locations resolve to only once — at its more preferred position.
+// find probes every location, rejecting ambiguity. A file that two locations
+// resolve to loads only once, at its more preferred position.
 func find(o Options) ([]layer, error) {
 	var layers []layer
 	index := map[string]int{}

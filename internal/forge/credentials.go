@@ -17,8 +17,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/ghsecret"
 )
 
-// Secret keys a Forge credential Secret may carry (shared shape with
-// Integration secrets — see internal/ghsecret).
+// Secret keys a Forge credential Secret may carry. Integration secrets use the
+// same shape (see internal/ghsecret).
 const (
 	SecretKeyToken      = ghsecret.KeyToken
 	SecretKeyAppID      = ghsecret.KeyAppID
@@ -29,7 +29,7 @@ const (
 type Scope string
 
 // Credential scopes: read mints contents:read (clone/tarball); write mints
-// contents:write (branch push) — pull-request creation rides the same
+// contents:write (branch push). Pull-request creation uses the same
 // installation client.
 const (
 	ScopeRead  Scope = "read"
@@ -59,8 +59,8 @@ func (s *Store) Resolve(ctx context.Context, namespace, repoURL string) (*Resolv
 
 // Token mints a short-lived token for the resolved repository at the given
 // scope. With App auth the token is installation-scoped to the single
-// repository; with a PAT the static token is returned as-is (the PAT cannot
-// be narrowed — dev only).
+// repository. With a PAT the static token is returned as-is: a PAT cannot be
+// narrowed, so it is for dev only.
 func (s *Store) Token(ctx context.Context, res *Resolved, scope Scope) (string, time.Time, error) {
 	secret, err := s.secret(ctx, res.Forge)
 	if err != nil {
@@ -77,8 +77,8 @@ func (s *Store) Token(ctx context.Context, res *Resolved, scope Scope) (string, 
 	return app.ScopedToken(ctx, res.Repo, perms)
 }
 
-// Client returns an API client authenticated for the resolved repository —
-// the surface for archive downloads, head-SHA resolution, and pull requests.
+// Client returns an API client authenticated for the resolved repository,
+// used for archive downloads, head-SHA resolution, and pull requests.
 func (s *Store) Client(ctx context.Context, res *Resolved) (*ghclient.Client, error) {
 	secret, err := s.secret(ctx, res.Forge)
 	if err != nil {
@@ -109,10 +109,10 @@ func (s *Store) Validate(ctx context.Context, f *v1alpha1.Forge) error {
 	return s.apps.Validate(secret, f.Spec.BaseURL, proxyURL(f))
 }
 
-// ProxyURL returns the resolved Forge's effective proxy URL — the spec proxy
-// with the Secret's basic-auth credentials attached — for callers building
-// their own client (the write-path pusher). "" means no spec proxy; the
-// environment applies.
+// ProxyURL returns the resolved Forge's effective proxy URL (the spec proxy
+// with the Secret's basic-auth credentials attached) for callers building
+// their own client, such as the write-path pusher. "" means no spec proxy, so
+// the environment applies.
 func (s *Store) ProxyURL(ctx context.Context, res *Resolved) (string, error) {
 	raw := proxyURL(res.Forge)
 	if raw == "" {

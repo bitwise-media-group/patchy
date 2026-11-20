@@ -30,9 +30,9 @@ import (
 
 // RegisterFlags adds the per-harness runner flags shared by both job
 // controllers: an image per harness (unset = that runner is not configured),
-// the broker/provider flags, and the harness restrict list. Mutually
-// exclusive with RegisterEvolveFlags within one binary — both register the
-// shared flags.
+// the broker/provider flags, and the harness restrict list. Do not call it
+// together with RegisterEvolveFlags in one binary: both register the shared
+// flags.
 func RegisterFlags(f *pflag.FlagSet) {
 	f.String("claude-agent-image", "", "claude-agent-runner image (claude CLI); unset disables the claude runner")
 	f.String("codex-agent-image", "", "codex-agent-runner image (codex CLI); unset disables the codex runner")
@@ -43,8 +43,8 @@ func RegisterFlags(f *pflag.FlagSet) {
 
 // RegisterEvolveFlags adds the evolve-runner fleet flags for the evaluation
 // controller: an evolve-runner image per harness plus the same shared
-// broker/provider flags the finding runners use — one broker route per model
-// vendor, whichever fleet exercises it.
+// broker/provider flags the finding runners use. There is one broker route
+// per model vendor, whichever fleet uses it.
 func RegisterEvolveFlags(f *pflag.FlagSet) {
 	f.String("evolve-claude-image", "",
 		"evolve-runner image with the claude CLI; unset disables the claude evaluation runner")
@@ -80,9 +80,10 @@ func registerSharedFlags(f *pflag.FlagSet) {
 	f.String("codex-provider-env", "",
 		"extra NAME=value agent-pod env for the codex provider, comma separated (credential names rejected)")
 
-	// The --<harness>-secret* flags stay registered for back-compat, but
-	// both model-calling runners are brokered now and ignore them (a
-	// migration notice is logged when they are customized).
+	// The --<harness>-secret* flags stay registered so deployments that
+	// still pass them can start. Both model-calling runners are brokered
+	// and ignore them; a migration notice is logged when they are
+	// customized.
 	for _, s := range legacySecretFlags {
 		f.String(s.flag, s.def, "IGNORED: the "+s.harness+" model credential lives in the egress broker")
 	}
@@ -104,12 +105,12 @@ var legacySecretFlags = []struct{ harness, flag, def string }{
 }
 
 // brokeredHarnesses are the harnesses whose runners go through the egress
-// credential broker — every one that calls a model API.
+// credential broker: every one that calls a model API.
 var brokeredHarnesses = []string{model.HarnessClaude, model.HarnessCodex}
 
 // Runners builds the configured runner fleet from the flags. A harness is a
 // candidate runner only when its image flag is set. The claude and codex
-// runners are always brokered — their model traffic goes through the egress
+// runners are always brokered: their model traffic goes through the egress
 // credential broker and no credential enters the pod. models are the
 // canonical ids the fleet may run (the CanonicalModels output): any
 // pattern-tier id among them gets a derived claude model-map entry alongside
@@ -170,11 +171,11 @@ func EvolveRunners(opts *cli.Options) (map[string]jobs.Runner, error) {
 
 // brokeredRunner builds the brokered runner for a harness, shared by both
 // fleets: the provider config from the flags, the derived model map, and the
-// gateway env the pod gets. --broker-url is required — a claude or codex
-// runner without the broker is not a configuration. The legacy
-// --<harness>-secret* flags are ignored; customizing them earns a migration
-// notice rather than an error. models adds pattern-tier ids to the registry
-// the map is derived over.
+// gateway env the pod gets. --broker-url is required: a claude or codex
+// runner cannot run without the broker. The legacy --<harness>-secret* flags
+// are ignored; customizing them logs a migration notice rather than an
+// error. models adds pattern-tier ids to the registry the map is derived
+// over.
 func brokeredRunner(opts *cli.Options, harnessID, img string, models ...string) (jobs.Runner, error) {
 	pcfg, err := ProviderConfig(opts, harnessID)
 	if err != nil {
@@ -267,8 +268,8 @@ func SplitList(s string) []string {
 // concrete ids flow downstream into pod env, CRD status and rollups. The
 // allowlist is deduplicated; defaults keep their positions (an empty default
 // stays empty). An unknown alias family or a malformed id is an error. Each
-// pattern-tier id — a well-formed Anthropic version patchy has not
-// registered — is logged once as a warning: it runs on claude only and is
+// pattern-tier id (a well-formed Anthropic version patchy has not
+// registered) is logged once as a warning: it runs on claude only and is
 // unpriced until registered.
 func CanonicalModels(log *slog.Logger, allowlist []string, defaults ...string) (allow, defs []string, err error) {
 	allow, err = model.Canonicalize(allowlist)
@@ -303,9 +304,9 @@ func CanonicalModels(log *slog.Logger, allowlist []string, defaults ...string) (
 // harness set, and validates coverage: the allowlist must be fully runnable,
 // every requiredModel (the investigate/remediate defaults, canonical ids)
 // must resolve to an enabled harness, and each brokered runner's model map
-// must cover every model resolving to its harness — a foundry or azure gap
-// is a startup error here, not a mid-run failure. It also probes the broker's readiness,
-// non-fatally: the broker Deployment may simply not be up yet, and a
+// must cover every model resolving to its harness. A foundry or azure gap is
+// a startup error here, not a mid-run failure. It also probes the broker's
+// readiness, non-fatally: the broker Deployment may not be up yet, and a
 // deployment-ordering deadlock would be worse than a warning. Returns the
 // sorted enabled harness ids.
 func Resolve(ctx context.Context, opts *cli.Options, cs kubernetes.Interface, namespace string,

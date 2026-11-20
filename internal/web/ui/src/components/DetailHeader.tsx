@@ -35,7 +35,7 @@ function KebabMenu({ finding, demo, onSimulate403 }: { finding: Finding; demo: b
     try {
       await navigator.clipboard.writeText(window.location.href);
     } catch {
-      // Clipboard may be unavailable over file:// — nothing to recover.
+      // Clipboard may be unavailable over file://; nothing to recover.
     }
     setOpen(false);
   };

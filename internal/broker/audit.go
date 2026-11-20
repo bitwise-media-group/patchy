@@ -37,7 +37,7 @@ func (w *auditWriter) Write(p []byte) (int, error) {
 func (w *auditWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // audit emits the one slog line every request gets: caller pod, route,
-// method, path, status, duration, bytes. Never bodies, never headers — model
+// method, path, status, duration, bytes. Never bodies or headers: model
 // prompts and completions must not land in the broker's logs.
 func audit(log *slog.Logger, r *http.Request, pod, route string, status int, bytes int64, elapsed time.Duration) {
 	log.LogAttrs(r.Context(), slog.LevelInfo, "proxied",

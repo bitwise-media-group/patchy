@@ -334,7 +334,7 @@ func TestResolveGenericSource(t *testing.T) {
 	}
 }
 
-// A generic source with the resolver off — or gone entirely — is a complete
+// A generic source with the resolver off, or gone entirely, is a complete
 // source: the dismissal proceeds with no write-back and no error.
 func TestResolveGenericSourceWithoutResolver(t *testing.T) {
 	for _, tt := range []struct {

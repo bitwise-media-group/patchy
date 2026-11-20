@@ -28,8 +28,8 @@ const keepalivePeriod = 25 * time.Second
 const resyncPeriod = 30 * time.Second
 
 // broker fans "this evaluation changed" notifications out to its monitors,
-// keyed by evaluation name. Payloads are re-read from the cluster on wake —
-// the channel carries no data, so a slow client only ever misses
+// keyed by evaluation name. Payloads are re-read from the cluster on wake.
+// The channel carries no data, so a slow client only ever misses
 // intermediate states, never the final one.
 type broker struct {
 	mu   sync.Mutex
@@ -210,7 +210,7 @@ func (s *Server) finishIfTerminal(w http.ResponseWriter, flusher http.Flusher,
 	if snap.Phase != string(v1alpha1.EvaluationComplete) && snap.Phase != string(v1alpha1.EvaluationFailed) {
 		return false
 	}
-	// The end snapshot omits per-unit results — every settled unit already
+	// The end snapshot omits per-unit results. Every settled unit already
 	// went out as its own event; resending entries would double the stream.
 	final := *snap
 	final.Units = make([]evaluation.UnitStatusWire, len(snap.Units))

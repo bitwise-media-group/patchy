@@ -16,8 +16,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 )
 
-// resetClient is the forge surface the demo reset needs — a slice of
-// ghclient.Client; tests substitute a fake.
+// resetClient is the subset of ghclient.Client the demo reset needs; tests
+// substitute a fake.
 type resetClient interface {
 	DeleteIssue(ctx context.Context, repo ghclient.Repo, number int) error
 	Close(ctx context.Context, repo ghclient.Repo, number int) error
@@ -26,13 +26,14 @@ type resetClient interface {
 
 // runReset performs the demo reset: permanently delete every finding's
 // tracking issue, reopen the dismissed findings' own code-scanning alerts
-// (patchy dismissed them on false-positive verdicts; only the findings we
-// know about — a demo reset happens within the finding TTL, so nothing
-// older lingers), then delete every pipeline resource. GitHub cleanup runs
-// first and any failure aborts before the deletes — the Findings carry the
-// issue numbers, repositories, and alert numbers the cleanup needs, so
-// state must outlive a retried attempt. Everything here is idempotent, and
-// forge objects that are already gone are skipped rather than failed.
+// (patchy dismissed them on false-positive verdicts). Only findings that
+// still exist are covered; a demo reset happens within the finding TTL, so
+// nothing older lingers. Then it deletes every pipeline resource. GitHub
+// cleanup runs first and any failure aborts before the deletes: the
+// Findings carry the issue numbers, repositories, and alert numbers the
+// cleanup needs, so that state must outlive a retried attempt. Everything
+// here is idempotent, and forge objects that are already gone are skipped
+// rather than failed.
 func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) error {
 	var findings v1alpha1.FindingList
 	if err := r.List(ctx, &findings, client.InNamespace(namespace)); err != nil {
@@ -72,7 +73,7 @@ func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) 
 // resetFinding runs the GitHub cleanup for one finding: delete its tracking
 // issue (when a tracker Integration exists) and, for dismissed findings,
 // reopen its code-scanning alerts (when a scanner Integration exists).
-// Only admin-permission user tokens may delete issues — with any other
+// Only admin-permission user tokens may delete issues. With any other
 // credential the delete falls back to closing the issue, which keeps a
 // replayed demo from duplicating open trackers at the cost of leaving
 // closed ones behind.
@@ -135,7 +136,7 @@ func (r *IntegrationReconciler) resetAlerts(
 	return errs
 }
 
-// forgeGone reports whether err is GitHub answering "no such thing" — a 404
+// forgeGone reports whether err is GitHub answering "no such thing": a 404
 // for the repository, its installation, an issue, or an alert. The reset
 // converges on "no forge state left", so anything already absent is success:
 // the benchmark repositories a demo runs against get deleted and recreated
@@ -151,8 +152,8 @@ func (r *IntegrationReconciler) forgeGone(ctx context.Context, repo ghclient.Rep
 }
 
 // deleteOrCloseIssue deletes a tracking issue, closing it instead when
-// the credential cannot delete (both are idempotent — a missing issue
-// deletes as success and a closed issue closes as a no-op).
+// the credential cannot delete. Both are idempotent: a missing issue
+// deletes as success and a closed issue closes as a no-op.
 func (r *IntegrationReconciler) deleteOrCloseIssue(
 	ctx context.Context, c resetClient, repo ghclient.Repo, number int,
 ) error {
@@ -178,7 +179,8 @@ func (r *IntegrationReconciler) resetIntegration(
 	return integ, err
 }
 
-// resetClientFor resolves the forge-client seam.
+// resetClientFor returns the forge client for the reset: ClientFor when
+// set (tests), else Creds.Client.
 func (r *IntegrationReconciler) resetClientFor(
 	ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo,
 ) (resetClient, error) {

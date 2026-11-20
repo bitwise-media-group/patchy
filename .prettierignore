@@ -1,4 +1,4 @@
-# Kept verbatim — the original spec.
+# Kept verbatim: the original spec.
 DESIGN.md
 
 # Golden test fixtures are generated; byte-stability matters more than style.
@@ -11,9 +11,9 @@ CLAUDE.md
 .claude/
 
 # Generated from the cobra command tree (mise run docs); same reasoning as the
-# fixtures above — a reformat would surface as drift on the next regeneration.
-# docs/operate/cli.md, the hand-written page that navs to them, is deliberately not
-# covered.
+# fixtures above: a reformat would surface as drift on the next regeneration.
+# docs/operate/cli.md, the hand-written page that navs to them, is not listed,
+# so prettier still formats it.
 docs/cli/
 completions/
 

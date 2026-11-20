@@ -5,7 +5,7 @@
 //   PATCHY_API_TARGET=http://127.0.0.1:8080 bun run dev -- --port 5173
 //
 // --demo needs no server at all: the page runs on its built-in mock data
-// (src/mock — findings, rollups, config, transcripts, and the persona switcher
+// (src/mock: findings, rollups, config, transcripts, and the persona switcher
 // for previewing permissions), and nothing is forwarded.
 //
 // Tailwind is applied through bunfig.toml ([serve.static] plugins), which is
@@ -53,8 +53,8 @@ async function forward(req: Request): Promise<Response> {
   }
 }
 
-// The page only shows "HTTP 502", so say why in the terminal — once per
-// outage, not once per request — with the way to bring a status server up.
+// The page only shows "HTTP 502", so say why in the terminal (once per
+// outage, not once per request) with the way to bring a status server up.
 let warned = false;
 function warnUnreachable(err: unknown) {
   if (warned) return;

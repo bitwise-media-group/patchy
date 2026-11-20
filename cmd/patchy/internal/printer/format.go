@@ -28,7 +28,7 @@ const (
 	FormatYAML Format = "yaml"
 	// FormatName emits `<resource>.<group>/<name>` lines, for xargs.
 	FormatName Format = "name"
-	// FormatMarkdown emits markdown — a table for lists, prose for reports.
+	// FormatMarkdown emits markdown: a table for lists, prose for reports.
 	// This is the paste-into-a-ticket format, so it is never styled.
 	FormatMarkdown Format = "markdown"
 )
@@ -64,10 +64,10 @@ func (f Format) Structured() bool {
 
 // Color reports whether output to w should be styled.
 //
-// Styling is opt-out in three independent ways because each covers a case the
+// Styling has several independent opt-outs because each covers a case the
 // others miss: --no-color is the explicit ask, NO_COLOR is the cross-tool
-// convention, and a non-terminal writer means nobody is reading this with
-// their eyes. TERM=dumb catches terminals that cannot render it.
+// convention, and a non-terminal writer means no person is reading. TERM=dumb
+// catches terminals that cannot render it.
 func Color(w io.Writer, noColor bool) bool {
 	if noColor || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false

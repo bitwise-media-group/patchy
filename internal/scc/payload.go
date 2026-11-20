@@ -3,10 +3,10 @@
 
 package scc
 
-// The decoded slices of the Pub/Sub push envelope and the SCC
-// NotificationMessage inside it. Only the fields patchy consumes are declared;
-// a real notification carries dozens more, and the finding's markdown
-// rendering reads them from the generic map rather than growing this file.
+// The decoded parts of the Pub/Sub push envelope and the SCC
+// NotificationMessage inside it. Only the fields patchy reads are declared. A
+// real notification carries dozens more; detector-specific facts reach the
+// markdown description through the sourceProperties map instead.
 
 // pushEnvelope is the body Pub/Sub POSTs to a push endpoint.
 type pushEnvelope struct {
@@ -40,7 +40,7 @@ type notification struct {
 	Resource               resource `json:"resource"`
 }
 
-// finding is the slice of the SCC Finding we consume.
+// finding is the part of the SCC Finding patchy reads.
 type finding struct {
 	// Name is the full resource name of the finding itself:
 	// organizations/<org>/sources/<src>/findings/<id>. It is the alert id.
@@ -117,9 +117,9 @@ type securityMarks struct {
 	Marks map[string]string `json:"marks"`
 }
 
-// resource is the affected cloud resource, as SCC describes it. Note it
-// carries no arbitrary GCP resource labels — those live on the resource
-// itself and reach patchy only through a Cloud Asset Inventory lookup.
+// resource is the affected cloud resource, as SCC describes it. It carries no
+// GCP resource labels: those live on the resource itself and reach patchy only
+// through a Cloud Asset Inventory lookup.
 type resource struct {
 	Name               string   `json:"name"`
 	DisplayName        string   `json:"displayName"`

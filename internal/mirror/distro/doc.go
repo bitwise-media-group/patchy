@@ -3,8 +3,8 @@
 
 // Package distro derives extra mirrored images from a distribution
 // manifests artifact, for charts whose workload images are deployed by an
-// operator from manifests helm never renders — so image discovery cannot
-// see them, and hand-pinned extras drift the moment upstream cuts a
+// operator from manifests helm never renders. Image discovery cannot see
+// those images, and hand-pinned extras drift as soon as upstream cuts a
 // release. The artifact (pulled at the tag matching the vendored chart's
 // appVersion) carries <product>/<version>/<component>.yaml manifest trees;
 // the newest version present is what the pinned operator deploys, and each

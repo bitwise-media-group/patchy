@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Package yamledit performs surgical edits on YAML files that humans and
-// other tools also write: it uses the YAML AST only to LOCATE a scalar,
+// other tools also write: it uses the YAML AST only to locate a scalar,
 // then byte-splices exactly that token, never re-encoding the document.
 // Comments, ordering, indentation, quoting style and every other byte
-// outside the replaced token survive verbatim — the files it edits (chart
+// outside the replaced token survive verbatim. The files it edits (chart
 // manifests, discovery values) live in git and their diffs are reviewed,
 // so a formatting round-trip would be noise at best and a byte-identity
 // gate failure at worst.

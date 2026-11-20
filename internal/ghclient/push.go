@@ -51,7 +51,7 @@ func (c *Client) PushBranch(ctx context.Context, repo Repo, req BranchPush) erro
 		})
 	}
 	for _, path := range req.Deletes {
-		// SHA and Content both nil serialize as "sha": null — a deletion.
+		// SHA and Content both nil serialize as "sha": null, a deletion.
 		entries = append(entries, &github.TreeEntry{Path: new(path), Mode: new("100644")})
 	}
 
@@ -75,7 +75,7 @@ func (c *Client) PushBranch(ctx context.Context, repo Repo, req BranchPush) erro
 		SHA: commit.GetSHA(),
 	})
 	if err != nil && resp != nil && resp.StatusCode == http.StatusUnprocessableEntity {
-		// The branch already exists — a retried event; move it.
+		// The branch already exists (a retried event); move it.
 		_, _, err = c.gh.Git.UpdateRef(ctx, repo.Owner, repo.Name, "heads/"+req.Branch,
 			github.UpdateRef{SHA: commit.GetSHA(), Force: new(true)})
 	}

@@ -42,9 +42,9 @@ func New(cs kubernetes.Interface, cfg Config, log *slog.Logger) (*Server, error)
 }
 
 // Handler is the proxy surface: one subtree per configured route, everything
-// under it requiring a valid caller token — plus the (unauthenticated) probe
-// endpoints, so controllers can check readiness over the same Service URL
-// agent pods proxy through.
+// under it requiring a valid caller token. It also mounts the unauthenticated
+// probe endpoints, so controllers can check readiness over the same Service
+// URL agent pods proxy through.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	for name, rt := range s.routes {
@@ -89,18 +89,18 @@ func (s *Server) handle(rt *route) http.Handler {
 	})
 }
 
-// HealthHandler serves the probe endpoints on the health listener: healthz
-// is liveness, readyz additionally requires every configured route's
-// credential source to be usable — which is what replaces controller-side
-// Secret probing as "is the model credential present". Neither touches the
-// API server: TokenReview being down must fail requests, not probes.
+// HealthHandler serves the probe endpoints on the health listener. healthz
+// is liveness. readyz also requires every configured route's credential
+// source to be usable, which is how controllers learn whether the model
+// credential is present (they never probe the Secret themselves). Neither
+// touches the API server: TokenReview being down must fail requests, not
+// probes.
 func (s *Server) HealthHandler() http.Handler {
 	mux := http.NewServeMux()
 	s.mountHealth(mux)
 	return mux
 }
 
-// mountHealth registers the probe endpoints on a mux.
 func (s *Server) mountHealth(mux *http.ServeMux) {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

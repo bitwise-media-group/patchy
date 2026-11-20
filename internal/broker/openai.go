@@ -14,8 +14,8 @@ import (
 
 // OpenAI is the codex first-party route: inject the platform API key from a
 // mounted Secret file as Authorization: Bearer and forward otherwise
-// unchanged. The file is read per request, so a rotated Secret propagates
-// without a restart — the same posture as the Anthropic route.
+// unchanged. Like the Anthropic route, it reads the file per request, so a
+// rotated Secret propagates without a restart.
 func OpenAI(target *url.URL, keyFile string) Upstream {
 	return Upstream{
 		Target: target,
@@ -56,8 +56,8 @@ func AzureOpenAIKey(target *url.URL, keyFile string) Upstream {
 
 // AzureOpenAIEntra is the Azure OpenAI route in Entra mode: attach a bearer
 // token from the broker's ambient Azure identity (Workload Identity
-// in-cluster), cached and refreshed broker-side — the same Cognitive
-// Services scope and token source the Foundry Entra route uses.
+// in-cluster), cached and refreshed broker-side. It uses the same Cognitive
+// Services scope and token source as the Foundry Entra route.
 func AzureOpenAIEntra(target *url.URL) (Upstream, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {

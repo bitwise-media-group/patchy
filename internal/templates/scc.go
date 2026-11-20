@@ -5,7 +5,8 @@ package templates
 
 // SCCKV is one ordered key/value fact. Security Command Center hands several
 // of its richest fields over as unordered maps; the source sorts them into
-// slices so the rendered markdown is stable and the goldens mean something.
+// slices so the rendered markdown is stable and the golden tests are
+// deterministic.
 type SCCKV struct {
 	Key   string
 	Value string
@@ -29,8 +30,8 @@ type SCCResource struct {
 }
 
 // SCCFinding is the data the Security Command Center description template
-// renders. It is a flattened, presentation-ready view of the notification —
-// the source decides what is worth showing, the template decides how it looks.
+// renders. It is a flattened, presentation-ready view of the notification:
+// the source decides what to show, the template decides how it looks.
 type SCCFinding struct {
 	// Name is the finding's full SCC resource name.
 	Name string
@@ -56,9 +57,9 @@ type SCCFinding struct {
 	Compliances []SCCCompliance
 	// Properties are the detector's own facts, sorted by key.
 	Properties []SCCKV
-	// Marks are the operator's security marks, sorted by key. They are worth
-	// showing: they are how a human annotates a resource, and one of them may
-	// be the very label that failed to resolve a repository.
+	// Marks are the operator's security marks, sorted by key. They are how a
+	// human annotates a resource, and one of them may be the label that
+	// failed to resolve a repository.
 	Marks []SCCKV
 	// DetectedAt is the event time.
 	DetectedAt string

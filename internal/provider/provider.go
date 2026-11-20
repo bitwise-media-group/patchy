@@ -15,14 +15,14 @@ import (
 
 // BrokerTokenHeader carries the agent pod's projected ServiceAccount token
 // to the egress broker; the broker validates it via TokenReview and strips
-// it before any byte is forwarded upstream. Defined here — the one package
-// both the in-pod runtime and the broker import — so the two sides can never
-// drift.
+// it before any byte is forwarded upstream. It is defined here, the one
+// package both the in-pod runtime and the broker import, so the two sides
+// can never drift.
 const BrokerTokenHeader = "X-Patchy-Broker-Token"
 
 // The claude CLI's first-party route refuses to send any request ("Not logged
-// in · Please run /login") unless one of its credential channels is set, and —
-// unlike bedrock/vertex/foundry — it has no CLAUDE_CODE_SKIP_*_AUTH switch. A
+// in · Please run /login") unless one of its credential channels is set.
+// Unlike bedrock/vertex/foundry, it has no CLAUDE_CODE_SKIP_*_AUTH switch. A
 // brokered anthropic run therefore presents this fixed, non-secret stand-in on
 // the child process's env (never the pod spec, which stays credential-free).
 // The broker strips Authorization before injecting the real credential, so
@@ -32,7 +32,7 @@ const (
 	BrokerAuthPlaceholder    = "patchy-egress-broker"
 )
 
-// Provider names — the model APIs a brokered runner can front. The first four
+// Provider names: the model APIs a brokered runner can front. The first four
 // serve the claude harness, the last two the codex harness.
 const (
 	Anthropic = "anthropic"
@@ -67,8 +67,8 @@ type Config struct {
 	// claude; openai or azure for codex.
 	Name string
 	// BrokerURL is the egress broker's base URL; the per-provider route
-	// (/anthropic, /bedrock, /openai, ...) is appended. Required always —
-	// brokered is the only mode a claude or codex runner has.
+	// (/anthropic, /bedrock, /openai, ...) is appended. Always required,
+	// because brokered is the only mode a claude or codex runner has.
 	BrokerURL string
 	// Region is the provider region: required for bedrock (SigV4 scope and
 	// the AWS_REGION the CLI sends) and vertex (CLOUD_ML_REGION).
@@ -114,7 +114,6 @@ var GatewayEnvNames = []string{
 	CodexPlaceholderKeyEnv,
 }
 
-// harnessID is the harness this config serves, defaulting to claude.
 func (c Config) harnessID() string {
 	if c.Harness == "" {
 		return model.HarnessClaude
@@ -153,7 +152,7 @@ func (c Config) Validate() error {
 }
 
 // forbiddenEnvNames is what ExtraEnv may not name: every gateway name this
-// package emits plus every brokerable harness's own credential channels — a
+// package emits plus every brokerable harness's own credential channels. A
 // credential belongs in the broker, never in the pod.
 func forbiddenEnvNames() map[string]bool {
 	out := map[string]bool{}
@@ -220,9 +219,9 @@ func Env(c Config, modelMap map[string]string) map[string]string {
 // EffectiveModelMap resolves the canonical→CLI-id map the pod translates
 // with: a derived default per registry model the claude harness can run,
 // overridden by the operator's entries. The first-party providers (anthropic,
-// openai) need no translation — the registry already carries their CLIs' ids
-// — and foundry and azure have no derivable defaults, so all four return
-// cfg.ModelMap exactly.
+// openai) need no translation because the registry already carries their
+// CLIs' ids, and foundry and azure have no derivable defaults, so all four
+// return a copy of cfg.ModelMap.
 func EffectiveModelMap(c Config, models []model.Model) (map[string]string, error) {
 	switch c.Name {
 	case Anthropic, Foundry, OpenAI, Azure:
@@ -271,8 +270,8 @@ func bedrockPrefix(c Config) (string, error) {
 
 // ValidateCoverage fails when a required canonical model (allowlist entries,
 // stage defaults) that the config's harness would run has no entry in the
-// effective map. Only foundry and azure can under-cover — their maps are
-// entirely operator-written — but the check is provider-agnostic so a future
+// effective map. Only foundry and azure can under-cover, since their maps are
+// entirely operator-written, but the check is provider-agnostic so a future
 // gap surfaces at startup rather than mid-run.
 func ValidateCoverage(c Config, models []model.Model, modelMap map[string]string, required []string) error {
 	if c.Name == Anthropic || c.Name == OpenAI {

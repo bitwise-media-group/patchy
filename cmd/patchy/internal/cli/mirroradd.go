@@ -94,8 +94,8 @@ func runMirrorAdd(ctx context.Context, cmd *cobra.Command, opts *Options, f *mir
 		return err
 	}
 	if kind == spec.KindArtifact {
-		// The manifest records the repository; any tag in the URL only
-		// influences nothing — versions pin explicitly.
+		// The manifest records the repository. Any tag in the URL is
+		// dropped, because versions pin explicitly.
 		ref, err := imageref.Parse(artifactRef)
 		if err != nil {
 			return err
@@ -163,8 +163,8 @@ func runMirrorAdd(ctx context.Context, cmd *cobra.Command, opts *Options, f *mir
 
 // mirrorRootOrInit resolves the store root, first scaffolding patchy.yaml in
 // the working directory when no layer of the patchy config lives there
-// yet. A broken config propagates — only a missing project config earns a
-// scaffold. Returns the scaffolded path, empty when nothing was written.
+// yet. A broken config returns an error: only a missing project config gets
+// a scaffold. It returns the scaffolded path, empty when nothing was written.
 func mirrorRootOrInit(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string, string, error) {
 	loaded, err := loadPatchyConfig()
 	if err != nil {
@@ -188,7 +188,7 @@ func mirrorRootOrInit(cmd *cobra.Command, opts *Options, f *mirrorFlags) (string
 func detectAddTarget(ctx context.Context, a addSpec) (kind, chartRepo, chartName, artifactRef string, err error) {
 	switch {
 	case strings.HasPrefix(a.url, "https://"), strings.HasPrefix(a.url, "http://"):
-		// A helm repository; the entry name doubles as the chart name.
+		// A helm repository. The entry name doubles as the chart name.
 		if a.entryType == "artifact" {
 			return "", "", "", "", errUsage(errors.New(
 				"an https:// URL is a helm repository; artifacts need a registry reference"))

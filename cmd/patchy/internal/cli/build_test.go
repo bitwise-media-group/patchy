@@ -160,7 +160,7 @@ func TestBuildCommandValidation(t *testing.T) {
 	}
 }
 
-// TestBuildCommandNoEntries: --all over an empty build: block is a narrated
+// TestBuildCommandNoEntries: --all over an empty `build:` block is a narrated
 // no-op, so a shared task can run it in a repo that only mirrors.
 func TestBuildCommandNoEntries(t *testing.T) {
 	buildWorkspace(t, "registries: [{name: r, url: r.invalid/x}]\n")
@@ -185,8 +185,8 @@ func TestBuildCommandNoEntries(t *testing.T) {
 	}
 }
 
-// TestBuildCommandDryRun drives the whole command with fakes: every target
-// reported as would-push, nothing contacted (the registries are .invalid).
+// TestBuildCommandDryRun drives the whole command with fakes. Every target is
+// reported as would-push and nothing is contacted (the registries are .invalid).
 func TestBuildCommandDryRun(t *testing.T) {
 	b, _ := buildWorkspace(t, buildConfig)
 	out, err := execDev(t, "build", "--all", "--dry-run", "-o", "json", "--registry", "ghcr")
@@ -310,9 +310,9 @@ func TestBuildCommandDryRunWithoutRegistries(t *testing.T) {
 }
 
 // TestBuildCommandUpdateAllowlistsWithoutRegistries: an allowlist refresh
-// never publishes or signs, so like a plan it needs no registries
-// configured - a repository whose registries only the publish workflow
-// supplies can still regenerate its allowlists on a workstation.
+// never publishes or signs, so like a plan it needs no registries configured.
+// A repository whose registries only the publish workflow supplies can still
+// regenerate its allowlists on a workstation.
 func TestBuildCommandUpdateAllowlistsWithoutRegistries(t *testing.T) {
 	config := buildConfig[strings.Index(buildConfig, "build:"):]
 	_, s := buildWorkspace(t, config)

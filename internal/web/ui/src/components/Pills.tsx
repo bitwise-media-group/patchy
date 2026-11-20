@@ -37,7 +37,7 @@ export function Pill({
   );
 }
 
-// Severity gets its own ramp — the state tones (soil/amber) are reserved
+// Severity gets its own ramp. The state tones (soil/amber) are reserved
 // for lifecycle meaning, so `high` must never read like `dismissed`.
 const SEVERITY_TONE: Record<Level, Tone> = {
   critical: "sev-critical",

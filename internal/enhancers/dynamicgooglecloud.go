@@ -32,7 +32,7 @@ type ConfigSource func(ctx context.Context) (*AssetConfig, error)
 
 // DynamicGoogleCloud is GoogleCloudLabels with its configuration read from
 // the Integration CR per enhancement instead of captured at process start. A
-// config change — a new scope, different label keys — takes effect on the
+// config change (a new scope, different label keys) takes effect on the
 // next reconcile without a restart. Only the asset client is stateful: it
 // holds a gRPC connection, so it is memoized by scope and swapped (closing
 // the old one) when the scope changes.
@@ -40,7 +40,7 @@ type DynamicGoogleCloud struct {
 	// Config reads the capability. Required.
 	Config ConfigSource
 	// NewAssets builds an asset client for a scope; nil means gcpasset.New.
-	// The seam exists for tests, which must not dial Google.
+	// The hook exists for tests, which must not dial Google.
 	NewAssets func(ctx context.Context, scope string) (AssetLabels, func() error, error)
 
 	mu     sync.Mutex
@@ -51,9 +51,9 @@ type DynamicGoogleCloud struct {
 
 var _ enhance.Enhancer = (*DynamicGoogleCloud)(nil)
 
-// ID implements enhance.Enhancer. It deliberately reuses GoogleCloudLabelsID:
-// this is the same enhancer to everything downstream (enrichment attribution,
-// sticky comments, attribute precedence), only its configuration plumbing
+// ID implements enhance.Enhancer. It reuses GoogleCloudLabelsID because this
+// is the same enhancer to everything downstream (enrichment attribution,
+// sticky comments, attribute precedence); only its configuration plumbing
 // differs.
 func (*DynamicGoogleCloud) ID() string { return GoogleCloudLabelsID }
 
@@ -83,8 +83,8 @@ func (d *DynamicGoogleCloud) Enhance(ctx context.Context, issue enhance.Issue) (
 
 // assetsFor returns the memoized asset client for scope, building one on
 // first use and swapping when the scope changes. An in-flight enhancement
-// racing a swap may fail against the closed client; that error is retryable
-// by design, so nothing is lost.
+// racing a swap may fail against the closed client; that error is retryable,
+// so nothing is lost.
 func (d *DynamicGoogleCloud) assetsFor(ctx context.Context, scope string) (AssetLabels, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -138,7 +138,7 @@ func (r *IntegrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// dropDedup invokes the ResetDedup seam when wired.
+// dropDedup calls ResetDedup when it is set.
 func (r *IntegrationReconciler) dropDedup() {
 	if r.ResetDedup != nil {
 		r.ResetDedup()

@@ -9,7 +9,7 @@ import (
 )
 
 // MaxEntryBytes bounds UnitResult.Entry. The pod truncates evidence fields
-// until the marshalled entry fits — the entry is stored in a ConfigMap under
+// until the marshalled entry fits. The entry is stored in a ConfigMap under
 // Kubernetes' ~1MiB object cap, and this bound leaves headroom for the
 // object's own metadata after gzip.
 const MaxEntryBytes = 900 << 10
@@ -41,7 +41,7 @@ type CaseStatus struct {
 	Passed bool `json:"passed"`
 }
 
-// ResultSummary is the typed, bounded portion of a unit result — everything
+// ResultSummary is the typed, bounded portion of a unit result: everything
 // patchy stamps into the EvaluationUnit status.
 type ResultSummary struct {
 	CasesPassed  int `json:"casesPassed"`
@@ -67,13 +67,13 @@ type UnitResult struct {
 	Tier    int    `json:"tier"`
 	Model   string `json:"model"`
 	Harness string `json:"harness"`
-	// Failed reports whether any executed case failed — the client's
+	// Failed reports whether any executed case failed. It is the client's
 	// --strict signal, not a scheduling failure.
 	Failed bool `json:"failed"`
 	// Summary is the bounded, typed digest patchy stores in CR status.
 	Summary ResultSummary `json:"summary"`
 	// Entry is the finished results entry (the client's TriggerEntry or
-	// EvalEntry, schema 5), OPAQUE to patchy: stored whole in the results
+	// EvalEntry, schema 5), opaque to patchy: stored whole in the results
 	// ConfigMap and handed back to the client, which merges it into its
 	// local results file. At most MaxEntryBytes.
 	Entry json.RawMessage `json:"entry,omitempty"`

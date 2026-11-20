@@ -19,7 +19,7 @@ import (
 	"github.com/bitwise-media-group/patchy/cmd/patchy/internal/devharness"
 )
 
-// devGenericFlags carries the harness configuration; every field also
+// devGenericFlags carries the harness configuration. Every field also
 // resolves from PATCHY_DEV_* and the patchy config via loadCLIConfig.
 type devGenericFlags struct {
 	addr           string
@@ -194,7 +194,7 @@ func validateDevName(name string) error {
 }
 
 // generateDevSecret mints a random hex secret so a first run needs no setup.
-// Hex, so the printed value pastes cleanly into a shell or a signing script.
+// Hex pastes cleanly into a shell or a signing script.
 func generateDevSecret() ([]byte, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

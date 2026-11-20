@@ -11,8 +11,8 @@ import (
 
 // KubescapeResult is one configuration scan's outcome.
 type KubescapeResult struct {
-	// Skipped is set (with the reason) when the scan could not run —
-	// the binary being absent is a warning, not a failure.
+	// Skipped is set (with the reason) when the scan could not run. A
+	// missing binary is a warning, not a failure.
 	Skipped string
 	// Failed reports a non-zero scan under fail mode.
 	Failed bool

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Package priority maps investigation results onto the 0–100 scheduling
-// priority remediation runs compete with. The controller — not the agent —
-// owns the ranking, so weights are tunable without re-prompting; the agent's
-// own priority level remains a display field.
+// priority remediation runs compete with. The controller, not the agent, owns
+// the ranking, so weights are tunable without re-prompting. The agent's own
+// priority level remains a display field.
 package priority
 
 import v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -38,7 +38,8 @@ func levelValue(l v1alpha1.Level) float64 {
 }
 
 // ratingValue maps a Rating onto 0..3, evenly spreading the five-value
-// vocabulary over the same span as levelValue (none and unassessed are 0).
+// vocabulary over the same span as levelValue (none and unassessed, the empty
+// string, are 0).
 func ratingValue(r v1alpha1.Rating) float64 {
 	switch r {
 	case v1alpha1.RatingLow:

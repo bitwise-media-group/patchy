@@ -157,7 +157,7 @@ func nonNegative(s string) (int, error) {
 // Timestamp resolves the run's PATCHY_TIMESTAMP once: an explicit
 // PATCHY_TIMESTAMP wins (so several jobs can share one value), else
 // SOURCE_DATE_EPOCH (so a rebuild of the same commit stamps the same tag),
-// else now — always UTC yyyymmddhhmmss.
+// else now. The result is always UTC yyyymmddhhmmss.
 func Timestamp(lookup Lookup, now time.Time) (string, error) {
 	if v, ok := lookup(TimestampVar); ok && v != "" {
 		if _, err := time.Parse(TimestampLayout, v); err != nil {

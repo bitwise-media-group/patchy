@@ -18,9 +18,9 @@ func FindingIssueTitle(f *v1alpha1.Finding) string {
 	return fmt.Sprintf("[%s] %s: %s", f.Spec.Source, primary, f.Spec.Title)
 }
 
-// RenderFindingIssue renders the tracking-issue body from the Finding — a
-// pure human-facing projection (the CR is the state; the body carries only a
-// finding-name marker comment for debugging).
+// RenderFindingIssue renders the tracking-issue body from the Finding. It is
+// a human-facing projection only: the CR holds the state, and the body
+// carries just a finding-name marker comment for debugging.
 func RenderFindingIssue(f *v1alpha1.Finding) (string, error) {
 	return render("finding_issue.md.tmpl", f)
 }

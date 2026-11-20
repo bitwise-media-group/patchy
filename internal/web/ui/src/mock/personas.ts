@@ -1,4 +1,4 @@
-// Demo personas — each previews one authorization level. In live mode the
+// Demo personas: each previews one authorization level. In live mode the
 // server stamps userActions per finding from the requesting user's actual
 // grants; personas exist only so the demo can show every gating state.
 

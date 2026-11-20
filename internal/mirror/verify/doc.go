@@ -4,7 +4,7 @@
 // Package verify checks OCI artifact signatures for the mirror: upstream
 // provenance per a manifest's verifyUpstream rules (keyless with an
 // identity regexp, or a published public key), and the mirror's own
-// signatures (the exact certificate identity or KMS key it signs with —
+// signatures (the exact certificate identity or KMS key it signs with, as
 // the publish-idempotency self-check).
 //
 // Verification drives the same code paths the cosign CLI drives: sigstore

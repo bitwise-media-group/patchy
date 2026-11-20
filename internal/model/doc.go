@@ -5,7 +5,7 @@
 // canonical models: provider-qualified ids, the harnesses each model can be
 // driven by, and per-token pricing.
 //
-// It is a leaf domain package — it imports no other internal package — so both
+// It is a leaf domain package (it imports no other internal package), so both
 // the controllers and the in-pod agent-runner can share one source of truth
 // for which harness runs a model and what CLI model-id that harness expects. A
 // model's identity (its provider-qualified ID) is independent of the executing
@@ -20,7 +20,7 @@
 //   - alias: a family alias with no version ("anthropic/claude-opus") resolves
 //     to the newest registered version of that family. Controllers resolve
 //     aliases once at startup (Canonicalize), so only the concrete id flows
-//     downstream — pod env, CRD status, rollups — and stats and pricing stay
+//     downstream (pod env, CRD status, rollups) and stats and pricing stay
 //     per-version;
 //   - pattern: a well-formed but unregistered Anthropic version id
 //     ("anthropic/claude-opus-6") is synthesized as a claude-harness-only,

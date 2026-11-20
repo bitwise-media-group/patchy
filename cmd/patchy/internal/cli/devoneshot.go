@@ -29,7 +29,7 @@ type devOneShotFlags struct {
 }
 
 // devOneShotKeys maps the one-shot flags onto the same config keys the
-// harness uses, per leg — one patchy config drives both commands.
+// harness uses, per leg, so one patchy config drives both commands.
 func devOneShotKeys(leg string) map[string]string {
 	return map[string]string{
 		"url":         "dev." + leg + "-url",

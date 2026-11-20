@@ -88,9 +88,9 @@ func TestIsAll(t *testing.T) {
 	}
 }
 
-// TestAllIsNotAKind: `all` means "every kind" to get and nothing at all to the
-// other verbs, so Lookup must keep rejecting it — `patchy suspend all` would
-// otherwise resolve to something.
+// TestAllIsNotAKind: `all` means "every kind" to get and nothing to the other
+// verbs, so Lookup must reject it. Otherwise `patchy suspend all` would
+// resolve to something.
 func TestAllIsNotAKind(t *testing.T) {
 	if _, err := Lookup(All); err == nil {
 		t.Fatal("Lookup resolved the every-kind pseudo-noun to a kind")

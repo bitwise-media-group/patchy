@@ -45,7 +45,7 @@ func TestDiffSnapshots(t *testing.T) {
 
 // TestResolveImagesSortedBySource pins the lock's deterministic ordering:
 // resolution fans out concurrently, and the sort is the only thing keeping
-// the committed lock reproducible — which the validate gate byte-compares.
+// the committed lock reproducible, which the validate gate byte-compares.
 func TestResolveImagesSortedBySource(t *testing.T) {
 	f := newFixture(t)
 	f.pushImage(f.host+"/apps/bbb:1.0.0", testNow.AddDate(0, -1, 0))

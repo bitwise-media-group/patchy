@@ -230,9 +230,9 @@ func investigateRun(t *testing.T) envelope.Event {
 	return evs[0]
 }
 
-// remediateRun drives the remediation happy path — the controller-provided
-// analysis, the fix, commit.sh, the changeset — and returns the workspace
-// and the single remediation event.
+// remediateRun drives the remediation happy path (the controller-provided
+// analysis, the fix, commit.sh, the changeset) and returns the workspace and
+// the single remediation event.
 func remediateRun(t *testing.T) (string, envelope.Event) {
 	t.Helper()
 	ws := newWorkspace(t)
@@ -508,7 +508,7 @@ analysis
 				t.Fatalf("Run() error = %v", err)
 			}
 			evs := events(t, out.String())
-			// The runner never continues to stage 2 — one event, always.
+			// The runner never continues to stage 2: one event, always.
 			if len(evs) != 1 {
 				t.Fatalf("events = %d, want 1", len(evs))
 			}
@@ -668,7 +668,7 @@ func TestRemediationFatalWithoutAnalysis(t *testing.T) {
 	}
 }
 
-// TestBudgetKillSwitch pins the kill switch to the GRANT rather than the
+// TestBudgetKillSwitch pins the kill switch to the grant rather than the
 // estimate. goodInvestigation predicts 200000 output tokens; spending 300000
 // must not trip anything: the run was granted the 400000 automated budget.
 func TestBudgetKillSwitch(t *testing.T) {
@@ -741,10 +741,11 @@ func TestInvestigateBudgetKillSwitch(t *testing.T) {
 	}
 }
 
-// TestClampsRogueTurnsBudget: the investigate stage clamps a rogue report's
-// turns/budget unclamped but passes its suggested model through raw —
-// the remediation spawner (controller-side) clamps the model to the allowlist,
-// because the model choice decides which runner image the pod must run in.
+// TestClampsRogueTurnsBudget checks that the investigate stage clamps nothing
+// in a rogue report. Its turns/budget estimate is reported verbatim and raises
+// holds, and its suggested model passes through raw: the remediation spawner
+// (controller-side) clamps the model to the allowlist, because the model
+// choice decides which runner image the pod must run in.
 func TestClampsRogueTurnsBudget(t *testing.T) {
 	ws := newWorkspace(t)
 	var out bytes.Buffer
@@ -774,8 +775,8 @@ analysis
 	if inv.RemediationModel != "evil-model-9000" {
 		t.Errorf("model = %q, want the raw suggestion (the controller clamps it)", inv.RemediationModel)
 	}
-	// The estimate rides out unclamped — clamping it here would erase the
-	// very signal the approval gate reads — but it does raise both holds.
+	// The estimate rides out unclamped (clamping it here would erase the
+	// signal the approval gate reads), but it does raise both holds.
 	if inv.EstimatedMaxTurns != 100000 || inv.EstimatedTokenBudget != 99999999 {
 		t.Errorf("estimate = %d/%d, want the outsized prediction reported verbatim",
 			inv.EstimatedMaxTurns, inv.EstimatedTokenBudget)
@@ -842,8 +843,9 @@ func TestManualBudgetBelowAutomatedIsRejected(t *testing.T) {
 	}
 }
 
-// TestEqualBudgetsAreAccepted: manual == auto simply means approving buys
-// nothing extra, which is a legitimate posture, not a misconfiguration.
+// TestEqualBudgetsAreAccepted checks that manual == auto is accepted:
+// approving then buys nothing extra, which is a legitimate posture, not a
+// misconfiguration.
 func TestEqualBudgetsAreAccepted(t *testing.T) {
 	env := map[string]string{
 		"PATCHY_REPO": "acme/shop", "PATCHY_FINDING": "f-1", "PATCHY_PHASE": "remediate",

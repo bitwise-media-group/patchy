@@ -73,7 +73,7 @@ func invChild() *v1alpha1.Investigation {
 // TestSpawnerGrantsApprovedEstimate covers the one path where the estimate
 // changes what a run may spend: over the automated budget, and approved by a
 // human. That budget is an authorization line, so approving grants the
-// estimate itself — bounded by the manual budget.
+// estimate itself, bounded by the manual budget.
 func TestSpawnerGrantsApprovedEstimate(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -229,7 +229,7 @@ func TestSpawnerResolvesCrossProviderHarness(t *testing.T) {
 
 // TestSpawnerResolvesAliasSuggestion: the allowlist arrives concrete (aliases
 // resolved at controller startup), so a report that suggests a family alias
-// must be resolved before the allowlist check — and the Remediation records
+// must be resolved before the allowlist check, and the Remediation records
 // the concrete id, never the alias.
 func TestSpawnerResolvesAliasSuggestion(t *testing.T) {
 	inv := invChild()
@@ -376,7 +376,7 @@ func TestSpawnerIgnoresRetryForInvestigationFailure(t *testing.T) {
 
 func TestSpawnerRespawnsAfterSettledCompleteChild(t *testing.T) {
 	// A revived/retried finding whose last attempt Completed (e.g. its PR
-	// was closed unmerged) must get a fresh attempt — Complete is settled,
+	// was closed unmerged) must get a fresh attempt: Complete is settled,
 	// not in-flight.
 	fnd := queuedFinding(v1alpha1.PhaseQueued)
 	fnd.Status.Attempts.Remediation = 1
@@ -396,7 +396,7 @@ func TestSpawnerRespawnsAfterSettledCompleteChild(t *testing.T) {
 	}
 }
 
-// fakeCRRunner fakes the jobs seam.
+// fakeCRRunner fakes the CRRunner interface (the jobs client).
 type fakeCRRunner struct {
 	created []jobs.Spec
 	done    bool

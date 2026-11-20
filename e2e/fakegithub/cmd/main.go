@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Command fakegithub runs the e2e suite's in-memory GitHub API as a
-// standalone server — the credential-less GitHub stand-in for local dev.
+// standalone server: the credential-less GitHub stand-in for local dev.
 // The dev-fake overlay runs it in-cluster (hack/fakegithub/Dockerfile,
 // deploy/kustomize/overlays/dev-fake/fakegithub.yaml) with the
 // Integration/Forge baseURL pointed at its Service, and the whole pipeline

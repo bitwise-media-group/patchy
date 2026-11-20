@@ -2,8 +2,8 @@
 // markdown, and tool calls and results in an agent conversation.
 //
 // lowlight runs the highlight.js grammars and returns a hast tree, which is
-// turned into vnodes here — never innerHTML, the same rule Markdown.tsx keeps
-// for untrusted text. Only a curated set of grammars is registered (not
+// turned into vnodes here, never innerHTML (the same rule Markdown.tsx keeps
+// for untrusted text). Only a curated set of grammars is registered (not
 // lowlight's `common`): the page is a single-file bundle embedded in the Go
 // binary, so every grammar is paid for on every page load.
 

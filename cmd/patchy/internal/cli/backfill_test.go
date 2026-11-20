@@ -56,7 +56,7 @@ func TestBackfillStampsSpec(t *testing.T) {
 }
 
 // The access review gates the write, and it asks about the backfill verb on
-// integrations — not findings.
+// integrations, not findings.
 func TestBackfillDeniedStopsBeforeWriting(t *testing.T) {
 	h := newHarness(t, testCLIIntegration())
 	var asked [2]string

@@ -20,8 +20,8 @@ const TERMINAL_TONE: Partial<Record<Phase, Entry["tone"]>> = {
   HandedOff: "amber",
 };
 
-// RECOVERY_DETAIL annotates a terminal phase the finding has since left —
-// each terminal is revivable by exactly one human signal (transitions.go).
+// RECOVERY_DETAIL annotates a terminal phase the finding has since left.
+// Each terminal is revivable by exactly one human signal (transitions.go).
 const RECOVERY_DETAIL: Partial<Record<Phase, string>> = {
   Failed: "recovered: retried by a human",
   HandedOff: "revived by approval",
@@ -48,7 +48,7 @@ function entries(finding: Finding): Entry[] {
       title: PHASE_LABELS[pt.phase],
       detail: last ? undefined : RECOVERY_DETAIL[pt.phase],
       at: pt.at,
-      // A terminal phase keeps its own tone wherever it sits in history — a
+      // A terminal phase keeps its own tone wherever it sits in history: a
       // past "failed" must never render as a green tick.
       tone: TERMINAL_TONE[pt.phase] ?? (last ? "active" : "done"),
     });

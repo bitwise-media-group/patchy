@@ -21,7 +21,8 @@ import (
 const foundryScope = "https://cognitiveservices.azure.com/.default"
 
 // FoundryKey is the Microsoft Foundry route in API-key mode: inject the key
-// from a mounted Secret file, same rotation posture as the Anthropic route.
+// from a mounted Secret file. Like the Anthropic route, it reads the file per
+// request, so a rotated Secret propagates without a restart.
 func FoundryKey(target *url.URL, keyFile string) Upstream {
 	return Upstream{
 		Target: target,
@@ -42,8 +43,8 @@ func FoundryKey(target *url.URL, keyFile string) Upstream {
 
 // FoundryEntra is the Foundry route in Entra mode: attach a bearer token from
 // the broker's ambient Azure identity (Workload Identity in-cluster), cached
-// and refreshed broker-side — which is what fixes a static bearer expiring
-// mid-run on long evaluation jobs.
+// and refreshed broker-side, so a long evaluation job never runs into a
+// static bearer expiring mid-run.
 func FoundryEntra(target *url.URL) (Upstream, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {

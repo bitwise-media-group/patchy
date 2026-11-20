@@ -26,9 +26,9 @@ type RepositoryRef struct {
 	Owner string `json:"owner,omitempty"`
 	// Name is the repository name.
 	Name string `json:"name,omitempty"`
-	// URL is the full https URL. It supersedes Owner/Name when set — the
-	// resolver knows its own host, and only a URL can express a self-hosted
-	// forge.
+	// URL is the full https URL. It supersedes Owner/Name when set, because
+	// the resolver knows its own host and only a URL can express a
+	// self-hosted forge.
 	URL string `json:"url,omitempty"`
 }
 
@@ -38,8 +38,8 @@ type RepositoryRef struct {
 type CloudResource struct {
 	// Provider is the cloud platform, e.g. "google".
 	Provider string `json:"provider"`
-	// Name is the platform's canonical, unique resource identifier — for
-	// Security Command Center, the finding's resourceName.
+	// Name is the platform's canonical, unique resource identifier. For
+	// Security Command Center, it is the finding's resourceName.
 	Name string `json:"name"`
 	// Type is the platform's resource type, e.g. "google.cloud.storage.Bucket".
 	Type string `json:"type,omitempty"`
@@ -64,9 +64,9 @@ type Location struct {
 }
 
 // Finding is a source-agnostic security finding. The integration-controller
-// keys accumulation on (scope, Source, primary advisory) — where scope is the
-// repository for code findings and the cloud resource for infrastructure ones
-// — and stamps the labels and issue content from these fields alone.
+// keys accumulation on (scope, Source, primary advisory), where scope is the
+// repository for code findings and the cloud resource for infrastructure
+// ones. It stamps the labels and issue content from these fields alone.
 //
 // A finding names a Repo, a CloudResource, or both. One with neither is
 // rejected: there would be nothing to accumulate it against.
@@ -84,7 +84,7 @@ type Finding struct {
 	// code-scanning alert number for GHAS). Ignored when AlertID is set.
 	AlertNumber int
 	// AlertID is the source-native identifier for tools that do not number
-	// their findings — an SCC finding name, say. It supersedes AlertNumber.
+	// their findings, such as an SCC finding name. It supersedes AlertNumber.
 	AlertID string
 	// Advisories are the categorization identifiers (CWE/CVE/GHSA numbers),
 	// most authoritative first: Advisories[0] is the accumulation key
@@ -110,7 +110,7 @@ type Handler interface {
 	// ID names the source; it becomes the security-source label value.
 	ID() string
 	// Findings normalizes one delivery into zero or more Findings. The event
-	// type is the provider's own discriminator — a GitHub webhook event name,
+	// type is the provider's own discriminator: a GitHub webhook event name,
 	// or a constant for a provider whose endpoint carries only one kind. A
 	// delivery the handler chooses to skip (an action it does not act on,
 	// say) returns (nil, nil).
@@ -154,8 +154,8 @@ type AlertRef struct {
 // not sit open there after patchy has closed it here. GHAS dismisses the
 // code-scanning alert; Security Command Center mutes the finding.
 //
-// It is deliberately separate from Handler. A source that only reads is a
-// complete source — the pipeline type-asserts for Resolver and skips the
+// It is separate from Handler because a source that only reads is a
+// complete source. The pipeline type-asserts for Resolver and skips the
 // write-back when it is absent, rather than forcing every handler to carry a
 // no-op method.
 type Resolver interface {
@@ -168,17 +168,17 @@ type Resolver interface {
 // currently open findings the tool already knows about, for alerts that
 // predate webhook coverage and so would otherwise never be delivered.
 //
-// It is deliberately separate from Handler, like Resolver: a source that
-// only receives deliveries is a complete source — the pipeline
-// type-asserts for Lister and reports backfill unsupported when it is
-// absent, rather than forcing every handler to carry a no-op method.
+// Like Resolver, it is separate from Handler because a source that only
+// receives deliveries is a complete source. The pipeline type-asserts for
+// Lister and reports backfill unsupported when it is absent, rather than
+// forcing every handler to carry a no-op method.
 type Lister interface {
 	// List enumerates the source's open findings, calling yield for each
 	// until yield returns false or the walk is exhausted. repos narrows the
-	// walk to repositories matching any entry — an exact "owner/name" or an
-	// "owner/" prefix (a slash-less entry is treated as an owner prefix);
-	// empty means the source's full scope. complete is false when the walk
-	// ended early — the caller stopped it, or the source's page budget ran
-	// out before the estate was covered.
+	// walk to repositories matching any entry: an exact "owner/name" or an
+	// "owner/" prefix (a slash-less entry is treated as an owner prefix).
+	// Empty means the source's full scope. complete is false when the walk
+	// ended early, because the caller stopped it or the source's page budget
+	// ran out before the estate was covered.
 	List(ctx context.Context, repos []string, yield func(Finding) bool) (complete bool, err error)
 }

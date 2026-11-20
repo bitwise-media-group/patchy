@@ -23,9 +23,9 @@ import (
 )
 
 // KindEvaluation is the LabelRunKind value on evaluation Jobs. It is a plain
-// label value, deliberately not part of the CRD RunKind enum — the enum
-// discriminates the two Finding-pipeline run kinds, and evaluation Jobs never
-// touch that state machine.
+// label value, not part of the CRD RunKind enum: the enum discriminates the
+// two Finding-pipeline run kinds, and evaluation Jobs never touch that state
+// machine.
 const KindEvaluation = "evaluation"
 
 // secretKeyUnit is the per-Job Secret key carrying the serialized unit spec
@@ -81,9 +81,9 @@ func EvalNameFor(unit string) string {
 }
 
 // CreateEval builds and creates the per-Job Secret (the unit spec), then the
-// Job, then owner-references the Secret to the Job — the same idempotent
-// adopt-on-AlreadyExists flow as Create, so a duplicate reconcile resumes a
-// partial launch instead of failing.
+// Job, then owner-references the Secret to the Job. It uses the same
+// idempotent adopt-on-AlreadyExists flow as Create, so a duplicate reconcile
+// resumes a partial launch instead of failing.
 func (c *Client) CreateEval(ctx context.Context, spec EvalSpec) (string, error) {
 	if spec.Evaluation == "" || spec.Unit == "" {
 		return "", fmt.Errorf("jobs: eval spec requires Evaluation and Unit")
@@ -132,8 +132,8 @@ func (c *Client) CreateEval(ctx context.Context, spec EvalSpec) (string, error) 
 	return name, nil
 }
 
-// buildEvalSecret holds the serialized unit spec the prepare container stages
-// for the agent.
+// buildEvalSecret builds the per-Job Secret holding the serialized unit spec
+// the prepare container stages for the agent.
 func buildEvalSecret(name, namespace string, spec EvalSpec) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: evalLabels(spec)},
@@ -226,8 +226,8 @@ func (c *Client) evalPrepareContainer(runner Runner, spec EvalSpec, res corev1.R
 // evalBrokeredCommand wraps evolve exec-unit so the caller token reaches the
 // CLI: eval pods run no patchy binary that could set the header per-request,
 // so the wrapper captures the projected token once at start (the token TTL is
-// sized past the deadline for exactly this). /bin/sh is already an image
-// requirement — the prepare script runs it.
+// sized past the deadline for this reason). /bin/sh is already an image
+// requirement, because the prepare script runs it.
 //
 // claude: the token goes into ANTHROPIC_CUSTOM_HEADERS, and on the
 // first-party route the wrapper also exports the non-secret auth placeholder
@@ -235,8 +235,8 @@ func (c *Client) evalPrepareContainer(runner Runner, spec EvalSpec, res corev1.R
 //
 // codex: the wrapper writes the rendered config.toml (the gateway env's
 // provider.CodexConfigEnv) where the CLI reads it, then exports the token and
-// placeholder under the env names that config's broker provider reads — the
-// same thing agentrun does per stage for finding runs.
+// placeholder under the env names that config's broker provider reads. This
+// matches what agentrun does per stage for finding runs.
 var evalBrokeredCommand = []string{"/bin/sh", "-c",
 	`export ANTHROPIC_CUSTOM_HEADERS="` + provider.BrokerTokenHeader + `: $(cat ` + brokerTokenPath +
 		`)"; [ -z "$ANTHROPIC_BASE_URL" ] || export ` + provider.BrokerAuthPlaceholderEnv + `=` +
@@ -256,10 +256,10 @@ func evalBrokeredCommandFor(runner Runner) []string {
 	return evalBrokeredCommand
 }
 
-// evalAgentContainer runs the in-pod evolve client. The pod IS the sandbox:
+// evalAgentContainer runs the in-pod evolve client. The pod is the sandbox:
 // a non-brokered runner's only credential is the model key, injected through
-// the same Secret channel as the finding runners; a brokered runner gets no
-// credential at all — the gateway env plus the projected caller token.
+// the same Secret channel as the finding runners. A brokered runner gets no
+// credential at all, only the gateway env plus the projected caller token.
 func (c *Client) evalAgentContainer(runner Runner, res corev1.ResourceRequirements) corev1.Container {
 	env := []corev1.EnvVar{
 		{Name: "HOME", Value: workspaceDir},
@@ -302,7 +302,7 @@ func (c *Client) evalAgentContainer(runner Runner, res corev1.ResourceRequiremen
 	}
 }
 
-// evalLabels: the standard app labels plus the evaluation lineage. The
+// evalLabels returns the standard app labels plus the evaluation lineage. The
 // harness label keeps the per-harness egress network policies applying to
 // evaluation Jobs unchanged.
 func evalLabels(spec EvalSpec) map[string]string {

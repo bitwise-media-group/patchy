@@ -99,7 +99,7 @@ func (f *fakeLister) List(
 
 // newBackfillReconciler builds a Reconcile-level harness: a PAT-secret
 // Integration (Creds.Validate passes offline), a real Ingestor over the
-// fake client, and the ListerFor seam.
+// fake client, and the ListerFor hook.
 func newBackfillReconciler(
 	t *testing.T, integ *v1alpha1.Integration, lister *fakeLister, listerOK bool,
 ) (*IntegrationReconciler, client.Client) {
@@ -252,7 +252,7 @@ func TestReconcileBackfillTruncated(t *testing.T) {
 	}
 }
 
-// A finding the ingestor rejects is skipped, counted, and surfaced — it
+// A finding the ingestor rejects is skipped, counted, and surfaced. It
 // must not starve the rest of the walk.
 func TestReconcileBackfillPartialIngestFailure(t *testing.T) {
 	at := metav1.NewTime(testClock)
@@ -288,7 +288,7 @@ func TestReconcileBackfillSuspended(t *testing.T) {
 	}
 }
 
-// The default (seam-less) lister construction: provider and capability
+// The default lister construction (no ListerFor): provider and capability
 // gating that runs before any credential is read.
 func TestListerForGating(t *testing.T) {
 	r := &IntegrationReconciler{}

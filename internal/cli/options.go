@@ -55,8 +55,9 @@ type Options struct {
 }
 
 // Bind registers the shared persistent flags on cmd and wires the viper
-// environment binding. Call once from each binary's root command setup;
-// controller-specific flags bind on top with BindExtra.
+// environment binding. Call once from each binary's root command setup.
+// Controller-specific flags are declared on the command itself; Load binds
+// them and the String, Duration, Float and Int accessors read them.
 func (o *Options) Bind(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&o.ListenAddr, "listen-addr", ":8080", "webhook/health HTTP listen address")

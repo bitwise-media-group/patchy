@@ -31,7 +31,7 @@ type ValidateResult struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
 	// RegenDiffs lists derived files that no longer match a fresh
-	// regeneration (the committed tree is stale — run upgrade).
+	// regeneration (the committed tree is stale; run upgrade).
 	RegenDiffs []string `json:"regenDiffs,omitempty"`
 	// Lint lists manifest/allowlist policy violations.
 	Lint []string `json:"lint,omitempty"`
@@ -39,8 +39,8 @@ type ValidateResult struct {
 	Verify *VerifyReport `json:"verify,omitempty"`
 	// Scan is the vulnerability-scan outcome.
 	Scan *ScanReport `json:"scan,omitempty"`
-	// Err carries a stage failure (not a finding — the stage itself
-	// broke or a verification failed).
+	// Err carries a stage failure, not a finding: the stage itself broke
+	// or a verification failed.
 	Err string `json:"error,omitempty"`
 }
 
@@ -53,8 +53,8 @@ func (r *ValidateResult) Failed() bool {
 // touching the tree: regenerate the derived state out-of-tree and
 // byte-compare, verify upstream provenance, scan, and lint. only filters
 // the stages (nil or empty runs all). Wall-clock steps (tracked picks,
-// allowlist stamping) never run here — the byte-identity gate must stay
-// deterministic.
+// allowlist stamping) never run here, because the byte-identity gate must
+// stay deterministic.
 func (e *Engine) Validate(ctx context.Context, entry spec.Entry, only []string) (*ValidateResult, error) {
 	result := &ValidateResult{Name: entry.Name, Kind: entry.Kind}
 	run := stageSet(only)

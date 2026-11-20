@@ -18,8 +18,8 @@ import (
 // cloudTags is the shared engine of the tag-inventory enhancers (AWS, Azure):
 // resolve a finding's repository from the ownership tags on the cloud
 // resource it was raised against, and carry the resource's tags onto the
-// finding as attributes. Each cloud contributes only its identity — the
-// provider, the identifier shape, the inventory lookup — and this owns
+// finding as attributes. Each cloud contributes only its identity (the
+// provider, the identifier shape, the inventory lookup), and this owns
 // everything the clouds share, so the enhancers cannot drift apart.
 //
 // It answers only about the repository: ownership by person is a different
@@ -36,7 +36,7 @@ type cloudTags struct {
 	// accountKey names the attribute the resource's account or subscription
 	// is carried under.
 	accountKey string
-	// final is the inventory's not-found sentinel — the one error that is a
+	// final is the inventory's not-found sentinel: the one error that is a
 	// clean answer rather than something to retry.
 	final error
 	// tagsFor looks the resource's tags up in the cloud inventory.
@@ -80,9 +80,8 @@ func (c *cloudTags) Enhance(ctx context.Context, issue enhance.Issue) (*enhance.
 }
 
 // attributes are the facts worth carrying onto the finding whether or not a
-// repository resolved: the resource's identity, and its tags — which is what
-// a human triaging a cloud finding needs in order to know where to look, and
-// what a tag-inventory enhancer exists to fetch.
+// repository resolved: the resource's identity and its tags. A human
+// triaging a cloud finding needs them to know where to look.
 func (c *cloudTags) attributes(cr *source.CloudResource, tags map[string]string) map[string]string {
 	attrs := map[string]string{}
 	if cr.Project != "" {
@@ -140,8 +139,8 @@ type cloudTagsSpec struct {
 	final                           error
 }
 
-// newCloudTags builds the engine over a typed inventory lookup — each cloud
-// client answers with its own Tags struct, adapted here — and applies the
+// newCloudTags builds the engine over a typed inventory lookup (each cloud
+// client answers with its own Tags struct, adapted here) and applies the
 // shared defaults.
 func newCloudTags[T any](
 	spec cloudTagsSpec,

@@ -165,7 +165,7 @@ func TestUnlabelledResourceAdvancesWithoutRepository(t *testing.T) {
 }
 
 // The chain runs exactly once and there is no edge back to Opened, so
-// advancing after a failed lookup loses the repository permanently — and a
+// advancing after a failed lookup loses the repository permanently, and a
 // repo-less finding is terminally handed off. Hold instead.
 func TestFailedLookupHoldsAtOpened(t *testing.T) {
 	e := &resolver{id: "gcp", err: errors.New("cloud asset inventory unavailable")}
@@ -237,8 +237,8 @@ func TestExpeditedFindingIsNeverHeld(t *testing.T) {
 	}
 }
 
-// A code finding whose enhancer fails keeps the original behaviour: one
-// broken enhancer must not wedge the pipeline.
+// A code finding whose enhancer fails still advances: one broken enhancer
+// must not wedge the pipeline.
 func TestFailedEnhancerOnCodeFindingStillAdvances(t *testing.T) {
 	e := &resolver{id: "cmdb", err: errors.New("cmdb down")}
 	r, c := newCRDReconciler(t, []enhance.Enhancer{e}, openedFinding())

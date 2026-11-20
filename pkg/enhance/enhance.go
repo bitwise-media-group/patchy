@@ -35,12 +35,12 @@ type Enrichment struct {
 	// projected as tracking labels; carried verbatim.
 	Attributes map[string]string
 	// Repository is a repository the enhancer resolved for a finding that
-	// arrived without one — a cloud finding whose resource carries ownership
-	// labels. Ignored when the finding already has a repository: the value is
-	// written to the Finding exactly once and never revised, because the
-	// rollup ledger, the clone artifact, and the agent Jobs all snapshot it
-	// independently. Where several enhancers return one, the first in the
-	// chain wins.
+	// arrived without one, such as a cloud finding whose resource carries
+	// ownership labels. Ignored when the finding already has a repository.
+	// The value is written to the Finding exactly once and never revised,
+	// because the rollup ledger, the repository artifact, and the agent Jobs all
+	// snapshot it independently. Where several enhancers return one, the
+	// first in the chain wins.
 	Repository *source.RepositoryRef
 }
 

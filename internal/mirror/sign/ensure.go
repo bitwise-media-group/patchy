@@ -19,7 +19,8 @@ type ArtifactSigner interface {
 
 // Ensurer is the verify-then-sign step every publisher runs after a push:
 // a reference already carrying a valid signature for the resolved signing
-// config is left alone, anything else is signed. Both seams are required.
+// config is left alone, anything else is signed. Both function fields are
+// required.
 type Ensurer struct {
 	// Verify checks one signature subject (the cosign-backed verifier in
 	// production; key-based in tests).
@@ -54,7 +55,7 @@ func (e Ensurer) Ensure(ctx context.Context, ref string, signing *spec.Signing, 
 	return true, nil
 }
 
-// Sign signs ref under signing unconditionally — for callers that already
+// Sign signs ref under signing unconditionally, for callers that already
 // ran Valid themselves (to narrate, or to stop short on a dry run).
 func (e Ensurer) Sign(ctx context.Context, ref string, signing *spec.Signing, recursive bool) error {
 	if e.NewSigner == nil {

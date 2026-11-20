@@ -25,7 +25,7 @@ const (
 // working directory: <AllowlistDir>/<name>.yaml.
 const AllowlistDir = "security/allowlists"
 
-// Spec is the patchy config's build: block — the first-party artifacts
+// Spec is the patchy config's build: block: the first-party artifacts
 // patchy build produces, scans, publishes and signs.
 type Spec struct {
 	// Architectures is the default platform list for image entries
@@ -64,8 +64,8 @@ type Image struct {
 	// Args are build args; values expand ${ENV}, keys keep their case.
 	Args map[string]string `yaml:"args"`
 	// Secrets are BuildKit secret mounts (RUN --mount=type=secret,id=…).
-	// Each names where the value lives — an environment variable or a
-	// file — so the value never reaches the config, the argv or the image.
+	// Each names where the value lives (an environment variable or a
+	// file), so the value never reaches the config, the argv or the image.
 	Secrets []Secret `yaml:"secrets"`
 	// Tags overrides the build-level default list.
 	Tags []string `yaml:"tags"`
@@ -86,7 +86,7 @@ type Secret struct {
 	// directory; it expands ${ENV} at build time.
 	Src string `yaml:"src"`
 	// Optional drops the secret (with a note) when its variable is unset
-	// or its file is missing, instead of failing the build — for
+	// or its file is missing, instead of failing the build. Use it for
 	// Dockerfiles that mount it with required=false.
 	Optional bool `yaml:"optional"`
 }
@@ -218,9 +218,9 @@ var (
 
 // Validate checks the build block against the config's scan defaults:
 // names (well-formed, unique across both kinds), repositories, platforms,
-// manifests paths, and each entry's scan block — including the resolved
+// manifests paths, and each entry's scan block (including the resolved
 // allowlist horizon for images, and the image-only fields a manifests
-// entry may not set.
+// entry may not set).
 func (s *Spec) Validate(global spec.Scan) error {
 	seen := map[string]string{}
 	claim := func(prefix, name string) error {

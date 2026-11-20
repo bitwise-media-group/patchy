@@ -245,7 +245,7 @@ func TestValidateCoverage(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "anthropic/claude-opus-5") {
 		t.Errorf("uncovered model accepted: %v", err)
 	}
-	// An alias is checked under the concrete id it resolves to — a Foundry
+	// An alias is checked under the concrete id it resolves to, so a Foundry
 	// map keyed by the alias does not cover it.
 	err = ValidateCoverage(cfg, models, map[string]string{"anthropic/claude-sonnet": "x"},
 		[]string{"anthropic/claude-sonnet"})
@@ -330,7 +330,7 @@ func TestValidateCodex(t *testing.T) {
 }
 
 // TestCodexEnv: a codex runner's gateway env is the rendered config.toml plus
-// the model map and passthrough — none of claude's env.
+// the model map and passthrough, with none of claude's env.
 func TestCodexEnv(t *testing.T) {
 	cfg := Config{Harness: model.HarnessCodex, Name: Azure, BrokerURL: broker + "/",
 		ExtraEnv: map[string]string{"HTTPS_PROXY": "http://proxy"}}

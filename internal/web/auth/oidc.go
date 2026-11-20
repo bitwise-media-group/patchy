@@ -52,7 +52,7 @@ type oidcAuthenticator struct {
 }
 
 // newOIDC discovers the issuer and builds the authenticator. Discovery at
-// construction means an unreachable issuer fails startup — the pod restarts
+// construction means an unreachable issuer fails startup: the pod restarts
 // and retries rather than serving a dead sign-in surface.
 func newOIDC(ctx context.Context, cfg *Config, log *slog.Logger) (*oidcAuthenticator, error) {
 	oc := cfg.OIDC
@@ -242,7 +242,7 @@ func (a *oidcAuthenticator) handleLogout(w http.ResponseWriter, r *http.Request)
 
 // Identify resolves the session cookie: verify the ID token, renew it via
 // the refresh token when only expiry failed, and re-derive the identity.
-// Every failure path clears the session and reports "no session" — a broken
+// Every failure path clears the session and reports "no session": a broken
 // cookie must land the user on the sign-in panel, not a 500.
 func (a *oidcAuthenticator) Identify(w http.ResponseWriter, r *http.Request) (*Identity, error) {
 	s, ok := a.readSession(r)

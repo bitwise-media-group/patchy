@@ -23,8 +23,8 @@ import (
 )
 
 // keyPair generates a cosign keypair on disk for offline sign/verify,
-// shelling out to the same binary sign/verify now exec — no committed
-// private-key fixture.
+// shelling out to the same binary sign and verify exec, so no private-key
+// fixture is committed.
 func keyPair(t *testing.T) (keyPath, pubPath string, password []byte) {
 	t.Helper()
 	if _, err := exec.LookPath("cosign"); err != nil {
@@ -45,7 +45,7 @@ func keyPair(t *testing.T) (keyPath, pubPath string, password []byte) {
 }
 
 // keyedEngine rebuilds the fixture's engine with key-based sign/verify
-// seams — the same real cosign code paths, minus the keyless trust
+// hooks: the same real cosign code paths, minus the keyless trust
 // services.
 func keyedEngine(f *fixture, keyPath, pubPath string, password []byte) *Engine {
 	f.t.Helper()
@@ -144,7 +144,7 @@ func TestEngineSync(t *testing.T) {
 
 // TestEngineSyncGuarantees pins the two sync behaviors the first-publish
 // path never reaches: the committed-vendor-tree tripwire (distinct from
-// the upstream tgz digest check — it catches the COMMITTED copy being
+// the upstream tgz digest check, it catches the committed copy being
 // tampered with while upstream is unchanged) and the dry run staying
 // read-only over an already-published tag.
 func TestEngineSyncGuarantees(t *testing.T) {
@@ -184,7 +184,7 @@ func TestEngineSyncGuarantees(t *testing.T) {
 
 	t.Run("tampered vendor tree trips the wire", func(t *testing.T) {
 		// Upstream still serves the locked bytes; the committed vendor
-		// copy — what the PR review actually approved — was edited.
+		// copy (what the PR review approved) was edited.
 		f.write("charts/demo/vendor/demo/values.yaml", "image: attacker.example.test/app:1.0.0\n")
 		_, err := eng.Sync(ctx, entry, SyncOptions{})
 		if err == nil || !strings.Contains(err.Error(), "vendor tree differs") {
@@ -203,7 +203,7 @@ func (s *fakeSigner) Sign(_ context.Context, ref string, _ bool) error {
 
 // twoRegistryEngine rebuilds the fixture over mirror-a/mirror-b path
 // prefixes of the same in-memory registry (b carrying a kms signing
-// override) with fake sign/verify seams: Verify always reports unsigned,
+// override) with fake sign/verify hooks: Verify always reports unsigned,
 // so every converged ref gets a signer built for its registry's effective
 // signing config.
 func twoRegistryEngine(f *fixture) (*Engine, *[]*spec.Signing) {
@@ -236,9 +236,9 @@ func twoRegistryEngine(f *fixture) (*Engine, *[]*spec.Signing) {
 	return eng, &resolved
 }
 
-// TestEngineSyncPerRegistrySigning pins the per-registry signing seam: a
-// registry carrying its own signing block must have its pushes signed with
-// that config, while the others use the global default — one record per
+// TestEngineSyncPerRegistrySigning pins per-registry signing: a registry
+// carrying its own signing block must have its pushes signed with that
+// config, while the others use the global default, with one record per
 // (artifact, registry).
 func TestEngineSyncPerRegistrySigning(t *testing.T) {
 	f := newFixture(t)
@@ -337,7 +337,7 @@ func TestEngineSyncTwoRegistryKeys(t *testing.T) {
 
 	// Key selection follows the resolved signing config: the kms override
 	// (registry b) signs and verifies with keypair B, the global default
-	// with keypair A — a cross-signed ref must NOT verify.
+	// with keypair A. A cross-signed ref must not verify.
 	global := f.global()
 	eng := New(Config{
 		Root:   f.root,
@@ -516,8 +516,9 @@ publish:
 // mirror relies on: the chart is published tagged with the pin, and helm
 // push rejects a tag that differs from the chart's own version. A pin of
 // 1.0.0 over a chart versioned v1.0.0 (cert-manager's spelling) must fail
-// regeneration — so validate/upgrade catch it before merge — and sync must
-// refuse it before pushing anything, for a tree committed past that gate.
+// regeneration, so validate and upgrade catch it before merge. Sync must
+// also refuse it before pushing anything, for a tree committed past that
+// gate.
 func TestEngineChartVersionSpelling(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

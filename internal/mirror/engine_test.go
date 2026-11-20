@@ -42,7 +42,7 @@ type fixture struct {
 	root string
 	eng  *Engine
 	// config is the mirror view of the patchy config in Config.Resolve
-	// struct form — the engine never reads config files, so the fixture
+	// struct form. The engine never reads config files, so the fixture
 	// hands it in decoded.
 	config string
 }
@@ -58,8 +58,9 @@ func newFixture(t *testing.T) *fixture {
 	f := &fixture{t: t, host: u.Host, root: t.TempDir()}
 
 	// Canonical image sources use a clean host name; the rewrite reroutes
-	// pulls to the in-memory registry — the same shape as a pull-through
-	// cache in production, and it keeps canonical paths port-free.
+	// pulls to the in-memory registry. That is the same shape as a
+	// pull-through cache in production, and it keeps canonical paths
+	// port-free.
 	f.setRegistries(fmt.Sprintf("  - name: primary\n    url: %s/mirror\n", f.host))
 	return f
 }
@@ -67,7 +68,7 @@ func newFixture(t *testing.T) *fixture {
 // setRegistries rewrites the fixture config with the given registries block
 // (a pre-indented YAML list), keeping the rest of it fixed.
 // Multi-registry tests point several names at path prefixes of the same
-// in-memory registry — no second server needed.
+// in-memory registry, so no second server is needed.
 func (f *fixture) setRegistries(registries string) {
 	f.t.Helper()
 	f.config = fmt.Sprintf(`registries:
@@ -371,9 +372,8 @@ func TestEngineLockstepTarget(t *testing.T) {
 	f.pushImage(img+":1.0.0", testNow.AddDate(0, -1, 0))
 
 	// Two lockstep charts: "a" has 1.0.0 and 1.1.0 upstream, "b" only
-	// 1.0.5 — the group target is min(1.1.0, 1.0.5)... but member "a"
-	// pinned at 1.0.0 must still move to 1.0.5? No: b's newest is 1.0.5,
-	// a's newest is 1.1.0, so the group holds at 1.0.5.
+	// 1.0.5. The group target is the lowest of the members' newest
+	// versions, min(1.1.0, 1.0.5), so the group holds at 1.0.5.
 	f.pushChart(f.host+"/upstream", "a", "1.0.0", f.chartTgz("a", "1.0.0", "1.0.0", img+":1.0.0"))
 	f.pushChart(f.host+"/upstream", "a", "1.1.0", f.chartTgz("a", "1.1.0", "1.1.0", img+":1.0.0"))
 	f.pushChart(f.host+"/upstream", "b", "1.0.5", f.chartTgz("b", "1.0.5", "1.0.5", img+":1.0.0"))

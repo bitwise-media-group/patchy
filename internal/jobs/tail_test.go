@@ -24,8 +24,8 @@ func turnLine(t *testing.T, turn transcript.Turn) string {
 	return line
 }
 
-// runningPod has an agent container that has started but not finished — what
-// a live tail joins.
+// runningPod has an agent container that has started but not finished, which
+// is what a live tail joins.
 func runningPod(jobName string) *corev1.Pod {
 	return jobPodInState(jobName, corev1.PodRunning, corev1.ContainerState{
 		Running: &corev1.ContainerStateRunning{},
@@ -114,7 +114,7 @@ func TestTailFollowsRunningAgent(t *testing.T) {
 	if got[1].Text != "Patching." {
 		t.Errorf("turns[1] = %+v", got[1])
 	}
-	// A live tail must follow, and must not wait for termination — the pod is
+	// A live tail must follow, and must not wait for termination: the pod is
 	// still running.
 	if !logs.follow {
 		t.Error("Tail streamed with follow=false, want follow=true")

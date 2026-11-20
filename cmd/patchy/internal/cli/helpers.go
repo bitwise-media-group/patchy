@@ -27,9 +27,9 @@ func listOptions(env *kubecfg.Env, selector string) []client.ListOption {
 	if env.Namespace != "" {
 		out = append(out, client.InNamespace(env.Namespace))
 	}
-	// A selector that will not parse is dropped rather than fatal: the same
+	// A selector that will not parse is dropped rather than fatal. The same
 	// expression is already sent to the API server on the table path, which
-	// reports the syntax error with far better context than this would.
+	// reports the syntax error with better context.
 	if selector != "" {
 		if sel, err := labels.Parse(selector); err == nil {
 			out = append(out, client.MatchingLabelsSelector{Selector: sel})
@@ -100,9 +100,8 @@ func runName(finding, kind string, attempt int32) string {
 }
 
 // notef writes a human-facing line. Output is narration or a result summary,
-// never the payload a caller parses, so a failed write here is not worth
-// aborting the run over — and a closed stdout (a `| head` that exited) is the
-// usual cause.
+// never the payload a caller parses, so a failed write does not abort the
+// run. The usual cause is a closed stdout (a `| head` that exited).
 func notef(w io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(w, format, args...)
 }

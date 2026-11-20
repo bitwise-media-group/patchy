@@ -47,7 +47,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(missing) > 0 {
-		// Confirm against the cache before failing — the client may race its
+		// Confirm against the cache before failing: the client may race its
 		// own uploads.
 		still, err := s.confirmMissing(r, missing)
 		if err != nil {

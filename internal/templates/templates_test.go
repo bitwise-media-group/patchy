@@ -224,8 +224,8 @@ func TestGoldens(t *testing.T) {
 		}},
 		// A Wiz issue with every optional block, pinning the whole shape.
 		{"finding_wiz_issue.md", func() (string, error) { return RenderWizIssueDescription(testWizIssue()) }},
-		// The minimal variant: no recommendation, no tags, no console link —
-		// each section must vanish cleanly.
+		// The minimal variant: no recommendation, no tags, no console link.
+		// Each section must vanish cleanly.
 		{"finding_wiz_issue_minimal.md", func() (string, error) {
 			return RenderWizIssueDescription(WizIssue{
 				ID:          "f2f5d3b8-a663-4c1b-b7f3-8f7f0c8a0001",

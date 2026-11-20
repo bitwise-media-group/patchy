@@ -54,8 +54,8 @@ func TestIsAlias(t *testing.T) {
 	}
 }
 
-// TestResolve covers the three tiers: exact, alias → newest registered
-// version, and pattern synthesis — plus the misses.
+// TestResolve covers the three tiers (exact, alias → newest registered
+// version, and pattern synthesis) plus the misses.
 func TestResolve(t *testing.T) {
 	tests := []struct {
 		id     string

@@ -60,7 +60,7 @@ func (h *genericHarness) callFor(t *testing.T, name string) pkggeneric.EnhanceRe
 
 func TestDynamicGenericFansOut(t *testing.T) {
 	h := &genericHarness{
-		// Deliberately unsorted: precedence must be name order, not list order.
+		// Unsorted: precedence must be name order, not list order.
 		cfgs: []GenericConfig{{Name: "warehouse"}, {Name: "cmdb"}},
 		respond: func(cfg GenericConfig) (*pkggeneric.EnhanceResponse, error) {
 			return &pkggeneric.EnhanceResponse{
@@ -226,7 +226,7 @@ func TestDynamicGenericConfigError(t *testing.T) {
 
 // The default Do path drives the real signed client end to end: each
 // endpoint sees a request signed with its own secret and its response maps
-// onto the seam type.
+// onto the pkg/enhance type.
 func TestDynamicGenericDefaultClient(t *testing.T) {
 	var gotSig string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

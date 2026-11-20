@@ -16,7 +16,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/mirror/verify"
 )
 
-// upstreamWorld is a two-registry store whose verify seam tells the two
+// upstreamWorld is a two-registry store whose verify hook tells the two
 // kinds of signature apart: refs under the mirror registries carry a valid
 // mirror signature once the fake signer signed them, while upstream refs
 // verify only when the test marks upstream as signed. Upstream checks are
@@ -92,8 +92,8 @@ publish:
 
 // TestEngineSyncVerifiesUpstream pins sync's own provenance gate: before
 // anything is pushed or signed, every subject's verifyUpstream rule is
-// checked — once per subject however many registries it publishes to —
-// and a converged store re-runs without a single upstream check.
+// checked (once per subject however many registries it publishes to), and
+// a converged store re-runs without a single upstream check.
 func TestEngineSyncVerifiesUpstream(t *testing.T) {
 	ctx := context.Background()
 

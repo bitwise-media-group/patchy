@@ -28,8 +28,8 @@ func benchBody(n int) []byte {
 }
 
 // BenchmarkHMACAuthenticate measures validating one delivery signature. The
-// signature is computed with the LAST candidate secret, so the k>1 cases pay
-// for scanning the whole candidate set — the receiver's worst case.
+// signature is computed with the last candidate secret, so the k>1 cases pay
+// for scanning the whole candidate set (the receiver's worst case).
 func BenchmarkHMACAuthenticate(b *testing.B) {
 	sizes := map[string]int{"4KB": 4 << 10, "1MB": 1 << 20, "25MB": 25 << 20}
 	for _, name := range []string{"4KB", "1MB", "25MB"} {
@@ -59,7 +59,7 @@ func BenchmarkHMACAuthenticate(b *testing.B) {
 }
 
 // BenchmarkDedup measures recording a fresh delivery ID against a full
-// 1024-entry ring — every add evicts, the steady state of a busy receiver.
+// 1024-entry ring. Every add evicts, the steady state of a busy receiver.
 func BenchmarkDedup(b *testing.B) {
 	d := newDedup(1024, 5*time.Minute)
 	d.now = func() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }

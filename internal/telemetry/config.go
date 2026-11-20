@@ -42,8 +42,8 @@ type Config struct {
 	// Level gates the stderr text handler; pass the shared verbosity LevelVar so
 	// the file and stderr stay in lockstep with the flag.
 	Level slog.Leveler
-	// ServiceName and ServiceVersion populate the OTEL resource; each of the
-	// four binaries passes its own name.
+	// ServiceName and ServiceVersion populate the OTEL resource; each binary
+	// passes its own name.
 	ServiceName    string
 	ServiceVersion string
 	// Stderr is where the human-readable text handler writes; nil means

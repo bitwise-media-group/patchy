@@ -1,4 +1,4 @@
-// The patchy mark: a 2×2 grid of work units with one tile — the patch —
+// The patchy mark: a 2×2 grid of work units with one tile (the patch)
 // landing into its slot, nudged up and out so the motion reads. The grid is
 // the system (repositories, stages, jobs); the filled tile is the change it
 // makes. Drawn on a 24-unit grid so it stays crisp from favicon to header.

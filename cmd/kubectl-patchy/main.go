@@ -1,13 +1,13 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command kubectl-patchy is the kubectl plugin shim: it resolves the real
-// patchy binary — first beside this executable, then on PATH — and execs
-// it with the same arguments. It is a shim, not a thin client: shipping
-// the ~2 MiB wrapper instead of a second full build is what keeps the
-// patchy-cli archive and Homebrew cask from carrying the CLI twice, while
-// staying a real file (archives have to stay extractable on windows,
-// where symlinks need a privilege most users do not have).
+// Command kubectl-patchy is the kubectl plugin shim. It resolves the real
+// patchy binary (first beside this executable, then on PATH) and execs it
+// with the same arguments. Shipping this ~2 MiB wrapper instead of a second
+// full build keeps the patchy-cli archive and Homebrew cask from carrying the
+// CLI twice. It is a real file rather than a symlink because archives must
+// stay extractable on windows, where symlinks need a privilege most users do
+// not have.
 package main
 
 import (
@@ -45,7 +45,7 @@ func resolve() (string, error) {
 }
 
 // passthrough runs path as a child process with inherited stdio and
-// returns its exit code — the fallback for platforms without exec.
+// returns its exit code. It is the fallback for platforms without exec.
 func passthrough(path string, args []string) int {
 	cmd := exec.Command(path, args...)
 	cmd.Stdin = os.Stdin

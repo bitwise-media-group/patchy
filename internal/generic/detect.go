@@ -15,14 +15,14 @@ import (
 )
 
 // EventFindings is the internal event discriminator for a findings delivery.
-// Distinct from the wire value so a handler switch cannot confuse the two
+// It differs from the wire value so a handler switch cannot confuse the two
 // vocabularies.
 const EventFindings = "generic.findings"
 
 // Detect reports the internal event type of a delivery: "ping" for a
 // connectivity test (the server answers 204), EventFindings for findings.
 // An undecodable body, an unsupported version, or an unknown event is an
-// error — the caller answers 400.
+// error, and the caller answers 400.
 func Detect(body []byte) (string, error) {
 	var env struct {
 		Version string `json:"version"`
@@ -45,8 +45,8 @@ func Detect(body []byte) (string, error) {
 }
 
 // DeliveryID derives the dedup key for a delivery: the caller-chosen
-// DeliveryHeader when present, else the body hash — byte-identical
-// redeliveries dedup, distinct payloads never do (the wiz precedent).
+// DeliveryHeader when present, else the body hash. Byte-identical
+// redeliveries dedup and distinct payloads never do, as for wiz.
 func DeliveryID(r *http.Request, body []byte) string {
 	if id := r.Header.Get(pkggeneric.DeliveryHeader); id != "" {
 		return id

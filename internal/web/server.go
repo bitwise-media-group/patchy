@@ -21,8 +21,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
-// maxBodyBytes caps action POST bodies; the endpoints take no payload, so
-// anything past a token amount is noise.
+// maxBodyBytes caps POST bodies. Only backfill takes a payload (at most 50
+// short repository entries), so anything near this size is noise.
 const maxBodyBytes = 1 << 20
 
 // Granter resolves what an identity may do; internal/web/authz provides the
@@ -75,7 +75,7 @@ func NewServer(c client.Client, namespace string, a auth.Authenticator, g Grante
 
 // WithTranscripts wires the uncached reader for persisted transcripts and the
 // tailer for live ones. Without it the server still serves everything else;
-// transcripts simply come back empty.
+// transcripts come back empty.
 func (s *Server) WithTranscripts(reader client.Reader, tailer Tailer) *Server {
 	if reader != nil {
 		s.reader = reader
@@ -139,8 +139,8 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) (viewer, bool
 
 // authorizeMetrics is the metrics read gate: native get on findingrollups.
 // Like findings, metrics need an identity whenever authentication is
-// configured — only auth mode none (authentication disabled) opens them,
-// and the no-config posture serves nothing at all.
+// configured. Only auth mode none (authentication disabled) opens them, and
+// with no auth config nothing is served.
 func (s *Server) authorizeMetrics(w http.ResponseWriter, r *http.Request) (viewer, bool) {
 	return s.gate(w, r, func(g authz.Grants) bool { return g.Metrics }, "view metrics")
 }
@@ -205,9 +205,9 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	writeJSONGzip(w, r, ds)
 }
 
-// handleFinding serves the full projection of one finding — description,
+// handleFinding serves the full projection of one finding: description,
 // alerts, enrichments, the phase log, and the run reports the list payload
-// deliberately omits. Same view gate as the list; finding data never leaks
+// omits to stay small. Same view gate as the list; finding data never leaks
 // past it.
 func (s *Server) handleFinding(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.authorize(w, r)
@@ -291,7 +291,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // writeJSONGzip is writeJSON behind content negotiation, for the two dataset
 // endpoints whose payloads grow with the backlog (JSON this shape compresses
-// ~10×). Never used on /events — SSE needs every write flushed unbuffered.
+// ~10×). Never used on /events: SSE needs every write flushed unbuffered.
 func writeJSONGzip(w http.ResponseWriter, r *http.Request, v any) {
 	w.Header().Add("Vary", "Accept-Encoding")
 	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {

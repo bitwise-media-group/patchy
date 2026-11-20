@@ -34,10 +34,9 @@ type Resolved struct {
 }
 
 // ParseRepoURL splits a repository URL into host and owner/name. It accepts
-// https URLs with or without a .git suffix or trailing path segments and
-// normalizes case (hosts and owners are case-insensitive on every supported
-// forge; the repo name's case is preserved for display but matching is
-// case-insensitive).
+// http(s) URLs with or without a .git suffix or trailing path segments. The
+// host is lowercased; owner and name keep their case. The org filter compares
+// owners case-insensitively, but repository regexes match the name as given.
 func ParseRepoURL(raw string) (host string, repo ghclient.Repo, err error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -118,8 +117,8 @@ func matches(f *v1alpha1.Forge, host string, repo ghclient.Repo) bool {
 	return true
 }
 
-// Resolve picks the Forge covering repoURL from the given Forges. It is pure
-// — callers list the Forges (informer cache) and pass them in.
+// Resolve picks the Forge covering repoURL from the given Forges. It is pure:
+// callers list the Forges (informer cache) and pass them in.
 func Resolve(forges []v1alpha1.Forge, repoURL string) (*Resolved, error) {
 	host, repo, err := ParseRepoURL(repoURL)
 	if err != nil {

@@ -108,7 +108,7 @@ func TestIngestCreatesFinding(t *testing.T) {
 
 // A finding ingested by an integration with no issues capability of its own
 // still gets a tracking issue: trackingRef falls back to the namespace's
-// issues-enabled integration, exactly as its doc comment always promised.
+// issues-enabled integration.
 func TestIngestTrackingRefFallsBack(t *testing.T) {
 	in, c := newIngestor(t)
 	if err := c.Create(t.Context(), testIntegration()); err != nil {
@@ -264,9 +264,9 @@ func get(t *testing.T, c client.Client, name string) *v1alpha1.Finding {
 	return &f
 }
 
-// A finding in its creation window (no phase yet — the Opened status write
+// A finding in its creation window (no phase yet: the Opened status write
 // races the next alert, routinely so during a backfill burst) still accepts
-// folds; treating it as closed would splinter the family into one
+// folds. Treating it as closed would splinter the family into one
 // generation per alert.
 func TestIngestFoldsIntoPhaselessFinding(t *testing.T) {
 	in, c := newIngestor(t)

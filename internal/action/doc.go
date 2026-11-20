@@ -11,8 +11,8 @@
 // user's kubeconfig identity. Both call Apply, so a phase gate tightened here
 // tightens in both places at once.
 //
-// Authorization is emphatically NOT this package's job — it decides only
-// whether an action is *meaningful*, never whether the caller may take it.
+// Authorization is NOT this package's job. It decides only whether an action
+// is meaningful, never whether the caller may take it.
 // Grants live in internal/web/authz (SubjectAccessReview) for the server, in a
 // SelfSubjectAccessReview for the CLI, and are enforced for real by the
 // ValidatingAdmissionPolicy that binds each custom verb to the spec field it

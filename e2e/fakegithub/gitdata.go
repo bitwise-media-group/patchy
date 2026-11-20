@@ -148,7 +148,7 @@ func (s *Server) createTree(w http.ResponseWriter, r *http.Request) {
 	entries := map[string]string{}
 	for _, e := range body.Tree {
 		if e.SHA == nil {
-			entries[e.Path] = "" // "sha": null — a deletion
+			entries[e.Path] = "" // "sha": null means a deletion
 			continue
 		}
 		entries[e.Path] = *e.SHA

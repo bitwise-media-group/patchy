@@ -1,8 +1,8 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package scan finds vulnerabilities in images through pluggable scanners —
-// osv-scanner and grype, both shell-outs — either by registry reference
+// Package scan finds vulnerabilities in images through pluggable scanners
+// (osv-scanner and grype, both shell-outs), either by registry reference
 // (ImageScanner: the mirror's locked images) or over a local docker
 // archive (ArchiveScanner: a fresh build, scanned before anything is
 // pushed). Kubescape optionally sweeps rendered manifests or a manifests

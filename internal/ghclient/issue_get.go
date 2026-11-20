@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// GetIssue fetches one issue — the projection reconciler's current-state
+// GetIssue fetches one issue: the projection reconciler's current-state
 // read before diffing labels and body.
 func (c *Client) GetIssue(ctx context.Context, repo Repo, number int) (*Issue, error) {
 	is, _, err := c.gh.Issues.Get(ctx, repo.Owner, repo.Name, number)

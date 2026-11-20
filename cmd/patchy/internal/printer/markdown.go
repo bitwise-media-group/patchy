@@ -12,8 +12,8 @@ import (
 )
 
 // Wrapping bounds for rendered markdown. Agent reports contain long prose, and
-// a report wrapped to a 200-column terminal is a wall nobody reads; 100 is
-// about a comfortable line.
+// a report wrapped to a 200-column terminal is hard to read. 100 is about a
+// comfortable line.
 const (
 	maxWrap      = 100
 	minWrap      = 40
@@ -21,8 +21,8 @@ const (
 )
 
 // Markdown writes a markdown document: rendered for a terminal, verbatim
-// otherwise. "Otherwise" covers both a pipe and -o markdown, which is the
-// point — the bytes a user pastes into an issue are the bytes the agent wrote.
+// otherwise. "Otherwise" covers both a pipe and -o markdown, so the bytes a
+// user pastes into an issue are the bytes the agent wrote.
 func (p *Printer) Markdown(md string) error {
 	_, err := p.out.Write([]byte(p.renderMarkdownBody(md)))
 	return err
@@ -30,19 +30,19 @@ func (p *Printer) Markdown(md string) error {
 
 // renderMarkdownBody renders one block, falling back to the source text if the
 // renderer cannot be built or fails. A styling failure must never cost the user
-// the report itself — unrendered markdown is still perfectly readable, which is
-// why this returns no error.
+// the report itself, and unrendered markdown is still readable, so this
+// returns no error.
 func (p *Printer) renderMarkdownBody(md string) string {
 	body := strings.TrimRight(md, "\n") + "\n"
 	if !p.color {
 		return body
 	}
-	// glamour v2 dropped WithAutoStyle: lipgloss v2 no longer probes the
-	// terminal's background, because doing so needs a query/response round trip
-	// that only a TUI event loop can service. WithEnvironmentConfig honours
-	// GLAMOUR_STYLE — the same variable glow and friends read, so a user who has
-	// set it once is already configured — and falls back to the dark theme.
-	// Users on a light terminal set GLAMOUR_STYLE=light; docs/operate/cli.md says so.
+	// glamour v2 has no WithAutoStyle: lipgloss v2 does not probe the
+	// terminal's background, because that needs a query/response round trip
+	// only a TUI event loop can service. WithEnvironmentConfig honours
+	// GLAMOUR_STYLE (the same variable glow reads, so a user who set it once
+	// is already configured) and falls back to the dark theme. Users on a
+	// light terminal set GLAMOUR_STYLE=light, as docs/operate/cli.md says.
 	r, err := glamour.NewTermRenderer(
 		glamour.WithEnvironmentConfig(),
 		glamour.WithWordWrap(wrapWidth(p.out)),

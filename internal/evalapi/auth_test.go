@@ -203,7 +203,7 @@ func TestBearerIdentify(t *testing.T) {
 	}
 }
 
-// fakeIssuer is a minimal OIDC provider — discovery + JWKS — minting RS256 ID
+// fakeIssuer is a minimal OIDC provider (discovery + JWKS) minting RS256 ID
 // tokens directly (no token endpoint: the API only ever verifies).
 type fakeIssuer struct {
 	ts  *httptest.Server

@@ -1,16 +1,16 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package build is the engine behind `patchy build`: it builds the
-// first-party artifacts the patchy config's build: block lists — Dockerfile
-// images and Flux manifest directories — scans them before anything is
-// pushed, publishes them to every configured registry, and signs them with
-// that registry's signing block. It is mirror's sibling for artifacts this
-// project produces rather than vendors, and reuses mirror's seams wholesale:
-// ocireg (pushes and existence probes), scan (archive scanners, the
-// blocking policy, kubescape), allowlist (lint and regeneration), sign (the
-// verify-then-sign Ensurer) and spec (registries, signing, the one scan
-// block).
+// Package build is the engine behind `patchy build`. It builds the
+// first-party artifacts listed in the patchy config's build: block
+// (Dockerfile images and Flux manifest directories), scans them before
+// anything is pushed, publishes them to every configured registry, and signs
+// them with that registry's signing block. It is mirror's sibling for
+// artifacts this project produces rather than vendors, and reuses these
+// mirror packages: ocireg (pushes and existence probes), scan (archive
+// scanners, the blocking policy, kubescape), allowlist (lint and
+// regeneration), sign (the verify-then-sign Ensurer) and spec (registries,
+// signing, the one scan block).
 //
 // The flows: an image entry expands its tags and args (failing fast on an
 // unset variable or an invalid tag), lints its allowlist

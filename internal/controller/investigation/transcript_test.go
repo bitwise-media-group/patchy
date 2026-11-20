@@ -67,8 +67,8 @@ func TestCollectPersistsTranscript(t *testing.T) {
 }
 
 func TestCollectTranscriptOwnedByTheRun(t *testing.T) {
-	// The owner reference is the retention design: Finding → run → transcript.
-	// Without it the ConfigMap outlives the finding it explains.
+	// The owner reference chain (Finding → run → transcript) is how retention
+	// works. Without it the ConfigMap outlives the finding it explains.
 	runner := &fakeRunner{done: true, events: investigationEvent("remediate", 0.9, false), turns: sampleTurns()}
 	r, c := newInvestigation(t, runner, investigationFixture()...)
 	applyOnce(t, r)

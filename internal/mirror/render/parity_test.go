@@ -14,8 +14,8 @@ import (
 
 // TestMirrorStoreParity renders every vendored chart of a real mirror store
 // and byte-compares the result with the committed rendered/manifests.yaml.
-// It runs only when PATCHY_MIRROR_PARITY_DIR points at a checkout — the
-// migration proof that this engine reproduces the trees the previous
+// It runs only when PATCHY_MIRROR_PARITY_DIR points at a checkout. It is
+// the migration proof that this engine reproduces the trees the previous
 // pipeline committed.
 func TestMirrorStoreParity(t *testing.T) {
 	root := os.Getenv("PATCHY_MIRROR_PARITY_DIR")

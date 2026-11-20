@@ -66,9 +66,8 @@ func runBackfill(ctx context.Context, opts *Options, name string, repos []string
 		return errUsage(fmt.Errorf("backfill needs a single namespace; drop --all-namespaces or pass -n"))
 	}
 
-	// Ask before writing. The admission policy is what actually enforces
-	// this; the local check turns a rejected update into a sentence naming
-	// the missing verb.
+	// Ask before writing. The admission policy enforces this, but the local
+	// check turns a rejected update into a message naming the missing verb.
 	allowed, err := opts.access(ctx, env, "integrations", action.VerbBackfill)
 	if err != nil {
 		return err

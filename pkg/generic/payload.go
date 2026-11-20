@@ -52,13 +52,13 @@ type Repo struct {
 }
 
 // Finding is one normalized security finding. The external process does its
-// own normalization — patchy validates the shape and ingests, it does not
+// own normalization: patchy validates the shape and ingests, it does not
 // interpret tool-native payloads.
 //
 // A finding names a Repo, a CloudResource, or both; one with neither is
 // rejected, because there would be nothing to accumulate it against. It must
-// also carry AlertID or a positive AlertNumber — the identity write-back and
-// duplicate-merge key on.
+// also carry AlertID or a positive AlertNumber, the identity that write-back
+// and duplicate merging key on.
 type Finding struct {
 	// Repo is the repository the finding was raised against; omit for a
 	// cloud finding (an enhancer may resolve its repository later).

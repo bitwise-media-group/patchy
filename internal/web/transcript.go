@@ -23,8 +23,8 @@ import (
 // Transcript SSE event names. Turns arrive one per event, each with its Seq as
 // the event id, and a complete stream ends with `end`, so the client knows the
 // difference between a finished conversation and a dropped connection. A
-// stream that closes without `end` — a dropped connection, or a viewer evicted
-// for falling behind — is resumed by reconnecting with Last-Event-ID.
+// stream that closes without `end` (a dropped connection, or a viewer evicted
+// for falling behind) is resumed by reconnecting with Last-Event-ID.
 const (
 	eventTurn = "turn"
 	eventEnd  = "end"
@@ -81,9 +81,9 @@ func resumeAfter(r *http.Request) int {
 //
 // It is Server-Sent Events in both modes so the client has a single code path:
 // a completed run replays its persisted transcript and ends, a running one
-// replays what it has said so far and then follows live. This is deliberately
-// unlike /events, which is public precisely because it carries no content —
-// a transcript is finding data and is gated exactly like /api/findings.
+// replays what it has said so far and then follows live. Unlike /events,
+// which carries no content and admits any read grant, a transcript is finding
+// data and is gated exactly like /api/findings.
 func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.authorize(w, r); !ok {
 		return
@@ -216,7 +216,7 @@ func (s *Server) streamTranscript(
 
 // followTranscript replays what a running agent has said and then streams the
 // rest until the run ends or the viewer leaves. A viewer evicted for falling
-// behind gets no `end`: the stream just closes, and the client reconnects
+// behind gets no `end`: the stream closes, and the client reconnects
 // from the last turn it saw.
 func (s *Server) followTranscript(
 	ctx context.Context, w http.ResponseWriter, flusher http.Flusher, run runRef, after int,

@@ -118,7 +118,7 @@ func TestApplyFindingReversalAndRecount(t *testing.T) {
 		t.Fatal("first Apply returned false")
 	}
 
-	// Revival: a retry moved the finding back into flight — the reversal
+	// Revival: a retry moved the finding back into flight, and the reversal
 	// removes it from the terminal counts entirely.
 	reversal := FindingDelta{
 		PrevPhase: "failed", PrevRecommendation: "remediate", Uncount: true,

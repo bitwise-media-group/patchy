@@ -96,8 +96,8 @@ func TestProxyURL(t *testing.T) {
 }
 
 // TestFromSecretCacheDiscrimination: two resources sharing one Secret with
-// different baseURL or proxy settings must each get (and keep) their own App —
-// the eviction sweep may only drop stale resourceVersions, never siblings at
+// different baseURL or proxy settings must each get (and keep) their own App.
+// The eviction sweep may only drop stale resourceVersions, never siblings at
 // the current one.
 func TestFromSecretCacheDiscrimination(t *testing.T) {
 	apps := NewApps()
@@ -122,7 +122,7 @@ func TestFromSecretCacheDiscrimination(t *testing.T) {
 		t.Error("FromSecret() returned the same App for different baseURLs, want distinct")
 	}
 
-	// All three must still be memoized — alternating callers may not evict
+	// All three must still be memoized: alternating callers may not evict
 	// each other.
 	again, err := apps.FromSecret(secret, "", "")
 	if err != nil {

@@ -36,13 +36,13 @@ const maxEnrichmentMarkdown = 16384
 // sustained one is not a hot loop; the accumulation window bounds the total.
 const defaultRetryAfter = time.Minute
 
-// FindingReconciler runs the enhancer chain over freshly opened Findings —
-// the CRD-native context-controller. It writes Finding status (enrichments,
-// owners, the ContextEnhanced condition, and the Opened→Enhanced edge) and
-// exactly one spec field: spec.repository, set once for a cloud finding that
-// arrived without one. It holds no tracking-system credential — comments are
-// integration-controller projection work — though an enhancer may hold a
-// read-only credential for whatever it looks findings up in.
+// FindingReconciler runs the enhancer chain over newly opened Findings. It
+// writes Finding status (enrichments, owners, the ContextEnhanced condition,
+// and the Opened→Enhanced edge) and exactly one spec field: spec.repository,
+// set once for a cloud finding that arrived without one. It holds no
+// tracking-system credential (integration-controller projects comments),
+// though an enhancer may hold a read-only credential for whatever it looks
+// findings up in.
 type FindingReconciler struct {
 	client.Client
 	// Enhancers run in order; each contributes at most one enrichment.
@@ -55,7 +55,7 @@ type FindingReconciler struct {
 	// RetryAfter paces retries of a cloud finding's repository lookup; zero
 	// means defaultRetryAfter.
 	RetryAfter time.Duration
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -74,7 +74,7 @@ func (r *FindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	result := r.runChain(ctx, &fnd)
 
 	// A cloud finding whose repository lookup errored gets another try. The
-	// chain runs exactly once — there is no transition back to Opened — so
+	// chain runs exactly once (there is no transition back to Opened), so
 	// advancing now would lose the repository permanently, and a repo-less
 	// finding is terminally handed off. Holding at Opened is cheap: alerts
 	// still fold in, and the accumulation window still closes on its own.
@@ -124,7 +124,7 @@ type chainResult struct {
 // contribute. One broken enhancer must not wedge the pipeline, so an error is
 // logged and the chain continues; the caller decides what a failure means. A
 // chain entry implementing enhancers.MultiEnhancer speaks for several
-// identities at once — its enrichments arrive individually attributed, and
+// identities at once. Its enrichments arrive individually attributed, and
 // its partial results are kept even when some of its endpoints failed.
 func (r *FindingReconciler) runChain(ctx context.Context, fnd *v1alpha1.Finding) chainResult {
 	issue := enhanceInput(fnd)
@@ -185,7 +185,7 @@ func (out *chainResult) collect(id string, enr *enhance.Enrichment, now time.Tim
 	}
 }
 
-// requeueOnConflict turns a write conflict into a requeue — something else
+// requeueOnConflict turns a write conflict into a requeue. Something else
 // wrote the finding first, so the next pass re-reads it and decides again.
 func requeueOnConflict(err error) (ctrl.Result, error) {
 	if kerrors.IsConflict(err) {
@@ -195,8 +195,8 @@ func requeueOnConflict(err error) (ctrl.Result, error) {
 }
 
 // contextCondition reports how the chain went. A cloud finding that reaches
-// Enhanced with no repository is not an error — most resources carry no
-// ownership labels — but the reason records why it will be handed off, so the
+// Enhanced with no repository is not an error (most resources carry no
+// ownership labels), but the reason records why it will be handed off, so the
 // answer is on the object rather than only in a log line.
 func contextCondition(fnd *v1alpha1.Finding) metav1.Condition {
 	c := metav1.Condition{
@@ -230,9 +230,9 @@ func (r *FindingReconciler) holdForRepository(
 	if fnd.Spec.Expedite != nil {
 		return false
 	}
-	// The bound. Past the accumulation window the finding is ready to be
-	// investigated, so a still-broken lookup stops being worth waiting for —
-	// better handed off to a human than held out of sight.
+	// The bound: past the accumulation window the finding is ready to be
+	// investigated, so a still-broken lookup stops being worth waiting for.
+	// Handing it to a human beats holding it out of sight.
 	return !meta.IsStatusConditionTrue(fnd.Status.Conditions, v1alpha1.ConditionAccumulationComplete)
 }
 
@@ -322,7 +322,7 @@ func repoNameFromURL(raw string) string {
 }
 
 // enhanceInput adapts a Finding to the pkg/enhance issue shape (the public
-// seam predates CRDs; repo/title/body are what enhancers key on).
+// interface predates CRDs; repo/title/body are what enhancers key on).
 func enhanceInput(fnd *v1alpha1.Finding) enhance.Issue {
 	issue := enhance.Issue{
 		Title: fnd.Spec.Title,

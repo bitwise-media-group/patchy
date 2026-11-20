@@ -47,7 +47,7 @@ func NewSource(name string, o Options) *Source { return &Source{name: name, opts
 func (s *Source) ID() string { return s.name }
 
 // Findings implements source.Handler: it validates one findings delivery and
-// maps it onto the seam type. Validation is all-or-nothing — any invalid
+// maps it onto source.Finding. Validation is all-or-nothing: any invalid
 // finding fails the whole delivery (the errors are joined), so the external
 // process fixes and re-POSTs rather than half its batch silently landing.
 func (s *Source) Findings(_ context.Context, event string, payload []byte) ([]source.Finding, error) {
@@ -128,7 +128,7 @@ func (s *Source) finding(w *pkggeneric.Finding) (*source.Finding, error) {
 
 // advisories keys accumulation. The delivered list wins; absent one, the
 // rule folds findings of the same rule, and a finding without even a rule
-// accumulates against its own alert identity — never against nothing.
+// accumulates against its own alert identity, never against nothing.
 func (s *Source) advisories(w *pkggeneric.Finding) []string {
 	if len(w.Advisories) > 0 {
 		return w.Advisories

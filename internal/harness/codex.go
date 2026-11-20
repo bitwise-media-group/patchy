@@ -42,20 +42,23 @@ func NewCodex() *Codex {
 // where codex's kernel sandbox is redundant and unavailable anyway.
 //
 // codex exec has no equivalents for MaxTurns or a pre-assigned SessionID, so
-// those request fields do not map; budget and timeout enforcement stay with
-// the runner, and the session id is read back from the stream's thread.started
-// event instead. The neutral Sandbox posture is intentionally not rendered:
-// codex's read-only/workspace-write modes are enforced by bubblewrap, which
-// this image does not ship, and enabling it would mean relaxing the pod's
-// RuntimeDefault seccomp profile — it gates the user-namespace and mount
-// syscalls bwrap needs (verified on-cluster: userns clone is EPERM under
-// RuntimeDefault, works under Unconfined). That is not a trade worth making to
-// prevent writes in a pod that already has no egress, no credentials, a
-// read-only rootfs, and a workspace discarded after the run — so --sandbox
-// stays danger-full-access for every posture. AddDirs is likewise unmapped
-// (codex 0.145 gained --add-dir; wiring it is a follow-up). SystemPromptAppend
-// has no system-prompt channel either and is folded into the prompt so its
-// instructions still reach the agent.
+// those request fields do not map. Budget and timeout enforcement stay with
+// the runner, and the session id is read back from the stream's
+// thread.started event instead.
+//
+// The Sandbox posture is not rendered. codex's read-only/workspace-write
+// modes are enforced by bubblewrap, which this image does not ship, and
+// enabling it would mean relaxing the pod's RuntimeDefault seccomp profile,
+// which blocks the user-namespace and mount syscalls bwrap needs (verified
+// on-cluster: userns clone is EPERM under RuntimeDefault, works under
+// Unconfined). That trade is not worth it to prevent writes in a pod that
+// already has no egress beyond the broker, no credentials, a read-only
+// rootfs, and a workspace discarded after the run, so --sandbox stays
+// danger-full-access for every posture.
+//
+// AddDirs is unmapped too (codex 0.145 gained --add-dir; wiring it is a
+// follow-up). There is no system-prompt channel, so SystemPromptAppend is
+// folded into the prompt so its instructions still reach the agent.
 func (c *Codex) PromptSpec(ws string, req PromptRequest) runner.CommandSpec {
 	prompt := req.Prompt
 	if req.SystemPromptAppend != "" {
@@ -320,14 +323,14 @@ func (c *Codex) ParseResult(stdout []byte) (AgentResult, bool) {
 // RuntimeError detects a codex run that produced no agent output (auth
 // blocked, crash, failed turn) so it is reported distinctly from a run whose
 // report merely needs judging. A run that emitted any agent message is
-// usable regardless of exit code — a partial answer, not an error.
+// usable regardless of exit code: a partial answer, not an error.
 func (c *Codex) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return "empty CLI output"
 	}
 	s := scanCodexEvents(stdout)
 	if len(s.texts) > 0 {
-		return "" // produced agent output — usable
+		return "" // produced agent output: usable
 	}
 	if len(s.errors) > 0 {
 		return "codex run error: " + strings.Join(s.errors, "; ")

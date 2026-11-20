@@ -122,10 +122,10 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 
 	srv := web.NewServer(mgr.GetClient(), namespace, authn, granter, log)
-	// Transcripts read through the uncached API reader (caching every
-	// ConfigMap in the namespace to serve objects read once per page view is
-	// not worth an informer) and follow live runs from the agent namespace's
-	// pod logs, via the API server — the status server never dials an agent pod.
+	// Transcripts read through the uncached API reader, because caching every
+	// ConfigMap in the namespace for objects read once per page view is not
+	// worth an informer. Live runs are followed through the agent namespace's
+	// pod logs via the API server. The status server never dials an agent pod.
 	agentNS := opts.String("agent-namespace")
 	tailer, err := agentTailer(opts.String("kubeconfig"), agentNS)
 	if err != nil {

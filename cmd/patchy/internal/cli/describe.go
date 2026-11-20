@@ -61,8 +61,8 @@ func runDescribe(ctx context.Context, opts *Options, noun, name string) error {
 	switch typed := obj.(type) {
 	case *v1alpha1.Finding:
 		// Spend lives on the child runs, so it needs a query the render layer
-		// deliberately cannot make. A failure to total it is not worth failing
-		// the whole view over — the rest of the finding is still useful.
+		// cannot make (render has no cluster access). A failure to total it
+		// does not fail the view, because the rest of the finding is useful.
 		spend, err := findingSpend(callCtx, env, typed)
 		if err != nil {
 			opts.debugf("could not total spend for %s: %v", typed.Name, err)
@@ -81,8 +81,8 @@ func runDescribe(ctx context.Context, opts *Options, noun, name string) error {
 }
 
 // findingSpend totals the cost across every attempt of both stages. The figures
-// live on the Investigation and Remediation children, which outlive nothing and
-// may already have been collected — a missing child simply contributes nothing.
+// live on the Investigation and Remediation children, which may already have
+// been garbage collected. A missing child contributes nothing.
 func findingSpend(ctx context.Context, env *kubecfg.Env, f *v1alpha1.Finding) (string, error) {
 	sel := listOptions(env, fmt.Sprintf("%s=%s", v1alpha1.LabelFinding, f.Name))
 

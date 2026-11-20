@@ -9,12 +9,12 @@ import (
 	"strings"
 )
 
-// Doc builds the detail views — what `describe` and `review` print.
+// Doc builds the detail views that `describe` and `review` print.
 //
-// Commands declare structure (a section, a field, a body of markdown) and never
+// Commands declare structure (a section, a field, a body of markdown), never
 // formatting. The same declarations render as styled terminal output or as
-// markdown depending only on the printer's format, which is why `patchy review
-// -o markdown` pastes cleanly into an issue without a second code path.
+// markdown depending only on the printer's format, so `patchy review -o
+// markdown` pastes cleanly into an issue without a second code path.
 type Doc struct {
 	p        *Printer
 	sections []section
@@ -43,8 +43,7 @@ func (d *Doc) Section(title string) *Doc {
 }
 
 // Field adds a key/value line to the current section. An empty value is
-// skipped: a detail view listing a dozen "<none>" rows buries the handful of
-// fields that actually say something.
+// skipped, so a dozen "<none>" rows do not bury the fields that have values.
 func (d *Doc) Field(key, value string) *Doc {
 	if value == "" {
 		return d
@@ -58,8 +57,8 @@ func (d *Doc) Fieldf(key, format string, args ...any) *Doc {
 	return d.Field(key, fmt.Sprintf(format, args...))
 }
 
-// Body adds a block of markdown to the current section — an agent report, a
-// summary paragraph.
+// Body adds a block of markdown, such as an agent report or a summary
+// paragraph, to the current section.
 func (d *Doc) Body(markdown string) *Doc {
 	if strings.TrimSpace(markdown) == "" {
 		return d
@@ -153,7 +152,7 @@ func (d *Doc) renderTerm(w *errWriter) {
 
 // errWriter collects the first write error so a long render reads as a
 // sequence of prints rather than a chain of error checks. A failed stdout is
-// not recoverable mid-document anyway; what matters is that Render reports it.
+// not recoverable mid-document. Render only has to report it.
 type errWriter struct {
 	w   io.Writer
 	err error

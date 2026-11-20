@@ -13,8 +13,8 @@ import (
 // buildResource describes the running service for every signal. It layers the
 // service identity over resource.Default()'s SDK/host attributes; the
 // service.* attributes are schemaless, so the merge cannot raise a schema-URL
-// conflict. A non-nil error is a best-effort warning — the returned resource is
-// still usable — so Init ignores it rather than failing.
+// conflict. A non-nil error is a best-effort warning and the returned resource
+// is still usable, so Init ignores it rather than failing.
 func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
 	return resource.New(ctx,
 		resource.WithAttributes(

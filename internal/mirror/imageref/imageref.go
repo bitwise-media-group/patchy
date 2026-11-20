@@ -110,8 +110,8 @@ func Rewrite(ref string, rewrites map[string]string) string {
 // segments, so "ghcr.io/**/app" matches both ghcr.io/app and
 // ghcr.io/a/b/app. No other metacharacters are supported.
 //
-// It is the one glob dialect of every reference pattern list — images.exclude,
-// images.verifyUpstream match, ociRefs.allow and the source policies — so a
+// It is the one glob dialect of every reference pattern list (images.exclude,
+// images.verifyUpstream match, ociRefs.allow and the source policies), so a
 // segment boundary always holds ("ghcr.io/acme/*" never reaches into
 // ghcr.io/acme/team/app).
 func PathMatch(pattern, value string) bool {

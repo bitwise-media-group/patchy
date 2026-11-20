@@ -34,9 +34,9 @@ type IDTokenClaims struct {
 // GoogleOIDCAuthenticator validates the OIDC token Pub/Sub signs for an
 // authenticated push subscription.
 //
-// A push subscription cannot compute an HMAC over the body — the message is
-// composed by Pub/Sub, not by the sender — so this is the only authentication
-// available on that path, and it is a stronger one: the token is asymmetric,
+// A push subscription cannot compute an HMAC over the body (Pub/Sub composes
+// the message, not the sender), so this is the only authentication available
+// on that path. It is also a stronger one: the token is asymmetric,
 // short-lived, and bound to both a service account and an audience.
 type GoogleOIDCAuthenticator struct {
 	// Verify checks the token signature and issuer.
@@ -45,8 +45,8 @@ type GoogleOIDCAuthenticator struct {
 	// oidcToken.audience.
 	Audience string
 	// ServiceAccount is the email the token must be issued for. Checking it
-	// is what stops any Google-issued token — anyone with a GCP account can
-	// mint one — from being accepted.
+	// stops any Google-issued token from being accepted: anyone with a GCP
+	// account can mint one.
 	ServiceAccount string
 }
 
@@ -108,7 +108,7 @@ func NewGoogleVerifier(audience string) *GoogleVerifier {
 
 // Verify implements TokenVerifier. The provider is fetched on first use
 // rather than at construction, so a network blip at startup cannot stop the
-// controller coming up — the delivery is retried by Pub/Sub either way.
+// controller coming up. Pub/Sub retries the delivery either way.
 func (g *GoogleVerifier) Verify(ctx context.Context, raw string) (*IDTokenClaims, error) {
 	v, err := g.verifier(ctx)
 	if err != nil {

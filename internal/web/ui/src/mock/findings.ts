@@ -1,4 +1,4 @@
-// Demo dataset — one finding per lifecycle phase, plus rollups for every
+// Demo dataset: one finding per lifecycle phase, plus rollups for every
 // scope. Content is illustrative; the shapes and vocabulary come from the
 // patchy api/v1alpha1 types. Timestamps are fixed ISO strings so the demo is
 // deterministic; relative times are computed at render.
@@ -606,7 +606,7 @@ const findings: Finding[] = [
     integration: "cloud-bitwise",
     source: "cloud-config-scan",
     // No repository: config findings have no repo to patch, so this finding
-    // can never reach Queued/Remediating — it is handed to humans instead.
+    // can never reach Queued/Remediating; it is handed to humans instead.
     advisories: ["CWE-284"],
     ruleID: "s3/public-read-policy",
     title: "Object storage bucket policy allows public read",

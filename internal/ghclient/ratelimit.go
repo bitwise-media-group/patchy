@@ -19,8 +19,8 @@ const (
 	maxWait     = 60 * time.Second
 )
 
-// retryTransport retries requests that GitHub rejected for rate limiting —
-// a 403/429 carrying Retry-After, or an exhausted x-ratelimit-remaining —
+// retryTransport retries requests that GitHub rejected for rate limiting
+// (a 403/429 carrying Retry-After, or an exhausted x-ratelimit-remaining)
 // after waiting out the advertised delay. Everything else passes through
 // untouched. A request whose body cannot be replayed (non-nil Body without
 // GetBody) is never retried.
@@ -29,8 +29,8 @@ type retryTransport struct {
 }
 
 // newRetryTransport wraps a clone of http.DefaultTransport with the retry
-// policy. A non-nil proxy routes every request through that forward proxy —
-// the resource-level override; nil keeps the clone's ProxyFromEnvironment, so
+// policy. A non-nil proxy (the resource-level override) routes every request
+// through that forward proxy; nil keeps the clone's ProxyFromEnvironment, so
 // HTTPS_PROXY/HTTP_PROXY/NO_PROXY apply.
 func newRetryTransport(proxy *url.URL) *retryTransport {
 	base := http.DefaultTransport.(*http.Transport).Clone()

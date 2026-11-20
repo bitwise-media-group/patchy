@@ -1,7 +1,7 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Tier-1 microbenchmarks for the ingest hot path — the cost of folding one
+// Tier-1 microbenchmarks for the ingest hot path: the cost of folding one
 // scanner alert into a cluster already holding N findings. Run via
 // `mise run bench`; the TestComplexity* assertions are opt-in
 // (PATCHY_BENCH_ASSERT=1) so plain `go test` stays fast and green.
@@ -37,7 +37,7 @@ import (
 // extrapolate to the 2M design target.
 var benchSweep = []int{1_000, 10_000, 100_000}
 
-// loadgenIntegration is the ingesting Integration for loadgen findings —
+// loadgenIntegration is the ingesting Integration for loadgen findings. It is
 // issues-enabled so trackingRef resolution short-circuits (the bench measures
 // accumulation, not tracker selection).
 func loadgenIntegration() *v1alpha1.Integration {
@@ -55,7 +55,7 @@ func loadgenIntegration() *v1alpha1.Integration {
 // cacheEmulator emulates the informer cache's List over a preloaded finding
 // set. Writes (Get/Create/Update/Status) pass through to the embedded fake
 // client; List answers from the emulator's own store the way the real
-// thread-safe store would — a field selector hits the key-hash index, any
+// thread-safe store would: a field selector hits the key-hash index, any
 // other selector scans.
 type cacheEmulator struct {
 	client.Client
@@ -87,8 +87,8 @@ func (e *cacheEmulator) List(_ context.Context, list client.ObjectList, opts ...
 	lo.ApplyOptions(opts)
 	fl.Items = fl.Items[:0]
 	if lo.FieldSelector != nil {
-		// O(1): the registered index, exactly what MatchingFields buys on the
-		// real cache.
+		// O(1): the registered index, as MatchingFields uses on the real
+		// cache.
 		hash := ""
 		for _, req := range lo.FieldSelector.Requirements() {
 			hash = req.Value
@@ -149,9 +149,9 @@ func TestLoadgenFoldsIntoFamily(t *testing.T) {
 }
 
 // BenchmarkIngestFold measures folding one alert into an existing family
-// with N findings already in the cluster — the per-alert cost of a
-// brownfield backlog. Before the key-hash field index this is O(N) per
-// alert; after it, flat.
+// with N findings already in the cluster: the per-alert cost of a
+// brownfield backlog. Without the key-hash field index this is O(N) per
+// alert; with it, flat.
 func BenchmarkIngestFold(b *testing.B) {
 	for _, n := range benchSweep {
 		b.Run(fmt.Sprintf("existing=%d", n), func(b *testing.B) {
@@ -237,7 +237,7 @@ func BenchmarkFamilyLookup(b *testing.B) {
 	}
 }
 
-// BenchmarkKeyHash is the accumulation-key hash itself — the fixed floor
+// BenchmarkKeyHash measures the accumulation-key hash itself: the fixed floor
 // under every delivery.
 func BenchmarkKeyHash(b *testing.B) {
 	b.ReportAllocs()
@@ -249,7 +249,7 @@ func BenchmarkKeyHash(b *testing.B) {
 
 // TestComplexityIngestFold asserts the per-alert fold cost is flat in the
 // backlog size: 100k existing findings may cost at most 3× what 1k does.
-// Red before the key-hash field index (the label scan is O(N)), green after.
+// It fails without the key-hash field index (the label scan is O(N)).
 func TestComplexityIngestFold(t *testing.T) {
 	if os.Getenv("PATCHY_BENCH_ASSERT") == "" {
 		t.Skip("set PATCHY_BENCH_ASSERT=1 to run complexity assertions")

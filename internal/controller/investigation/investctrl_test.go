@@ -246,8 +246,8 @@ func TestGateRecoversFailedInvestigationOnRetry(t *testing.T) {
 }
 
 func TestGateIgnoresStaleRetry(t *testing.T) {
-	// The retry predates the failure — it was consumed by an earlier
-	// recovery and must not re-fire.
+	// The retry predates the failure: an earlier recovery consumed it, and
+	// it must not re-fire.
 	r, c := newGate(t, failedInvestigationFinding(clock.Add(-2*time.Hour)), testForge())
 	gateOnce(t, r)
 	if got := getF(t, c).Status.Phase; got != v1alpha1.PhaseFailed {
@@ -256,7 +256,7 @@ func TestGateIgnoresStaleRetry(t *testing.T) {
 }
 
 func TestGateIgnoresRetryForRemediationFailure(t *testing.T) {
-	// A finding that failed out of Remediating recovers to Queued — that
+	// A finding that failed out of Remediating recovers to Queued. That
 	// edge belongs to remediation-controller, not the gate.
 	fnd := failedInvestigationFinding(clock.Add(-time.Minute))
 	fnd.Status.PhaseTimes = append(fnd.Status.PhaseTimes,
@@ -271,7 +271,7 @@ func TestGateIgnoresRetryForRemediationFailure(t *testing.T) {
 	}
 }
 
-// fakeRunner is the jobs seam.
+// fakeRunner fakes the Runner interface (the jobs client).
 type fakeRunner struct {
 	created []jobs.Spec
 	done    bool
@@ -556,7 +556,7 @@ func (c stalledRollupClient) Get(
 }
 
 // A rollup cache that never syncs must cost the launch its calibration
-// garnish, not the controller its only worker: the Job still goes out.
+// section, not the controller its only worker: the Job still goes out.
 func TestLaunchSurvivesStalledRollupCache(t *testing.T) {
 	objs := investigationFixture()
 	inv := objs[1].(*v1alpha1.Investigation)

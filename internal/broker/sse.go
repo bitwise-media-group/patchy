@@ -15,12 +15,12 @@ import (
 const ssePing = ": ping\n\n"
 
 // sseWriter injects keep-alive pings into an event-stream response while the
-// upstream is silent — long thinking pauses on Bedrock/Vertex would otherwise
+// upstream is silent. Without them, long thinking pauses on Bedrock/Vertex
 // let intermediaries idle-close the connection. The timer arms when the
 // response declares Content-Type: text/event-stream and resets on every real
 // byte; pings write only between upstream writes, under the same lock.
 //
-// Every write AND flush is serialized by mu: the reverse proxy flushes via
+// Every write and flush is serialized by mu. The reverse proxy flushes via
 // http.ResponseController, which finds FlushError here before unwrapping, so
 // its write-then-flush sequence and the timer goroutine's ping can never
 // touch the underlying connection concurrently. Unwrap stays for the

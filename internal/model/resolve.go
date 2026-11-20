@@ -58,7 +58,7 @@ func IsAlias(id string) bool { return claudeAliasPattern.MatchString(id) }
 //
 //  1. exact: a registered model with that canonical id;
 //  2. alias: anthropic/claude-<family> resolves to the highest (major, minor)
-//     registered Anthropic model of that family — ok=false when the family
+//     registered Anthropic model of that family, or ok=false when the family
 //     has no registered model;
 //  3. pattern: a well-formed anthropic/claude-<family>-<major>[-<minor>] with
 //     no registry entry is synthesized as a claude-harness-only, unpriced
@@ -169,7 +169,7 @@ func newestOfFamily(models []Model, family string) (Model, bool) {
 
 // synthesize builds the pattern-tier model for a well-formed but unregistered
 // Anthropic id: claude harness only (its bare id is what the claude CLI's
-// --model takes) and no pricing — the claude CLI reports its own cost, so the
+// --model takes) and no pricing. The claude CLI reports its own cost, so the
 // token-priced fallback is never needed for it.
 func synthesize(id string) (Model, bool) {
 	prov, bare, ok := strings.Cut(id, "/")

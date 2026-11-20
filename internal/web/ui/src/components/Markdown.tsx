@@ -1,5 +1,5 @@
 // Minimal markdown renderer for scanner-supplied text (finding descriptions,
-// enrichment notes). Builds vnodes — never innerHTML — so untrusted input
+// enrichment notes). Builds vnodes, never innerHTML, so untrusted input
 // cannot inject markup. Covers the GHAS/CodeQL help subset: headings, fenced
 // code, lists, blockquotes, inline code, bold/italic, and http(s) links.
 // Fenced code is syntax-highlighted by its info string (```go), or by a

@@ -32,14 +32,15 @@ const BranchPrefix = "patchy/"
 // approverAssociations are the author associations allowed to /approve.
 var approverAssociations = []string{"OWNER", "MEMBER", "COLLABORATOR"}
 
-// Signals applies human actions on tracking items to Findings: the writer of
-// edges 16/17 (PR merged/closed), 19 (issue reopened after dismissal), 20
-// (issue closed by a human), and of spec.approval.
+// Signals applies human actions on tracking items to Findings. It writes
+// InReview→Remediated/Failed (PR merged/closed), Dismissed→HandedOff (issue
+// reopened after dismissal), non-terminal→HandedOff (issue closed by a
+// human), and spec.approval.
 type Signals struct {
 	client.Client
 	// Namespace the Findings live in.
 	Namespace string
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -138,8 +139,8 @@ func (s *Signals) comment(ctx context.Context, integ *v1alpha1.Integration, payl
 		if err := s.Get(ctx, types.NamespacedName{Namespace: s.Namespace, Name: fnd}, &cur); err != nil {
 			return client.IgnoreNotFound(err)
 		}
-		// First approval wins — except a HandedOff finding whose recorded
-		// approval predates completion: that approval can never revive it
+		// First approval wins, except on a HandedOff finding whose recorded
+		// approval predates completion. That approval can never revive it
 		// (remediation-controller requires approval newer than completedAt),
 		// so a fresh /approve replaces it.
 		if cur.Spec.Approval != nil && !staleApproval(&cur) {
@@ -156,7 +157,7 @@ func (s *Signals) comment(ctx context.Context, integ *v1alpha1.Integration, payl
 
 // staleApproval reports a HandedOff finding whose approval is too old to
 // revive it (not newer than status.completedAt). Keep in lockstep with the
-// status server's copy in internal/web/actions.go.
+// copy in internal/action/action.go.
 func staleApproval(f *v1alpha1.Finding) bool {
 	if f.Status.Phase != v1alpha1.PhaseHandedOff || f.Spec.Approval == nil {
 		return false

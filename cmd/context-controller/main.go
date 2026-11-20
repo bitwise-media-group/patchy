@@ -1,9 +1,9 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command context-controller reacts to newly opened security-finding issues
-// and enhances their context from first/third parties (CMDB ownership,
-// associated infrastructure) before remediation picks them up.
+// Command context-controller reacts to newly opened Findings and enhances
+// their context from first and third parties (CMDB ownership, associated
+// infrastructure) before investigation picks them up.
 package main
 
 import (

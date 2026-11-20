@@ -19,10 +19,10 @@ import (
 // registry writes included).
 const signTimeout = 3 * time.Minute
 
-// The public sigstore trust services keyless signing pins deliberately —
-// public repos want the public log. Each entry mirrors the public-good
-// instance's own signing config (operator, API version, validity start),
-// minus the TSA: the tlog entry is the signing-time evidence.
+// The public sigstore trust services keyless signing pins, because public
+// repos want the public log. Each entry mirrors the public-good instance's
+// own signing config (operator, API version, validity start), minus the
+// TSA: the tlog entry is the signing-time evidence.
 var (
 	fulcioService = signingService{
 		URL: "https://fulcio.sigstore.dev", MajorAPIVersion: 1,
@@ -69,8 +69,9 @@ type serviceSelector struct {
 	Selector string `json:"selector,omitempty"`
 }
 
-// ToolRunner executes the cosign binary; a seam so tests can can its
-// invocations. scan.ExecRunner satisfies it.
+// ToolRunner executes the cosign binary. It is an interface so tests can
+// record its invocations and return canned results. scan.ExecRunner
+// satisfies it.
 type ToolRunner interface {
 	// Run executes name with args and extra environment, returning stdout.
 	Run(ctx context.Context, name string, args, env []string) (stdout []byte, err error)
@@ -81,7 +82,7 @@ type ToolRunner interface {
 // Signer signs OCI artifacts per one resolved signing config by shelling
 // out to the cosign binary. KMS URI schemes (awskms:// gcpkms://
 // azurekms:// hashivault://) are whatever the installed cosign build
-// supports — upstream release binaries include all of them.
+// supports; upstream release binaries include all of them.
 type Signer struct {
 	signing *spec.Signing
 	runner  ToolRunner
@@ -129,8 +130,8 @@ func (s *Signer) Sign(ctx context.Context, ref string, recursive bool) error {
 	defer cancel()
 
 	// Every service comes from the signing config, never per-service flags
-	// (deprecated in cosign v3). A key signs with none — no Fulcio, no
-	// tlog, no TSA — so its bundle carries the signature alone.
+	// (deprecated in cosign v3). A key signs with none (no Fulcio, no
+	// tlog, no TSA), so its bundle carries the signature alone.
 	cfg := signingConfig{MediaType: signingConfigMediaType}
 	var keyArgs, env []string
 	switch {
@@ -156,8 +157,8 @@ func (s *Signer) Sign(ctx context.Context, ref string, recursive bool) error {
 	defer func() { _ = os.Remove(cfgPath) }()
 
 	// --signing-config also pins the storage format: cosign accepts it only
-	// for sigstore bundles, which it attaches as OCI 1.1 referrers — never
-	// sha256-<digest>.sig tags — so a cosign that would write legacy tags
+	// for sigstore bundles, which it attaches as OCI 1.1 referrers, never
+	// as sha256-<digest>.sig tags. A cosign that would write legacy tags
 	// fails instead. (A registry without the referrers API gets the spec's
 	// sha256-<digest> fallback index tag; ECR serves the API.)
 	args := []string{

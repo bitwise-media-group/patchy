@@ -2,9 +2,9 @@
 // twin of the server's metrics surface for the demo and snapshot modes.
 //
 // Rollups are sharded one object per scope value and the dimensions never
-// cross (there is no repository × model shard), so a slice is always ONE
+// cross (there is no repository × model shard), so a slice is always one
 // dimension. The exception is "match": every repository whose name contains
-// a term, summed — the counters are all additive, so a sum of repository
+// a term, summed. The counters are all additive, so a sum of repository
 // buckets is exactly the bucket a shard over them would carry.
 //
 // Repository shards grow with the estate (10k+ in one organisation), so the

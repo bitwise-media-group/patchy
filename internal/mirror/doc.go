@@ -11,18 +11,18 @@
 // manifest plus machine-derived facts (vendored chart tree, rendered
 // manifests, digest locks, allowlists). Registries, signing and the scan
 // defaults come from the layered patchy config, which the CLI resolves and
-// hands in as a spec.Config — the engine never discovers config files.
+// hands in as a spec.Config. The engine never discovers config files.
 // The engine's verbs regenerate facts from intent (upgrade), converge the
 // registry onto the committed facts (sync), and re-derive out-of-tree to
 // prove the committed facts are current (validate).
 //
 // The engine never touches git and never creates commits, branches or
-// PRs — it mutates files (upgrade, add) or the registry (sync), and the
+// PRs. It mutates files (upgrade, add) or the registry (sync), and the
 // calling pipeline owns version control. Wall-clock-dependent steps
 // (tracked-tag cooldown picks, allowlist expiry stamping) run only in
 // upgrade, keeping validate's byte-identity gate deterministic.
 //
-// Subpackages hold one concern each; this package orchestrates them and
-// owns the Engine API the CLI drives: typed results on stdout's behalf,
-// Event narration on stderr's.
+// Subpackages hold one concern each. This package orchestrates them and
+// owns the Engine API the CLI drives: typed results for stdout, Event
+// narration for stderr.
 package mirror

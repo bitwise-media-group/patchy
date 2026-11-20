@@ -23,8 +23,8 @@ import (
 
 // The default output of `get all` is a server-rendered table per kind, and no
 // fake client produces one: the rows, the columns and the -o wide priorities
-// all come from the CRDs via the API server. So the whole table path — which
-// is what a user actually sees — needs a real one.
+// all come from the CRDs via the API server. So the table path, which is what
+// a user sees, needs a real API server.
 
 // startGetEnv boots envtest with the CRDs and returns a CLI wired to it.
 func startGetEnv(t *testing.T) (*Options, *bytes.Buffer, *bytes.Buffer, client.Client) {
@@ -103,8 +103,8 @@ func TestGetAllTables(t *testing.T) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
 	}
-	// The five kinds with nothing in them must not print a heading; an empty
-	// namespace would otherwise be seven headings and no rows.
+	// The five kinds with nothing in them must not print a heading. Otherwise
+	// an empty namespace would print seven headings and no rows.
 	for _, absent := range []string{"Investigations", "Remediations", "Finding rollups", "Repositories", "Integrations"} {
 		if strings.Contains(got, absent) {
 			t.Errorf("empty kind %q was printed:\n%s", absent, got)

@@ -5,7 +5,7 @@
 
 package main
 
-// run executes patchy as a child process — windows has no exec — passing
+// run executes patchy as a child process (windows has no exec), passing
 // stdio through and propagating the exit code.
 func run(path string, args []string) int {
 	return passthrough(path, args)

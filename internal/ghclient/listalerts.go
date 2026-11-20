@@ -80,7 +80,7 @@ const repoPageCap = 200
 //   - an account none of the repos entries name is skipped outright;
 //   - an account whose entries all carry a name segment ("owner/name",
 //     "owner/name-prefix-") is walked by enumerating its repository
-//     inventory and listing only matching repositories — cost scales with
+//     inventory and listing only matching repositories, so cost scales with
 //     repository count, not the org's alert count;
 //   - a bare "owner/" entry (or an empty filter) keeps the full walk: the
 //     single org-wide listing for an organization account, the
@@ -144,7 +144,7 @@ func (e *AppAlertEnumerator) Enumerate(
 
 // listMatchingRepoAlerts enumerates the installation's repository
 // inventory and walks the alerts of the repositories matching entries
-// (all of them when entries is empty) — the walk whose cost scales with
+// (all of them when entries is empty). This walk's cost scales with
 // repository count rather than alert count.
 func listMatchingRepoAlerts(
 	ctx context.Context, c *Client, entries []string, yield func(Repo, *Alert) bool,
@@ -195,7 +195,7 @@ func (c *Client) InstallationRepos(ctx context.Context) (repos []Repo, complete 
 // PATAlertEnumerator walks the open code-scanning alerts of an explicit
 // repository list with a PAT client. A PAT sees no installation
 // inventory, so it cannot discover repositories: every entry must be an
-// exact "owner/name" — a bare "owner/" prefix is an error, not an empty
+// exact "owner/name". A bare "owner/" prefix is an error, not an empty
 // result.
 type PATAlertEnumerator struct {
 	Client *Client
@@ -243,9 +243,9 @@ func (e *PATAlertEnumerator) Enumerate(
 	return true, nil
 }
 
-// RepoMatches reports whether repo matches any filter entry: an entry is
-// a prefix of "owner/name" — "owner/", "owner/name" (which also matches
-// "owner/name-suffix"), or "owner/name-prefix-" — and a slash-less entry
+// RepoMatches reports whether repo matches any filter entry. An entry is
+// a prefix of "owner/name" ("owner/", "owner/name", which also matches
+// "owner/name-suffix", or "owner/name-prefix-"), and a slash-less entry
 // is normalized to an owner prefix, so "acme" cannot match "acmex/..".
 // Matching is case-insensitive, as GitHub owner and repository names are.
 // An empty filter matches everything.

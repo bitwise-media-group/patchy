@@ -104,12 +104,12 @@ func ConfigMap(namespace string, labels map[string]string, owner client.Object,
 }
 
 // Persist writes a run's transcript and returns the reference to record on the
-// run's status. No turns means no object and a nil reference — a harness that
+// run's status. No turns means no object and a nil reference: a harness that
 // cannot transcribe, or a run that died before speaking, is not an error.
 //
 // The live stream carries far more than a ConfigMap can hold, so the turns are
-// compacted to the store bounds first (transcript.Compact): the stored record
-// is a bounded summary — head, tail, and an elision notice — whatever the run
+// first compacted to the store bounds (transcript.Compact). The stored record
+// is a bounded summary (head, tail, and an elision notice) whatever the run
 // streamed.
 //
 // The write is idempotent: a re-collected run overwrites its own transcript

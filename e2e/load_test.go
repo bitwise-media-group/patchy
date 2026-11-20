@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // The Tier-2 load suite: the real controller binaries against envtest at
-// tens of thousands of findings — the brownfield-backlog rehearsal the
+// tens of thousands of findings. It is the brownfield-backlog rehearsal the
 // microbenchmarks extrapolate from. Opt-in twice over: skipped without
 // PATCHY_LOAD=1 (on top of the suite-wide KUBEBUILDER_ASSETS skip), sized by
 // PATCHY_LOAD_N (default 50000), with hard assertions only under
-// PATCHY_LOAD_ASSERT=1 — absolute numbers are hardware-bound, so they are
-// reported, while the complexity-shaped ratios are asserted. Run via
+// PATCHY_LOAD_ASSERT=1. Absolute numbers are hardware-bound, so they are
+// reported; the complexity-shaped ratios are asserted. Run via
 // `mise run load`; targets live in docs/contributing/benchmarks.md.
 //
 // The same caveat as the rest of the suite: envtest has no kubelet, so agent
-// Jobs never execute — pipeline progression past ingest is fabricated via
+// Jobs never execute and pipeline progression past ingest is fabricated via
 // status writes. Each test boots its own cluster so phases run independently
 // under -run; teardown at 50k+ objects is slow, so tests kill the env rather
 // than deleting objects.
@@ -155,7 +155,7 @@ func timeAt(samples []progressSample, target int) time.Duration {
 
 // ---- seeding ---------------------------------------------------------------
 
-// seedLoadIntegration creates ONE generic integration (source on, nothing
+// seedLoadIntegration creates one generic integration (source on, nothing
 // else): no github Integration means no issue projection and no fakegithub
 // anywhere in the ingest path.
 func seedLoadIntegration(t *testing.T, cl *cluster) {
@@ -182,8 +182,8 @@ func seedLoadIntegration(t *testing.T, cl *cluster) {
 }
 
 // bulkCreateFindings seeds n loadgen findings (create + status update) with
-// eight writers — roughly an order of magnitude faster than driving them
-// through webhooks, for the tests whose subject is not ingest.
+// eight writers. That is roughly an order of magnitude faster than driving
+// them through webhooks, for the tests whose subject is not ingest.
 func bulkCreateFindings(t *testing.T, cl *cluster, n int, o loadgen.Opts,
 	mutate func(i int, fnd *v1alpha1.Finding)) {
 	t.Helper()
@@ -231,9 +231,9 @@ func bulkCreateFindings(t *testing.T, cl *cluster, n int, o loadgen.Opts,
 
 // TestLoadIngest drives N unique findings through the generic webhook route
 // into the real integration-controller and measures sustained alerts/s plus
-// the first-vs-last-decile per-alert cost — the flatness proof for the
-// key-hash family index (before it, per-alert cost grows with the backlog
-// and the ratio blows past 2).
+// the first-vs-last-decile per-alert cost. That ratio proves the key-hash
+// family index keeps ingest flat: without it, per-alert cost grows with the
+// backlog and the ratio exceeds 2.
 func TestLoadIngest(t *testing.T) {
 	n, assert := loadParams(t)
 	cl := startCluster(t)
@@ -306,8 +306,8 @@ func TestLoadIngest(t *testing.T) {
 	}
 }
 
-// loadIngestPayload is one findings delivery for indices [start, end) —
-// every finding its own accumulation family, so ingest exercises the
+// loadIngestPayload is one findings delivery for indices [start, end). Each
+// finding is its own accumulation family, so ingest exercises the
 // family-List + create path n times.
 func loadIngestPayload(start, end int) []byte {
 	p := pkggeneric.Payload{Version: pkggeneric.Version, Event: pkggeneric.EventFindings}
@@ -427,7 +427,7 @@ func TestLoadStatusServer(t *testing.T) {
 	t.Logf("LOAD status-server gzip GET /api/findings: %v, %.1f MiB on the wire (%.1fx smaller)",
 		gzLatency.Round(time.Millisecond), float64(gzBytes)/(1<<20), float64(rawBytes)/float64(gzBytes))
 
-	// The per-finding detail route — the per-click cost the trimmed list
+	// The per-finding detail route: the per-click cost the trimmed list
 	// defers to. Averaged over a handful of distinct findings so a single
 	// cache line does not flatter the number.
 	const detailRuns = 5
@@ -457,8 +457,8 @@ func TestLoadStatusServer(t *testing.T) {
 }
 
 // TestLoadRollups drives findings to terminal in waves and measures how fast
-// the single `total` FindingRollup converges — the conflict-retry hotspot
-// with its inherent serial ceiling (documented, not redesigned).
+// the single `total` FindingRollup converges. It is the conflict-retry
+// hotspot, with an inherent serial ceiling (documented, not redesigned).
 func TestLoadRollups(t *testing.T) {
 	n, _ := loadParams(t)
 	n = min(max(n/10, 1000), 5000) // the drain ceiling makes 5k plenty
@@ -507,7 +507,7 @@ func TestLoadRollups(t *testing.T) {
 }
 
 // TestLoadProjection seeds findings pointed at the github tracker and
-// measures the real projection against the fake GitHub — issues/s, and
+// measures the real projection against the fake GitHub: issues/s, and
 // whether fakegithub itself ever becomes the bottleneck.
 func TestLoadProjection(t *testing.T) {
 	n, _ := loadParams(t)

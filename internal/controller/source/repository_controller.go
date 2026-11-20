@@ -48,7 +48,8 @@ type RepositoryReconciler struct {
 	Log *slog.Logger
 }
 
-// clientFor resolves the API-client seam.
+// clientFor returns the forge API client: ClientFor when set (tests), else
+// the Forges store.
 func (r *RepositoryReconciler) clientFor(ctx context.Context, res *forge.Resolved) (forgeClient, error) {
 	if r.ClientFor != nil {
 		return r.ClientFor(ctx, res)
@@ -138,7 +139,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-// tooLargeError marks a tarball over the cap — a stall, not a retry.
+// tooLargeError marks a tarball over the cap: a stall, not a retry.
 type tooLargeError struct{ max int64 }
 
 func (e *tooLargeError) Error() string {
@@ -169,7 +170,7 @@ func (r *RepositoryReconciler) fetch(
 	return info, nil
 }
 
-// forgeClient is the slice of ghclient.Client the reconciler needs — tests
+// forgeClient is the subset of ghclient.Client the reconciler needs; tests
 // substitute a fake via ClientFor.
 type forgeClient interface {
 	DefaultBranch(ctx context.Context, repo ghclient.Repo) (string, error)
@@ -227,7 +228,7 @@ func (r *RepositoryReconciler) stall(ctx context.Context, repo *v1alpha1.Reposit
 }
 
 // SetupWithManager wires the reconciler: its own kind, plus a Forge watch
-// that re-queues every Repository in the namespace — a Forge created or
+// that re-queues every Repository in the namespace. A Forge created or
 // re-scoped after ingest must resolve previously-unresolvable repositories
 // without human action.
 func (r *RepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {

@@ -32,10 +32,11 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Forge holds repository credentials: source-controller resolves a Finding's
-          repository to a Forge for read-only clone tokens; remediation-controller
-          resolves the same Forge for scoped write tokens (branch push, pull
-          request). Both go through the shared internal/forge package.
+          Forge holds repository credentials. source-controller resolves a
+          Finding's repository to a Forge for read-only tokens to download it, and
+          remediation-controller resolves the same Forge for scoped write tokens
+          (branch push, pull request). Both go through the shared internal/forge
+          package.
         properties:
           apiVersion:
             description: |-

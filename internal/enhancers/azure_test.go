@@ -68,7 +68,7 @@ func TestAzureTagsResolvesRepository(t *testing.T) {
 		r.URL != "https://github.com/acme/infra-prod" {
 		t.Errorf("Repository = %+v, want acme/infra-prod on github.com", r)
 	}
-	// The context is carried whether or not a repository resolved — and the
+	// The context is carried whether or not a repository resolved, and the
 	// tags themselves are the enrichment.
 	if !reflect.DeepEqual(got.Attributes, map[string]string{
 		"azure-subscription": "00000000-0000-0000-0000-000000000000",
@@ -81,9 +81,8 @@ func TestAzureTagsResolvesRepository(t *testing.T) {
 	}
 }
 
-// A URL is the only form that can name a self-hosted forge, so a resource
-// carrying one means it deliberately — and an Azure tag value can carry the
-// scheme verbatim.
+// A URL is the only form that can name a self-hosted forge, so it wins when a
+// resource carries one. An Azure tag value can carry the scheme verbatim.
 func TestAzureTagsURLSupersedesTriple(t *testing.T) {
 	inventory := &fakeAzureInventory{tags: map[string]string{
 		"scm-repository-org":  "acme",
@@ -160,8 +159,8 @@ func TestAzureTagsMissingResourceIsFinal(t *testing.T) {
 	}
 }
 
-// Anything else might succeed next time, so it errors — which is what makes
-// the context-controller hold the finding rather than advance it.
+// Anything else might succeed next time, so it errors. That makes the
+// context-controller hold the finding rather than advance it.
 func TestAzureTagsTransientFailureErrors(t *testing.T) {
 	inventory := &fakeAzureInventory{err: errors.New("deadline exceeded")}
 	if _, err := newAzureEnhancer(t, inventory, LabelKeys{}).
@@ -202,8 +201,8 @@ func TestAzureTagsSkipsFindingsItDoesNotOwn(t *testing.T) {
 	}
 }
 
-// Finding status is a bounded surface: the tag attributes are capped, and
-// deterministically — sorted by key — so retries do not flap the status.
+// Finding status is a bounded surface: the tag attributes are capped
+// deterministically (sorted by key), so retries do not flap the status.
 func TestAzureTagsCapsTagAttributes(t *testing.T) {
 	tags := map[string]string{}
 	for i := range 40 {

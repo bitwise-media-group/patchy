@@ -21,13 +21,13 @@ import (
 )
 
 // maxEnrichmentMarkdown mirrors the context controller's cap: production
-// truncates an enhancer's comment at this many bytes. The harness never
-// truncates — it warns instead, which is more useful to the author.
+// truncates an enhancer's comment at this many bytes. The harness warns
+// instead of truncating, which is more useful to the author.
 const maxEnrichmentMarkdown = 16384
 
 // Config configures a Harness.
 type Config struct {
-	// Addr is the listen address; ":0" picks an ephemeral port, reported by
+	// Addr is the listen address. ":0" picks an ephemeral port, reported by
 	// the listening event.
 	Addr string
 	// Name is the integration name: the path segment, the source id, and
@@ -36,34 +36,34 @@ type Config struct {
 	// Secret is the shared HMAC secret, used in both directions.
 	Secret []byte
 	// MinSeverity drops findings below this level, exactly as the
-	// Integration's spec.generic.source.minSeverity would; empty admits
+	// Integration's spec.generic.source.minSeverity would. Empty admits
 	// everything.
 	MinSeverity string
-	// EnhanceURL is the author's enhancer endpoint; empty disables the leg.
+	// EnhanceURL is the author's enhancer endpoint. Empty disables the leg.
 	EnhanceURL string
-	// EnhanceTimeout bounds each enhancer call; zero means the contract
+	// EnhanceTimeout bounds each enhancer call. Zero means the contract
 	// default of 60s.
 	EnhanceTimeout time.Duration
-	// ResolveURL is the author's resolver endpoint; empty disables the leg.
+	// ResolveURL is the author's resolver endpoint. Empty disables the leg.
 	ResolveURL string
-	// ResolveTimeout bounds each resolver call; zero means 60s.
+	// ResolveTimeout bounds each resolver call. Zero means 60s.
 	ResolveTimeout time.Duration
 	// ResolveDelay pauses between a finding's enhance and resolve calls.
 	ResolveDelay time.Duration
-	// AutoResolve fires the resolver write-back for each ingested finding;
-	// off, findings are only retained and the author resolves them with the
-	// one-shot command.
+	// AutoResolve fires the resolver write-back for each ingested finding.
+	// When off, findings are only retained and the author resolves them with
+	// the one-shot command.
 	AutoResolve bool
-	// Log receives server diagnostics — why a delivery 401'd, handler
-	// failures. The wire deliberately gives senders no oracle, so this is
-	// where the author looks. Nil discards.
+	// Log receives server diagnostics: why a delivery got a 401, and handler
+	// failures. The wire response tells senders nothing (no oracle for an
+	// attacker), so this is where the author looks. Nil discards.
 	Log *slog.Logger
 	// Events receives every pipeline event for rendering. Deliveries are
 	// handled by a single worker, so calls never overlap. Nil discards.
 	Events func(Event)
 }
 
-// Event is one observable step of the harness pipeline; it doubles as the
+// Event is one observable step of the harness pipeline. It doubles as the
 // NDJSON line for machine-readable output.
 type Event struct {
 	// Kind discriminates: listening, delivery, finding, enhance, resolve,
@@ -74,14 +74,14 @@ type Event struct {
 	// DeliveryID identifies the inbound delivery (delivery events).
 	DeliveryID string `json:"deliveryId,omitempty"`
 	// Delivered and Ingested count a delivery's findings before and after
-	// the severity floor — a gap means silent min-severity drops, which is
-	// contract behavior worth surfacing.
+	// the severity floor. A gap means silent min-severity drops, which are
+	// contract behavior the author should see.
 	Delivered int `json:"delivered,omitempty"`
 	Ingested  int `json:"ingested,omitempty"`
 	// Finding is the ingested finding (finding events).
 	Finding *source.Finding `json:"finding,omitempty"`
 	// EnhanceRequest/EnhanceResponse are the enhancer exchange (enhance
-	// events); a nil response means 204 or an empty body.
+	// events). A nil response means 204 or an empty body.
 	EnhanceRequest  *pkggeneric.EnhanceRequest  `json:"enhanceRequest,omitempty"`
 	EnhanceResponse *pkggeneric.EnhanceResponse `json:"enhanceResponse,omitempty"`
 	// ResolveRequest is the write-back sent (resolve events).
@@ -146,7 +146,7 @@ func New(cfg Config) (*Harness, error) {
 }
 
 // NewClient builds the signed outbound client for one leg or a one-shot
-// invocation; the zero timeout means the contract default of 60s.
+// invocation. A zero timeout means the contract default of 60s.
 func NewClient(url string, secret []byte, timeout time.Duration) (*generic.Client, error) {
 	return generic.NewClient(generic.ClientOptions{URL: url, Secret: secret, Timeout: timeout})
 }
@@ -158,8 +158,8 @@ func (h *Harness) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("devharness: listen on %s: %w", h.cfg.Addr, err)
 	}
-	// One worker keeps deliveries — and therefore events — strictly ordered;
-	// a dev tool wants a readable transcript, not throughput.
+	// One worker keeps deliveries, and therefore events, strictly ordered.
+	// A dev tool wants a readable transcript, not throughput.
 	srv, err := webhook.NewServer(webhook.Config{
 		Addr:      h.cfg.Addr,
 		Workers:   1,
@@ -193,8 +193,8 @@ func (h *Harness) Summary() Summary {
 }
 
 // endpoint assembles the generic route exactly as the integration-controller
-// does — same pattern, same authenticator, same decoder — with the secret
-// lookup answered from configuration instead of an Integration resource.
+// does (same pattern, authenticator and decoder), with the secret lookup
+// answered from configuration instead of an Integration resource.
 func (h *Harness) endpoint() webhook.Endpoint {
 	return webhook.Endpoint{
 		Path: generic.PathPattern,
@@ -204,7 +204,7 @@ func (h *Harness) endpoint() webhook.Endpoint {
 				if r.PathValue("name") == h.cfg.Name {
 					return [][]byte{h.cfg.Secret}
 				}
-				return nil // unknown name fails closed — the same no-oracle 401 as production
+				return nil // unknown name fails closed: the same no-oracle 401 as production
 			},
 		},
 		Decode:  decode,
@@ -212,7 +212,7 @@ func (h *Harness) endpoint() webhook.Endpoint {
 	}
 }
 
-// decode labels a generic delivery; it mirrors the integration-controller's
+// decode labels a generic delivery. It mirrors the integration-controller's
 // unexported genericDecoder verbatim.
 func decode(r *http.Request, body []byte) (eventType, deliveryID string, err error) {
 	event, err := generic.Detect(body)
@@ -237,8 +237,8 @@ func (h *Harness) handle(ctx context.Context, e webhook.Event) error {
 	src := generic.NewSource(name, generic.Options{MinSeverity: h.cfg.MinSeverity})
 	findings, err := src.Findings(ctx, e.Type, e.Payload)
 	if err != nil {
-		// The sender already got its 202: validation is asynchronous in
-		// production too, so a rejected delivery only ever surfaces here.
+		// The sender already got its 202. Validation is asynchronous in
+		// production too, so a rejected delivery only surfaces here.
 		h.cfg.Events(Event{
 			Kind:       "error",
 			DeliveryID: e.DeliveryID,
@@ -303,7 +303,7 @@ func delivered(payload []byte) int {
 	return len(p.Findings)
 }
 
-// sleep waits d unless ctx ends first; it reports whether the wait completed.
+// sleep waits d unless ctx ends first. It reports whether the wait completed.
 func sleep(ctx context.Context, d time.Duration) bool {
 	if d <= 0 {
 		return true

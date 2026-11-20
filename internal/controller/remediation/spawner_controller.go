@@ -25,35 +25,35 @@ import (
 )
 
 // SpawnerReconciler is the queue-admission writer: it turns approvals and
-// revivals into Queued findings (edges 10 and 18) and materializes one
-// Pending Remediation per attempt for every Queued finding, stamped with its
-// scheduling priority.
+// revivals into Queued findings (AwaitingApproval→Queued and
+// HandedOff→Queued) and materializes one Pending Remediation per attempt for
+// every Queued finding, stamped with its scheduling priority.
 type SpawnerReconciler struct {
 	client.Client
 	// Namespace the CRs live in.
 	Namespace string
 	// Weights tune the scheduling-priority computation.
 	Weights priority.Weights
-	// Enabled is the set of harness ids this deployment can run (those with a
-	// credential). Allowlist is the canonical model ids the investigation may
+	// Enabled is the set of harness ids this deployment can run (the enabled
+	// runners). Allowlist is the canonical model ids the investigation may
 	// suggest; DefaultModel is the fallback when the suggestion is unusable.
 	// Together they resolve the investigation's chosen model to the harness
-	// (and thus the runner image + credential) the Remediation will run on.
+	// (and so the runner image) the Remediation will run on.
 	Enabled      []string
 	Allowlist    []string
 	DefaultModel string
 	// AutoMaxTurns/AutoTokenBudget is what patchy spends unattended: the
 	// budget every remediation is entitled to, and the line past which an
 	// estimate needs human approval. These must match the runner's
-	// PATCHY_REMEDIATE_AUTO_* configuration — the pod re-derives the same
-	// floor, so a mismatch merely wastes the larger of the two rather than
+	// PATCHY_REMEDIATE_AUTO_* configuration. The pod re-derives the same
+	// floor, so a mismatch only wastes the larger of the two rather than
 	// misbehaving.
 	AutoMaxTurns    int32
 	AutoTokenBudget int64
 	// ManualMaxTurns/ManualTokenBudget bound what a human approval can grant.
 	ManualMaxTurns    int32
 	ManualTokenBudget int64
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -72,8 +72,9 @@ const (
 // no enabled harness, it falls back to the controller default (validated
 // runnable at startup). The allowlist and default arrive canonical (concrete
 // ids, aliases resolved at startup); the suggestion is resolved the same way
-// first, so a report that names a family alias still matches. The turn/token grant is resolved separately, by
-// resolveGrant — the model is a choice to be validated, the budget is not.
+// first, so a report that names a family alias still matches. resolveGrant
+// resolves the turn/token grant separately: the model is a choice to be
+// validated, the budget is not.
 func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alpha1.AgentParameters {
 	enabled := harness.EnabledSet(r.Enabled)
 	if params.Model != "" {
@@ -100,15 +101,15 @@ func (r *SpawnerReconciler) resolveParams(params v1alpha1.AgentParameters) v1alp
 // resolveGrant decides what a remediation may spend.
 //
 // The floor is the automated budget: every remediation gets it, whatever the
-// investigation estimated — including nothing at all. The estimate can only
+// investigation estimated, including nothing at all. The estimate can only
 // raise the grant, and only with a human behind it, because an estimate above
 // the automated budget is precisely what held the finding in
 // AwaitingApproval. So an approved estimate is granted up to the manual
 // budget, and an unapproved one cannot reach here in the first place.
 //
-// Note the asymmetry with resolveParams: a bad model suggestion falls back to
-// the default, but a low estimate is simply ignored. Nothing the agent writes
-// may shrink the budget of the run that follows it.
+// This differs from resolveParams: a bad model suggestion falls back to the
+// default, but a low estimate is ignored. Nothing the agent writes may shrink
+// the budget of the run that follows it.
 func (r *SpawnerReconciler) resolveGrant(est *v1alpha1.AgentEstimate, approved bool) (int32, int64) {
 	turns, budget := r.AutoMaxTurns, r.AutoTokenBudget
 	if turns <= 0 {
@@ -170,7 +171,7 @@ func (r *SpawnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // revivable reports whether a handed-off finding carries an approval newer
-// than its completion — the human asked patchy to take it back.
+// than its completion: the human asked patchy to take it back.
 func revivable(fnd *v1alpha1.Finding) bool {
 	ap := fnd.Spec.Approval
 	if ap == nil || fnd.Spec.Repository == nil || fnd.Status.Investigation == nil {
@@ -180,8 +181,8 @@ func revivable(fnd *v1alpha1.Finding) bool {
 	return done == nil || ap.At.After(done.Time)
 }
 
-// admit moves the finding into the queue (edge 10 or 18) with the Approved
-// condition.
+// admit moves the finding into the queue (AwaitingApproval→Queued, or
+// HandedOff→Queued on revival) with the Approved condition.
 func (r *SpawnerReconciler) admit(ctx context.Context, fnd *v1alpha1.Finding, revival bool) error {
 	from := fnd.Status.Phase
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -212,7 +213,7 @@ func (r *SpawnerReconciler) admit(ctx context.Context, fnd *v1alpha1.Finding, re
 }
 
 // retryAdmit consumes a human retry of a failed remediation: the finding
-// recovers to Queued (edge Failed→Queued). Consumption is implicit — the
+// recovers to Queued (edge Failed→Queued). Consumption is implicit: the
 // transition clears status.completedAt, so RetryRequested turns false
 // without a spec write.
 func (r *SpawnerReconciler) retryAdmit(ctx context.Context, fnd *v1alpha1.Finding) error {
@@ -270,8 +271,8 @@ func (r *SpawnerReconciler) spawn(ctx context.Context, fnd *v1alpha1.Finding) er
 
 	// The suggested stage-2 parameters live on the Investigation child. Clamp
 	// the suggested model to the allowlist and resolve the harness that will
-	// run it — the model's provider decides the runner image and credential,
-	// so this must be settled before the Job is created — then resolve what
+	// run it (the model's provider decides the runner image and credential,
+	// so this must be settled before the Job is created), then resolve what
 	// the run may actually spend.
 	var params v1alpha1.AgentParameters
 	var invChild v1alpha1.Investigation

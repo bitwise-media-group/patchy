@@ -31,8 +31,8 @@ type Builder interface {
 	Build(ctx context.Context, r buildx.Request) error
 }
 
-// Config wires an Engine. The seams mirror mirror.Config's, so the two
-// engines are tested the same way.
+// Config wires an Engine. Its injectable hooks match mirror.Config's, so
+// the two engines are tested the same way.
 type Config struct {
 	// Workdir is the directory relative entry paths and the allowlists
 	// (security/allowlists/<name>.yaml) resolve against (default: the
@@ -44,7 +44,7 @@ type Config struct {
 	Spec *Spec
 	// Registry performs OCI operations (nil: ambient keychain).
 	Registry *ocireg.Client
-	// Tools runs external binaries — docker, scanners, cosign (nil: the
+	// Tools runs external binaries: docker, scanners, cosign (nil: the
 	// real PATH).
 	Tools scan.ToolRunner
 	// ArchiveScanners overrides the image scanner roster (nil: built from
@@ -175,9 +175,9 @@ func (e *Engine) SelectRegistries(names []string) ([]spec.Registry, error) {
 	return e.global.SelectRegistries(names)
 }
 
-// Build builds, scans and — when the scan passes — publishes and signs one
-// entry. The result is returned even on failure (with whatever was
-// learned: the scan report, the records pushed before an error).
+// Build builds and scans one entry, then publishes and signs it if the scan
+// passes. The result is returned even on failure, carrying what was learned
+// (the scan report, the records pushed before an error).
 func (e *Engine) Build(ctx context.Context, name string, opts Options) (*Result, error) {
 	entry, err := e.Entry(name)
 	if err != nil {
@@ -261,7 +261,8 @@ func (e *Engine) relPath(p string) string {
 	return p
 }
 
-// workspace creates a scratch directory for one entry's build outputs.
+// workspace creates a scratch directory for one entry's build outputs and
+// returns its cleanup.
 func workspace() (string, func(), error) {
 	dir, err := os.MkdirTemp("", "patchy-build-*")
 	if err != nil {
@@ -270,8 +271,9 @@ func workspace() (string, func(), error) {
 	return dir, func() { _ = os.RemoveAll(dir) }, nil
 }
 
-// buildImage runs the image flow: resolve args and secrets, lint the allowlist, build,
-// scan every platform, and publish only when nothing blocks.
+// buildImage runs the image flow: resolve args and secrets, enforce the
+// source policy, lint the allowlist, build, scan every platform, and
+// publish only when nothing blocks.
 func (e *Engine) buildImage(ctx context.Context, entry Entry, tags []string, regs []spec.Registry,
 	dryRun bool, res *Result) error {
 	in, err := e.buildInputs(entry)
@@ -347,7 +349,7 @@ func (e *Engine) args(img *Image) (map[string]string, error) {
 // secret's variable must be set and non-empty (docker inherits it), a src
 // secret's expanded path must be a regular file. A missing optional secret
 // is dropped with a note; a missing required one fails. Errors and notes
-// name the id, variable or path — never a value.
+// name the id, variable or path, never a value.
 func (e *Engine) secrets(entry Entry) ([]buildx.Secret, error) {
 	var out []buildx.Secret
 	for _, s := range entry.Image.Secrets {
@@ -747,12 +749,10 @@ func (e *Engine) UpdateAllowlist(ctx context.Context, name string) (*AllowlistRe
 	return res, nil
 }
 
-// notef emits a note event.
 func (e *Engine) notef(entry, stage, format string, args ...any) {
 	e.onEvent(Event{Kind: "note", Entry: entry, Stage: stage, Message: fmt.Sprintf(format, args...)})
 }
 
-// warnf emits a warning event.
 func (e *Engine) warnf(entry, stage, format string, args ...any) {
 	e.onEvent(Event{Kind: "warn", Entry: entry, Stage: stage, Message: fmt.Sprintf(format, args...)})
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // Client talks to the store's internal blob endpoint
-// (PUT|HEAD /internal/blobs/{digest}) from another process —
+// (PUT|HEAD /internal/blobs/{digest}) from another process, such as
 // evaluation-controller checking a workspace before launch or streaming an
 // upload through to the cache.
 type Client struct {

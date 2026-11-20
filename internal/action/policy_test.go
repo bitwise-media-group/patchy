@@ -15,7 +15,7 @@ import (
 // The admission policy has to enumerate FindingSpec's fields, because CEL
 // cannot subtract keys from a struct: there is no way to say "everything except
 // these four". Enumeration means a field added to the Go type would silently
-// fall outside the policy and become editable by anyone holding update — a
+// fall outside the policy and become editable by anyone holding update: a
 // security regression with no compile error and no failing behaviour test.
 //
 // This test closes that gap by deriving the expected field set from the type
@@ -37,7 +37,7 @@ var freeFields = map[string]bool{"related": true}
 // policyFiles are the two copies of the policy that must stay in step: the
 // kustomize base and the Helm mirror. Checking only one lets the other drift,
 // and a drifted Helm chart installs a policy that silently leaves a field
-// writable — the exact regression this file exists to catch.
+// writable, the exact regression this file exists to catch.
 var policyFiles = map[string]string{
 	"kustomize": "../../deploy/kustomize/base/admission-policy.yaml",
 	"helm":      "../../charts/patchy/templates/admission-policy.yaml",
@@ -68,8 +68,9 @@ func TestAdmissionPolicyCoversEveryFindingSpecField(t *testing.T) {
 							name, verbGatedFields[name], path)
 					}
 				case freeFields[name]:
-					// Deliberately absent from the frozen list. Asserting it stays
-					// absent stops it being frozen by accident later.
+					// Absent from the frozen list because a verb gates it.
+					// Asserting it stays absent stops it being frozen by
+					// accident later.
 					if strings.Contains(policy, "spec."+name+" ==") {
 						t.Errorf("spec.%s is documented as human-writable but %s freezes it", name, path)
 					}
@@ -100,7 +101,7 @@ var integrationVerbGatedFields = map[string]string{
 // for the integrations policy: every request-shaped field of
 // IntegrationSpec (an *ActionRequest or *BackfillRequest) must be gated by
 // its own verb in both policy renderings. Unlike findings there is no
-// frozen-fields rule — IntegrationSpec is operator configuration — so only
+// frozen-fields rule (IntegrationSpec is operator configuration), so only
 // the request fields are asserted.
 func TestIntegrationPolicyCoversEveryRequestField(t *testing.T) {
 	specType := reflect.TypeFor[v1alpha1.IntegrationSpec]()
@@ -161,9 +162,9 @@ func TestAdmissionPolicyExemptsEveryController(t *testing.T) {
 		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "name:"))
 		// The agent SA runs in the agents namespace and never touches the API.
 		// The evaluation controller owns the Evaluation/EvaluationUnit kinds
-		// only — it never writes Finding spec, so it needs no exemption. The
-		// egress broker's whole Kubernetes surface is TokenReview — it never
-		// reads or writes any patchy kind at all.
+		// only and never writes Finding spec, so it needs no exemption. The
+		// egress broker's only Kubernetes access is TokenReview; it never
+		// reads or writes any patchy kind.
 		if !strings.HasPrefix(name, "patchy-") || name == "patchy-agent" ||
 			name == "patchy-evaluation-controller" ||
 			name == "patchy-egress-broker" ||

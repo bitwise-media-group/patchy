@@ -109,8 +109,8 @@ func disabledBy(policy spec.ScanPolicy) string {
 }
 
 // scanRefs lists the digest-pinned references an entry's scan covers: a
-// chart's locked images, or the artifact itself — under enabled: auto only
-// when it is a runnable image.
+// chart's locked images, or the artifact itself (under enabled: auto, only
+// when it is a runnable image).
 func (e *Engine) scanRefs(ctx context.Context, entry spec.Entry, policy spec.ScanPolicy) ([]string, error) {
 	if entry.Kind == spec.KindChart {
 		lock, err := spec.LoadImagesLock(entry.LockPath())
@@ -220,9 +220,9 @@ type AllowlistResult struct {
 
 // DeriveAllowlist regenerates the entry's security/allowlist.yaml from a
 // fresh scan, for charts and artifacts whose resolved scan.allowlist
-// generate is true. Runs during upgrade only — the finding set moves with
-// the vulnerability databases, so deriving inside validate would diff a
-// tree nobody touched.
+// generate is true. It runs during upgrade only: the finding set moves
+// with the vulnerability databases, so deriving inside validate would diff
+// a tree nobody touched.
 func (e *Engine) DeriveAllowlist(ctx context.Context, entry spec.Entry) (*AllowlistResult, error) {
 	policy := e.scanPolicy(entry)
 	if !policy.Allowlist.Generate {

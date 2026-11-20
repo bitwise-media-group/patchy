@@ -15,10 +15,9 @@ import (
 // get to fill it. Shared by every tag-inventory enhancer.
 const maxTagAttributes = 24
 
-// repositoryFrom reads the ownership labels (or tags — the vocabulary is
+// repositoryFrom reads the ownership labels (or tags; the vocabulary is
 // shared across clouds), or nil when the resource carries none. The URL form
-// wins: it is the only one that can name a self-hosted forge, so a resource
-// carrying it means it deliberately.
+// wins because it is the only one that can name a self-hosted forge.
 func repositoryFrom(labels map[string]string, keys LabelKeys, provider, host string) *source.RepositoryRef {
 	if len(labels) == 0 {
 		return nil

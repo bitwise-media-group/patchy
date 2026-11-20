@@ -37,8 +37,8 @@ import (
 // scheduler's slot accounting.
 const InvestigationPhaseIndex = "status.phase"
 
-// schedulerRequest is the singleton request every watch event maps to — one
-// serialized decision point, MaxConcurrentReconciles=1 provides the mutex.
+// schedulerRequest is the singleton request every watch event maps to: one
+// serialized decision point, with MaxConcurrentReconciles=1 as the mutex.
 const schedulerRequest = "\x00scheduler"
 
 // defaultCalibrationTimeout bounds the advisory rollup read in calibration.
@@ -46,7 +46,7 @@ const schedulerRequest = "\x00scheduler"
 // costs the launch a moment rather than the controller its only worker.
 const defaultCalibrationTimeout = 5 * time.Second
 
-// Runner is the slice of the jobs client this controller needs.
+// Runner is the subset of the jobs client this controller needs.
 type Runner interface {
 	Create(ctx context.Context, spec jobs.Spec) (string, error)
 	Result(ctx context.Context, jobName string) (jobs.RunOutput, error)
@@ -76,9 +76,9 @@ type InvestigationReconciler struct {
 	// them so its pod runs the harness its runner image was built for.
 	InvestigateHarness string
 	InvestigateModel   string
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
-	// calibrationTimeout is the deadline seam for the advisory rollup read;
+	// calibrationTimeout bounds the advisory rollup read (tests shorten it);
 	// zero means defaultCalibrationTimeout.
 	calibrationTimeout time.Duration
 	// Log receives diagnostics; nil discards.
@@ -135,7 +135,7 @@ func (r *InvestigationReconciler) schedule(ctx context.Context) (ctrl.Result, er
 }
 
 // expedited reads the parent finding's expedite mark (cached client; a miss
-// simply ranks the run normally).
+// ranks the run normally).
 func (r *InvestigationReconciler) expedited(ctx context.Context, namespace, finding string) bool {
 	if finding == "" {
 		return false
@@ -269,7 +269,7 @@ func (r *InvestigationReconciler) collect(ctx context.Context, inv *v1alpha1.Inv
 	}
 	// Persist before applying: this is the only moment the conversation is
 	// still readable, since the Job's TTL takes the pod and its log with it.
-	// A transcript that cannot be stored is logged and dropped — losing the
+	// A transcript that cannot be stored is logged and dropped: losing the
 	// explanation must never cost the result it explains.
 	ref, err := transcriptstore.Persist(ctx, r.Client, inv.Namespace,
 		transcriptLabels(inv), inv, invGVK, out.Turns)
@@ -367,9 +367,10 @@ func (r *InvestigationReconciler) apply(
 	})
 }
 
-// route maps a completed analysis onto the finding's next phase (edges 5–8),
-// the display priority level, and every reason the remediation must wait for
-// a human. A non-empty reason set is exactly what sends the finding to
+// route maps a completed analysis onto the finding's next phase
+// (Investigating→Queued/AwaitingApproval/Dismissed/HandedOff), the display
+// priority level, and every reason the remediation must wait for a human. A
+// non-empty reason set is exactly what sends the finding to
 // AwaitingApproval.
 func (r *InvestigationReconciler) route(
 	fnd *v1alpha1.Finding, result *envelope.Investigation,
@@ -420,14 +421,13 @@ func holdReasons(result *envelope.Investigation) []v1alpha1.HoldReason {
 // with neither it returns empty, and the prompt omits the section rather than
 // anchoring the agent on an average of nothing.
 //
-// This is advisory garnish: every failure path here returns empty rather than
+// The section is advisory: every failure path here returns empty rather than
 // failing the run, because a missing rollup must never cost an investigation.
-// That includes the read never returning: the Get goes through the cached
+// That includes the read never returning. The Get goes through the cached
 // client, so a rollup informer that cannot sync (RBAC denied, CRD absent)
-// blocks on cache sync until its context is done — and with
+// blocks on cache sync until its context is done, and with
 // MaxConcurrentReconciles=1 a reconciler parked there deadlocks the whole
-// controller. The deadline below is what keeps the garnish from costing the
-// meal.
+// controller. The deadline below prevents that.
 func (r *InvestigationReconciler) calibration(ctx context.Context, repo string) string {
 	timeout := r.calibrationTimeout
 	if timeout <= 0 {
@@ -452,7 +452,7 @@ func (r *InvestigationReconciler) calibration(ctx context.Context, repo string) 
 		if err := r.Get(ctx, key, &ru); err != nil {
 			// A deadline here means the rollup cache never synced, which is
 			// an operator-visible misconfiguration rather than a thin
-			// history — say so once instead of silently omitting the section.
+			// history. Say so once instead of silently omitting the section.
 			if ctx.Err() != nil {
 				if r.Log != nil {
 					r.Log.Warn("estimate calibration unavailable", "error", err)
@@ -496,11 +496,12 @@ func estimateOf(result *envelope.Investigation) *v1alpha1.AgentEstimate {
 	}
 }
 
-// fail stamps a failed run and either reverts the finding for a retry or
-// exhausts it (edges 4 and 9). reported is the agent's own stage when it got
-// far enough to emit one; its accounting is preserved rather than discarded,
-// so a failed run still lands its harness, model, turns, tokens and cost on
-// the child and in the rollups. Nil for a run that produced no event at all.
+// fail stamps a failed run and either reverts the finding for a retry
+// (Investigating→Enhanced) or exhausts it (Investigating→Failed). reported
+// is the agent's own stage when it got far enough to emit one. Its
+// accounting is kept, so a failed run still lands its harness, model, turns,
+// tokens and cost on the child and in the rollups. reported is nil for a run
+// that produced no event at all.
 func (r *InvestigationReconciler) fail(
 	ctx context.Context, inv *v1alpha1.Investigation, fnd *v1alpha1.Finding,
 	outcome, detail string, reported *envelope.Stage, transcript *v1alpha1.TranscriptRef,
@@ -559,7 +560,7 @@ func (r *InvestigationReconciler) stampChild(
 			holds := holdReasons(result)
 			cur.Status.AwaitApproval = len(holds) > 0
 			cur.Status.HoldReasons = holds
-			// Model plus the prediction. The turn/token grant is NOT set
+			// Model plus the prediction. The turn/token grant is not set
 			// here: the spawner resolves it against the automated budget,
 			// the manual budget, and whether a human approved the estimate.
 			if est := estimateOf(result); result.RemediationModel != "" || est != nil {

@@ -75,10 +75,11 @@ type ForgeStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Forge holds repository credentials: source-controller resolves a Finding's
-// repository to a Forge for read-only clone tokens; remediation-controller
-// resolves the same Forge for scoped write tokens (branch push, pull
-// request). Both go through the shared internal/forge package.
+// Forge holds repository credentials. source-controller resolves a
+// Finding's repository to a Forge for read-only tokens to download it, and
+// remediation-controller resolves the same Forge for scoped write tokens
+// (branch push, pull request). Both go through the shared internal/forge
+// package.
 type Forge struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

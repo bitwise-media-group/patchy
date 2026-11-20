@@ -18,13 +18,13 @@ const (
 	ExitOK = 0
 	// ExitError reports a runtime failure: unreachable cluster, bad response.
 	ExitError = 1
-	// ExitUsage reports a malformed invocation — cobra's own errors land here.
+	// ExitUsage reports a malformed invocation. Cobra's own errors land here.
 	ExitUsage = 2
 	// ExitNotFound reports that a named resource does not exist.
 	ExitNotFound = 3
 	// ExitDenied reports that RBAC refused the action, or that the finding's
-	// current phase has no use for it. Both mean "you got nothing done", which
-	// is the distinction a script cares about.
+	// current phase has no use for it. Both mean nothing was done, which is
+	// what a script needs to know.
 	ExitDenied = 4
 )
 
@@ -62,6 +62,6 @@ func isUsage(err error) bool {
 	return errors.As(err, &ue)
 }
 
-// errDenied marks a refusal the CLI decided locally — an access review that
-// came back no — as distinct from one the API server returned.
+// errDenied marks a refusal the CLI decided locally (an access review that
+// came back no), as distinct from one the API server returned.
 var errDenied = errors.New("permission denied")

@@ -174,8 +174,8 @@ var configMapImageRE = regexp.MustCompile(
 var configMapImageStripRE = regexp.MustCompile(`^"?image"?[ \t]*[:=][ \t]*"?`)
 
 // configMapImages extracts image references from one ConfigMap data value.
-// Matches carrying template syntax ({, }, $) are dropped — a templated ref
-// is not a pullable pin.
+// Matches carrying template syntax ({, }, $) are dropped because a
+// templated ref is not a pullable pin.
 func configMapImages(data string) []string {
 	var out []string
 	for line := range strings.SplitSeq(data, "\n") {

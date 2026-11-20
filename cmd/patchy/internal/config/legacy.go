@@ -13,8 +13,8 @@ import (
 // legacyCLIExtensions are the formats the old .patchy.<ext> accepted.
 var legacyCLIExtensions = []string{"yaml", "yml", "json"}
 
-// legacyWarnings flags a .patchy.<ext> left in the working directory: it is
-// no longer read, and silently ignoring it would make its values vanish.
+// legacyWarnings flags a .patchy.<ext> left in the working directory. It is
+// no longer read, and ignoring it silently would make its values vanish.
 func legacyWarnings(o Options) []string {
 	var out []string
 	for _, ext := range legacyCLIExtensions {
@@ -34,8 +34,8 @@ const LegacyMirrorConfig = "mirror.yaml"
 // ErrLegacyMirrorConfig reports a mirror.yaml at the mirror root.
 var ErrLegacyMirrorConfig = errors.New(LegacyMirrorConfig + " is no longer read")
 
-// CheckMirrorRoot fails when the mirror root still carries a mirror.yaml,
-// naming the migration: its blocks move into the patchy config.
+// CheckMirrorRoot fails when the mirror root still carries a mirror.yaml.
+// The error says to move its blocks into the patchy config.
 func CheckMirrorRoot(root string) error {
 	path := filepath.Join(root, LegacyMirrorConfig)
 	if info, err := os.Stat(path); err != nil || info.IsDir() {

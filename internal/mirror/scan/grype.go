@@ -44,8 +44,8 @@ type grypeOutput struct {
 }
 
 // ScanImage implements ImageScanner: grype -o json over the registry
-// reference. The severity gate is the engine's, so grype never gates here
-// — its JSON is the product.
+// reference. The engine owns the severity gate, so grype never gates here;
+// only its JSON report is used.
 func (g *Grype) ScanImage(ctx context.Context, ref string) ([]Finding, error) {
 	return g.scan(ctx, "registry:"+ref, ref)
 }

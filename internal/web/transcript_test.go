@@ -147,8 +147,8 @@ func sseTurns(t *testing.T, body string) ([]Turn, bool) {
 }
 
 func TestTranscriptRequiresSessionAndViewGrant(t *testing.T) {
-	// A transcript is finding data: gated exactly like /api/findings, and
-	// never like the deliberately public /events signal.
+	// A transcript is finding data: gated exactly like /api/findings, not
+	// like the content-free /events signal, which admits any read grant.
 	cases := []struct {
 		name       string
 		auth       stubAuth
@@ -315,7 +315,7 @@ func TestTranscriptEmptyWhenNothingRecorded(t *testing.T) {
 
 func TestTranscriptRejectsCrossFindingAccess(t *testing.T) {
 	// The run name is derivable, so the path's finding must be checked against
-	// the run's own findingRef — otherwise naming another finding's attempt
+	// the run's own findingRef. Otherwise naming another finding's attempt
 	// would read its conversation.
 	objs := completedInvestigation(t)
 	inv := objs[0].(*v1alpha1.Investigation)

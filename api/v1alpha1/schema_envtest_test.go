@@ -535,8 +535,8 @@ func testAWSIntegrationSchema(ctx context.Context, t *testing.T, c client.Client
 
 // testAzureIntegrationSchema exercises the azure provider's CEL rules: the
 // provider/block biconditional, and the credential-less posture (no secretRef
-// anywhere below — Resource Graph is one service, so there is no backend
-// one-of either).
+// anywhere below). Resource Graph is one service, so there is no backend
+// one-of to test.
 func testAzureIntegrationSchema(ctx context.Context, t *testing.T, c client.Client) {
 	t.Helper()
 	good := &patchyv1.Integration{

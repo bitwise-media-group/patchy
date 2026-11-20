@@ -33,7 +33,7 @@ type UpgradeResult struct {
 	// Tracked reports the tracked-image picks applied.
 	Tracked []TrackPlan `json:"tracked,omitempty"`
 	// Changed lists entry-relative paths the upgrade rewrote. Empty
-	// means the entry was already fully converged — a clean no-op.
+	// means the entry was already fully converged (a clean no-op).
 	Changed []string `json:"changed,omitempty"`
 	// Err carries a per-entry failure in --all summaries.
 	Err string `json:"error,omitempty"`
@@ -49,8 +49,8 @@ func (e *Engine) Upgrade(ctx context.Context, entry spec.Entry, target string) (
 
 // UpgradePinned converges one entry on the pins already in the tree: an
 // external updater (Renovate) moved the chart version or a tracked tag,
-// and patchy only regenerates what derives from them. Nothing is picked —
-// no target resolution, no tracked-tag cooldown walk — but every pin is
+// and patchy only regenerates what derives from them. Nothing is picked
+// (no target resolution, no tracked-tag cooldown walk), but every pin is
 // checked against its constraint and its lockstep group first, so a bad
 // bump fails loudly instead of shipping.
 func (e *Engine) UpgradePinned(ctx context.Context, entry spec.Entry) (*UpgradeResult, error) {
@@ -105,7 +105,7 @@ func validateTrackPin(entry spec.Entry, i int, rule spec.Track) error {
 }
 
 // validateLockstep checks that every member of the entry's lockstep group
-// pins the entry's version — a half-bumped pair must not ship.
+// pins the entry's version. A half-bumped pair must not ship.
 func (e *Engine) validateLockstep(entry spec.Entry) error {
 	group := entry.Lockstep()
 	if group == "" {
@@ -163,7 +163,7 @@ func (e *Engine) upgrade(ctx context.Context, entry spec.Entry, target string, p
 
 	// Allowlist derivation is the one scan the update path runs: the
 	// regenerated file is what makes the validate gate green again, and
-	// the PR review is where the risk is actually accepted.
+	// the PR review is where the risk is accepted.
 	if _, err := e.DeriveAllowlist(ctx, entry); err != nil {
 		return nil, err
 	}

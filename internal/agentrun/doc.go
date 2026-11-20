@@ -10,6 +10,6 @@
 //
 // The runner trusts the repository over the agent: a remediation report
 // claiming success is downgraded unless commit.sh ran cleanly and left real
-// commits on the branch. It never talks to a forge — the pod has no forge
-// credentials by design; the controllers own every side effect.
+// commits on the branch. It never talks to a forge: the pod holds no forge
+// credential, and the controllers own every side effect.
 package agentrun

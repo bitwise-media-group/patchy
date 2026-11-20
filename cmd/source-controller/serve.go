@@ -53,7 +53,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 }
 
 // internalUploadToken reads the optional shared secret internal uploads must
-// present; an empty flag means NetworkPolicy is the only gate.
+// present. An empty flag means NetworkPolicy is the only gate.
 func internalUploadToken(opts *cli.Options) (string, error) {
 	path := opts.String("internal-upload-token-file")
 	if path == "" {
@@ -70,8 +70,8 @@ func internalUploadToken(opts *cli.Options) (string, error) {
 	return token, nil
 }
 
-// artifactBaseURL is the URL minted into Repository statuses; unless
-// configured it is the controller's in-cluster Service address on the
+// artifactBaseURL is the URL minted into Repository statuses. Unless
+// configured, it is the controller's in-cluster Service address on the
 // artifact port.
 func artifactBaseURL(opts *cli.Options, namespace string) (string, error) {
 	if u := opts.String("artifact-base-url"); u != "" {
@@ -199,8 +199,8 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	return nil
 }
 
-// internalServer builds the optional workspace-upload listener; nil when the
-// endpoint is disabled.
+// internalServer builds the optional workspace-upload listener. It returns
+// nil when the endpoint is disabled.
 func internalServer(opts *cli.Options, store *artifact.Store) (*http.Server, error) {
 	addr := opts.String("artifact-internal-addr")
 	if addr == "" {

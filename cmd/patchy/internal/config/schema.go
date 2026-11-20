@@ -20,10 +20,10 @@ import (
 // File is the patchy config's shape: the blocks mirror and build share at
 // the top level, then one block per command group.
 type File struct {
-	// Registries are where mirror and build publish; every entry goes to
+	// Registries are where mirror and build publish. Every entry goes to
 	// every registry (or the --registry selection).
 	Registries []spec.Registry `yaml:"registries"`
-	// Signing is the default signing block; a registry's own replaces it.
+	// Signing is the default signing block. A registry's own replaces it.
 	Signing spec.Signing `yaml:"signing"`
 	// Scan holds the scanner roster and the defaults every entry's scan
 	// block overrides field by field.
@@ -62,7 +62,7 @@ type Mirror struct {
 	// Update tunes the tracked-tag soak window.
 	Update spec.Update `yaml:"update"`
 	// SourceRegistryRewrites reroutes upstream pulls (e.g. through a
-	// pull-through cache); recorded sources keep the canonical path.
+	// pull-through cache). Recorded sources keep the canonical path.
 	SourceRegistryRewrites map[string]string `yaml:"sourceRegistryRewrites"`
 	// Policy restricts the upstream sources mirror may pull charts,
 	// images and artifacts from.
@@ -70,7 +70,7 @@ type Mirror struct {
 }
 
 // Dev is the dev: block: one key per dev-command flag. The CLI reads the
-// values through viper (flag > env > file > default); the types here exist
+// values through viper (flag > env > file > default). The types here exist
 // so an unknown or mistyped key fails against the file that carries it.
 type Dev struct {
 	Addr           string        `yaml:"addr"`
@@ -111,7 +111,7 @@ func (f *File) BuildConfig() (*spec.Config, *build.Spec, error) {
 }
 
 // BuildPlanConfig is BuildConfig for a run that never contacts a registry
-// (`patchy build --dry-run`): registries may be absent, so CI and a
+// (`patchy build --dry-run`). Registries may be absent, so CI and a
 // workstation can build and scan with no registry configured at all.
 func (f *File) BuildPlanConfig() (*spec.Config, *build.Spec, error) {
 	return f.buildConfig((*spec.Config).ResolveWithoutRegistries)

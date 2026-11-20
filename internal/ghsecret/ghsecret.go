@@ -7,8 +7,8 @@
 // "privateKey" (production), with "webhookSecret" carrying the receiver HMAC
 // secret where relevant and "proxyUsername" + "proxyPassword" carrying the
 // forward proxy's basic-auth credentials when the resource sets spec.proxy.
-// Apps are memoized per Secret resourceVersion so rotation transparently
-// rebuilds while steady state costs nothing.
+// Apps are memoized per Secret resourceVersion, so a rotated Secret builds a
+// fresh App and an unchanged one reuses the cached App.
 package ghsecret
 
 import (
@@ -26,7 +26,7 @@ import (
 
 // Secret keys.
 const (
-	// KeyToken is a PAT — the dev fallback; production uses App auth.
+	// KeyToken is a PAT, the dev fallback. Production uses App auth.
 	KeyToken = "token"
 	// KeyAppID is the GitHub App ID (decimal string).
 	KeyAppID = "appID"
@@ -116,7 +116,7 @@ func (a *Apps) FromSecret(secret *corev1.Secret, baseURL, proxy string) (*ghclie
 		return nil, err
 	}
 	// Drop stale resourceVersions of this secret so rotation doesn't grow the
-	// map — but only stale versions: entries at the current version with a
+	// map. Only stale versions go: entries at the current version with a
 	// different baseURL/proxy belong to other CRs sharing the Secret and must
 	// survive.
 	namePrefix := secret.Namespace + "/" + secret.Name + "/"

@@ -3,7 +3,7 @@
 // harness. Gated like findings, on its own grant (get on findingrollups).
 //
 // It loads its own data rather than riding on the findings payload: the
-// summary (GET /api/rollups — total, models, harnesses, top repositories)
+// summary (GET /api/rollups: total, models, harnesses, top repositories)
 // once, then a repository or "matching" slice on demand from
 // GET /api/rollups/repositories. A findings-changed signal refetches what is
 // on screen.

@@ -21,7 +21,8 @@ import (
 // The integrations policy's own envtest proof: the request stamps
 // (spec.backfill, spec.replay, spec.reset) each need their own custom verb
 // on integrations, while plain update keeps working for everything else in
-// IntegrationSpec — the deliberate divergence from the findings policy.
+// IntegrationSpec. This differs from the findings policy on purpose:
+// IntegrationSpec is operator configuration.
 
 // integrationUserClient impersonates a user granted exactly the given
 // custom verbs on integrations, plus the native reads and writes an
@@ -81,9 +82,8 @@ func (e *policyEnv) seedIntegration(t *testing.T, name string, mutate func(*v1al
 	}
 }
 
-// waitForIntegrationPolicy probes until the integrations policy is live,
-// exactly like waitForPolicy does for findings — the two policies
-// propagate independently.
+// waitForIntegrationPolicy probes until the integrations policy is live, as
+// waitForPolicy does for findings. The two policies propagate independently.
 func (e *policyEnv) waitForIntegrationPolicy(t *testing.T) {
 	t.Helper()
 	probe := e.integrationUserClient(t, "integ-probe@acme.test") // no custom verbs
@@ -172,8 +172,8 @@ func TestIntegrationPolicyEnforcesVerbPerField(t *testing.T) {
 			wantAllow: false,
 		},
 		{
-			// The deliberate divergence from the findings policy: operator
-			// configuration stays writable with plain update.
+			// Unlike the findings policy, operator configuration stays
+			// writable with plain update.
 			name:    "plain update keeps the operator surface",
 			granted: nil,
 			mutate: func(i *v1alpha1.Integration) {

@@ -152,7 +152,7 @@ func TestAppAlertEnumerator(t *testing.T) {
 	}
 }
 
-// A prefix filter skips whole installations whose account no entry names —
+// A prefix filter skips whole installations whose account no entry names:
 // the user installation's endpoints must never be hit.
 func TestAppAlertEnumeratorPrefixSkip(t *testing.T) {
 	mux, app := newFakeApp(t)
@@ -189,8 +189,8 @@ func TestAppAlertEnumeratorPrefixSkip(t *testing.T) {
 
 // Entries that all carry a name segment switch an org account to
 // repo-enumeration mode: the repository inventory is listed, only
-// matching repositories are walked, and the org-wide alert listing —
-// whose cost scales with the org's alert count — is never touched.
+// matching repositories are walked, and the org-wide alert listing (whose
+// cost scales with the org's alert count) is never touched.
 func TestAppAlertEnumeratorNamePrefixMode(t *testing.T) {
 	mux, app := newFakeApp(t)
 	mux.HandleFunc("GET /app/installations", func(w http.ResponseWriter, _ *http.Request) {
@@ -234,8 +234,8 @@ func TestAppAlertEnumeratorNamePrefixMode(t *testing.T) {
 	}
 }
 
-// A bare owner entry alongside a name prefix keeps the full walk — the
-// bare entry already covers the whole account.
+// A bare owner entry alongside a name prefix keeps the full walk: the bare
+// entry already covers the whole account.
 func TestAppAlertEnumeratorBareOwnerKeepsOrgWalk(t *testing.T) {
 	mux, app := newFakeApp(t)
 	mux.HandleFunc("GET /app/installations", func(w http.ResponseWriter, _ *http.Request) {

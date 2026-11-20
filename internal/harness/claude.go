@@ -31,10 +31,10 @@ func NewClaude() *Claude {
 }
 
 // claudeTools renders each sandbox posture into Claude Code's allow/deny tool
-// grammar. Network tools stay denied in both postures — the pod has no egress
-// and the stages never fetch; the read-only posture additionally denies edits
-// and subagents and narrows Bash to read-only git (Write stays allowed so the
-// agent can emit its report). SandboxDefault is absent by design: an unset
+// grammar. Network tools stay denied in both postures: the pod has no egress
+// and the stages never fetch. The read-only posture also denies edits and
+// subagents and narrows Bash to read-only git (Write stays allowed so the
+// agent can emit its report). SandboxDefault has no entry because an unset
 // posture imposes no grammar and leaves the CLI's defaults.
 var claudeTools = map[Sandbox]struct{ allow, deny []string }{
 	SandboxReadOnly: {
@@ -159,8 +159,8 @@ func (c *Claude) ScanTurns(line []byte) []transcript.Turn { return scanStreamTur
 // The init event becomes a banner so a transcript opens with the session it
 // belongs to.
 //
-// Every other event type — including the terminal result, whose text is
-// already the report — yields nothing: the transcript is the conversation, not
+// Every other event type yields nothing, including the terminal result,
+// whose text is already the report. The transcript is the conversation, not
 // a second copy of the outcome.
 func scanStreamTurns(line []byte) []transcript.Turn {
 	var ev claudeEvent
@@ -295,12 +295,11 @@ func parseStreamResult(stdout []byte) (AgentResult, bool) {
 // from a run that completed and merely needs its answer judged.
 //
 // An error envelope is reported whether or not the run also produced text.
-// It is tempting to treat any non-empty result as usable, but the CLI reports
-// a genuinely failed run — exhausted turns, an API error mid-stream — with
-// is_error set and, sometimes, a partial answer alongside it. Trusting that
-// text hides the failure: the stage is then judged only by whether its report
-// file exists, and a run that died with its budget spent surfaces as a
-// missing-file error pointing at the workspace instead of at the cause.
+// The CLI reports a failed run (exhausted turns, an API error mid-stream)
+// with is_error set and sometimes a partial answer alongside it. Trusting
+// that text hides the failure: the stage is then judged only by whether its
+// report file exists, and a run that died with its budget spent surfaces as
+// a missing-file error pointing at the workspace instead of at the cause.
 func streamRuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return "empty CLI output"

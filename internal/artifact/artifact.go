@@ -5,8 +5,10 @@
 // source-controller produces and agent jobs fetch. Paths embed a 128-bit
 // random id, so a URL is unguessable by other workloads that can reach the
 // serving port; the fetching init container verifies the sha256 digest
-// end-to-end. The store is in-memory-indexed over plain files — artifacts
-// are reproducible (a restart just re-fetches), so no durable index exists.
+// end-to-end. The store is plain files with an in-memory index. Repository
+// tarballs are reproducible (a restart just re-fetches), so their index is not
+// persisted. Content-addressed workspace blobs (blob.go) are not reproducible,
+// so their index is rebuilt from disk at startup.
 package artifact
 
 import (
@@ -66,7 +68,7 @@ func NewStore(dir, baseURL string) (*Store, error) {
 		blobs:   make(map[string]*blobEntry),
 	}
 	// Repository tarballs are reproducible (a restart re-fetches), but
-	// workspace blobs are not — only the client can rebuild one — so their
+	// workspace blobs are not (only the client can rebuild one), so their
 	// index is recovered from disk.
 	if err := s.rescanBlobs(); err != nil {
 		return nil, err

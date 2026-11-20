@@ -33,9 +33,9 @@ const maxAlerts = 64
 const DefaultWindow = time.Hour
 
 // KeyHashIndex is the field index over the key-hash label. Every ingested
-// alert selects its finding family by this value; without the index that
-// List is a full informer-store scan per alert — O(backlog), ruinous on a
-// brownfield estate — where the index lookup is O(1).
+// alert selects its finding family by this value. Without the index that
+// List is a full informer-store scan per alert, O(backlog), which is ruinous
+// on a brownfield estate. The index lookup is O(1).
 const KeyHashIndex = "labels.key-hash"
 
 // KeyHashIndexer extracts the index value: the finding's key-hash label.
@@ -48,22 +48,22 @@ func KeyHashIndexer(obj client.Object) []string {
 	return []string{hash}
 }
 
-// Ingestor folds scanner findings into Finding resources. The deterministic
-// name plus AlreadyExists-tolerant create is the idempotency mechanism — no
-// in-process mutex, the API server serializes.
+// Ingestor folds scanner findings into Finding resources. Idempotency comes
+// from the deterministic name plus an AlreadyExists-tolerant create. There is
+// no in-process mutex: the API server serializes.
 type Ingestor struct {
 	client.Client
 	// Namespace the Findings live in.
 	Namespace string
 	// Window is the accumulation window (default DefaultWindow).
 	Window time.Duration
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives ingest diagnostics; nil discards.
 	Log *slog.Logger
 }
 
-// keyHash is the hex form of the accumulation key's hash — the label value
+// keyHash is the hex form of the accumulation key's hash: the label value
 // selecting a finding family across generations.
 //
 // scope is what the finding is raised against: the repository URL for a code
@@ -73,16 +73,16 @@ type Ingestor struct {
 // repo-bearing finding orphans every existing family. Accumulation would then
 // find nothing, open generation 1 alongside the live one, and project a
 // second tracking issue for every open finding in the estate. There is no
-// migration — the label is frozen by the admission policy.
+// migration path: the admission policy freezes the label.
 func keyHash(integration, sourceID, scope, advisory string) string {
 	sum := sha256.Sum256([]byte(integration + "|" + sourceID + "|" + scope + "|" + advisory))
 	return hex.EncodeToString(sum[:5])
 }
 
 // SetupWithManager registers the key-hash field index on the manager's
-// cache. The Ingestor is webhook-driven — it runs no reconciler — so this is
-// its only manager hook; without it every family List errors, which is the
-// loud failure mode we want over a silent full scan.
+// cache. The Ingestor is webhook-driven and runs no reconciler, so this is
+// its only manager hook. Without it every family List errors, a loud failure
+// that is preferable to a silent full scan.
 func (in *Ingestor) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(), &v1alpha1.Finding{}, KeyHashIndex, KeyHashIndexer); err != nil {
@@ -143,7 +143,7 @@ func repositoryURL(integ *v1alpha1.Integration, f source.Finding) string {
 	return "https://" + githubHost(integ) + "/" + f.Repo.Owner + "/" + f.Repo.Name
 }
 
-// accumulationScope is what the finding is raised against — the thing two
+// accumulationScope is what the finding is raised against: the thing two
 // alerts must share, alongside their advisory, to be the same finding.
 //
 // For a cloud finding that is the resource, not its project: repository
@@ -161,7 +161,7 @@ func accumulationScope(repoURL string, f source.Finding) string {
 	return ""
 }
 
-// toCloudResource maps the seam's cloud resource onto the CR shape.
+// toCloudResource maps the pkg/source cloud resource onto the CR shape.
 func toCloudResource(cr *source.CloudResource) *v1alpha1.FindingCloudResource {
 	if cr == nil {
 		return nil
@@ -181,7 +181,7 @@ var errRaced = fmt.Errorf("finding advanced past accumulation")
 
 // foldable phases still accept new alerts: the accumulation window overlaps
 // enhancement, and an aged window only closes via the AccumulationComplete
-// condition, not the phase. An empty phase is the creation window — the
+// condition, not the phase. An empty phase is the creation window: the
 // status write that stamps Opened races the next alert of the family (a
 // backfill ingests them back to back), and treating it as closed would
 // splinter the family into one generation per alert.
@@ -216,8 +216,8 @@ func prevName(items []v1alpha1.Finding, maxGen int) string {
 
 // fold appends the finding's alert to an existing Finding, idempotent on
 // alert ID, under conflict retry. NotFound retries too, on the slower
-// backoff: the fold target may be a finding another ingest created moments
-// ago that the cached client has not observed yet — losing the alert to
+// backoff. The fold target may be a finding another ingest created moments
+// ago that the cached client has not observed yet, and losing the alert to
 // informer lag would silently thin a backfill.
 func (in *Ingestor) fold(ctx context.Context, name string, f source.Finding) error {
 	alert := toAlert(f)
@@ -305,8 +305,8 @@ func (in *Ingestor) create(
 	}
 	if err := in.Create(ctx, fnd); err != nil {
 		if kerrors.IsAlreadyExists(err) {
-			// Two deliveries raced; the winner's object is the family live
-			// generation — fold into it.
+			// Two deliveries raced. The winner's object is the family's live
+			// generation, so fold into it.
 			return in.fold(ctx, name, f)
 		}
 		return fmt.Errorf("create finding %s: %w", name, err)
@@ -384,9 +384,9 @@ func toAlert(f source.Finding) v1alpha1.Alert {
 
 // trackingRef denormalizes the projecting integration at creation: the
 // ingesting integration itself when issues-enabled, else the namespace's
-// issues-enabled one — a cloud or generic source has no issues capability of
-// its own, but its findings still deserve tracking issues. Nil when none (or
-// on a transient lookup failure): the finding is still tracked in-cluster.
+// issues-enabled one. A cloud or generic source has no issues capability of
+// its own, but its findings still get tracking issues. Nil when none (or on
+// a transient lookup failure): the finding is still tracked in-cluster.
 func (in *Ingestor) trackingRef(ctx context.Context, integ *v1alpha1.Integration) *v1alpha1.LocalObjectReference {
 	if issuesEnabled(integ) {
 		return &v1alpha1.LocalObjectReference{Name: integ.Name}

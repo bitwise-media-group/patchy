@@ -15,8 +15,8 @@ import (
 )
 
 // FindingDetail renders everything known about one finding. spend is the
-// cross-attempt total, which lives on the child runs rather than the finding —
-// the caller queries it and passes it in, so this package performs no I/O.
+// cross-attempt total, which lives on the child runs rather than the finding.
+// The caller queries it and passes it in, so this package performs no I/O.
 func FindingDetail(d *printer.Doc, f *v1alpha1.Finding, now time.Time, spend string) {
 	d.Section(fmt.Sprintf("Finding %s", f.Name)).
 		Field("Title", f.Spec.Title).
@@ -142,8 +142,8 @@ func locations(a v1alpha1.Alert) string {
 	return strings.Join(parts, ", ")
 }
 
-// attrs renders an enrichment's attribute map deterministically — map order
-// would otherwise make two runs of `describe` disagree.
+// attrs renders an enrichment's attribute map in sorted order, so two runs of
+// `describe` agree.
 func attrs(m map[string]string) string {
 	if len(m) == 0 {
 		return ""

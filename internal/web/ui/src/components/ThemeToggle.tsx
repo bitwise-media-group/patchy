@@ -1,4 +1,4 @@
-// Theme switch — a controlled sun/moon pill plus the body-class mechanism
+// Theme switch: a controlled sun/moon pill plus the body-class mechanism
 // shared with the other patchy surfaces: dark-default `theme-patchy` paired
 // with `theme-patchy-light`, persisted under the same localStorage key so
 // the visitor's choice follows them across pages. A pre-paint script in

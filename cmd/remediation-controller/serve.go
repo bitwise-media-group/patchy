@@ -79,7 +79,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 }
 
 // agentEnv is the PATCHY_* configuration every remediation pod receives. The
-// per-Job harness and model are carried on the Job spec, not here; the
+// per-Job harness and model are carried on the Job spec, not here. The
 // allowlist is enforced controller-side (the spawner), so the pod does not
 // need it.
 func agentEnv(opts *cli.Options) map[string]string {

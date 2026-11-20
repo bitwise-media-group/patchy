@@ -16,11 +16,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 )
 
-// ErrNotFound reports that the inventory has no record of the resource. This
-// is a permanent answer, not a transient one: the resource may have been
-// deleted between the finding being raised and this lookup, it may live in a
-// subscription outside the configured scope, or it may not be indexed yet.
-// Callers use it to decide against retrying.
+// ErrNotFound reports that the inventory has no record of the resource. It is
+// a permanent answer: the resource may have been deleted since the finding
+// was raised, live in a subscription outside the configured scope, or not be
+// indexed yet. Callers do not retry it.
 var ErrNotFound = errors.New("resource not found in azure inventory")
 
 // Tags are one resource's tags, plus enough identity to log about it.
@@ -40,26 +39,26 @@ type Config struct {
 	ManagementGroup string
 }
 
-// graphAPI is the slice of the Resource Graph client the lookup uses; a seam
-// for tests, which must not dial Azure.
+// graphAPI is the part of the Resource Graph client the lookup uses. Tests
+// replace it so they never dial Azure.
 type graphAPI interface {
 	Resources(ctx context.Context, query armresourcegraph.QueryRequest,
 		options *armresourcegraph.ClientResourcesOptions) (armresourcegraph.ClientResourcesResponse, error)
 }
 
-// Client reads resource tags from Azure Resource Graph. There is no interface
-// here on purpose: the consumer declares the one-method seam it needs and
-// this satisfies it.
+// Client reads resource tags from Azure Resource Graph. This package declares
+// no interface for it: the consumer declares the one-method interface it
+// needs, and Client satisfies it.
 type Client struct {
 	managementGroup string
 	graph           graphAPI
 }
 
-// New builds a client and verifies Resource Graph answers at all — a broken
+// New builds a client and verifies Resource Graph answers at all. A broken
 // identity binding or a management group the identity cannot read fails here,
 // at client build (a retryable hold), rather than silently per finding.
-// Credentials come from the Azure default chain — Microsoft Entra Workload ID
-// on AKS, workload identity federation elsewhere — so no key material exists
+// Credentials come from the Azure default chain (Microsoft Entra Workload ID
+// on AKS, workload identity federation elsewhere), so no key material exists
 // anywhere.
 func New(ctx context.Context, cfg Config) (*Client, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
@@ -77,8 +76,8 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	return c, nil
 }
 
-// Close releases nothing — the SDK client holds no connection of its own —
-// and exists so the enhancer can treat every cloud client alike.
+// Close releases nothing, since the SDK client holds no connection of its
+// own. It exists so the enhancer can treat every cloud client alike.
 func (c *Client) Close() error { return nil }
 
 // verify runs a trivial query under the configured scope, so the credential
@@ -91,13 +90,13 @@ func (c *Client) verify(ctx context.Context) error {
 }
 
 // TagsFor returns the tags of one resource, named by its ARM resource ID.
-// The ID is an exact identifier — Resource Graph compares it
-// case-insensitively, as ARM does — so there is no fallback search: a miss
-// means the resource is unrecorded, not misspelled.
+// The ID is an exact identifier (compared case-insensitively, as ARM does),
+// so there is no fallback search: a miss means the resource is unrecorded,
+// not misspelled.
 //
-// Errors are classified for the caller: ErrNotFound is final, everything else
-// is worth retrying. That distinction is what lets the enhancer chain decide
-// between advancing a finding and holding it for another try.
+// ErrNotFound is final; every other error is worth retrying. The enhancer
+// chain uses that to decide between advancing a finding and holding it for
+// another try.
 func (c *Client) TagsFor(ctx context.Context, id string) (*Tags, error) {
 	if id == "" {
 		return nil, ErrNotFound
@@ -143,8 +142,9 @@ func escape(s string) string {
 	return strings.ReplaceAll(s, "'", `\'`)
 }
 
-// normalizeTags accepts the tags column defensively — Resource Graph spells
-// it as a plain map, but the column is schemaless — and returns a map.
+// normalizeTags converts the tags column to a map, or nil when there are no
+// tags. Resource Graph returns a plain map, but the column is schemaless, so
+// any other shape is tolerated and yields nil.
 func normalizeTags(v any) map[string]string {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -163,9 +163,9 @@ func normalizeTags(v any) map[string]string {
 }
 
 // classify wraps an inventory error, marking the permanent ones so a caller
-// does not retry something that will never succeed. Everything else —
-// including throttling and AuthorizationFailed, which is usually an identity
-// binding that has not propagated yet — stays retryable.
+// does not retry something that will never succeed. Everything else stays
+// retryable, including throttling and AuthorizationFailed (usually an
+// identity binding that has not propagated yet).
 func classify(id string, err error) error {
 	var resp *azcore.ResponseError
 	if errors.As(err, &resp) && resp.StatusCode == http.StatusBadRequest {

@@ -26,7 +26,7 @@ func Get(src []byte, path string) (string, error) {
 // Set replaces the scalar at path with newValue, preserving every byte of
 // the document outside the token itself, including the token's quoting
 // style. The scalar's current value must equal oldValue, or the edit
-// aborts — the callers replace known pins, they never invent values.
+// aborts: callers replace known pins, they never invent values.
 func Set(src []byte, path, oldValue, newValue string) ([]byte, error) {
 	node, err := locate(src, path)
 	if err != nil {

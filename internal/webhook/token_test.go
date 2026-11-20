@@ -29,7 +29,7 @@ func TestTokenAuthenticator(t *testing.T) {
 		{"token as prefix fails", "Bearer first", tokens, false},
 		{"no candidates fails", "Bearer first-token", nil, false},
 		// An empty candidate must never match anything, least of all an
-		// absent header — that would authenticate everyone.
+		// absent header: that would authenticate everyone.
 		{"empty candidate never matches", "", [][]byte{{}}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

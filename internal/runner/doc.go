@@ -4,6 +4,6 @@
 // Package runner executes CommandSpecs. It is the only package that touches
 // os/exec, so every caller can be tested against a fake.
 //
-// Agent CLIs spawn children, so cancellation kills the whole process group —
-// killing only the parent leaks grandchildren that hold the stdout pipe open.
+// Agent CLIs spawn children, so cancellation kills the whole process group.
+// Killing only the parent leaks grandchildren that hold the stdout pipe open.
 package runner

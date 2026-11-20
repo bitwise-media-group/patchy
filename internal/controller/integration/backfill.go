@@ -35,9 +35,9 @@ func pendingBackfill(integ *v1alpha1.Integration) *v1alpha1.BackfillRequest {
 // request, ingesting every listed alert (ingestion is idempotent, so
 // alerts that already have findings just fold in as duplicates). It never
 // fails the reconcile; the outcome (including errors) lands on the
-// returned status. ran reports whether the request was consumed — false
+// returned status. ran reports whether the request was consumed. False
 // means the walk itself failed (credentials, a fixable filter, the API)
-// and the next reconcile should try again; the caller echoes
+// and the next reconcile should try again. The caller echoes
 // status.backfill.backfilledAt only when ran is true.
 func (r *IntegrationReconciler) runBackfill(
 	ctx context.Context, integ *v1alpha1.Integration, req *v1alpha1.BackfillRequest, now time.Time,
@@ -89,8 +89,8 @@ func (r *IntegrationReconciler) runBackfill(
 }
 
 // listerFor resolves the backfill lister for the Integration: the ListerFor
-// seam when set (tests), else the ghas lister built from the credential —
-// the App installation fan-out, or the exact-repository PAT walk. ok is
+// hook when set (tests), else the ghas lister built from the credential
+// (the App installation fan-out, or the exact-repository PAT walk). ok is
 // false when the provider has no listing capability at all.
 func (r *IntegrationReconciler) listerFor(
 	ctx context.Context, integ *v1alpha1.Integration,

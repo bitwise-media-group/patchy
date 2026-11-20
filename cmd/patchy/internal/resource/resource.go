@@ -14,9 +14,9 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
-// All is the pseudo-noun `get` accepts to mean every kind at once. It is
-// deliberately not a Kind: nothing can be described, reviewed or acted on
-// collectively, so Lookup goes on rejecting it and only `get` recognises it.
+// All is the pseudo-noun `get` accepts to mean every kind at once. It is not
+// a Kind, because nothing can be described, reviewed or acted on collectively.
+// Lookup rejects it and only `get` recognises it.
 const All = "all"
 
 // IsAll reports whether the noun is the every-kind pseudo-noun.
@@ -127,7 +127,7 @@ func Names() []string {
 	return out
 }
 
-// Spellings lists every accepted spelling, sorted — the completion source.
+// Spellings lists every accepted spelling, sorted. It feeds completion.
 func Spellings() []string {
 	var out []string
 	for _, k := range Kinds {

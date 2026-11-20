@@ -36,8 +36,8 @@ type Options struct {
 	RequestTimeout time.Duration
 	Verbose        bool
 
-	// Out and ErrOut are the streams commands write to. Held here rather than
-	// reached for as globals so tests can capture them.
+	// Out and ErrOut are the streams commands write to. They live here rather
+	// than as globals so tests can capture them.
 	Out    io.Writer
 	ErrOut io.Writer
 
@@ -52,7 +52,7 @@ type Options struct {
 // WithEnv pins a pre-built environment, bypassing kubeconfig resolution.
 func (o *Options) WithEnv(env *kubecfg.Env) { o.env = env }
 
-// WithAccess pins the access-review answer; the fn receives (resource, verb).
+// WithAccess pins the access-review answer. The fn receives (resource, verb).
 func (o *Options) WithAccess(fn func(context.Context, *kubecfg.Env, string, string) (bool, error)) {
 	o.accessFn = fn
 }
@@ -172,8 +172,8 @@ func Execute() int {
 	root := NewRoot(opts)
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	// A flag or argument mistake is the caller's, not a failure: cobra reports
-	// it through the same path as a runtime error, so tag it as usage here.
+	// A flag or argument mistake is a usage error, not a failure. Cobra
+	// reports it through the same path as a runtime error, so tag it here.
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return errUsage(err) })
 
 	err := root.ExecuteContext(ctx)
@@ -207,8 +207,8 @@ func nounCompletion(_ *cobra.Command, args []string, _ string) ([]string, cobra.
 	return resource.Spellings(), cobra.ShellCompDirectiveNoFileComp
 }
 
-// getNounCompletion completes `get`'s noun, which unlike every other verb also
-// takes the every-kind pseudo-noun. It sorts first, as it reads.
+// getNounCompletion completes `get`'s noun. Unlike every other verb, `get` also
+// takes the every-kind pseudo-noun, which sorts first.
 func getNounCompletion(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

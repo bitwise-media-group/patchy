@@ -18,14 +18,14 @@ import (
 
 // ErrDeleteUnauthorized reports the credential cannot delete issues:
 // GitHub restricts the deleteIssue mutation to admin-permission user
-// tokens — App installation tokens and fine-grained PATs are always
+// tokens; App installation tokens and fine-grained PATs are always
 // refused ("Viewer not authorized to delete"). Callers may fall back
 // to closing the issue.
 var ErrDeleteUnauthorized = errors.New("credential not authorized to delete issues")
 
 // DeleteIssue permanently deletes an issue. The REST API cannot delete
-// issues at all — only the GraphQL deleteIssue mutation can, and it needs
-// the issue's node ID, so this fetches the issue first. Deleting requires
+// issues; only the GraphQL deleteIssue mutation can, and it needs the
+// issue's node ID, so this fetches the issue first. Deleting requires
 // admin-level repository permission; it exists for the demo reset, which
 // removes the tracking issues a replayed demo would otherwise duplicate.
 // A missing issue is success: deletion is idempotent.

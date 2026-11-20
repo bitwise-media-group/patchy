@@ -17,8 +17,8 @@ import (
 var (
 	// ErrNoIntegration: no enabled Integration provides the capability.
 	ErrNoIntegration = errors.New("no integration provides the capability")
-	// ErrAmbiguousIntegration: several Integrations provide the capability —
-	// v1alpha1 requires exactly one per namespace.
+	// ErrAmbiguousIntegration: several Integrations provide the capability,
+	// but v1alpha1 requires exactly one per namespace.
 	ErrAmbiguousIntegration = errors.New("multiple integrations provide the capability")
 )
 
@@ -81,7 +81,7 @@ func AzureResourceTagsEnabled(i *v1alpha1.Integration) bool {
 // GenericEnhanceEnabled reports whether the Integration enables the external
 // generic enhancer. It lives here for the same reason as
 // CloudAssetInventoryEnabled: its consumer is the context-controller. Unlike
-// every other capability, generic is exempt from the Select singleton rule —
+// every other capability, generic is exempt from the Select singleton rule:
 // any number of generic integrations enhance side by side, so consumers List
 // with this predicate rather than Select with it.
 func GenericEnhanceEnabled(i *v1alpha1.Integration) bool {

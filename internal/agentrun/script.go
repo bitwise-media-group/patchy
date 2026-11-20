@@ -12,7 +12,7 @@ import (
 
 // runScript executes the agent-written commit script once, from the
 // repository root, capturing combined output for diagnostics. It runs inside
-// the disposable pod — agent-generated shell never executes on a controller.
+// the disposable pod, so agent-generated shell never executes on a controller.
 func runScript(ctx context.Context, dir, script string) (string, error) {
 	cmd := exec.CommandContext(ctx, "sh", script)
 	cmd.Dir = dir

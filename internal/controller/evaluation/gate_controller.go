@@ -29,7 +29,7 @@ func UnitName(eval string, index int) string {
 // Creation is idempotent (deterministic names, AlreadyExists adopted), so a
 // crashed expansion resumes where it stopped. Units whose harness preference
 // list has no overlap with the enabled fleet are settled immediately as
-// Failed/HarnessUnavailable — deterministic, never a silent drop.
+// Failed/HarnessUnavailable, never silently dropped.
 type GateReconciler struct {
 	client.Client
 	Namespace string

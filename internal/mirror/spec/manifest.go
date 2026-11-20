@@ -35,7 +35,7 @@ type ChartSpec struct {
 	// Lockstep names an update group: entries sharing a lockstep value
 	// ride one upstream version stream and must bump together in one PR
 	// (a half-merged pair publishes an operator referencing images the
-	// mirror doesn't carry yet). The group target is the LOWEST of the
+	// mirror doesn't carry yet). The group target is the lowest of the
 	// members' newest satisfying versions, holding the bump until every
 	// member carries the tag.
 	Lockstep string `yaml:"lockstep"`
@@ -101,8 +101,8 @@ type Images struct {
 }
 
 // Track is one tracked image: the tag is machine-picked into a values file,
-// so the rule names both an image and a path that must already resolve there
-// — the pick replaces a value, it never invents one. The value there is
+// so the rule names both an image and a path that must already resolve
+// there. The pick replaces a value; it never invents one. The value there is
 // either a full image reference (the pick replaces image:tag) or a bare
 // tag for charts that split image.repository from image.tag (the pick
 // replaces just the tag).
@@ -131,8 +131,8 @@ type DistributionManifests struct {
 	// derived.
 	Components []string `yaml:"components"`
 	// Registry prefixes registry-less image references found in the
-	// manifests (default ghcr.io) — the deploying operator prefixes its
-	// configured registry the same way.
+	// manifests (default ghcr.io), the same way the deploying operator
+	// prefixes its configured registry.
 	Registry string `yaml:"registry"`
 }
 

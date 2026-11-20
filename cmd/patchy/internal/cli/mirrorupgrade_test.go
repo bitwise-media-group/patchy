@@ -130,8 +130,8 @@ func TestRenderUpdatePlan(t *testing.T) {
 		if err := renderUpdatePlan(opts, &mirror.UpdatePlan{}, printer.FormatMarkdown); err != nil {
 			t.Fatal(err)
 		}
-		// The markdown summary goes to a job summary: the all-clear must
-		// land on stdout, not stderr narration.
+		// The markdown summary goes to a job summary, so the all-clear must
+		// land on stdout, not in stderr narration.
 		if !strings.Contains(out.String(), "Everything is current.") {
 			t.Errorf("markdown = %q", out.String())
 		}

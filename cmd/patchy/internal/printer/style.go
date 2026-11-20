@@ -10,8 +10,8 @@ import (
 )
 
 // Palette. Colours are ANSI 0-15 rather than truecolor so they inherit the
-// user's own terminal theme — a finding rendered in a light terminal has to be
-// as readable as one in a dark terminal, and only the user knows which.
+// user's own terminal theme. A finding has to be as readable in a light
+// terminal as in a dark one, and only the user's theme knows which it is.
 var (
 	styleHeader = lipgloss.NewStyle().Bold(true)
 	styleDim    = lipgloss.NewStyle().Faint(true)

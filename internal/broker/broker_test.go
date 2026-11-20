@@ -233,7 +233,7 @@ func TestAnthropicBearerMode(t *testing.T) {
 	defer upstream.Close()
 
 	// bearer=true: a `claude setup-token` OAuth token rides Authorization,
-	// not x-api-key — and the caller's own Authorization must not survive.
+	// not x-api-key, and the caller's own Authorization must not survive.
 	s := newTestServer(t, Config{
 		Upstreams: map[string]Upstream{
 			"anthropic": Anthropic(mustTarget(t, upstream.URL), keyFile(t, "sk-ant-oat01-xyz"), true),
@@ -519,7 +519,7 @@ func TestConfigValidation(t *testing.T) {
 
 // TestCodexRoutesInjectAndStrip: the codex CLI's custom provider sends the
 // non-secret placeholder as Authorization (its env_key) and may send any
-// api-key header; the broker must replace both with the mounted credential —
+// api-key header. The broker must replace both with the mounted credential:
 // a bearer for OpenAI, the api-key header for Azure.
 func TestCodexRoutesInjectAndStrip(t *testing.T) {
 	var gotPath string

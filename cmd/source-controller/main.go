@@ -1,9 +1,10 @@
 // Copyright 2026 Bitwise Media Group Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command source-controller receives security findings from external sources
-// (GitHub Advanced Security first) via GitHub webhooks and accumulates them
-// into GitHub issues — the pipeline's state machine.
+// Command source-controller runs the Forge and Repository reconcilers. It
+// validates forge credentials, pins each Repository's head SHA once,
+// downloads the tarball archive at that SHA, and serves it from the artifact
+// endpoint that agent pods fetch from without credentials.
 package main
 
 import (

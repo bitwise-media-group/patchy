@@ -22,8 +22,8 @@ const defaultDebounce = 500 * time.Millisecond
 // StartWatch registers change handlers on the Finding/FindingRollup and
 // Integration/Forge informers and publishes debounced findings-changed /
 // config-changed notifications to the SSE broker. It blocks until ctx is
-// cancelled, so it slots straight into a manager runnable — running after
-// the cache has synced and stopping with the manager.
+// cancelled, so it fits a manager runnable: it runs after the cache has
+// synced and stops with the manager.
 func (s *Server) StartWatch(ctx context.Context, c cache.Cache) error {
 	watch := func(signal chan<- struct{}, objs ...client.Object) error {
 		notify := func() {

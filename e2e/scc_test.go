@@ -18,7 +18,7 @@ import (
 )
 
 // The identity and audience the Integration is configured to trust. Anything
-// else presenting a validly-signed Google token must still be rejected —
+// else presenting a validly-signed Google token must still be rejected:
 // signing proves the issuer, not the caller.
 const (
 	sccServiceAccount = "patchy-scc-push@x-patchy-app.iam.gserviceaccount.com"
@@ -128,7 +128,7 @@ func TestSCCNotificationPipeline(t *testing.T) {
 	}
 
 	// No enhancer resolved a repository here, so the finding stays repo-less
-	// all the way through — the case that used to have no coverage at all.
+	// all the way through.
 	if fnd.Spec.Repository != nil {
 		t.Errorf("spec.repository = %+v, want nil", fnd.Spec.Repository)
 	}

@@ -27,8 +27,8 @@ type UpdatePlan struct {
 type UpdateGroup struct {
 	// Group is the lockstep name, or the entry name for solo entries.
 	Group string `json:"group"`
-	// Target is the group target version: the LOWEST of the members'
-	// newest satisfying versions — upstream publishes lockstep members
+	// Target is the group target version: the lowest of the members'
+	// newest satisfying versions. Upstream publishes lockstep members
 	// near-simultaneously, so the bump holds until every member carries
 	// the tag.
 	Target string `json:"target"`

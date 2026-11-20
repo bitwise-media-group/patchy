@@ -22,9 +22,7 @@ const (
 )
 
 // broker fans a notification out to every connected SSE client. Sends are
-// non-blocking: a client whose buffer is full simply misses an intermediate
-// notification, which is harmless because every notification carries the
-// same meaning ("refetch") — the next one catches it up.
+// non-blocking (see publish).
 type broker struct {
 	mu      sync.Mutex
 	clients map[chan string]struct{}
@@ -54,9 +52,9 @@ func (b *broker) unsubscribe(ch chan string) {
 }
 
 // publish delivers one named notification to every subscriber, dropping it
-// for any client whose buffer is full rather than blocking the watcher —
-// harmless, because every notification of one name carries the same
-// meaning ("refetch") and the next one catches the client up.
+// for any client whose buffer is full rather than blocking the watcher. A
+// drop is harmless: every notification of one name means "refetch", and the
+// next one catches the client up.
 func (b *broker) publish(event string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -79,8 +77,8 @@ func (b *broker) count() int {
 // comment ping, so proxies and load balancers do not reap it.
 const keepalivePeriod = 25 * time.Second
 
-// handleEvents is the Server-Sent Events stream. It carries no content —
-// only that something changed — but when things change is still activity in
+// handleEvents is the Server-Sent Events stream. It carries no content, only
+// that something changed, but when things change is still activity in
 // the namespace, so it needs an identity allowed to read at least one of the
 // views it refreshes (findings, metrics or configuration). It emits a named
 // event per published notification plus periodic comment pings to hold the

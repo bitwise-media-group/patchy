@@ -80,7 +80,7 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, p)
 }
 
-// listPulls answers GET /repos/{o}/{r}/pulls — enough of the list API for
+// listPulls answers GET /repos/{o}/{r}/pulls with enough of the list API for
 // FindPRByHead (state + head filters; head arrives as "owner:branch").
 func (s *Server) listPulls(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")

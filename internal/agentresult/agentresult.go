@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Package agentresult converts agent envelope payloads into the CRD status
-// shapes — the one place the float-bearing wire format meets the no-float
-// structural schemas. Both job controllers (investigation, remediation) use
-// it so cost/confidence formatting and size caps never drift apart.
+// shapes. It is the one place the float-bearing wire format meets the
+// no-float structural schemas. Both job controllers (investigation,
+// remediation) use it so cost/confidence formatting and size caps never drift
+// apart.
 package agentresult
 
 import (
@@ -25,11 +26,11 @@ const (
 // FailedStage builds the stage to record for a run the controller is failing.
 //
 // When the agent reported a stage, that stage is kept and only the verdict is
-// overwritten: a run that failed still burned turns, tokens and money, and
-// throwing its accounting away is what blanks a child's usage and leaves the
-// harness/model rollup scopes with nothing to key on. reported is nil only
-// when no event arrived at all (a vanished or unparseable Job), and then
-// there is genuinely nothing but the verdict to record.
+// overwritten. A failed run still burned turns, tokens and money; dropping
+// its accounting would blank the child's usage and leave the harness/model
+// rollup scopes with nothing to key on. reported is nil only when no event
+// arrived at all (a vanished or unparseable Job), and then the verdict is all
+// there is to record.
 func FailedStage(reported *envelope.Stage, outcome, detail string) envelope.Stage {
 	st := envelope.Stage{}
 	if reported != nil {
@@ -90,7 +91,7 @@ func Analysis(a envelope.AnalysisResult) *v1alpha1.Analysis {
 }
 
 // FormatCost renders a float cost as the CRD's decimal string (6 fractional
-// digits — micro-USD precision); empty when unreported.
+// digits, micro-USD precision); empty when unreported.
 func FormatCost(f float64) string {
 	if f <= 0 {
 		return ""

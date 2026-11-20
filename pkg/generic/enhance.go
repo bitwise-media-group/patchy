@@ -5,7 +5,7 @@ package generic
 
 import "github.com/bitwise-media-group/patchy/pkg/source"
 
-// Issue is the view of a finding an external enhancer receives — the same
+// Issue is the view of a finding an external enhancer receives: the same
 // projection in-tree enhancers see, JSON-tagged for the wire.
 type Issue struct {
 	// Repo is the repository the finding was raised against; absent for a
@@ -36,8 +36,8 @@ type EnhanceRequest struct {
 }
 
 // EnhanceResponse is the enhancer's contribution. Answering 204, or 200 with
-// an empty body, contributes nothing — the honest reply for a finding the
-// process has no context on.
+// an empty body, contributes nothing. That is the right reply for a finding
+// the process has no context on.
 type EnhanceResponse struct {
 	// Owners are logins responsible for the finding, in preference order;
 	// the pipeline uses them for issue assignment.

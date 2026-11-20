@@ -12,11 +12,11 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 )
 
-// Verbs the human-action surface understands. They are custom RBAC verbs —
+// Verbs the human-action surface understands. They are custom RBAC verbs:
 // the per-finding ones on findings.patchy.bitwisemedia.uk, the
-// integration-scoped ones on integrations.patchy.bitwisemedia.uk: plain
-// strings as far as the API server is concerned, so granting one confers
-// exactly one action.
+// integration-scoped ones on integrations.patchy.bitwisemedia.uk. The API
+// server treats them as plain strings, so granting one confers exactly one
+// action.
 const (
 	// VerbApprove releases the breaking-change hold and revives handed-off
 	// findings.
@@ -30,8 +30,8 @@ const (
 	VerbSuspend = "suspend"
 	// VerbResume lifts a suspension.
 	VerbResume = "resume"
-	// VerbBackfill lists an integration's pre-existing open alerts into
-	// findings — the ones that predate webhook coverage (integration-scoped).
+	// VerbBackfill lists an integration's pre-existing open alerts (the ones
+	// that predate webhook coverage) into findings. Integration-scoped.
 	VerbBackfill = "backfill"
 	// VerbReplay redelivers the webhook delivery log (integration-scoped
 	// demo tooling).
@@ -50,8 +50,8 @@ var AdminVerbs = []string{VerbReplay, VerbReset}
 
 // IntegrationVerbs lists every integration-scoped verb, in the order
 // clients present them. All are checked on
-// integrations.patchy.bitwisemedia.uk — the same resource the admission
-// policy's authorizer names, which is what keeps the CLI/status-server
+// integrations.patchy.bitwisemedia.uk, the same resource the admission
+// policy's authorizer names. That keeps the CLI/status-server
 // SubjectAccessReviews and the server-side enforcement in agreement.
 var IntegrationVerbs = []string{VerbBackfill, VerbReplay, VerbReset}
 
@@ -66,10 +66,10 @@ var (
 	ErrUnknownVerb = errors.New("unknown action verb")
 )
 
-// Apply records verb on f as user at time now, mutating f's spec only — a
+// Apply records verb on f as user at time now, mutating f's spec only. A
 // human action never writes status and never moves a phase itself. The
-// phase-owning controller observes the spec change and performs the transition,
-// which is what keeps every phase edge single-writer.
+// phase-owning controller observes the spec change and performs the
+// transition, which keeps every phase edge single-writer.
 //
 // changed reports whether f was actually modified. An action whose effect is
 // already recorded returns (false, nil): callers skip the write rather than
@@ -101,8 +101,8 @@ func Apply(f *v1alpha1.Finding, verb, user, note string, now time.Time) (changed
 		if phase != v1alpha1.PhaseAwaitingApproval && phase != v1alpha1.PhaseHandedOff {
 			return false, ErrUnavailable
 		}
-		// First approval wins — except a HandedOff finding whose recorded
-		// approval predates completion: that approval can never revive it
+		// First approval wins, except on a HandedOff finding whose recorded
+		// approval predates completion. That approval can never revive it
 		// (the spawner requires approval newer than completedAt), so a fresh
 		// one replaces it.
 		if f.Spec.Approval != nil && !staleApproval(f) {
@@ -138,7 +138,7 @@ func Apply(f *v1alpha1.Finding, verb, user, note string, now time.Time) (changed
 // now, in ActionVerbs order. It probes Apply against a copy rather than
 // re-stating the gates, so the two can never disagree.
 //
-// It answers "is there anything to do here", not "may this user do it" — a
+// It answers "is there anything to do here", not "may this user do it". A
 // caller still has to check its own grants.
 func Available(f *v1alpha1.Finding, now time.Time) []string {
 	var out []string

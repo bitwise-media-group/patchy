@@ -47,7 +47,7 @@ func WithProxy(rawURL string) Option {
 }
 
 // parseProxy parses a proxy URL, requiring an http or https scheme and a
-// host. Empty returns nil — the environment applies.
+// host. Empty returns nil, so the environment applies.
 func parseProxy(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, nil
@@ -71,8 +71,8 @@ func ValidateProxy(rawURL string) error {
 	return err
 }
 
-// NewToken returns a Client authenticated with a personal access token —
-// the dev-mode fallback. baseURL "" means api.github.com.
+// NewToken returns a Client authenticated with a personal access token, the
+// dev-mode fallback. baseURL "" means api.github.com.
 func NewToken(token, baseURL string, opts ...Option) (*Client, error) {
 	var s settings
 	for _, opt := range opts {
@@ -91,7 +91,7 @@ func NewToken(token, baseURL string, opts ...Option) (*Client, error) {
 
 // newGitHub builds a go-github client on transport, pointed at baseURL
 // ("" means api.github.com; anything else goes through WithEnterpriseURLs,
-// which appends /api/v3/ for non-api hosts — the GHES convention).
+// which appends /api/v3/ for non-api hosts, the GHES convention).
 func newGitHub(transport http.RoundTripper, baseURL string,
 	extra ...github.ClientOptionsFunc) (*github.Client, error) {
 	opts := append([]github.ClientOptionsFunc{github.WithTransport(transport)}, extra...)
@@ -101,7 +101,7 @@ func newGitHub(transport http.RoundTripper, baseURL string,
 	return github.NewClient(opts...)
 }
 
-// apiRoot is gh's resolved base URL without the trailing slash — the form
+// apiRoot is gh's resolved base URL without the trailing slash, the form
 // ghinstallation expects ("https://api.github.com", "https://ghes/api/v3").
 func apiRoot(gh *github.Client) string {
 	return strings.TrimSuffix(gh.BaseURL(), "/")

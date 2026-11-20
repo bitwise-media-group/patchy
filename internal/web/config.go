@@ -28,8 +28,8 @@ import (
 
 // ConfigDataset is the payload behind GET /api/config: the configured
 // Forges, Integrations and enhancers the configuration view renders. It
-// mirrors ui/src/types.ts. Never public — the route requires a signed-in
-// identity holding native get on integrations.
+// mirrors ui/src/types.ts. The route requires an identity holding native
+// get on integrations.
 type ConfigDataset struct {
 	GeneratedAt  string              `json:"generatedAt"`
 	Namespace    string              `json:"namespace,omitempty"`
@@ -94,7 +94,7 @@ type BackfillStatus struct {
 	Truncated bool   `json:"truncated,omitempty"`
 	Error     string `json:"error,omitempty"`
 	// RequestedBy/RequestedAt echo spec.backfill; Pending marks a request
-	// the controller has not attempted yet — a failed attempt clears it so
+	// the controller has not attempted yet. A failed attempt clears it so
 	// the trigger re-enables for a corrected request.
 	RequestedBy string `json:"requestedBy,omitempty"`
 	RequestedAt string `json:"requestedAt,omitempty"`
@@ -102,8 +102,8 @@ type BackfillStatus struct {
 }
 
 // EnhancerConfig is one context-enhancer instance derived from the
-// Integrations. The static-context enhancer is deliberately absent: it is
-// a context-controller command-line flag, invisible from the cluster
+// Integrations. The static-context enhancer is absent because it is a
+// context-controller command-line flag, invisible from the cluster
 // configuration this view projects.
 type EnhancerConfig struct {
 	// ID is the enhancer's attribution id, as it appears on enrichments.
@@ -112,8 +112,8 @@ type EnhancerConfig struct {
 	Integration string `json:"integration,omitempty"`
 	Enabled     bool   `json:"enabled"`
 	// Ambiguous marks a singleton capability enabled by more than one
-	// Integration — a configuration error the enhancer chain refuses, so
-	// the view surfaces it rather than picking one.
+	// Integration. The enhancer chain refuses that configuration, so the
+	// view surfaces it rather than picking one.
 	Ambiguous bool `json:"ambiguous,omitempty"`
 }
 
@@ -201,7 +201,7 @@ func projectForgeConfig(f *v1alpha1.Forge) ForgeConfig {
 }
 
 // projectIntegrationConfig flattens one Integration CR onto the wire type.
-// Only the operator-facing configuration surface is projected — never the
+// Only the operator-facing configuration surface is projected: never the
 // credential Secret's contents, and none of the never-written status
 // fields (installations, rateLimit, lastEventAt).
 func projectIntegrationConfig(integ *v1alpha1.Integration) IntegrationConfig {
@@ -265,7 +265,7 @@ func wireBackfill(integ *v1alpha1.Integration) *BackfillStatus {
 
 // backfillSupported reports whether a backfill request could do anything on
 // this Integration: the github provider with code-scanning ingestion
-// enabled — the same gate the integration-controller's lister applies.
+// enabled, the same gate the integration-controller's lister applies.
 func backfillSupported(integ *v1alpha1.Integration) bool {
 	return integ.Spec.Provider == v1alpha1.IntegrationProviderGitHub &&
 		integ.Spec.GitHub != nil &&
@@ -314,7 +314,7 @@ func capabilities(integ *v1alpha1.Integration) []string {
 // selects by. The ids match the enrichment attribution ids
 // (internal/enhancers). A singleton capability enabled by several
 // Integrations is surfaced on every one of them as ambiguous rather than
-// swallowed — the enhancer chain refuses that configuration too.
+// swallowed, since the enhancer chain refuses that configuration too.
 func deriveEnhancers(integs []v1alpha1.Integration) []EnhancerConfig {
 	out := []EnhancerConfig{}
 	singletons := []struct {
@@ -342,7 +342,7 @@ func deriveEnhancers(integs []v1alpha1.Integration) []EnhancerConfig {
 		}
 	}
 	// The generic enhancer is one instance per Integration, attributed by
-	// the Integration's own name — never ambiguous.
+	// the Integration's own name, so it is never ambiguous.
 	for i := range integs {
 		if integrationcap.GenericEnhanceEnabled(&integs[i]) {
 			out = append(out, EnhancerConfig{

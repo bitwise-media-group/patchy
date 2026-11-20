@@ -30,7 +30,7 @@ const maxDecodedBytes = 8 << 20
 func NameFor(unit string) string { return unit + "-results" }
 
 // Persist writes a unit's result entry and returns the reference to record
-// on the unit's status. An empty entry means no object and a nil reference —
+// on the unit's status. An empty entry means no object and a nil reference:
 // a unit that failed before producing a result is not an error here.
 //
 // The write is idempotent: a re-collected unit overwrites its own results

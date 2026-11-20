@@ -6,8 +6,8 @@
 // and the newest tag that has soaked past a cooldown window (tracked-image
 // picks, where a just-published tag can still be yanked or hot-fixed).
 //
-// Only release versions of the shape X.Y.Z — optionally v-prefixed — are
-// ever considered; pre-releases and build metadata are filtered out before
+// Only release versions of the shape X.Y.Z (optionally v-prefixed) are
+// ever considered. Pre-releases and build metadata are filtered out before
 // constraint evaluation, because the mirror only ships releases. All
 // wall-clock input is injected, keeping the package deterministic under
 // test.

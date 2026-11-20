@@ -96,7 +96,7 @@ func TestEngineScanGate(t *testing.T) {
 	})
 
 	t.Run("allowlist alias suppresses", func(t *testing.T) {
-		// The allowlist entry names the GHSA alias, not the CVE id —
+		// The allowlist entry names the GHSA alias, not the CVE id:
 		// matching must cross id families.
 		f.write("charts/demo/security/allowlist.yaml", `vulnerabilities:
   - id: GHSA-aaaa-bbbb
@@ -119,8 +119,8 @@ func TestEngineScanGate(t *testing.T) {
 
 // TestEngineScanRoster pins the roster policy: every image scanner is
 // default-off, so with scanning enabled an empty roster must be a hard
-// error naming the toggles — never a silently-clean scan — while
-// scan.enabled: false disables the stage deliberately.
+// error naming the toggles (never a silently clean scan), while
+// scan.enabled: false explicitly disables the stage.
 func TestEngineScanRoster(t *testing.T) {
 	f, entry := scanFixture(t)
 	ctx := context.Background()
@@ -204,7 +204,7 @@ func TestEngineDeriveAllowlist(t *testing.T) {
 }
 
 // A still-reported entry whose expiry lapsed is renewed, narrated, and
-// clears lint again — the upgrade PR is the re-review.
+// clears lint again. The upgrade PR is the re-review.
 func TestEngineDeriveAllowlistRenewsLapsed(t *testing.T) {
 	f, eng, entry := allowlistEngine(t)
 	ctx := context.Background()

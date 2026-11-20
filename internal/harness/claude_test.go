@@ -172,7 +172,7 @@ func TestClaudeRuntimeError(t *testing.T) {
 	}{
 		{"usable result", claudeStreamSuccess, 0, false, ""},
 		// A partial answer from an exhausted run is not a result. Reporting
-		// it as usable is what let a starved remediation surface as a missing
+		// it as usable makes a starved remediation surface as a missing
 		// report file instead of as the budget failure it was.
 		{"max turns with partial result is an error", claudeStreamMaxTurnsPartial, 1, false,
 			"claude run error (error_max_turns): hit max turns"},

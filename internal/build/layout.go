@@ -32,9 +32,9 @@ func (b built) write(ctx context.Context, reg *ocireg.Client, ref string) error 
 	return reg.Write(ctx, ref, b.image)
 }
 
-// loadBuilt loads a build's output; a seam so engine tests can publish an
-// in-memory copy of what the fake builder wrote (loadLayout itself is
-// tested on its own).
+// loadBuilt loads a build's output. It is a variable so engine tests can
+// publish an in-memory copy of what the fake builder wrote (loadLayout has
+// its own tests).
 var loadBuilt = loadLayout
 
 // loadLayout opens a buildx OCI layout export: index.json holds one root

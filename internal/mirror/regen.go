@@ -170,8 +170,8 @@ func (e *Engine) regenerateChart(ctx context.Context, entry spec.Entry, destDir 
 // extracted chart's own Chart.yaml version. The mirror publishes the chart
 // tagged with the pin, and helm push (strict mode, enforced by registries
 // such as Artifact Registry) rejects a tag that differs from the chart
-// version — so a "1.21.3" pin over a chart versioned "v1.21.3" would pass
-// every other gate and fail only at publish time.
+// version. A "1.21.3" pin over a chart versioned "v1.21.3" would otherwise
+// pass every other gate and fail only at publish time.
 func checkChartVersion(entry spec.Entry, chartsDir string) error {
 	m := entry.Chart
 	got, err := helmchart.Version(chartsDir, m.Chart.Name)
@@ -190,7 +190,7 @@ func checkChartVersion(entry spec.Entry, chartsDir string) error {
 // resolveImages digest-pins every discovered reference, concurrently but
 // deterministically (results sorted by source). A source already in the
 // committed lock (locked: source -> digest) keeps its locked digest instead
-// of re-resolving its tag — see resolveDigest.
+// of re-resolving its tag; see resolveDigest.
 func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []string,
 	locked map[string]string) ([]spec.LockImage, error) {
 	images := make([]spec.LockImage, len(sources))
@@ -223,14 +223,15 @@ func (e *Engine) resolveImages(ctx context.Context, entryName string, sources []
 
 // resolveDigest pins one source reference to a digest and reads its
 // platforms. The committed lock is authoritative: when locked (the digest
-// the committed lock records for this exact source) is set, the tag is
-// NOT re-resolved. Mirror tags are immutable — once a tag is published at
-// a digest it can never be re-pointed — so an upstream that rebuilds a
-// released tag in place must not move the lock: validate would report the
-// committed tree stale, and the next sync could never publish the result.
-// The locked digest is instead proved still pullable upstream, and a moved
-// tag is reported as a warning so the drift stays visible. Only a source
-// new to the lock (a bumped chart, tag or extra) resolves its tag.
+// the committed lock records for this exact source) is set, the tag is not
+// re-resolved. Mirror tags are immutable (once a tag is published at a
+// digest it can never be re-pointed), so an upstream that rebuilds a
+// released tag in place must not move the lock. If it did, validate would
+// report the committed tree stale, and the next sync could never publish
+// the result. Instead the locked digest is checked to be still pullable
+// upstream, and a moved tag is reported as a warning so the drift stays
+// visible. Only a source new to the lock (a bumped chart, tag or extra)
+// resolves its tag.
 func (e *Engine) resolveDigest(ctx context.Context, entryName, source, locked string) (string, []string, error) {
 	pullRef := e.rewrite(source)
 	if locked == "" {
@@ -274,7 +275,7 @@ func (e *Engine) resolveDigest(ctx context.Context, entryName, source, locked st
 
 // committedImageDigests maps each source in the entry's committed lock to
 // its digest. A missing lock (a new entry) is empty, and so is one that no
-// longer parses (a legacy schema), with a warning — upgrade rewrites it
+// longer parses (a legacy schema), with a warning. Upgrade rewrites it
 // from scratch, and validate reports it stale either way.
 func (e *Engine) committedImageDigests(entry spec.Entry) map[string]string {
 	locked := map[string]string{}

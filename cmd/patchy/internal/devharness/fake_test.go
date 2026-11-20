@@ -15,8 +15,8 @@ import (
 	pkggeneric "github.com/bitwise-media-group/patchy/pkg/generic"
 )
 
-// authorProcess is the external process under test's stand-in — the mirror
-// image of the harness, modeled on the e2e suite's externalProcess: it
+// authorProcess stands in for the external process under test. It is the
+// mirror image of the harness, modeled on the e2e suite's externalProcess: it
 // verifies outbound signatures and records what patchy sent.
 type authorProcess struct {
 	secret []byte
@@ -31,7 +31,7 @@ type authorProcess struct {
 	unparsedBodies int
 }
 
-// serve starts the endpoint; the same server answers both legs by path.
+// serve starts the endpoint. The same server answers both legs by path.
 func (a *authorProcess) serve() *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /enhance", a.handleEnhance)

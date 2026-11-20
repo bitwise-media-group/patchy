@@ -7,9 +7,8 @@
 //
 // The aliases are not invented here. Each one is the shortName the CRD already
 // declares (api/v1alpha1, +kubebuilder:resource:shortName), so `patchy get fnd`
-// and `kubectl get fnd` always mean the same thing — a user who learns one
-// spelling has learned both.
+// and `kubectl get fnd` always mean the same thing.
 //
-// [All] is the one spelling that is not a kind: `get` takes it to mean every
+// [All] is the one spelling that is not a kind. `get` takes it to mean every
 // kind at once, and Lookup rejects it, so no verb picks it up by accident.
 package resource

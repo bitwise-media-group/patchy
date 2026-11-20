@@ -14,8 +14,8 @@ const RETRY_RECOVERS: Partial<Record<Phase, Phase>> = {
   InReview: "Queued",
 };
 
-// EXPEDITABLE_PHASES are the phases with waiting stages still ahead —
-// accumulation, minimum age, or a queue — that an expedite skips.
+// EXPEDITABLE_PHASES are the phases with waiting stages still ahead
+// (accumulation, minimum age, or a queue) that an expedite skips.
 const EXPEDITABLE_PHASES: ReadonlySet<Phase> = new Set([
   "Opened",
   "Enhanced",
@@ -44,11 +44,11 @@ function retryPending(f: Finding): boolean {
 }
 
 // availableActions returns what the state machine allows right now:
-//   approve  — AwaitingApproval → Queued, or HandedOff → Queued (revival)
-//   retry    — recover a Failed finding to the state it failed from
-//   expedite — skip the waiting stages (accumulation, min age, queue)
-//   suspend  — pause a non-terminal, not-yet-suspended finding
-//   resume   — clear a suspension
+//   approve:  AwaitingApproval → Queued, or HandedOff → Queued (revival)
+//   retry:    recover a Failed finding to the state it failed from
+//   expedite: skip the waiting stages (accumulation, min age, queue)
+//   suspend:  pause a non-terminal, not-yet-suspended finding
+//   resume:   clear a suspension
 export function availableActions(f: Finding): ActionVerb[] {
   const verbs: ActionVerb[] = [];
   if (f.phase === "AwaitingApproval" || f.phase === "HandedOff") verbs.push("approve");

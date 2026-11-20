@@ -15,11 +15,11 @@ import (
 // scopeName identifies this package's meter.
 const scopeName = "github.com/bitwise-media-group/patchy/internal/stats"
 
-// The instruments fire at rollup time — exactly once per run/finding,
-// aligned with the CR counters. Anyone with an OTLP backend gets the same
-// numbers the FindingRollup objects carry; the CRs remain the durable
-// record. `repo` is the only high-cardinality attribute (~estate size);
-// constrained backends can drop it with a metric view.
+// The instruments fire at rollup time, exactly once per run or finding, in step
+// with the CR counters. An OTLP backend gets the same numbers the
+// FindingRollup objects carry; the CRs remain the durable record. `repo` is
+// the only high-cardinality attribute (about the size of the repository
+// estate); constrained backends can drop it with a metric view.
 var (
 	stageRuns = sync.OnceValue(func() metric.Int64Counter {
 		c, _ := otel.Meter(scopeName).Int64Counter("patchy.stage.runs",

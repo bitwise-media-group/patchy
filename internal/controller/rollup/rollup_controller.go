@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 // Package rollup maintains the all-time FindingRollup statistics and the
-// TTL deletion of completed findings — causally ordered: nothing is deleted
-// before its spend is aggregated into every scope.
+// TTL deletion of completed findings. The two are causally ordered: nothing
+// is deleted before its spend is aggregated into every scope.
 //
 // Exactly-once accounting: every Investigation/Remediation child contributes
 // one immutable stage delta per scope (ledger key i:<uid> / r:<uid>); every
 // Finding contributes terminal-phase counts to the total and repository
 // scopes (ledger key f:<uid>:<seq>). A revival (retry, approval) reverses
-// those counts at seq+1 — the finding is back in flight, so only spend-like
-// sums (attempts, the monthly trend) stay put — and a later completion
-// counts it again. A
-// per-scope condition marks aggregation on the contributing object, and the
-// matching rollup finalizer is removed only when the object is deleting and
-// its scope condition is true — kubectl delete can never lose un-aggregated
-// spend, and remaining finalizers show exactly which scopes are owed.
+// those counts at seq+1, because the finding is back in flight; only
+// spend-like sums (attempts, the monthly trend) stay put. A later completion
+// counts it again. A per-scope condition marks aggregation on the
+// contributing object, and the matching rollup finalizer is removed only
+// when the object is deleting and its scope condition is true. So kubectl
+// delete can never lose un-aggregated spend, and remaining finalizers show
+// exactly which scopes are owed.
 package rollup
 
 import (
@@ -51,7 +51,7 @@ type Reconciler struct {
 	Namespace string
 	// TTL after completedAt before a finding is deleted; 0 keeps forever.
 	TTL time.Duration
-	// Now is the clock seam; nil means time.Now.
+	// Now tells time; nil means time.Now.
 	Now func() time.Time
 	// Log receives diagnostics; nil discards.
 	Log *slog.Logger
@@ -65,9 +65,10 @@ type scopeTarget struct {
 	finalizer string
 }
 
-// childScopes are the four scopes a run contributes to; harness/model keys
-// may be empty (a run that died without reporting) — those scopes then get a
-// trivial marker so deletion is never blocked on data that cannot exist.
+// childScopes are the four scopes a run contributes to. The harness/model
+// keys may be empty (a run that died without reporting); those scopes then
+// get a trivial marker so deletion is never blocked on data that cannot
+// exist.
 func childScopes(repoKey, harness, model string) []scopeTarget {
 	return []scopeTarget{
 		{
@@ -502,7 +503,7 @@ func (r *Reconciler) applyScope(
 // findingRollupRelevant reports whether a finding event can possibly change
 // the rollup: it is terminal (counts to record), deleting (finalizers to
 // release), or already condition-marked as counted (a revival to reverse).
-// Everything else — the whole in-flight pipeline population — provably
+// Everything else (the whole in-flight pipeline population) provably
 // no-ops in ReconcileFinding, and at backlog scale those events dominate the
 // watch stream. TTL requeues are unaffected: RequeueAfter re-enqueues bypass
 // watch predicates.

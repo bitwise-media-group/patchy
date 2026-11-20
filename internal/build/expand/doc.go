@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package expand substitutes environment references into build tag, arg
-// and annotation templates. The syntax is a deliberately small, strict
-// subset of the shell's:
+// and annotation templates. The syntax is a small, strict subset of the
+// shell's, so every template either expands as written or fails:
 //
 //	${VAR}                 the value of VAR; unset is an error
 //	${VAR:-default}        VAR, or default when VAR is unset or empty

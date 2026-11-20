@@ -4,7 +4,7 @@
 package wiz
 
 // The decoded shapes of the two documented automation-rule body templates.
-// These mirror docs/integrations/wiz.md field for field — the template is the
+// These mirror docs/integrations/wiz.md field for field. The template is the
 // contract, so a field added here must be added there and vice versa. Only
 // what patchy consumes is declared.
 
@@ -25,7 +25,7 @@ type trigger struct {
 	Source string `json:"source"`
 	// Type is the lifecycle event: Created, Updated, Reopened, or Resolved.
 	Type string `json:"type"`
-	// RuleID and RuleName identify the automation rule itself — provenance,
+	// RuleID and RuleName identify the automation rule itself (provenance),
 	// not the security control that raised the issue.
 	RuleID   string `json:"ruleId"`
 	RuleName string `json:"ruleName"`
@@ -53,8 +53,8 @@ type issue struct {
 	Control control `json:"control"`
 }
 
-// control is the security control behind an issue — the issue's type, and
-// what keys accumulation.
+// control is the security control behind an issue. It is the issue's type
+// and keys accumulation.
 type control struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -77,7 +77,7 @@ type entitySnapshot struct {
 	CloudPlatform string `json:"cloudPlatform"`
 	// CloudProviderURL links to the resource in its provider's console.
 	CloudProviderURL string `json:"cloudProviderURL"`
-	// ProviderID is the provider's own identifier for the resource — the
+	// ProviderID is the provider's own identifier for the resource. It is the
 	// accumulation scope, after normalization for Google Cloud.
 	ProviderID string `json:"providerId"`
 	// Region the resource lives in.
@@ -109,8 +109,8 @@ type threat struct {
 	Status string `json:"status"`
 	// CreatedAt is when the threat was raised.
 	CreatedAt string `json:"createdAt"`
-	// RuleID and RuleName identify the detection rule that fired — the
-	// threat's type, and what keys accumulation.
+	// RuleID and RuleName identify the detection rule that fired. The rule is
+	// the threat's type and keys accumulation.
 	RuleID   string `json:"ruleId"`
 	RuleName string `json:"ruleName"`
 	// CloudPlatform is the platform the detection fired on, when the threat

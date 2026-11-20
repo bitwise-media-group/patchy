@@ -15,7 +15,7 @@ import (
 // fakeProxy is an httptest server standing in for an HTTP forward proxy.
 // The clients under test target a plain-http GitHub base URL, so proxied
 // requests arrive in absolute form (GET http://host/path) rather than as
-// CONNECT tunnels — the proxy answers as the origin while recording what
+// CONNECT tunnels. The proxy answers as the origin while recording what
 // traversed it.
 type fakeProxy struct {
 	mu   sync.Mutex
@@ -103,10 +103,10 @@ func TestNewAppProxyURL(t *testing.T) {
 	}
 }
 
-// TestProxyPrecedence: a spec proxy wins over the process proxy environment —
-// the env proxy sees nothing. (No env-only routing assertion exists on
-// purpose: ProxyFromEnvironment caches the environment in a process-wide
-// sync.Once, so t.Setenv cannot reliably exercise that path.)
+// TestProxyPrecedence: a spec proxy wins over the process proxy environment,
+// so the env proxy sees nothing. There is no env-only routing assertion
+// because ProxyFromEnvironment caches the environment in a process-wide
+// sync.Once, so t.Setenv cannot reliably exercise that path.
 func TestProxyPrecedence(t *testing.T) {
 	envProxy, envURL := newFakeProxy(t)
 	t.Setenv("HTTP_PROXY", envURL)

@@ -6,11 +6,14 @@
 // (approve, suspend, resume), and an SSE change signal that tells open
 // browsers to refetch.
 //
-// The exposure contract is deliberately asymmetric: rollup statistics are
-// public (GET /api/rollups and the SSE stream serve without a session),
-// while the findings surface — list, detail, and every action — always
-// requires an authenticated identity (internal/web/auth) holding the RBAC
-// grants (internal/web/authz). The server never writes finding status and
+// Every data route requires an identity (internal/web/auth) holding the
+// matching RBAC grant (internal/web/authz): native get on findings for the
+// findings surface (list, detail, transcripts), on findingrollups for
+// metrics (GET /api/rollups and /api/rollups/repositories), on integrations
+// for the configuration view, and the custom verbs for each action. The SSE
+// stream needs any one of the read grants. Only auth mode none (an explicit
+// "authentication disabled") opens everything; with no auth configuration
+// at all nothing is served. The server never writes finding status and
 // never moves a phase: approve records spec.approval and suspend/resume
 // toggle spec.suspend, leaving every phase edge to its owning controller.
 //

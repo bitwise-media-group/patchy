@@ -38,6 +38,13 @@ func (s stubGranter) Grants(context.Context, auth.Identity) (authz.Grants, error
 	return s.grants, s.err
 }
 
+// signedIn makes every request a signed-in identity holding g.
+func signedIn(s *Server, g authz.Grants) *Server {
+	s.auth = stubAuth{id: &auth.Identity{Username: "viewer", Session: true}}
+	s.granter = stubGranter{grants: g}
+	return s
+}
+
 // operator is a signed-in identity with every grant, for handler tests.
 var operator = &auth.Identity{Username: "op@acme.test", DisplayName: "Op", Session: true}
 
@@ -216,33 +223,61 @@ func TestFindingDetailAuthAndNotFound(t *testing.T) {
 	}
 }
 
-func TestRollupsIsPublic(t *testing.T) {
-	s := testServer(t, fullFinding(), testRollup("total", "", "total"))
-	// No session at all — the unconfigured posture.
-	s.auth = stubAuth{}
+// Metrics are never public: both routes need an identity (401 without one)
+// holding native get on findingrollups (403 without it) — the same shape of
+// gate as findings, on its own resource.
+func TestMetricsRequireAuthorization(t *testing.T) {
+	routes := []string{"/api/rollups", "/api/rollups/repositories"}
+	cases := []struct {
+		name   string
+		setup  func(*Server)
+		status int
+	}{
+		{"no identity", func(s *Server) { s.auth = stubAuth{} }, http.StatusUnauthorized},
+		{"findings but not metrics", func(s *Server) { signedIn(s, authz.Grants{View: true}) }, http.StatusForbidden},
+		{"metrics", func(s *Server) { signedIn(s, authz.Grants{Metrics: true}) }, http.StatusOK},
+	}
+	for _, tc := range cases {
+		for _, route := range routes {
+			t.Run(tc.name+route, func(t *testing.T) {
+				s := testServer(t, fullFinding(), testRollup("total", "", "total"))
+				tc.setup(s)
+				ts := httptest.NewServer(s.Handler())
+				defer ts.Close()
+				res, err := http.Get(ts.URL + route)
+				if err != nil {
+					t.Fatalf("GET: %v", err)
+				}
+				defer func() { _ = res.Body.Close() }()
+				if res.StatusCode != tc.status {
+					t.Fatalf("status = %d, want %d", res.StatusCode, tc.status)
+				}
+			})
+		}
+	}
+
+	// The summary carries the user (the top bar renders for a metrics-only
+	// reader) and never any findings.
+	s := signedIn(testServer(t, fullFinding(), testRollup("total", "", "total")), authz.Grants{Metrics: true})
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-
 	res, err := http.Get(ts.URL + "/api/rollups")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
 	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", res.StatusCode)
-	}
 	var m map[string]any
 	if err := json.NewDecoder(res.Body).Decode(&m); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got := m["findings"].([]any); len(got) != 0 {
-		t.Errorf("public rollups carried %d findings", len(got))
+		t.Errorf("metrics summary carried %d findings", len(got))
 	}
-	if _, ok := m["user"]; ok {
-		t.Error("public rollups carried user")
+	if u, ok := m["user"].(map[string]any); !ok || u["name"] != "viewer" {
+		t.Errorf("metrics summary user = %v", m["user"])
 	}
 	if _, ok := m["rollups"]; !ok {
-		t.Error("public rollups missing rollups")
+		t.Error("metrics summary missing rollups")
 	}
 }
 
@@ -290,8 +325,7 @@ func TestStaticHandlerStub(t *testing.T) {
 // The dataset endpoints negotiate gzip: encoded when the client accepts it,
 // identity otherwise, and Vary set either way so caches keep them apart.
 func TestDatasetGzipNegotiation(t *testing.T) {
-	s := testServer(t, fullFinding(), testRollup("total", "", "total"))
-	s.auth = stubAuth{}
+	s := signedIn(testServer(t, fullFinding(), testRollup("total", "", "total")), authz.Grants{Metrics: true})
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 

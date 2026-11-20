@@ -35,7 +35,7 @@ deliberately suspended, hence the `suspended` pill on each row.
   the whole view: type to find a repository (built for organisations with tens of thousands), a model, a harness, or
   pick **All repositories matching "…"** to see the combined figures for every repository whose name contains a term.
   Press <kbd>/</kbd> to focus the filter. Each slice has its own link (`#/metrics/repository/<owner%2Frepo>`); old
-  `#/rollups` links still resolve. **This view is public** — it renders without signing in.
+  `#/rollups` links still resolve. It needs `get` on `findingrollups`.
 
   ![The metrics view](assets/images/status-rollups.jpg)
 
@@ -44,7 +44,7 @@ deliberately suspended, hence the `suspended` pill on each row.
   Integrations, Forges, and derived context enhancers: provider, capabilities,
   credential Secret names (names only, never contents), readiness, the failed-delivery sweep's last outcome, and the
   [manual backfill](integrations/sources/github.md#the-manual-backfill) trigger with its last run's report. The nav link
-  renders only for users granted `get` on `integrations` — unlike metrics this view is **never public**, and it is
+  renders only for users granted `get` on `integrations` — and it is
   read-only apart from the backfill trigger: the resources themselves are managed in the cluster.
 
 ## Agent conversations
@@ -131,16 +131,17 @@ them is covered in [Demo tooling](deployment/dev-fake.md#the-demo-loop-replay-an
 
 Two tiers, on purpose:
 
-1. **Rollups are public.** Aggregate statistics carry no finding content; they serve without authentication so the page
-   is useful as a wallboard even with no auth configured.
-2. **Findings require sign-in + RBAC.** Without an [auth configuration](configuration/status-server.md), the findings
-   views show "sign-in is not configured" and nothing else leaves the cluster. With one, a signed-in user sees findings
+1. **Nothing is public.** Without an [auth configuration](configuration/status-server.md) the page shows "sign-in is
+   not configured" and no data leaves the cluster. Auth mode `none` is the one exception — authentication explicitly
+   disabled, everything open (development only).
+2. **Every view requires sign-in + RBAC.** Metrics need `get` on `findingrollups` — repository names and per-repository
+   spend are not for anyone who can reach the page. A signed-in user sees findings
    only if RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` /
    `retry` / `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The configuration view has its own
    gate — native `get` on `integrations` — and its backfill trigger its own verb (`backfill` on
    `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent conversations are finding content and ride
-   the same `get findings` gate; the change-notification stream (`/events`) stays public precisely because it carries no
-   content at all, only the fact that something changed:
+   the same `get findings` gate. The change-notification stream (`/events`) carries no content, only the fact that
+   something changed, but needs any one of the read grants:
 
 ```yaml
 rules:

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
 // waitFor polls until cond holds or the deadline passes.
@@ -71,7 +73,7 @@ func TestBrokerUnsubscribeIdempotentish(t *testing.T) {
 }
 
 func TestHandleEventsStream(t *testing.T) {
-	s := testServer(t)
+	s := signedIn(testServer(t), authz.Grants{Metrics: true})
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 

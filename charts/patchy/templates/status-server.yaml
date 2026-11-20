@@ -14,7 +14,7 @@
 {{- /*
 The auth Secret mounted at /etc/patchy/auth: an existing Secret wins; inline
 auth.config renders a chart-managed one; with neither, the (optional) mount
-is empty and the server serves public rollup statistics only.
+is empty and the server serves nothing until one is mounted.
 */}}
 {{- $authSecret := $vals.auth.existingSecret | default (printf "%s-status-auth" (include "patchy.fullname" .)) }}
 {{- if and $vals.auth.existingSecret $vals.auth.config }}

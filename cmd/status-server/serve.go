@@ -40,7 +40,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("kubeconfig", "", "kubeconfig path (default: in-cluster config)")
 	f.String("health-addr", ":8081", "healthz/readyz probe listen address")
 	f.String("auth-config", "",
-		"path to the mounted authentication config; absent means rollup statistics only, no findings access")
+		"path to the mounted authentication config; absent serves nothing (set mode none to disable authentication)")
 	return cmd
 }
 
@@ -90,7 +90,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	}
 	if authCfg == nil {
 		log.LogAttrs(ctx, slog.LevelWarn,
-			"authentication not configured; serving rollup statistics only — findings and actions are unavailable")
+			"authentication not configured; serving nothing — findings, metrics and actions are unavailable until an auth config is mounted")
 	}
 	authn, err := auth.New(ctx, authCfg, log)
 	if err != nil {

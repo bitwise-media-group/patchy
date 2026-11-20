@@ -76,6 +76,8 @@ const cacheLimit = 1024
 type Grants struct {
 	// View reports native get on findings — the dashboard read gate.
 	View bool
+	// Metrics reports native get on findingrollups — the metrics read gate.
+	Metrics bool
 	// Config reports native get on integrations — the configuration-view
 	// read gate.
 	Config bool
@@ -112,6 +114,7 @@ type Full struct{}
 func (Full) Grants(context.Context, auth.Identity) (Grants, error) {
 	return Grants{
 		View:        true,
+		Metrics:     true,
 		Config:      true,
 		Verbs:       append([]string(nil), ActionVerbs...),
 		Integration: append([]string(nil), IntegrationVerbs...),
@@ -151,9 +154,10 @@ func NewReviewer(c client.Client, namespace string, ttl time.Duration) *Reviewer
 	}
 }
 
-// Grants resolves the identity's grants: native get on findings for View
-// and on integrations for Config, then one review per custom verb on its
-// own resource (~10 SARs per identity per TTL window).
+// Grants resolves the identity's grants: native get on findings for View,
+// on findingrollups for Metrics and on integrations for Config, then one
+// review per custom verb on its own resource (~11 SARs per identity per TTL
+// window).
 func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error) {
 	key := cacheKey(id)
 	r.mu.Lock()
@@ -169,6 +173,11 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 		return Grants{}, err
 	}
 	g.View = view
+	metrics, err := r.review(ctx, id, "findingrollups", "get")
+	if err != nil {
+		return Grants{}, err
+	}
+	g.Metrics = metrics
 	for _, verb := range ActionVerbs {
 		allowed, err := r.review(ctx, id, "findings", verb)
 		if err != nil {

@@ -388,9 +388,12 @@ func addStage(into, s v1alpha1.StageAggregate) v1alpha1.StageAggregate {
 	return into
 }
 
-// handleRepositories serves GET /api/rollups/repositories: public, like the
-// rest of the statistics surface.
+// handleRepositories serves GET /api/rollups/repositories behind the same
+// metrics gate as the summary.
 func (s *Server) handleRepositories(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.authorizeMetrics(w, r); !ok {
+		return
+	}
 	rq, err := parseRepoQuery(r.URL.Query())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

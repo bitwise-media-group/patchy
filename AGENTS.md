@@ -60,8 +60,8 @@ Ten binaries, one module. "Not monolithic" means separate binaries/deployments w
 - `cmd/status-server` — the human-facing status page (NOT a controller: no reconcilers, no leases): the embedded
   SPA + JSON projection of Findings/FindingRollups, SSE refetch signal, OIDC sign-in, the access-review-gated
   approve/retry/expedite/suspend/resume actions, and the user-menu demo tooling (replay → Integration
-  `spec.replay`; reset → delete all pipeline CRs). Rollup statistics are public; the findings surface always
-  requires auth. Writes SPEC only (`spec.approval`, `spec.suspend`, `spec.replay`) — never status, never a phase.
+  `spec.replay`; reset → delete all pipeline CRs). Every data route needs an authorised identity (metrics: `get`
+  on findingrollups; findings: `get` on findings); only auth mode none opens them, and no auth config serves nothing. Writes SPEC only (`spec.approval`, `spec.suspend`, `spec.replay`) — never status, never a phase.
 - `cmd/patchy` — the workstation CLI (the only binary not deployed): `patchy <verb> <noun>` over the
   caller's own kubeconfig, no channel through any controller. get/describe/review/browse/can-i plus the five
   action verbs. Writes SPEC only, same as status-server; enforcement of the custom verbs for direct API

@@ -1,6 +1,6 @@
 // The metrics page: all-time statistics from the rollup shards, filterable
 // to one repository, a set of matching repositories, one model or one
-// harness. Public — it renders without signing in.
+// harness. Gated like findings, on its own grant (get on findingrollups).
 //
 // It loads its own data rather than riding on the findings payload: the
 // summary (GET /api/rollups — total, models, harnesses, top repositories)
@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { Dataset, Rollup } from "../types";
 import { formatAgo, formatDay } from "../format";
-import { fetchRollups, queryRepositories, subscribe } from "../api";
+import { ForbiddenError, fetchRollups, queryRepositories, subscribe } from "../api";
 import type { RollupSlice } from "../rollups";
 import { hrefForMetrics, navigate } from "../router";
 import { AgentTable, RepositoryTable } from "./MetricsBreakdown";
@@ -28,7 +28,7 @@ const byType = (ds: Dataset | null, type: string) => (ds?.rollups ?? []).filter(
 
 export function MetricsView({ slice }: { slice: RollupSlice | null }) {
   const [summary, setSummary] = useState<Dataset | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ denied: boolean; message: string } | null>(null);
   // Bumped by the change signal; everything on screen refetches.
   const [refresh, setRefresh] = useState(0);
 
@@ -39,7 +39,9 @@ export function MetricsView({ slice }: { slice: RollupSlice | null }) {
         setSummary(ds);
         setError(null);
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) =>
+        setError({ denied: e instanceof ForbiddenError, message: e instanceof Error ? e.message : String(e) }),
+      );
   }, [refresh]);
 
   const total = useMemo(() => summary?.rollups?.find((r) => r.scope.type === "total"), [summary]);
@@ -90,8 +92,10 @@ export function MetricsView({ slice }: { slice: RollupSlice | null }) {
   if (error && !summary) {
     body = (
       <div class="rounded-[10px] border border-line px-6 py-10 text-center">
-        <p class="m-0 text-[16px] font-bold text-fg">Couldn't load metrics</p>
-        <p class="mx-auto mt-2 mb-0 max-w-[60ch] text-muted">{error}</p>
+        <p class="m-0 text-[16px] font-bold text-fg">{error.denied ? "Permission denied" : "Couldn't load metrics"}</p>
+        <p class="mx-auto mt-2 mb-0 max-w-[60ch] text-muted">
+          {error.denied ? `${error.message} Metrics need get on findingrollups.` : error.message}
+        </p>
       </div>
     );
   } else if (loading) {

@@ -215,7 +215,7 @@ func TestStatusServer(t *testing.T) {
 		}
 	}
 
-	// The public statistics surface: rollups only.
+	// The metrics summary (mode none: authentication disabled, so open).
 	resp, ds = getDataset(t, base+"/api/rollups")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/rollups: %d", resp.StatusCode)
@@ -349,7 +349,7 @@ func TestStatusServer(t *testing.T) {
 		t.Errorf("resume after %d returned %+v, want the last 2 turns", resumeAt, resumed)
 	}
 
-	// Instance B: no auth config at all — the rollups-only posture.
+	// Instance B: no auth config at all — nothing is served.
 	publicListen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "status-server", "--listen-addr", publicListen)
 	publicBase := "http://" + publicListen
@@ -366,13 +366,19 @@ func TestStatusServer(t *testing.T) {
 			t.Errorf("unconfigured GET detail = %d, want 401", resp.StatusCode)
 		}
 	}
-	if resp, ds := getDataset(t, publicBase+"/api/rollups"); resp.StatusCode != http.StatusOK ||
-		len(ds.Findings) != 0 || len(ds.Rollups) != 1 {
-		t.Errorf("unconfigured GET /api/rollups = %d findings=%d rollups=%d, want public rollups",
-			resp.StatusCode, len(ds.Findings), len(ds.Rollups))
+	// Metrics and the change stream share the rule: an identity or nothing.
+	for _, path := range []string{"/api/rollups", "/api/rollups/repositories", "/events"} {
+		resp, err := http.Get(publicBase + path)
+		if err != nil {
+			t.Fatalf("GET %s (unconfigured): %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("unconfigured GET %s = %d, want 401", path, resp.StatusCode)
+		}
 	}
-	// A transcript is finding data, so the rollups-only posture must refuse it
-	// exactly as it refuses the findings projection.
+	// A transcript is finding data, refused exactly as the findings
+	// projection is.
 	resp, err = http.Get(publicBase + transcriptPath)
 	if err != nil {
 		t.Fatalf("GET transcript (unconfigured): %v", err)

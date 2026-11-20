@@ -18,6 +18,7 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/loadgen"
+	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
 // repoRollup is a repository shard with the given counters. remediated is
@@ -254,8 +255,7 @@ func TestRollupSummaryTrimsRepositories(t *testing.T) {
 }
 
 func TestRepositoriesRoute(t *testing.T) {
-	s := repoFixture(t)
-	s.auth = stubAuth{} // public: no session at all
+	s := signedIn(repoFixture(t), authz.Grants{Metrics: true})
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 

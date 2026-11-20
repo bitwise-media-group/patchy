@@ -31,8 +31,8 @@ func sarClient(t *testing.T, calls *int, allow func(user, resource, verb string)
 					t.Fatalf("unexpected create of %T", obj)
 				}
 				*calls++
-				if res := sar.Spec.ResourceAttributes.Resource; res != "findings" && res != "integrations" {
-					t.Errorf("review resource = %q, want findings or integrations", res)
+				if res := sar.Spec.ResourceAttributes.Resource; res != "findings" && res != "findingrollups" && res != "integrations" {
+					t.Errorf("review resource = %q, want findings, findingrollups or integrations", res)
 				}
 				sar.Status.Allowed = allow(sar.Spec.User, sar.Spec.ResourceAttributes.Resource,
 					sar.Spec.ResourceAttributes.Verb)
@@ -47,6 +47,7 @@ func TestReviewerGrants(t *testing.T) {
 		name            string
 		allow           func(user, resource, verb string) bool
 		wantView        bool
+		wantMetrics     bool
 		wantConfig      bool
 		wantVerbs       []string
 		wantIntegration []string
@@ -69,10 +70,16 @@ func TestReviewerGrants(t *testing.T) {
 			name:            "operator",
 			allow:           func(string, string, string) bool { return true },
 			wantView:        true,
+			wantMetrics:     true,
 			wantConfig:      true,
 			wantVerbs:       []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume},
 			wantIntegration: []string{VerbBackfill, VerbReplay, VerbReset},
 			wantAdmin:       []string{VerbReplay, VerbReset},
+		},
+		{
+			name:        "metrics only",
+			allow:       func(_, resource, verb string) bool { return resource == "findingrollups" && verb == "get" },
+			wantMetrics: true,
 		},
 		{
 			name:  "nothing",
@@ -110,8 +117,9 @@ func TestReviewerGrants(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Grants: %v", err)
 			}
-			if g.View != tc.wantView || g.Config != tc.wantConfig {
-				t.Errorf("View/Config = %v/%v, want %v/%v", g.View, g.Config, tc.wantView, tc.wantConfig)
+			if g.View != tc.wantView || g.Metrics != tc.wantMetrics || g.Config != tc.wantConfig {
+				t.Errorf("View/Metrics/Config = %v/%v/%v, want %v/%v/%v",
+					g.View, g.Metrics, g.Config, tc.wantView, tc.wantMetrics, tc.wantConfig)
 			}
 			if !slices.Equal(g.Verbs, tc.wantVerbs) {
 				t.Errorf("Verbs = %v, want %v", g.Verbs, tc.wantVerbs)
@@ -136,24 +144,24 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 10 {
-		t.Fatalf("first resolve made %d reviews, want 10", calls)
+	if calls != 11 {
+		t.Fatalf("first resolve made %d reviews, want 11", calls)
 	}
 
 	// Same identity with reordered groups hits the cache.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "u", Groups: []string{"a", "b"}}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 10 {
-		t.Errorf("cached resolve made %d extra reviews", calls-10)
+	if calls != 11 {
+		t.Errorf("cached resolve made %d extra reviews", calls-11)
 	}
 
 	// A different identity misses.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "v"}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 20 {
-		t.Errorf("distinct identity made %d reviews total, want 20", calls)
+	if calls != 22 {
+		t.Errorf("distinct identity made %d reviews total, want 22", calls)
 	}
 
 	// Expiry re-resolves.
@@ -161,8 +169,8 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 30 {
-		t.Errorf("expired resolve made %d reviews total, want 30", calls)
+	if calls != 33 {
+		t.Errorf("expired resolve made %d reviews total, want 33", calls)
 	}
 }
 
@@ -171,7 +179,7 @@ func TestFullGrantsEverything(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if !g.View || !g.Config || !slices.Equal(g.Verbs, ActionVerbs) ||
+	if !g.View || !g.Metrics || !g.Config || !slices.Equal(g.Verbs, ActionVerbs) ||
 		!slices.Equal(g.Integration, IntegrationVerbs) || !slices.Equal(g.Admin, AdminVerbs) {
 		t.Errorf("Full grants = %+v, want everything", g)
 	}

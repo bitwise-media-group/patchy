@@ -54,9 +54,9 @@
 # findings must move those verbs to an integrations rule (with the native
 # update/patch to write the stamp), as patchy-findings-admin below does.
 #
-# Rollup statistics are public by design and need no grant on the status page.
-# The CLI reads them through the API server like anything else, so `patchy get
-# rollups` does need get/list — which the viewer role already carries.
+# Metrics (rollup statistics) need native get on findingrollups, on the
+# status page and through the API server alike (`patchy get rollups` also
+# needs list) — every role below already carries both.
 #
 # Subjects come from the OIDC claims (auth config claims: username/groups),
 # so bind Users to the username claim's values (e.g. email) and Groups to the

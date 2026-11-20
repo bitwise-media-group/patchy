@@ -38,7 +38,8 @@ export function App() {
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   // findingsBlocked is set when /api/findings said 401 ("unauthenticated")
-  // or 403 (the denial message); metrics keep rendering either way.
+  // or 403 (the denial message). Unauthenticated blocks every view; a 403
+  // on findings still lets the metrics view try its own gate.
   const [findingsBlocked, setFindingsBlocked] = useState<string | null>(null);
   const [authError] = useState<string | null>(() => readAuthError());
   const [persona, setPersona] = useState<Persona>(DEFAULT_PERSONA);
@@ -62,13 +63,16 @@ export function App() {
     } catch (e) {
       if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
         setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
-        // The statistics surface is public regardless; fall back to it so
-        // the metrics view keeps working.
-        try {
-          setDataset(await fetchRollups());
-          setError(null);
-        } catch {
-          // Keep whatever we had; the panel explains the findings gate.
+        // Signed in but not allowed findings: the metrics summary may still
+        // be allowed (its own grant), and carries the user and namespace the
+        // top bar renders.
+        if (e instanceof ForbiddenError) {
+          try {
+            setDataset(await fetchRollups());
+            setError(null);
+          } catch {
+            // Not allowed metrics either; the views explain their gates.
+          }
         }
       } else {
         setError(e instanceof Error ? e.message : String(e));
@@ -290,13 +294,13 @@ export function App() {
     if (!provider) {
       return panel(
         "Sign-in is not configured",
-        "Findings require authentication, and this server has no sign-in configured. " +
-          "Metrics remain available without signing in.",
+        "This status server has no authentication configured, so it shows nothing. " +
+          "Configure sign-in (or explicitly disable authentication) to use it.",
       );
     }
     return panel(
       "Authentication required",
-      "Sign in to view findings in this namespace.",
+      "Sign in to view findings and metrics in this namespace.",
       <a class="ps-action ps-action--primary no-underline" href={signInURL()}>
         Sign in
       </a>,
@@ -304,10 +308,11 @@ export function App() {
   };
 
   let body;
-  if (findingsBlocked !== null && route.view !== "metrics") {
+  if (findingsBlocked === "unauthenticated" || (findingsBlocked !== null && route.view !== "metrics")) {
     body = authPanel();
   } else if (route.view === "metrics") {
-    // Loads its own data, independent of the findings dataset.
+    // Loads and gates itself (its own grant), independent of the findings
+    // dataset.
     body = <MetricsView slice={route.slice} />;
   } else if (error && !dataset) {
     body = panel("Cannot reach the status API", error);

@@ -31,9 +31,9 @@ type Granter interface {
 	Grants(ctx context.Context, id auth.Identity) (authz.Grants, error)
 }
 
-// Server is the status-server backend: the public metrics summary and
-// repository rollup query, the authenticated findings projection, the three
-// actions, the SSE change signal, and the embedded SPA.
+// Server is the status-server backend: the findings projection, the metrics
+// summary and repository rollup query, the actions, the SSE change signal,
+// and the embedded SPA. Every data route needs an authorised identity.
 type Server struct {
 	client    client.Client
 	namespace string
@@ -134,6 +134,20 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 // endpoint shares, writing the failure response itself. ok is false when the
 // request has already been answered.
 func (s *Server) authorize(w http.ResponseWriter, r *http.Request) (viewer, bool) {
+	return s.gate(w, r, func(g authz.Grants) bool { return g.View }, "view findings")
+}
+
+// authorizeMetrics is the metrics read gate: native get on findingrollups.
+// Like findings, metrics need an identity whenever authentication is
+// configured — only auth mode none (authentication disabled) opens them,
+// and the no-config posture serves nothing at all.
+func (s *Server) authorizeMetrics(w http.ResponseWriter, r *http.Request) (viewer, bool) {
+	return s.gate(w, r, func(g authz.Grants) bool { return g.Metrics }, "view metrics")
+}
+
+// gate identifies the caller (401 when nobody is), resolves their grants,
+// and admits them when allowed holds (403 naming what they may not do).
+func (s *Server) gate(w http.ResponseWriter, r *http.Request, allowed func(authz.Grants) bool, what string) (viewer, bool) {
 	id, err := s.auth.Identify(w, r)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))
@@ -150,9 +164,9 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) (viewer, bool
 		http.Error(w, "authorization failed", http.StatusInternalServerError)
 		return viewer{}, false
 	}
-	if !grants.View {
-		http.Error(w, fmt.Sprintf("Permission denied. User %q may not view findings in namespace %q.",
-			id.Display(), s.namespace), http.StatusForbidden)
+	if !allowed(grants) {
+		http.Error(w, fmt.Sprintf("Permission denied. User %q may not %s in namespace %q.",
+			id.Display(), what, s.namespace), http.StatusForbidden)
 		return viewer{}, false
 	}
 	return viewer{id: *id, grants: grants}, true
@@ -164,20 +178,23 @@ type viewer struct {
 	grants authz.Grants
 }
 
+// newUser is the top bar's view of an authorised caller.
+func newUser(v viewer) *User {
+	return &User{
+		Name: v.id.Display(), LoggedIn: v.id.Session, AdminActions: v.grants.Admin,
+		ConfigView: v.grants.Config, IntegrationActions: v.grants.Integration,
+	}
+}
+
 // handleFindings serves the trimmed list dataset to an authenticated
 // identity whose RBAC grants viewing; per-finding detail comes from
-// /api/findings/{name}, and metrics come from /api/rollups.
+// /api/findings/{name}, and metrics from /api/rollups.
 func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.authorize(w, r)
 	if !ok {
 		return
 	}
-	id, grants := v.id, v.grants
-	user := &User{
-		Name: id.Display(), LoggedIn: id.Session, AdminActions: grants.Admin,
-		ConfigView: grants.Config, IntegrationActions: grants.Integration,
-	}
-	ds, err := s.buildDataset(r.Context(), true, grants.Verbs, user)
+	ds, err := s.buildDataset(r.Context(), true, v.grants.Verbs, newUser(v))
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build dataset", slog.Any("error", err))
 		http.Error(w, "failed to load findings", http.StatusInternalServerError)
@@ -210,11 +227,16 @@ func (s *Server) handleFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSONGzip(w, r, out)
 }
 
-// handleRollups serves the always-public metrics summary: the same dataset
-// shape with no findings and no user, and only the top repositories (the
-// rest page through /api/rollups/repositories).
+// handleRollups serves the metrics summary: the same dataset shape with no
+// findings, and only the top repositories (the rest page through
+// /api/rollups/repositories). It carries the user, so the top bar renders
+// for someone who may see metrics but not findings.
 func (s *Server) handleRollups(w http.ResponseWriter, r *http.Request) {
-	ds, err := s.buildDataset(r.Context(), false, nil, nil)
+	v, ok := s.authorizeMetrics(w, r)
+	if !ok {
+		return
+	}
+	ds, err := s.buildDataset(r.Context(), false, nil, newUser(v))
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build rollups", slog.Any("error", err))
 		http.Error(w, "failed to load rollups", http.StatusInternalServerError)

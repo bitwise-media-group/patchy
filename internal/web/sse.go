@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
 // SSE event names the status page listens for; each triggers a refetch of
@@ -77,11 +79,17 @@ func (b *broker) count() int {
 // comment ping, so proxies and load balancers do not reap it.
 const keepalivePeriod = 25 * time.Second
 
-// handleEvents is the Server-Sent Events stream. It is public like the
-// rollups endpoint: the only information it carries is that something
-// changed. It emits a named event per published notification plus periodic
-// comment pings to hold the connection open.
+// handleEvents is the Server-Sent Events stream. It carries no content —
+// only that something changed — but when things change is still activity in
+// the namespace, so it needs an identity allowed to read at least one of the
+// views it refreshes (findings, metrics or configuration). It emits a named
+// event per published notification plus periodic comment pings to hold the
+// connection open.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.gate(w, r, func(g authz.Grants) bool { return g.View || g.Metrics || g.Config },
+		"follow changes"); !ok {
+		return
+	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)

@@ -12,18 +12,20 @@ status-server serve --namespace patchy --auth-config /etc/patchy/auth/config.yam
 The exposure contract is deliberately asymmetric — see [the status page](../status-ui.md) for the UI tour and the RBAC
 grammar:
 
-- **Rollup statistics are public.** `GET /api/rollups` (and the SSE stream) serve without a session. It is a summary —
+- **Metrics require authentication.** `GET /api/rollups` needs a signed-in identity with native `get` on
+  `findingrollups` (and `/events`, which carries no content, needs any read grant). It is a summary —
   the total, model and harness rollups, the top 10 repositories by findings, and `repositoryCount` — because repository
-  rollups grow with the estate. The rest come from `GET /api/rollups/repositories`, also public, one page at a time:
+  rollups grow with the estate. The rest come from `GET /api/rollups/repositories`, one page at a time:
   `q` (case-insensitive name match, ranked by relevance), `key` (one repository, with its `rank` by findings), `sort`
   (`findings`, `remediated`, `failed`, `spend`, `costPerRemediation`, `name`, `relevance`), `order` (`asc`/`desc`),
-  `offset`, `limit` (at most 100), and `aggregate=1` (the summed bucket of every match). The findings list does not
-  carry rollups.
+  `offset`, `limit` (at most 100), and `aggregate=1` (the summed bucket of every match), behind the same gate. The
+  findings list does not carry rollups.
 - **The findings surface always requires authentication.** `GET /api/findings` (the trimmed list projection),
   `GET /api/findings/{name}` (one finding's full detail — description, alerts, enrichments, the phase log, and the run
   reports the list omits), and every action `POST` demand a signed-in identity whose RBAC passes the corresponding
-  access review. With no auth config at all the server runs in the _unconfigured_ posture: rollups only, and the page
-  explains that sign-in is not configured.
+  access review. With no auth config at all the server runs in the _unconfigured_ posture: it serves nothing, and
+  the page explains that sign-in is not configured. Auth mode `none` (authentication explicitly disabled) opens
+  everything.
 - **Agent conversations ride the findings gate.**
   `GET /api/findings/{name}/runs/{investigation|remediation}/{attempt}/transcript` is Server-Sent Events in both modes:
   a finished run replays its stored ConfigMap, a running one streams from the agent's pod log. Following a live run

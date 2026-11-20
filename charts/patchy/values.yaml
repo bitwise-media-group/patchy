@@ -472,10 +472,11 @@ evaluationController:
 # ---- status-server ----------------------------------------------------------
 # The human-facing status page (templates/status-server.yaml): the findings
 # board/detail with the approve/retry/expedite/suspend/resume actions, and the rollup
-# statistics. Rollups are PUBLIC by design; the findings surface always
-# requires authentication (auth below) plus per-user RBAC — native `get` on
-# findings to view, and the custom verbs approve/retry/expedite/suspend/resume for the
-# action buttons (rbac.userRoles renders example roles).
+# statistics. Both require authentication (auth below) plus per-user RBAC —
+# native `get` on findings to view findings, `get` on findingrollups to view
+# metrics, and the custom verbs approve/retry/expedite/suspend/resume for the
+# action buttons (rbac.userRoles renders example roles). With no auth config
+# the server serves nothing; auth mode none opens everything (dev only).
 statusServer:
     # The whole feature: disabling renders none of its resources.
     enabled: true
@@ -490,8 +491,8 @@ statusServer:
         # Extra PATCHY_* keys for the status server only.
         extra: {}
     # Authentication configuration, mounted at /etc/patchy/auth/config.yaml.
-    # With NEITHER field set the server starts in the rollups-only posture:
-    # public statistics, no findings, no sign-in.
+    # With NEITHER field set the server serves nothing: no findings, no
+    # metrics, no sign-in.
     auth:
         # Name of an existing Secret with a config.yaml key (see
         # deploy/kustomize/base/secrets.example.yaml #3). Wins over `config`.

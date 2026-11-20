@@ -23,6 +23,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/transcript"
 	"github.com/bitwise-media-group/patchy/internal/transcriptstore"
+	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
 const transcriptPath = "/api/findings/finding-aa-1/runs/investigation/1/transcript"
@@ -360,11 +361,23 @@ func TestTranscriptBadRequests(t *testing.T) {
 	}
 }
 
-func TestEventsStaysPublicAndContentFree(t *testing.T) {
-	// Guarding the invariant the transcript endpoint deliberately does not
-	// share: /events carries no finding data, which is why it needs no auth.
-	s := transcriptServer(t, nil, completedInvestigation(t)...)
-	s.auth = stubAuth{} // no session at all
+func TestEventsNeedIdentityAndStayContentFree(t *testing.T) {
+	// /events carries no finding data, but when things change is still
+	// activity: no identity, no stream.
+	anon := transcriptServer(t, nil, completedInvestigation(t)...)
+	anon.auth = stubAuth{}
+	anonTS := httptest.NewServer(anon.Handler())
+	defer anonTS.Close()
+	denied, err := http.Get(anonTS.URL + "/events")
+	if err != nil {
+		t.Fatalf("GET /events: %v", err)
+	}
+	_ = denied.Body.Close()
+	if denied.StatusCode != http.StatusUnauthorized {
+		t.Errorf("anonymous status = %d, want 401", denied.StatusCode)
+	}
+
+	s := signedIn(transcriptServer(t, nil, completedInvestigation(t)...), authz.Grants{View: true})
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 
@@ -377,7 +390,7 @@ func TestEventsStaysPublicAndContentFree(t *testing.T) {
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want 200 (the signal is public)", res.StatusCode)
+		t.Errorf("status = %d, want 200", res.StatusCode)
 	}
 	body, _ := io.ReadAll(res.Body)
 	if strings.Contains(string(body), "Reading the sink") {

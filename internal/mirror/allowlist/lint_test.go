@@ -37,7 +37,7 @@ func TestLint(t *testing.T) {
 		"allowlist CVE-1 missing statement",
 		"allowlist CVE-2 missing expired_at",
 		`allowlist CVE-3 has unparseable expired_at "soon"`,
-		"allowlist CVE-4 expired on 2026-08-11 — re-review required",
+		"allowlist CVE-4 expired on 2026-08-11; review it again",
 		"allowlist CVE-6 expires more than 60 days out",
 	}
 	if !reflect.DeepEqual(got, want) {

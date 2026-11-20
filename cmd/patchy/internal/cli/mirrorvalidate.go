@@ -158,7 +158,7 @@ func renderValidateMarkdown(opts *Options, results []mirror.ValidateResult) erro
 		if r.Scan != nil {
 			var findings []string
 			for _, f := range r.Scan.Blocking {
-				line := fmt.Sprintf("%s %s — %s %s", f.ID, f.Severity, f.Package, f.Installed)
+				line := fmt.Sprintf("%s %s: %s %s", f.ID, f.Severity, f.Package, f.Installed)
 				if len(f.FixedIn) > 0 {
 					line += " (fixed in " + strings.Join(f.FixedIn, ", ") + ")"
 				}

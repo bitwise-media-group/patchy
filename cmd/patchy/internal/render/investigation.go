@@ -31,7 +31,7 @@ func holdNotes(inv *v1alpha1.Investigation) string {
 	for _, r := range reasons {
 		parts = append(parts, holdText(r, inv.Status.RemediationParameters))
 	}
-	return "awaiting approval — " + strings.Join(parts, "; ")
+	return "awaiting approval: " + strings.Join(parts, "; ")
 }
 
 // holdText renders one reason, quantifying the budget holds: "needs more

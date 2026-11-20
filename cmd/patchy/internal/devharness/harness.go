@@ -242,7 +242,7 @@ func (h *Harness) handle(ctx context.Context, e webhook.Event) error {
 		h.cfg.Events(Event{
 			Kind:       "error",
 			DeliveryID: e.DeliveryID,
-			Note:       "the sender already received 202 — validation is asynchronous, exactly as in production",
+			Note:       "the sender already received 202, because validation is asynchronous, as in production",
 			Err:        err.Error(),
 		})
 		return err
@@ -251,7 +251,7 @@ func (h *Harness) handle(ctx context.Context, e webhook.Event) error {
 	delivery := Event{Kind: "delivery", DeliveryID: e.DeliveryID, Delivered: delivered(e.Payload), Ingested: len(findings)}
 	if delivery.Ingested < delivery.Delivered {
 		delivery.Note = fmt.Sprintf(
-			"%d finding(s) below minSeverity %q were dropped silently — contract behavior, not an error",
+			"%d finding(s) below minSeverity %q were dropped silently. This is contract behavior, not an error",
 			delivery.Delivered-delivery.Ingested, h.cfg.MinSeverity)
 	}
 	h.cfg.Events(delivery)

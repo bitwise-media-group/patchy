@@ -48,7 +48,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("anthropic-api-key-file", "",
 		"mounted Secret file holding the Anthropic credential; set to enable the anthropic route")
 	f.String("anthropic-auth", "key",
-		"anthropic credential mode: key (x-api-key) or token (Authorization bearer — a claude setup-token OAuth token)")
+		"anthropic credential mode: key (x-api-key) or token (an Authorization bearer, for a claude setup-token OAuth token)")
 	f.String("anthropic-base-url", "https://api.anthropic.com", "Anthropic API base URL")
 	f.String("bedrock-region", "", "AWS region for Bedrock SigV4 signing; set to enable the bedrock route")
 	f.String("bedrock-base-url", "",

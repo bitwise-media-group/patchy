@@ -104,7 +104,7 @@ func enhanceOne(ctx context.Context, c *generic.Client, name string, f source.Fi
 		ev.Err = err.Error()
 		ev.Note = "production logs this and moves on (warn-and-skip); a repo-less cloud finding would hold and retry"
 	case resp == nil:
-		ev.Note = "204 or empty body — nothing to contribute; the finding proceeds unenhanced"
+		ev.Note = "204 or empty body: nothing to contribute, so the finding proceeds unenhanced"
 	default:
 		ev.EnhanceResponse = resp
 		if len(resp.CommentMarkdown) > maxEnrichmentMarkdown {

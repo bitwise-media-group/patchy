@@ -58,7 +58,7 @@ func devEmitter(opts *Options) (func(devharness.Event), error) {
 func renderDevEvent(opts *Options, p *printer.Printer, e devharness.Event) {
 	switch e.Kind {
 	case "listening":
-		notef(opts.ErrOut, "patchy: listening — POST signed findings payloads to %s\n", e.WebhookURL)
+		notef(opts.ErrOut, "patchy: listening. POST signed findings payloads to %s\n", e.WebhookURL)
 	case "delivery":
 		notef(opts.ErrOut, "patchy: delivery %s: %d finding(s) ingested\n", e.DeliveryID, e.Ingested)
 		if e.Note != "" {

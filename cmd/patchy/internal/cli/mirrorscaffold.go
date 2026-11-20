@@ -26,11 +26,11 @@ registries:
     imageNamespace: images        # target = images/<canonical source path>:<tag>
     artifactNamespace: artifacts
     # signing:                    # replaces the global signing block wholesale
-    #   provider: kms             # for pushes to this registry (keyless identity
-    #   kms:                      # is the run's ambient OIDC identity — the same
+    #   provider: kms             # for pushes to this registry (keyless signs
+    #   kms:                      # as the run's own OIDC identity, which is the
     #     key: gcpkms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>
-    #                             # for every registry — so per-registry
-    #                             # variation means KMS keys)
+    #                             # same for every registry, so signing per
+    #                             # registry needs KMS keys)
   # - name: ghcr
   #   url: ghcr.io/org/platform
 
@@ -41,8 +41,8 @@ signing:
   # cosign's tag-based scheme).
   provider: keyless               # keyless | kms
   keyless:
-    # The exact certificate identity the publish workflow's signatures
-    # carry — consumers pin this value.
+    # The certificate identity the publish workflow's signatures carry.
+    # Consumers pin this value.
     certificateIdentity: https://github.com/org/repo/.github/workflows/publish.yaml@refs/heads/main
     certificateOidcIssuer: https://token.actions.githubusercontent.com
     # Public transparency log entry (public repos want the log).
@@ -82,8 +82,8 @@ mirror:
   # directory: mirror
   update:
     # Soak window for tracked-tag and artifact-version picks: a tag published
-    # this recently can still be yanked or hot-fixed. Kept short on purpose —
-    # every day here is a day the platform knowingly runs behind on fixes.
+    # this recently can still be yanked or hot-fixed. Keep it short: every
+    # day here is a day the platform knowingly runs behind on fixes.
     cooldownDays: 3
   # Rewrites applied when PULLING from an upstream registry (e.g. a mirror in
   # front of docker.io); recorded sources and publish targets keep the

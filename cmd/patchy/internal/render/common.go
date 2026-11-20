@@ -23,7 +23,7 @@ func Rating(a *v1alpha1.Analysis) string {
 	if a.Summary == "" {
 		return string(a.Rating)
 	}
-	return fmt.Sprintf("%s — %s", a.Rating, a.Summary)
+	return fmt.Sprintf("%s: %s", a.Rating, a.Summary)
 }
 
 // Stage adds the agent accounting both run kinds carry.
@@ -51,7 +51,7 @@ func Outcome(st *v1alpha1.StageResult) string {
 	if st.Detail == "" {
 		return st.Outcome
 	}
-	return fmt.Sprintf("%s — %s", st.Outcome, st.Detail)
+	return fmt.Sprintf("%s: %s", st.Outcome, st.Detail)
 }
 
 // Cost renders a run's spend on one line.

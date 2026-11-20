@@ -25,7 +25,7 @@ func RemediationDetail(d *printer.Doc, rem *v1alpha1.Remediation, now time.Time)
 		Field("Granted", Timestamp(rem.Status.GrantedAt, now)).
 		Field("Age", Age(rem.CreationTimestamp.Time, now))
 	if rem.Spec.Revival {
-		d.Field("Revival", "yes — remediate-only run reviving a handed-off finding")
+		d.Field("Revival", "yes, a remediate-only run reviving a handed-off finding")
 	}
 
 	d.Section("Changeset").

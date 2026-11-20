@@ -21,8 +21,8 @@ func legacyWarnings(o Options) []string {
 		name := ".patchy." + ext
 		if info, err := os.Stat(filepath.Join(o.Workdir, name)); err == nil && !info.IsDir() {
 			out = append(out, fmt.Sprintf("%s is no longer read; move its contents to patchy.yaml "+
-				"(or .patchy/config.yaml, .mise/patchy.yaml, patchy/config.yaml, mise/patchy.yaml — "+
-				"yaml, yml, json or toml)", name))
+				"(or .patchy/config.yaml, .mise/patchy.yaml, patchy/config.yaml or mise/patchy.yaml, "+
+				"in yaml, yml, json or toml)", name))
 		}
 	}
 	return out
@@ -41,8 +41,8 @@ func CheckMirrorRoot(root string) error {
 	if info, err := os.Stat(path); err != nil || info.IsDir() {
 		return nil
 	}
-	return fmt.Errorf("%w (found %s): move its blocks into patchy.yaml in the working directory — "+
-		"registries, signing and scan at the top level, update and sourceRegistryRewrites under mirror:, "+
-		"scan.allowlistMaxDays/allowlistNewDays to scan.allowlist.maxDays/newDays, and drop apiVersion/kind — "+
+	return fmt.Errorf("%w (found %s): move its blocks into patchy.yaml in the working directory. "+
+		"Put registries, signing and scan at the top level and update and sourceRegistryRewrites under mirror:, "+
+		"rename scan.allowlistMaxDays/allowlistNewDays to scan.allowlist.maxDays/newDays, drop apiVersion/kind, "+
 		"then delete %s", ErrLegacyMirrorConfig, path, LegacyMirrorConfig)
 }

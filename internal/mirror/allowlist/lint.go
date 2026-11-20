@@ -57,7 +57,7 @@ func Lint(a *spec.Allowlist, today time.Time, maxDays int) []Issue {
 			continue
 		}
 		if !expiry.After(today) {
-			fail(e.ID, true, "allowlist %s expired on %s — re-review required", e.ID, e.ExpiredAt)
+			fail(e.ID, true, "allowlist %s expired on %s; review it again", e.ID, e.ExpiredAt)
 		}
 		if expiry.After(horizon) {
 			fail(e.ID, false, "allowlist %s expires more than %d days out", e.ID, maxDays)

@@ -183,7 +183,7 @@ func TestRenderValidateMarkdownSections(t *testing.T) {
 		"### `stale`",
 		"**stale derived state** (run upgrade):",
 		"```\nimages.lock.yaml differs from a fresh discovery\n```",
-		"CVE-2026-1 CRITICAL — libfoo 1.0.0 (fixed in 1.0.1)",
+		"CVE-2026-1 CRITICAL: libfoo 1.0.0 (fixed in 1.0.1)",
 		"2 finding(s) suppressed by the allowlist.",
 		"Provenance gaps (documented): chart stale (no upstream provenance declared)",
 		"### `broken`",

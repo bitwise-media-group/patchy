@@ -86,7 +86,7 @@ func runMirrorAdd(ctx context.Context, cmd *cobra.Command, opts *Options, f *mir
 		return err
 	}
 	if created != "" {
-		notef(opts.ErrOut, "patchy: created %s with commented defaults — review it before publishing\n", created)
+		notef(opts.ErrOut, "patchy: created %s with commented defaults. Review it before publishing.\n", created)
 	}
 
 	kind, chartRepo, chartName, artifactRef, err := detectAddTarget(ctx, a)

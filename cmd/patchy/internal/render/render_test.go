@@ -68,7 +68,7 @@ func TestInvestigationViewsAgree(t *testing.T) {
 	for _, shared := range []string{
 		"remediate",
 		"0.92",
-		"high — reachable from the CLI entrypoint",
+		"high: reachable from the CLI entrypoint",
 		"medium",
 		"critical",
 	} {
@@ -172,7 +172,7 @@ func TestRating(t *testing.T) {
 		{
 			name: "with summary",
 			in:   &v1alpha1.Analysis{Rating: v1alpha1.RatingHigh, Summary: "reachable"},
-			want: "high — reachable",
+			want: "high: reachable",
 		},
 	}
 	for _, tc := range cases {
@@ -189,7 +189,7 @@ func TestOutcomeAndUsage(t *testing.T) {
 		t.Errorf("Outcome(nil) = %q, want empty", got)
 	}
 	st := &v1alpha1.StageResult{Outcome: "budget_exceeded", Detail: "token ceiling hit"}
-	if got, want := render.Outcome(st), "budget_exceeded — token ceiling hit"; got != want {
+	if got, want := render.Outcome(st), "budget_exceeded: token ceiling hit"; got != want {
 		t.Errorf("Outcome = %q, want %q", got, want)
 	}
 	if got := render.Usage(v1alpha1.UsageSummary{}); got != "" {

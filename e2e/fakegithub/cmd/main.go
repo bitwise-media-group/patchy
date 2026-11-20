@@ -30,8 +30,8 @@ func main() {
 	externalURL := flag.String("external-url", "http://192.168.5.2:9990",
 		"URL clients reach this server at (stamped into tarball redirects); "+
 			"the default is the host as seen from a colima/lima guest, for "+
-			"host-run mode — the in-cluster Deployment overrides it with its "+
-			"Service DNS name")
+			"host-run mode (the in-cluster Deployment overrides it with its "+
+			"Service DNS name)")
 	flag.Parse()
 
 	_, handler := fakegithub.NewStandalone(*externalURL)
@@ -41,7 +41,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	fmt.Printf("fakegithub listening on %s (external URL %s)\n", *addr, *externalURL)
-	fmt.Println("point Integration/Forge spec baseURL at the external URL — see deploy/kustomize/overlays/dev-fake")
+	fmt.Println("point Integration/Forge spec baseURL at the external URL; see deploy/kustomize/overlays/dev-fake")
 	log.Fatal(srv.ListenAndServe())
 }
 

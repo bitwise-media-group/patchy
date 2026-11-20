@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.14.0](https://github.com/bitwise-media-group/patchy/compare/v0.13.0...v0.14.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **web:** GET /api/rollups, GET /api/rollups/repositories and GET /events now return 401 without an identity and 403 without the grant, and the no-config posture serves nothing instead of public rollups.
+* **web:** GET /api/findings no longer carries rollups, and GET /api/rollups carries only the summary; page the remaining repository rollups through GET /api/rollups/repositories.
+* **broker:** the codex runner no longer reads a credential Secret in the agent namespace. Move the OpenAI API key to `patchy-openai` (key api-key) in the release/patchy namespace and drop agent.runners.codex.secret/secretKey/secretEnv/hosts/dnsPatterns (chart) or PATCHY_CODEX_SECRET* (kustomize). ChatGPT-plan tokens (CODEX_ACCESS_TOKEN / CODEX_API_KEY) are no longer supported; use a platform API key or Azure OpenAI.
+* **harness:** the copilot harness is gone. The --copilot-agent-image, --copilot-secret{,-key,-env} and --evolve-copilot-image flags (and their PATCHY_COPILOT_* / PATCHY_EVOLVE_COPILOT_IMAGE env forms), the agent.runners.copilot and evaluation runners.copilot chart values, and the copilot-agent-runner image are removed. Drop `copilot` from PATCHY_HARNESSES and delete the patchy-copilot Secret before upgrading.
+* **deploy:** the default investigate/remediate model changes from anthropic/claude-sonnet-5 to Claude Sonnet 5.5, and the default allowlist from Sonnet 5 + Opus 5 to Sonnet 5.5 + Opus 5.5. Pin concrete ids (e.g. anthropic/claude-sonnet-5) to keep the previous models. A Foundry --claude-model-map must be keyed by the concrete ids the aliases resolve to (anthropic/claude-sonnet-5-5, anthropic/claude-opus-5-5).
+
+### Features
+
+* **agentrun:** carry a git format-patch rendering in the changeset ([e22aa06](https://github.com/bitwise-media-group/patchy/commit/e22aa064d2f02b1f74801ac88abf92f5ef5b7b48))
+* **broker:** broker the codex runner through the egress broker ([07c066b](https://github.com/bitwise-media-group/patchy/commit/07c066b5a4d7f671a7bd5cbe782e53d81fd1918c))
+* **deploy:** default to the Sonnet and Opus family aliases ([4640ca5](https://github.com/bitwise-media-group/patchy/commit/4640ca54eeb192711f3347fb149a0c8a614524a9))
+* **deploy:** roll the status server and egress broker on upgrade ([92a81ed](https://github.com/bitwise-media-group/patchy/commit/92a81ed9cf3f61ffc498a1e99002af9f50d11aaf))
+* **harness:** drop the copilot coding-agent harness ([06c13fe](https://github.com/bitwise-media-group/patchy/commit/06c13fe7d2a671fa5d6834e18e89710e787796f7))
+* **model:** register latest Claude models and resolve family aliases ([8a89c11](https://github.com/bitwise-media-group/patchy/commit/8a89c118750bf7662148ff510c86c25c087e309c))
+* optional long-term archival of agent runs to S3 or GCS ([144a232](https://github.com/bitwise-media-group/patchy/commit/144a2327264243a7e247b6c496cc06b3866365e9))
+* **status:** stream the whole agent conversation live, with syntax highlighting ([4c58199](https://github.com/bitwise-media-group/patchy/commit/4c58199898ff428e4a9db1d2cf83b8645a583cff))
+* **ui:** give the status page a new visual identity ([f5e7d5b](https://github.com/bitwise-media-group/patchy/commit/f5e7d5b213419cdf766ba41c745dbcdcd50dcb90))
+* **ui:** one filter and responsive layouts across findings and metrics ([fdee96d](https://github.com/bitwise-media-group/patchy/commit/fdee96dbe58cecf7b8a29d6a2f6d86603b891807))
+* **ui:** redesign the configuration view as one health-first page ([3e20e96](https://github.com/bitwise-media-group/patchy/commit/3e20e96db94c5a5728e1c16b031f8091749427f1))
+* **ui:** screenshot task for the status page ([969c745](https://github.com/bitwise-media-group/patchy/commit/969c745a5ffb6573a8dc836255baa998238157ab))
+* **web:** page repository rollups through a server-side query ([3c59b55](https://github.com/bitwise-media-group/patchy/commit/3c59b55cdbfda0931dda9a1878bd161ccd720da2))
+* **web:** require sign-in for metrics and the change stream ([3799b6f](https://github.com/bitwise-media-group/patchy/commit/3799b6fb61258b45969b70538b11983324a9ea05))
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.4.0 ([#661](https://github.com/bitwise-media-group/patchy/issues/661)) ([dce859e](https://github.com/bitwise-media-group/patchy/commit/dce859e99140ac1356e7b77d4b2123519f8c30de))
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.1 ([#673](https://github.com/bitwise-media-group/patchy/issues/673)) ([c31a68e](https://github.com/bitwise-media-group/patchy/commit/c31a68e8ece21baa3580a1b810a8265e478627b7))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.19 ([#683](https://github.com/bitwise-media-group/patchy/issues/683)) ([17c06b3](https://github.com/bitwise-media-group/patchy/commit/17c06b3e0de9f34b9387debdc5808528806b7f8c))
+* **deps:** update module google.golang.org/api to v0.315.0 ([#662](https://github.com/bitwise-media-group/patchy/issues/662)) ([e0b36eb](https://github.com/bitwise-media-group/patchy/commit/e0b36ebb93711608d661c4440730a805dd41d293))
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.3 ([#677](https://github.com/bitwise-media-group/patchy/issues/677)) ([6bd53db](https://github.com/bitwise-media-group/patchy/commit/6bd53db360433d48b89e2a507e721cbc848ac60c))
+* **e2e:** re-tidy the e2e module and gate its tidiness ([8d9de7d](https://github.com/bitwise-media-group/patchy/commit/8d9de7d2ed447b837dbd0cda39d895f59d08e8d6))
+* **ui:** explain approval holds instead of showing the run outcome ([1c2fd95](https://github.com/bitwise-media-group/patchy/commit/1c2fd9516ee76931c5e461d37c377e207c8d2186))
+
 ## [0.13.0](https://github.com/bitwise-media-group/patchy/compare/v0.12.4...v0.13.0) (2026-11-16)
 
 

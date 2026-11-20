@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "build.ts", "dev.ts"]
+  "include": ["src", "build.ts", "dev.ts", "screenshot.ts"]
 }

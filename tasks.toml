@@ -119,6 +119,20 @@ run = [
   "bun run dev",
 ]
 
+# Screenshots of the status page for the docs (docs/assets/images/status-*.jpg,
+# dark and light): internal/web/ui/screenshot.ts runs the dev server in
+# --demo mode and drives headless Chrome over the DevTools protocol at
+# 1440×900. Needs Chrome (or CHROME_PATH); run it outside the Claude Code
+# sandbox, which blocks headless Chrome.
+# Example: mise run ui-screenshots -- --chrome /usr/bin/chromium
+[ui-screenshots]
+description = "re-shoot the status page screenshots used by the docs"
+dir = "{{config_root}}/internal/web/ui"
+run = [
+  "bun install --frozen-lockfile --ignore-scripts",
+  "bun screenshot.ts",
+]
+
 # Redefines the archetype's build task (whole-task replacement): patchy is
 # multi-binary — one controller per concern plus the agent runtime — so the
 # single-app go-build is replaced by a loop over cmd/ (hack/build.sh; the

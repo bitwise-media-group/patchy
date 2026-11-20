@@ -14,7 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.19
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.1
-	github.com/aws/aws-sdk-go-v2/service/configservice v1.75.0
+	github.com/aws/aws-sdk-go-v2/service/configservice v1.76.0
 	github.com/aws/aws-sdk-go-v2/service/resourceexplorer2 v1.33.12
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0
 	github.com/aws/smithy-go v1.28.9

@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: evaluations.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -71,8 +71,8 @@ spec:
             type: object
           spec:
             description: |-
-              EvaluationSpec is one submission. It is immutable — resubmission is a new
-              Evaluation (CEL-enforced).
+              EvaluationSpec is one submission. It is immutable, so a resubmission is a
+              new Evaluation (CEL-enforced).
             properties:
               submitter:
                 description: |-
@@ -94,8 +94,8 @@ spec:
                   description: |-
                     UnitPlan is one evaluation unit: a skill evaluated on one model at one
                     tier. The fields patchy schedules on (harness selection, workspace,
-                    timeout) are typed; everything else the in-pod client needs travels opaquely
-                    in ExecJSON — patchy never learns evaluation semantics.
+                    timeout) are typed. Everything else the in-pod client needs travels opaquely
+                    in ExecJSON, so patchy never learns evaluation semantics.
                   properties:
                     execJSON:
                       description: |-

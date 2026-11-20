@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RemediationSpec identifies one remediation attempt. It is immutable — a
+// RemediationSpec identifies one remediation attempt. It is immutable, so a
 // new attempt is a new Remediation (CEL-enforced).
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new Remediation for a new attempt"
 type RemediationSpec struct {
@@ -40,7 +40,7 @@ type RemediationSpec struct {
 }
 
 // PullRequestRef is the opened pull request. Its lifecycle (merge/close)
-// lives on the Finding — this object is immutable history after completion.
+// lives on the Finding. This object is immutable history after completion.
 type PullRequestRef struct {
 	// Number of the pull request.
 	Number int64 `json:"number"`

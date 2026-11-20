@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: forges.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -96,8 +96,8 @@ spec:
                   url:
                     description: |-
                       URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
-                      and https. Credentials must not be embedded in the URL — put them in
-                      the credential Secret under "proxyUsername" + "proxyPassword".
+                      and https. Do not embed credentials in the URL. Put them in the
+                      credential Secret under "proxyUsername" + "proxyPassword".
                     minLength: 1
                     pattern: ^https?://[^@\s]+$
                     type: string
@@ -197,8 +197,9 @@ spec:
                   App auth only).
                 items:
                   description: |-
-                    InstallationSummary counts one GitHub App installation — counts and
-                    accounts only, never a repository list (the estate is ~15K repositories).
+                    InstallationSummary counts one GitHub App installation. It holds counts
+                    and accounts only, never a repository list (the estate is ~15K
+                    repositories).
                   properties:
                     account:
                       description: Account the App is installed on.

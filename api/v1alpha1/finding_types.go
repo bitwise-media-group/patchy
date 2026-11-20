@@ -21,7 +21,7 @@ const (
 // a cloud finding arrives repo-less and may have one resolved later by a
 // context enhancer (from the cloud resource's ownership labels). A finding
 // still repo-less when the investigation gate runs can never reach the
-// Queued/Remediating phases — there is no tree to work in.
+// Queued/Remediating phases, because there is no tree to work in.
 type FindingRepository struct {
 	// Type of forge the repository lives on.
 	Type RepositoryType `json:"type"`
@@ -58,10 +58,10 @@ const (
 type FindingCloudResource struct {
 	// Provider is the cloud platform the resource lives on.
 	Provider CloudProvider `json:"provider"`
-	// Name is the provider's canonical, unique resource identifier — an SCC
-	// resourceName, e.g. "//storage.googleapis.com/projects/p/buckets/b". It
-	// is the accumulation scope for cloud findings, in place of the
-	// repository URL.
+	// Name is the provider's canonical, unique resource identifier, such as
+	// an SCC resourceName (e.g.
+	// "//storage.googleapis.com/projects/p/buckets/b"). It is the
+	// accumulation scope for cloud findings, in place of the repository URL.
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 	// Type is the provider's resource type, e.g. "google.cloud.storage.Bucket".
@@ -95,18 +95,18 @@ type Location struct {
 }
 
 // Alert is one scanner alert folded into the finding during accumulation.
-// IDs are strings — GHAS alert numbers render as decimal, other scanners use
-// opaque identifiers.
+// IDs are strings: GHAS alert numbers render as decimal, and other scanners
+// use opaque identifiers.
 type Alert struct {
 	// ID of the alert in the source system.
 	// +kubebuilder:validation:MinLength=1
 	ID string `json:"id"`
 	// Source is the source handler that produced this alert, denormalized
 	// from the finding at ingest. Accumulation keys on source, so today every
-	// alert on a finding shares spec.source and this is redundant — but
-	// duplicate-of merges are defined to fold one finding into another, and
-	// the verdict write-back must hand each source only its own alerts.
-	// Recording provenance beats inferring it from the shape of an id.
+	// alert on a finding shares spec.source and this field is redundant.
+	// However, duplicate-of merges fold one finding into another, and the
+	// verdict write-back must hand each source only its own alerts. Recording
+	// provenance is more reliable than inferring it from the shape of an id.
 	// Empty on alerts written before this field existed; readers fall back to
 	// spec.source.
 	// +optional
@@ -137,7 +137,8 @@ const (
 
 // RelatedFinding is a directed edge between two findings, stored identically
 // on both endpoints (one of from/to is the holder's own name). Names may
-// dangle after the other endpoint's TTL deletion — consumers tolerate that.
+// dangle after the other endpoint's TTL deletion, and consumers tolerate
+// that.
 type RelatedFinding struct {
 	// From is the edge's source Finding name.
 	From string `json:"from"`
@@ -161,7 +162,7 @@ type Approval struct {
 
 // ActionRequest records who requested a human action (retry, expedite) and
 // when. Freshness against status timestamps decides whether the request is
-// still actionable — the consuming controller never clears spec.
+// still actionable. The consuming controller never clears spec.
 type ActionRequest struct {
 	// By is the requesting login.
 	By string `json:"by"`
@@ -172,7 +173,7 @@ type ActionRequest struct {
 // FindingSpec is the finding to triage. integration-controller writes it at
 // ingest and during accumulation; humans may set suspend and add related-to
 // edges. The one other writer is context-controller, which sets repository
-// exactly once when a cloud finding arrived without one — see that field.
+// once when a cloud finding arrived without one (see that field).
 type FindingSpec struct {
 	// IntegrationRef names the Integration that ingested this finding.
 	IntegrationRef LocalObjectReference `json:"integrationRef"`
@@ -187,7 +188,8 @@ type FindingSpec struct {
 	// Repository the finding belongs to; nil when none has been identified.
 	// integration-controller sets it at ingest for sources that name a
 	// repository. For a cloud finding it starts nil and context-controller
-	// may set it — SET-ONCE, never overwritten. Three things depend on that:
+	// may set it. It is set once and never overwritten. Three things depend
+	// on that:
 	// the rollup ledger re-derives its scope key at reversal time, the
 	// investigation gate's Repository artifact has an immutable spec.url with
 	// no update path, and the agent Jobs snapshot the repo in an annotation.
@@ -427,7 +429,7 @@ type FindingStatus struct {
 	// +kubebuilder:validation:MaxItems=8
 	Enrichments []Enrichment `json:"enrichments,omitempty"`
 	// Priority is the scheduling priority derived from investigation results
-	// (investigation) — the remediation queue's sort dimension.
+	// (investigation). The remediation queue sorts on it.
 	// +optional
 	Priority Level `json:"priority,omitempty"`
 	// Investigation summarizes the latest Investigation child (investigation).

@@ -1,10 +1,10 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# kind has no load balancer. NodePort + `extraPortMappings` in the kind config
-# is how a webhook delivery (from a tunnel — smee.io, ngrok, `gh webhook
-# forward`) reaches the integration-controller. The nodePort number (30079)
-# is set in kustomization.yaml.
+# kind has no load balancer. A webhook delivery from a tunnel (smee.io,
+# ngrok, `gh webhook forward`) reaches the integration-controller through
+# NodePort + `extraPortMappings` in the kind config. The nodePort number
+# (30079) is set in kustomization.yaml.
 ---
 apiVersion: v1
 kind: Service

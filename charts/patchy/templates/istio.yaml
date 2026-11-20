@@ -1,23 +1,27 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Defence in depth for the agent sandbox on Istio meshes: the same egress
-# allowlist as the Cilium component, enforced by the sidecar (REGISTRY_ONLY +
-# a ServiceEntry; the proxy matches the client-hello SNI, TLS is not
-# terminated). One ServiceEntry + Sidecar is rendered per enabled runner: each
-# Sidecar's workloadSelector scopes it to that harness's pods (by the harness
-# label) and its egress lists only that runner's model hosts — none for the
-# brokered runners (claude, codex), whose only destination is the egress
-# broker in the release namespace. Sidecar
-# injection is switched on by the namespace label the chart adds when this is
-# enabled (agent.networkPolicy.istio.injectionLabel).
+# Defence in depth for the agent sandbox on Istio meshes. This is the same
+# egress allowlist as the Cilium component, enforced by the sidecar
+# (REGISTRY_ONLY + a ServiceEntry; the proxy matches the client-hello SNI and
+# does not terminate TLS). The chart renders one ServiceEntry + Sidecar per
+# enabled runner. Each Sidecar's workloadSelector limits it to that harness's
+# pods (by the harness label), and its egress lists only that runner's model
+# hosts. The brokered runners (claude, codex) get no hosts, because their only
+# destination is the egress broker in the release namespace. When this is
+# enabled, the chart adds a namespace label that turns on sidecar injection
+# (agent.networkPolicy.istio.injectionLabel).
 #
-# REQUIREMENTS — both are hard: native sidecars (istiod with
-# ENABLE_NATIVE_SIDECARS=true; otherwise the Job never completes and the
-# init container's artifact fetch is blackholed) and the Istio CNI node agent
-# (the classic istio-init container needs NET_ADMIN and is rejected by the
-# restricted PSS). Unlike Cilium, the sidecar does not constrain what names
-# the pod may RESOLVE. See deploy/kustomize/components/istio.
+# REQUIREMENTS (both are hard requirements):
+#
+#   * Native sidecars (istiod with ENABLE_NATIVE_SIDECARS=true). Without
+#     them, the Job never completes and the init container's artifact fetch
+#     is blackholed.
+#   * The Istio CNI node agent. The classic istio-init container needs
+#     NET_ADMIN, and the restricted PSS rejects it.
+#
+# Unlike Cilium, the sidecar does not limit which names the pod may RESOLVE.
+# See deploy/kustomize/components/istio.
 {{- if and .Values.agent.networkPolicy.create (eq (include "patchy.egressMode" .) "istio") }}
 {{- $root := . }}
 {{- range $id, $r := .Values.agent.runners }}
@@ -25,10 +29,10 @@
 {{- if $r.hosts }}
 ---
 # One runner's model API. exportTo: "." keeps the entry private to the agent
-# namespace. There is deliberately NO forge (GitHub) entry: the repository
-# arrives as a tarball from source-controller's in-cluster artifact server (a
-# mesh-registry Service the Sidecar below already exposes), and the pod holds
-# no forge credential.
+# namespace. There is NO forge (GitHub) entry, because the repository arrives
+# as a tarball from source-controller's in-cluster artifact server (a
+# mesh-registry Service that the Sidecar below already exposes), and the pod
+# holds no forge credential.
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
@@ -54,13 +58,17 @@ spec:
           protocol: TLS
 {{- end }}
 ---
-# Drop anything not in this harness's registry slice. Visible to it: this
-# runner's model ServiceEntry above (by explicit host; the brokered runners
-# have none — their egress set is empty of external hosts entirely) and the
-# release namespace's Services — which is how the init container reaches
-# source-controller's artifact server and how a brokered pod reaches the
-# egress broker. The workloadSelector scopes the Sidecar to this harness's
-# pods, so the other runner's ServiceEntry is not reachable.
+# Drop anything outside this harness's part of the registry. The harness can
+# see:
+#
+#   * this runner's model ServiceEntry above (by explicit host). The brokered
+#     runners have none, so their egress set has no external hosts at all.
+#   * the release namespace's Services. That is how the init container
+#     reaches source-controller's artifact server, and how a brokered pod
+#     reaches the egress broker.
+#
+# The workloadSelector limits the Sidecar to this harness's pods, so the
+# other runner's ServiceEntry is not reachable.
 apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
@@ -88,10 +96,10 @@ spec:
 {{- end }}
 {{- end }}
 ---
-# The mesh's own plumbing, re-permitted through the default-deny (one policy
+# The mesh's own traffic, allowed again through the default-deny (one policy
 # for all agent pods): egress 15012 to istiod (XDS + workload certs) and
-# ingress 15021 (kubelet probes the proxy's readiness endpoint; probes arrive
-# from the node IP, which no pod selector can match).
+# ingress 15021 (the kubelet probes the proxy's readiness endpoint; probes
+# arrive from the node IP, which no pod selector can match).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

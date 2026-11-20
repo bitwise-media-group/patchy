@@ -5,35 +5,36 @@
 # READ THIS BEFORE TRUSTING THE SANDBOX
 #
 # A plain Kubernetes NetworkPolicy is an L3/L4 object. It selects peers by IP
-# block, pod label and namespace label — and by port. It CANNOT match a
-# hostname: there is no way to write "allow api.anthropic.com, deny
+# block, pod label and namespace label, and by port. It CANNOT match a
+# hostname. There is no way to write "allow api.anthropic.com, deny
 # github.com" here, because by the time a packet exists the name is gone.
 #
 # So the agent egress rule below reads "TCP 443 to anywhere outside the
-# cluster". That permits api.anthropic.com. It also permits every other host
-# on the internet that answers on 443.
+# cluster". No runner patchy ships needs it: claude and codex reach their
+# model API only through the in-cluster egress broker. But while the rule is
+# there, it permits every host on the internet that answers on 443.
 #
-# Two things carry the isolation, in this order:
+# Two things provide the isolation, in this order:
 #
-#   1. CREDENTIAL ABSENCE (the real control). The agent pod holds no forge
-#      credential AT ALL — not even in the init container. The repository
+#   1. CREDENTIAL ABSENCE (the main protection). The agent pod holds no forge
+#      credential AT ALL, not even in the init container. The repository
 #      arrives as a digest-verified tarball fetched from source-controller's
-#      artifact server over the cluster network; the only Secret in the pod
-#      is the model credential and the handoff markdown. An agent that
-#      reaches github.com reaches it unauthenticated, as the public internet
-#      does.
-#   2. Hostname policy (defence in depth, infrastructure-dependent). See
-#      ../components/cilium/networkpolicy-cilium.yaml — a CiliumNetworkPolicy
-#      that narrows this same egress to toFQDNs — or ../components/istio/ —
-#      the same allowlist as an Istio Sidecar (REGISTRY_ONLY) + ServiceEntries.
-#      Enable whichever your infrastructure supports (the prod overlay picks
-#      cilium).
+#      artifact server over the cluster network. It holds no model credential
+#      either: the egress broker adds that to each request. The only Secret in
+#      the pod is the handoff markdown. An agent that
+#      reaches github.com reaches it unauthenticated, like anyone on the
+#      public internet.
+#   2. Hostname policy (an extra layer that depends on your infrastructure).
+#      See ../components/cilium/networkpolicy-cilium.yaml, a
+#      CiliumNetworkPolicy that narrows this same egress to toFQDNs. Or see
+#      ../components/istio/, the same allowlist as an Istio Sidecar
+#      (REGISTRY_ONLY) + ServiceEntries. Enable whichever your
+#      infrastructure supports (the prod overlay picks cilium).
 #
-# DESIGN.md says the agent gets "no internet access". Taken literally that is
-# impossible: `claude -p` is a network client of api.anthropic.com. What is
-# actually delivered is "no network except the model API and the in-cluster
-# artifact server", and — with a plain CNI — "no CREDENTIALS for anything at
-# all".
+# DESIGN.md says the agent gets "no internet access". A brokered pod needs
+# none: its only destinations are DNS, the artifact server and the egress
+# broker. With a plain CNI the broad 443 rule still lets it reach the
+# internet, but it holds no credentials for anything.
 # ===========================================================================
 ---
 # ---- patchy namespace: the controllers ------------------------------------
@@ -45,7 +46,7 @@
 #         check for authentication. Tighten `from:` to your own ingress
 #         namespace if you want L3 on top of the HMAC.
 #   8081  kubelet probes (every controller).
-#   9790  the artifact server — agent pods only (plus kubelet).
+#   9790  the artifact server: agent pods only (plus kubelet).
 #
 # Egress: DNS, the Kubernetes API server (every controller is a CR
 # controller now), and TCP 443 out. That covers GitHub for integration/
@@ -60,10 +61,10 @@
 # credentials) for the context-controller, when the Azure resource-tags
 # enhancer is enabled; and an OTLP collector for any of them. Port 6443 is
 # here because kind/kubeadm clusters serve the API there; managed clusters
-# usually use 443. The link-local rule is EKS Pod Identity: the SDK's other
-# in-cluster credential path fetches from the node-local agent at
-# 169.254.170.23:80 over HTTP (fd00:ec2::23 on IPv6 clusters) — harmless
-# elsewhere, since nothing else answers on that address.
+# usually use 443. The link-local rule is for EKS Pod Identity. The SDK's
+# other in-cluster credential path fetches from the node-local agent at
+# 169.254.170.23:80 over HTTP (fd00:ec2::23 on IPv6 clusters). The rule is
+# harmless elsewhere, since nothing else answers on that address.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -89,10 +90,10 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
-        # The internal blob-upload endpoint (source-controller :9791): only
+        # The internal blob-upload endpoint (source-controller :9791). Only
         # the evaluation controller streams workspace bundles to it. Only
-        # source-controller listens on the port, so scoping the sender is the
-        # whole rule.
+        # source-controller listens on the port, so the rule only needs to
+        # limit the sender.
         - from:
               - podSelector:
                     matchLabels:
@@ -128,10 +129,10 @@ spec:
                 port: 80
 ---
 # ---- patchy namespace: evaluation-controller extras -------------------------
-# Additive to patchy-controllers (which already grants ingress 8080 for the
-# API, DNS, the Kubernetes API server, and 443 out for the OIDC issuer):
-# the one extra hole is streaming workspace uploads to source-controller's
-# internal blob endpoint.
+# This adds to patchy-controllers, which already grants ingress 8080 for the
+# API, DNS, the Kubernetes API server, and 443 out for the OIDC issuer. The
+# one extra opening is for streaming workspace uploads to
+# source-controller's internal blob endpoint.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -157,10 +158,11 @@ spec:
 # Selected separately (component: server, not controller): its surface is a
 # human-facing web page, not webhooks or artifacts.
 #
-# Ingress: 8080 from anywhere — the fronting ingress/gateway lives wherever
-# yours does and kubelet probes come from the node IP; session authentication
-# (and the public-rollups-only unconfigured posture) carries the actual
-# access control. Tighten `from:` to your ingress namespace for L3 on top.
+# Ingress: 8080 from anywhere. The fronting ingress/gateway lives wherever
+# yours does, and kubelet probes come from the node IP. Session
+# authentication does the access control; with no auth config the server
+# serves no data. Tighten `from:` to your ingress namespace for L3 on
+# top.
 #
 # Egress: DNS, the Kubernetes API server (cache watches + access reviews),
 # and TCP 443 out (the OIDC issuer for discovery/code exchange, an OTLP
@@ -207,7 +209,7 @@ spec:
 #
 # Ingress: 8080 from the agent namespace (the brokered pods) and the patchy
 # namespace (the job controllers' advisory /readyz startup probe), plus 8081
-# kubelet probes. Egress: DNS, then TCP 443/6443 — the model APIs
+# kubelet probes. Egress: DNS, then TCP 443/6443 for the model APIs
 # (api.anthropic.com / Bedrock / Vertex / Foundry) and the Kubernetes API
 # server (TokenReview). Cloud-identity side channels (EKS Pod Identity
 # 169.254.170.23:80, GKE metadata 169.254.169.254:80) need an extra rule in
@@ -268,8 +270,8 @@ metadata:
 spec:
     podSelector: {}
     policyTypes: [Ingress, Egress]
-    # No ingress rules at all: the agent Job serves nothing. The job
-    # controllers do not connect to it — they read its output from the pod
+    # No ingress rules at all, because the agent Job serves nothing. The job
+    # controllers do not connect to it. They read its output from the pod
     # log through the API server.
 ---
 apiVersion: networking.k8s.io/v1
@@ -308,9 +310,9 @@ spec:
           ports:
               - protocol: TCP
                 port: 9790
-        # The egress credential broker: ALL of a brokered (claude, codex)
-        # pod's model traffic. A brokered pod needs no other egress at all —
-        # not even api.anthropic.com or api.openai.com.
+        # The egress credential broker carries ALL of a brokered (claude,
+        # codex) pod's model traffic. A brokered pod needs no other egress at
+        # all, not even api.anthropic.com or api.openai.com.
         - to:
               - namespaceSelector:
                     matchLabels:
@@ -321,11 +323,11 @@ spec:
           ports:
               - protocol: TCP
                 port: 8080
-        # TCP 443, and nothing else: the L3 floor for a non-brokered runner's
-        # model API. No runner patchy ships needs it — claude and codex are
-        # both brokered — and the hostname components (cilium, gke-fqdn)
-        # drop it. Explicitly excluded: the cluster-internal
-        # ranges, so an agent cannot reach the API server, kubelet, or
+        # TCP 443, and nothing else: the L3 fallback for a non-brokered
+        # runner's model API. No runner patchy ships needs it, because claude
+        # and codex both go through the broker. The hostname components
+        # (cilium, gke-fqdn) drop it. The cluster-internal ranges are
+        # excluded, so an agent cannot reach the API server, kubelet, or
         # another workload. Adjust the except: blocks to your cluster's
         # pod/service/node CIDRs.
         - to:

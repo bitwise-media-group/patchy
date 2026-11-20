@@ -1,14 +1,14 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The fake CMDB. internal/enhancers.StaticFile parses this shape (strictly —
-# KnownFields is on, so an unknown key is a startup error) and the
-# context-controller records the matching entry on the Finding: attributes
-# project as security-context labels, the optional markdown as a sticky
+# The fake CMDB. internal/enhancers.StaticFile parses this shape strictly
+# (KnownFields is on, so an unknown key is a startup error). The
+# context-controller records the matching entry on the Finding. Attributes
+# project as security-context labels, and the optional markdown as a sticky
 # issue comment.
 #
-# In a real deployment this is where a CMDB/service-catalogue enhancer would
-# plug in instead (pkg/enhance is the seam).
+# In a real deployment a CMDB/service-catalogue enhancer would plug in here
+# instead (pkg/enhance is the plugin interface).
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -28,7 +28,7 @@ data:
                     tier: "2"
                     environment: dev
                 markdown: |
-                    Dev deployment of patchy itself — findings here are dogfood.
+                    Dev deployment of patchy itself. Findings here are dogfood.
             acme/shop:
                 owners: [octocat, hubot]
                 attributes:

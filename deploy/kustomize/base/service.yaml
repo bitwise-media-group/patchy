@@ -1,28 +1,29 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Five Services, because only five things are dialled by anything:
+# Five Services, because only five things receive connections:
 #
-#   * patchy-integration-controller:8080 — the machine-facing entry point
+#   * patchy-integration-controller:8080: the machine-facing entry point
 #     (the provider webhook receivers, e.g. POST /github/webhooks).
 #     Put an Ingress / Gateway in front of it in your environment overlay.
-#   * patchy-source-controller:9790 — the artifact server the agent pods
-#     fetch SHA-pinned repository tarballs (and workspace bundles) from
-#     (in-cluster only; the NetworkPolicies restrict it to the patchy-agents
-#     namespace) — plus :9791, the internal blob-upload endpoint only
-#     evaluation-controller may reach.
-#   * patchy-status-server:8080 — the human-facing status page. Front it
-#     with your Ingress / Gateway too (a separate hostname from the webhook
-#     endpoint keeps authn concerns apart).
-#   * patchy-evaluation-controller:8080 — the evolve-facing evaluation API.
-#     Front it with your Ingress / Gateway (bearer-authenticated; its own
-#     hostname keeps it apart from the human surfaces).
-#   * patchy-egress-broker:8080 — the egress credential broker all claude
-#     model traffic goes through (in-cluster only; caller tokens validated
-#     via TokenReview, ingress restricted to the patchy-agents namespace).
+#   * patchy-source-controller:9790: the artifact server. Agent pods fetch
+#     SHA-pinned repository tarballs (and workspace bundles) from it. It is
+#     in-cluster only, and the NetworkPolicies restrict it to the
+#     patchy-agents namespace. Port :9791 is the internal blob-upload
+#     endpoint, and only evaluation-controller may reach it.
+#   * patchy-status-server:8080: the human-facing status page. Put your
+#     Ingress / Gateway in front of it too. A separate hostname from the
+#     webhook endpoint keeps authn concerns apart.
+#   * patchy-evaluation-controller:8080: the evaluation API that evolve
+#     calls. Put your Ingress / Gateway in front of it. It uses bearer auth,
+#     and its own hostname keeps it apart from the human-facing pages.
+#   * patchy-egress-broker:8080: the egress credential broker all claude and
+#     codex model traffic goes through. It is in-cluster only. It validates caller
+#     tokens via TokenReview, and ingress is restricted to the patchy-agents
+#     namespace.
 #
-# The other controllers serve nothing but kubelet probes on :8081, which hit
-# the pod directly — no Service needed.
+# The other controllers serve only kubelet probes on :8081. Those hit the pod
+# directly, so they need no Service.
 ---
 apiVersion: v1
 kind: Service

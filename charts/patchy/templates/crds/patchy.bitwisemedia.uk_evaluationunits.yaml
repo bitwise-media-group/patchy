@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: evaluationunits.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -86,8 +86,8 @@ spec:
           spec:
             description: |-
               EvaluationUnitSpec identifies one unit of its parent Evaluation. It is
-              immutable and self-contained — launch never re-reads the parent
-              (CEL-enforced).
+              immutable (CEL-enforced) and self-contained: launch never re-reads the
+              parent.
             properties:
               evaluationRef:
                 description: EvaluationRef is the owning Evaluation (UID-pinned).

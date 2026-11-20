@@ -33,7 +33,7 @@
             }
         },
         "integrationSpec": {
-            "description": "IntegrationSpec configures one external system. Exactly the provider block\nmatching spec.provider must be set (CEL-enforced) — integrations are\nstrongly typed; the generic provider is the deliberate escape hatch, typed\naround patchy's own HTTP contract rather than a vendor's.",
+            "description": "IntegrationSpec configures one external system. Only the provider block\nmatching spec.provider may be set, and it must be set (CEL-enforced).\nIntegrations are strongly typed. The generic provider is the intended\nescape hatch: it is typed around patchy's own HTTP contract instead of a\nvendor's.",
             "properties": {
                 "aws": {
                     "description": "AWS is the aws provider block.",
@@ -163,7 +163,7 @@
                     "additionalProperties": false
                 },
                 "backfill": {
-                    "description": "Backfill requests one bounded list-alerts walk of the provider's open\nalerts, ingesting the ones that predate webhook coverage — alerts\nraised before the App was installed on (or associated with) their\nrepository, which no replay of the delivery log can ever surface.\nIngestion is idempotent, so re-listing alerts that already have\nfindings is safe. Freshness against status.backfill.backfilledAt\ndecides whether the request is still actionable — the controller\nnever clears spec.",
+                    "description": "Backfill requests one bounded list-alerts walk of the provider's open\nalerts, ingesting the ones that predate webhook coverage. These are\nalerts raised before the App was installed on (or associated with)\ntheir repository, which no replay of the delivery log can ever surface.\nIngestion is idempotent, so re-listing alerts that already have\nfindings is safe. Freshness against status.backfill.backfilledAt\ndecides whether the request is still actionable. The controller never\nclears spec.",
                     "properties": {
                         "at": {
                             "description": "At is when the request was received.",
@@ -292,7 +292,7 @@
                                     "type": "boolean"
                                 },
                                 "fallbackRepository": {
-                                    "description": "FallbackRepository (\"owner/repo\") receives the tracking issues of\nfindings that have no repository of their own — cloud findings whose\nresource carries no ownership labels. Without it those findings are\nvisible only through kubectl and the status page. They still cannot be\nremediated: the issue is a human surface, not a work tree.",
+                                    "description": "FallbackRepository (\"owner/repo\") receives the tracking issues of\nfindings that have no repository of their own, such as cloud findings\nwhose resource carries no ownership labels. Without it those findings\nare visible only through kubectl and the status page. They still cannot\nbe remediated, because the issue is only for humans and has no work\ntree.",
                                     "type": "string"
                                 }
                             },
@@ -304,7 +304,7 @@
                             "description": "Proxy routes this integration's GitHub traffic through an HTTP/HTTPS\nforward proxy, overriding the process proxy environment for this\nintegration.",
                             "properties": {
                                 "url": {
-                                    "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Credentials must not be embedded in the URL — put them in\nthe credential Secret under \"proxyUsername\" + \"proxyPassword\".",
+                                    "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Do not embed credentials in the URL. Put them in the\ncredential Secret under \"proxyUsername\" + \"proxyPassword\".",
                                     "minLength": 1,
                                     "pattern": "^https?://[^@\\s]+$",
                                     "type": "string"
@@ -318,7 +318,7 @@
                             "description": "Redelivery enables the failed-delivery sweep.",
                             "properties": {
                                 "enabled": {
-                                    "description": "Enabled turns the sweep on. Requires App credentials — the delivery\nlog is App-scoped, so a PAT integration cannot sweep.",
+                                    "description": "Enabled turns the sweep on. It requires App credentials: the delivery\nlog is App-scoped, so a PAT integration cannot sweep.",
                                     "type": "boolean"
                                 },
                                 "lookback": {
@@ -441,7 +441,7 @@
                     "type": "string"
                 },
                 "replay": {
-                    "description": "Replay requests one full redelivery of every webhook delivery in the\nlookback window, including deliveries that already succeeded (the\nreceiver dedups; ingestion is idempotent). Freshness against\nstatus.redelivery.replayedAt decides whether the request is still\nactionable — the controller never clears spec.",
+                    "description": "Replay requests one full redelivery of every webhook delivery in the\nlookback window, including deliveries that already succeeded (the\nreceiver dedups; ingestion is idempotent). Freshness against\nstatus.redelivery.replayedAt decides whether the request is still\nactionable. The controller never clears spec.",
                     "properties": {
                         "at": {
                             "description": "At is when the request was received.",
@@ -458,7 +458,7 @@
                     "additionalProperties": false
                 },
                 "reset": {
-                    "description": "Reset requests the demo reset (stamped by the status page): the\ncontroller permanently deletes every finding's tracking issue,\nreopens the dismissed findings' code-scanning alerts, deletes every\npipeline resource, and drops the receiver's delivery dedup window so\nredeliveries of already-handled GUIDs are ingested again. Issue\ndeletion requires admin-level repository permission on the\ncredential. Freshness against status.resetAt decides whether the\nrequest is still actionable — the controller never clears spec.",
+                    "description": "Reset requests the demo reset (stamped by the status page): the\ncontroller permanently deletes every finding's tracking issue,\nreopens the dismissed findings' code-scanning alerts, deletes every\npipeline resource, and drops the receiver's delivery dedup window so\nredeliveries of already-handled GUIDs are ingested again. Issue\ndeletion requires admin-level repository permission on the\ncredential. Freshness against status.resetAt decides whether the\nrequest is still actionable. The controller never clears spec.",
                     "properties": {
                         "at": {
                             "description": "At is when the request was received.",
@@ -475,7 +475,7 @@
                     "additionalProperties": false
                 },
                 "secretRef": {
-                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation, plus optional keys\n\"proxyUsername\" + \"proxyPassword\" when spec.github.proxy needs basic\nauth. For wiz: key\n\"webhookToken\" (the shared bearer token deliveries carry), plus keys\n\"clientId\" + \"clientSecret\" when spec.wiz.api enables write-back. For\ngeneric: key \"webhookSecret\", the shared HMAC secret signing both\ninbound deliveries and patchy's outbound resolver/enhancer calls.\nRequired for github, wiz, and generic, optional otherwise — a\ngoogle-cloud integration holds no credential, since Pub/Sub\nauthenticates itself with a signed OIDC token. It stays permitted for\nevery provider so a future capability that does need one (SCC\nmute-on-ignore) needs no schema change.",
+                    "description": "SecretRef names the credential Secret. For github: either key \"token\"\n(PAT, dev) or keys \"appID\" + \"privateKey\" (GitHub App), plus\n\"webhookSecret\" for receiver HMAC validation, plus optional keys\n\"proxyUsername\" + \"proxyPassword\" when spec.github.proxy needs basic\nauth. For wiz: key\n\"webhookToken\" (the shared bearer token deliveries carry), plus keys\n\"clientId\" + \"clientSecret\" when spec.wiz.api enables write-back. For\ngeneric: key \"webhookSecret\", the shared HMAC secret signing both\ninbound deliveries and patchy's outbound resolver/enhancer calls.\nRequired for github, wiz, and generic, and optional otherwise. A\ngoogle-cloud integration holds no credential, since Pub/Sub\nauthenticates itself with a signed OIDC token. It stays permitted for\nevery provider so a future capability that does need one (SCC\nmute-on-ignore) needs no schema change.",
                     "properties": {
                         "name": {
                             "description": "Name of the Secret.",
@@ -584,7 +584,7 @@
                     "description": "Proxy routes this forge's GitHub traffic through an HTTP/HTTPS forward\nproxy, overriding the process proxy environment for this forge.",
                     "properties": {
                         "url": {
-                            "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Credentials must not be embedded in the URL — put them in\nthe credential Secret under \"proxyUsername\" + \"proxyPassword\".",
+                            "description": "URL of the proxy, e.g. \"http://proxy.corp.example:3128\". Schemes http\nand https. Do not embed credentials in the URL. Put them in the\ncredential Secret under \"proxyUsername\" + \"proxyPassword\".",
                             "minLength": 1,
                             "pattern": "^https?://[^@\\s]+$",
                             "type": "string"

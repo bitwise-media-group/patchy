@@ -1,20 +1,26 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The webhook entry point, plain-Ingress flavour (webhook.ingress): one
-# Ingress on one hostname, in front of the integration-controller — the only
-# component that faces the internet.
+# The webhook entry point, plain Ingress version (webhook.ingress): one
+# Ingress on one hostname, in front of the integration-controller. That is the
+# only component that faces the internet.
 #
-# One path per provider, because each authenticates differently and nothing
-# else is exposed: /github/webhooks validates an HMAC over the raw body
-# against the matching Integration's webhookSecret, /google-cloud/webhooks
-# validates the OIDC token a Pub/Sub push subscription signs (a push cannot
-# compute an HMAC — Pub/Sub composes the message, not the sender), and
-# /wiz/webhooks validates the shared bearer token a Wiz automation action
-# carries. /generic/ is the one prefix covering many paths — each generic
-# Integration listens at /generic/<name>/webhooks, validating an HMAC against
-# that Integration's own secret, so the list here stays static however many
-# there are. The probes stay off the internet. See docs/deployment/webhook.md.
+# There is one path per provider, because each one authenticates differently
+# and nothing else is exposed:
+#
+#   * /github/webhooks checks an HMAC over the raw body against the matching
+#     Integration's webhookSecret.
+#   * /google-cloud/webhooks checks the OIDC token a Pub/Sub push
+#     subscription signs. A push cannot compute an HMAC, because Pub/Sub
+#     composes the message and the sender does not.
+#   * /wiz/webhooks checks the shared bearer token a Wiz automation action
+#     carries.
+#   * /generic/ is the one prefix that covers many paths. Each generic
+#     Integration listens at /generic/<name>/webhooks and checks an HMAC
+#     against its own secret, so this list stays the same however many
+#     there are.
+#
+# The probes stay off the internet. See docs/deployment/webhook.md.
 {{- if .Values.webhook.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress

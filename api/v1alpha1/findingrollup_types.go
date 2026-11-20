@@ -19,8 +19,8 @@ const (
 	ScopeModel      ScopeType = "model"
 )
 
-// RollupScope identifies one dimension value. Rollups are sharded — one
-// small object per scope value — because a single object holding a per-repo
+// RollupScope identifies one dimension value. Rollups are sharded into one
+// small object per scope value, because a single object holding a per-repo
 // map would exceed etcd's object cap at estate scale (~15K repositories).
 type RollupScope struct {
 	// Type of the dimension.
@@ -39,8 +39,8 @@ type FindingRollupSpec struct {
 }
 
 // StageAggregate accumulates one stage's runs within a scope. Averages and
-// rates are computed client-side from sum ÷ count — merge-idempotent and
-// exact.
+// rates are computed client-side from sum ÷ count, which is exact and
+// idempotent under merges.
 type StageAggregate struct {
 	// Runs counted.
 	// +optional
@@ -79,9 +79,9 @@ type StageAggregate struct {
 }
 
 // EstimateAggregate accumulates predicted-against-actual cost over the runs
-// that carried an investigation estimate. The actual sums are matched — they
-// cover exactly the runs the predicted sums cover, not every run in the
-// StageAggregate — so predicted ÷ actual is a like-for-like ratio even when
+// that carried an investigation estimate. The actual sums are matched: they
+// cover the same runs as the predicted sums, not every run in the
+// StageAggregate. So predicted ÷ actual is a like-for-like ratio even when
 // some runs (older objects, runs that died before reporting) have no
 // estimate. Skew is computed client-side as actual ÷ predicted - 1.
 type EstimateAggregate struct {
@@ -142,13 +142,13 @@ type MonthlyBucket struct {
 
 // RollupSchemaVersion is the current bucket layout.
 //
-//	1 — the original counters.
-//	2 — StageAggregate.Turns and StageAggregate.Estimate.
+//	1: the original counters.
+//	2: StageAggregate.Turns and StageAggregate.Estimate.
 //
 // Every bump so far has been additive, so a bucket written at an older
-// version stays valid and is upgraded in place; the fields added by the bump
-// simply carry no history. EstimateAggregate.Runs is the denominator that
-// keeps that honest — it counts only the runs that actually contributed.
+// version stays valid and is upgraded in place. The fields added by the bump
+// carry no history. EstimateAggregate.Runs is the denominator that keeps the
+// averages correct, because it counts only the runs that contributed.
 const RollupSchemaVersion int32 = 2
 
 // FindingRollupStatus is the accumulated statistics. All data lives in

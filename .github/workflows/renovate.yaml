@@ -1,10 +1,10 @@
 # Copyright 2026 BitWise Media Group Ltd
 # SPDX-License-Identifier: MIT
 
-# Caller workflow -- copy to `.github/workflows/renovate.yaml` in any repo. It owns the
-# triggers; all the work lives in the reusable renovate workflow, which runs the org's
-# self-hosted Renovate bot -- same "Renovate" App, same bot-side config and org preset
-# from bitwise-media-group/renovate-config -- against this repository only, on this
+# Caller workflow: copy to `.github/workflows/renovate.yaml` in any repo. It owns the
+# triggers. All the work lives in the reusable renovate workflow, which runs the org's
+# self-hosted Renovate bot (same "Renovate" App, same bot-side config and org preset
+# from bitwise-media-group/renovate-config) against this repository only, on this
 # repository's own schedule, in parallel with every other repo's run.
 #
 # Triggers:
@@ -17,8 +17,8 @@
 #                        edit; the reusable workflow runs Renovate immediately instead
 #                        of at the next tick. Edits to other issues skip the job.
 #   pull_request      -- same for the checkboxes in a Renovate PR body (rebase/retry).
-#     [edited]           Edits to other PRs skip the job -- as a skipped check on that
-#                        PR, which is the price of reacting to the checkbox at all.
+#     [edited]           Edits to other PRs skip the job, which shows as a skipped check
+#                        on that PR. That is the cost of reacting to the checkbox.
 #   workflow_run      -- a required workflow finished green on a renovate/* PR: the PR
 #     [completed]        just became mergeable, so Renovate runs now instead of at the
 #                        next tick. List every workflow Renovate's automerge waits on
@@ -33,10 +33,10 @@
 # Org prerequisites (see README "renovate.yaml"): the "Renovate" App installed on this
 # repo, exposed as the RENOVATE_CLIENT_ID variable + RENOVATE_PRIVATE_KEY secret. Take
 # the repo out of the org-wide bot's autodiscoverFilter, or retire that loop once every
-# repo carries this caller -- two bots on one repo race on branches and automerge.
+# repo carries this caller. Two bots on one repo race on branches and automerge.
 #
 # Replace the all-zeros placeholder SHA with the full commit SHA of the release you want
-# (the # comment names it; Renovate keeps both current) -- see README "Pinning".
+# (the # comment names it; Renovate keeps both current). See README "Pinning".
 
 name: Renovate
 

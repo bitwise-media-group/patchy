@@ -5,7 +5,7 @@
 # govulncheck with a reviewed acceptance list. govulncheck has no ignore
 # mechanism of its own, so this wrapper fails on any advisory whose
 # vulnerable symbols are actually reachable from our code EXCEPT the ones
-# accepted below — each of which needs a reason and should be re-reviewed
+# accepted below. Each one needs a reason and should be reviewed again
 # whenever the dependency that drags it in moves.
 set -euo pipefail
 
@@ -39,7 +39,7 @@ fi
 
 for osv in $accepted; do
   if echo "$called" | grep -qxF "$osv"; then
-    echo "govulncheck: $osv reachable — accepted (see hack/govulncheck.sh)" >&2
+    echo "govulncheck: $osv reachable but accepted (see hack/govulncheck.sh)" >&2
   fi
 done
 echo "govulncheck: clean (accepted: $accepted)" >&2

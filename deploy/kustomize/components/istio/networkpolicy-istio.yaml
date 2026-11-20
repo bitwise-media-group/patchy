@@ -1,17 +1,17 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The mesh's own plumbing, re-permitted through the default-deny in
-# base/networkpolicy.yaml — without this the injected proxy cannot start:
+# The mesh's own traffic, allowed again through the default-deny in
+# base/networkpolicy.yaml. Without this the injected proxy cannot start:
 #
 #   * egress 15012 to istiod: XDS config and workload certificates. Blocked
 #     by default-deny (istiod is a cluster service, inside the CIDRs the
 #     base egress rule excepts).
 #   * ingress 15021: kubelet probes the proxy's readiness endpoint. The base
 #     policy has no ingress rules at all, and kubelet probes arrive from the
-#     node IP, which no pod selector can match — same reasoning as the 8080
-#     rule in the patchy namespace, and equally HMAC-free: 15021 serves only
-#     /healthz/ready.
+#     node IP, which no pod selector can match. This is the same reasoning as
+#     the 8080 rule in the patchy namespace. Unlike that rule, no HMAC check
+#     is needed here, because 15021 serves only /healthz/ready.
 #
 # Assumes the control plane lives in istio-system; adjust the selector if
 # yours is revisioned into another namespace.

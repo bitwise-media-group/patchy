@@ -1,20 +1,25 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The status server, in one file (unlike the controllers, which render from
-# shared per-kind templates): it is the only optional component
-# (statusServer.enabled), the only one labelled component=server rather than
-# controller, and the only one with an auth mount and a human-facing
-# exposure — spreading its guards across six kind files would obscure all
-# three facts. Mirrors deploy/kustomize/base/{deployment-status-server,
+# The status server, in one file. (The controllers render from shared
+# per-kind templates instead.) It is:
+#
+#   * optional (statusServer.enabled, on by default);
+#   * labelled component=server, not controller;
+#   * one of the two components with an auth mount and a human-facing
+#     exposure (the evaluation controller is the other).
+#
+# Spreading its guards across six kind files would hide all three facts.
+# Matches deploy/kustomize/base/{deployment-status-server,
 # rbac,service,networkpolicy}.yaml.
 {{- if .Values.statusServer.enabled }}
 {{- $vals := .Values.statusServer }}
 {{- $name := "status-server" }}
 {{- /*
-The auth Secret mounted at /etc/patchy/auth: an existing Secret wins; inline
-auth.config renders a chart-managed one; with neither, the (optional) mount
-is empty and the server serves nothing until one is mounted.
+The auth Secret mounted at /etc/patchy/auth. An existing Secret takes
+precedence. Inline auth.config renders a chart-managed one. With neither,
+the (optional) mount is empty and the server serves nothing until one is
+mounted.
 */}}
 {{- $authSecret := $vals.auth.existingSecret | default (printf "%s-status-auth" (include "patchy.fullname" .)) }}
 {{- if and $vals.auth.existingSecret $vals.auth.config }}
@@ -79,11 +84,11 @@ metadata:
     {{- end }}
 data:
     {{- range $k, $v := $data }}
-    {{- /* Helm parses every values.yaml number as a float64, and toString
+    {{- /* Helm parses every values.yaml number as a float64. toString
            renders a large one in scientific notation ("1.2e+06"), which the
-           binaries' strconv.Atoi rejects at startup. Integral floats are
-           therefore rendered as integers; genuine fractions (confidence
-           thresholds) fall through unchanged. */ -}}
+           binaries' strconv.Atoi rejects at startup. So whole-number floats
+           are rendered as integers. Real fractions (confidence thresholds)
+           pass through unchanged. */ -}}
     {{- $s := $v | toString }}
     {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
     {{- $s = int64 $v | toString }}
@@ -91,13 +96,17 @@ data:
     {{ $k }}: {{ $s | quote }}
     {{- end }}
 ---
-# Reads Findings/FindingRollups for the projection; writes SPEC only
-# (approve records spec.approval, retry/expedite record spec.retry /
-# spec.expedite, suspend/resume toggle spec.suspend, replay stamps
-# Integration spec.replay). Deliberately NO */status — the status server
-# never moves a phase — and no leases (no reconcilers, no leader election).
-# The delete/deletecollection verbs back the access-review-gated reset
-# action (demo tooling): wipe the pipeline state, keep the configuration.
+# Reads Findings/FindingRollups for the projection. Writes SPEC only:
+#
+#   * approve records spec.approval;
+#   * retry/expedite record spec.retry / spec.expedite;
+#   * suspend/resume toggle spec.suspend;
+#   * replay sets Integration spec.replay.
+#
+# NO */status, because the status server never moves a phase. No leases
+# either (no reconcilers, no leader election). The delete/deletecollection
+# verbs support the reset action (demo tooling), which an access review
+# gates. Reset deletes the pipeline state and keeps the configuration.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -112,14 +121,14 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findingrollups]
       verbs: [get, list, watch, delete, deletecollection]
-    # Read-only plus reset: the projection lifts each run's report markdown
-    # from the Investigation/Remediation children (reports live on the child
-    # only); repositories exist for reset alone.
+    # Read-only plus reset. The projection reads each run's report markdown
+    # from the Investigation/Remediation children (reports live only on the
+    # child). repositories are listed only for reset.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write seam for the replay and backfill actions (spec.replay,
-    # spec.backfill); the cached client's informer needs list/watch.
+    # Spec-only write access for the replay and backfill actions (spec.replay,
+    # spec.backfill). The cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
@@ -128,19 +137,20 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [forges]
       verbs: [get, list, watch]
-    # The persisted agent transcripts, read one at a time when a human opens a
-    # finding. Get only: they are read through the uncached API reader, so no
-    # informer and no list/watch — caching every ConfigMap in the namespace to
-    # serve these would be a poor trade.
+    # The saved agent transcripts, read one at a time when a human opens a
+    # finding. Get only: they are read through the uncached API reader, so
+    # there is no informer and no list/watch. Caching every ConfigMap in the
+    # namespace to serve these would cost more than it saves.
     - apiGroups: [""]
       resources: [configmaps]
       verbs: [get]
 ---
 {{- if $vals.liveTranscripts }}
-# Live transcripts: the status server follows a running agent's pod log to
-# stream its conversation, through the API server — it never dials an agent
-# pod, so the agents' default-deny ingress policy is untouched. Read-only, and
-# scoped to the agents namespace: no Jobs, no Secrets, no writes.
+# Live transcripts: the status server follows a running agent's pod log
+# through the API server to stream its conversation. It never connects to an
+# agent pod, so the agents' default-deny ingress policy stays as it is.
+# Read-only, and limited to the agents namespace: no Jobs, no Secrets, no
+# writes.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -190,8 +200,8 @@ subjects:
       namespace: {{ .Release.Namespace }}
 ---
 # SubjectAccessReview is cluster-scoped, so this one grant needs a
-# ClusterRole. Review-only: the power to ask "may user U approve findings?",
-# not to act.
+# ClusterRole. Review-only: the server may ask "may user U approve
+# findings?" but cannot act on the answer itself.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -219,7 +229,7 @@ subjects:
       namespace: {{ .Release.Namespace }}
 {{- if $vals.rbac.userRoles }}
 ---
-# Example user-facing grant tiers. Bindings are yours to bring: bind Users to
+# Example user-facing grant tiers. You supply the bindings: bind Users to
 # the OIDC username claim's values and Groups to the groups claim's values,
 # in the release namespace.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -261,12 +271,12 @@ rules:
       resources: [findings]
       verbs: [approve, retry, expedite, suspend, resume]
 ---
-# Operator + the configuration view (native get on integrations), the
+# Operator, plus the configuration view (native get on integrations), the
 # backfill trigger, and the user menu's demo tooling: replay the webhook
-# delivery log, reset (delete) all pipeline state. Grant replay/reset
+# delivery log, and reset (delete) all pipeline state. Grant replay/reset
 # sparingly. Migration note: replay/reset moved from findings to
-# integrations — the resource they act on and the one the integrations
-# admission policy checks.
+# integrations. That is the resource they act on, and the one the
+# integrations admission policy checks.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -390,8 +400,8 @@ spec:
                 {{- toYaml . | nindent 16 }}
             {{- end }}
             volumes:
-                # optional: with no auth Secret at all the server runs the
-                # rollups-only posture.
+                # optional: with no auth Secret at all, the server starts
+                # but serves no data until one is mounted.
                 - name: auth
                   secret:
                       secretName: {{ $authSecret }}
@@ -424,9 +434,9 @@ spec:
           {{- end }}
 {{- if $vals.networkPolicy.create }}
 ---
-# Ingress: 8080 from anywhere (the fronting ingress/gateway lives wherever
-# yours does; session authentication and the public-rollups-only unconfigured
-# posture carry the access control) plus 8081 probes. Egress: DNS, the
+# Ingress: 8080 from anywhere, plus 8081 probes. The ingress or gateway in
+# front can live in any namespace. Session authentication provides the
+# access control; with auth unconfigured the server serves no data. Egress: DNS, the
 # Kubernetes API server (cache watches + access reviews), and TCP 443 out
 # (the OIDC issuer, an OTLP collector).
 apiVersion: networking.k8s.io/v1
@@ -465,8 +475,9 @@ spec:
 {{- end }}
 {{- if $vals.ingress.enabled }}
 ---
-# The status page's exposure, plain-Ingress flavour. The whole site routes:
-# the SPA shell, /api, /events, and the sign-in surface (/oauth2, /logout).
+# How the status page is exposed, plain Ingress version. The whole site is
+# routed: the SPA shell, /api, /events, and the sign-in routes (/oauth2,
+# /logout).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -500,7 +511,7 @@ spec:
 {{- end }}
 {{- if $vals.httpRoute.enabled }}
 ---
-# The status page's exposure, Gateway API flavour.
+# How the status page is exposed, Gateway API version.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

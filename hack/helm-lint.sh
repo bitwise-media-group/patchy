@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Lint both helm charts, then render every component combination the templates
-# branch on — a broken combination fails here instead of at install time.
+# branch on, so a broken combination fails here instead of at install time.
 set -eu
 
 helm lint charts/patchy

@@ -1166,7 +1166,7 @@
         },
         "egressBroker": {
             "type": "object",
-            "description": "The egress credential broker all claude model traffic goes through; deploys exactly when a claude runner is enabled",
+            "description": "The egress credential broker all claude and codex model traffic goes through; deploys whenever a claude or codex runner is enabled",
             "additionalProperties": false,
             "required": [
                 "serviceAccount",

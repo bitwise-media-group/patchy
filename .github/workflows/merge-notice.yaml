@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Fast-forward merge notice — thin caller for the org's reusable merge-notice
+# Fast-forward merge notice: a thin caller for the org's reusable merge-notice
 # workflow. When a PR is opened it posts a one-time comment explaining this repo
 # merges by fast-forward (a maintainer comments `/merge`, see merge.yaml) so
 # newcomers don't reach for the GitHub merge button.
@@ -19,7 +19,7 @@ on: # zizmor: ignore[dangerous-triggers] -- required: the notice must reach fork
     pull_request_target:
         types: [opened]
 
-# the reusable workflow comments with GITHUB_TOKEN; grant just that
+# the reusable workflow comments with GITHUB_TOKEN; grant only that
 permissions:
     pull-requests: write
 

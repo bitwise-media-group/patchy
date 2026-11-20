@@ -1,21 +1,21 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Release pipeline — thin caller for the org's reusable release workflow.
+# Release pipeline: a thin caller for the org's reusable release workflow.
 # release-please watches main and keeps a release PR current from the Conventional
-# Commit history; when that PR merges the workflow cuts the draft GitHub release +
-# vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
-# keyless cosign signatures (linux/windows), Developer ID-signed + notarized
+# Commit history. When that PR merges, the workflow cuts the draft GitHub release +
+# vX.Y.Z tag and GoReleaser adopts it. GoReleaser produces binary archives + checksums +
+# SBOMs + keyless cosign signatures (linux/windows), Developer ID-signed + notarized
 # darwin binaries, and a SLSA build-provenance attestation over
 # everything in checksums.txt. Container images are published by goreleaser
 # (dockers_v2 over the repo-root Dockerfile.*) to ghcr, and their digests
 # (dist/digests.txt) get the same build-provenance attestation as the archives.
-# The workstation CLI — the one binary that runs on a laptop rather than in the
-# cluster — additionally ships as a Homebrew cask pushed to
+# The workstation CLI is the one binary that runs on a laptop rather than in the
+# cluster. It also ships as a Homebrew cask pushed to
 # bitwise-media-group/homebrew-tap.
-# When a release was actually cut, the helm job then packages, cosign-signs,
-# and pushes the chart to ghcr (helm.yaml, called at the release tag) — it runs
-# here rather than on `release: published` because goreleaser publishes the
+# When a release was cut, the helm job then packages, cosign-signs, and pushes
+# the chart to ghcr (helm.yaml, called at the release tag). It runs here rather
+# than on `release: published` because goreleaser publishes the
 # release with GITHUB_TOKEN, and GITHUB_TOKEN-driven events start no workflows.
 #
 # app-client-id/app-private-key author the release-please PR as the "FF Merge" App
@@ -78,9 +78,9 @@ jobs:
             macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
             macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
 
-    # Package, sign, and push the helm chart to ghcr — only when this run cut a
-    # release (release_created is an empty string otherwise). Runs after the
-    # whole reusable workflow, so the container images the chart references are
+    # Package, sign, and push the helm chart to ghcr, but only when this run cut a
+    # release (release_created is an empty string otherwise). This runs after the
+    # reusable workflow finishes, so the container images the chart references are
     # already on ghcr; the checkout inside helm.yaml is at the release tag, whose
     # Chart.yaml release-please has already stamped.
     helm:

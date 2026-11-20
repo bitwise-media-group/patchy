@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: investigations.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -86,8 +86,8 @@ spec:
             type: object
           spec:
             description: |-
-              InvestigationSpec identifies one analysis attempt. It is immutable — a new
-              attempt is a new Investigation (CEL-enforced).
+              InvestigationSpec identifies one analysis attempt. It is immutable, so a
+              new attempt is a new Investigation (CEL-enforced).
             properties:
               attempt:
                 description: Attempt ordinal, 1-based.
@@ -367,8 +367,8 @@ spec:
                 description: |-
                   RemediationParameters are the stage-2 parameters the investigation
                   suggested: the model to run, and (on Estimate) its prediction of the
-                  turns and tokens the fix will need. The prediction is advisory — the
-                  grant is resolved by the remediation spawner, never here.
+                  turns and tokens the fix will need. The prediction is advisory. The
+                  remediation spawner resolves the grant, never this field.
                 properties:
                   estimate:
                     description: |-
@@ -412,8 +412,8 @@ spec:
                 type: object
               report:
                 description: |-
-                  Report is the full analysis report markdown (single copy — the Finding
-                  mirrors ratings only).
+                  Report is the full analysis report markdown. This is the only copy: the
+                  Finding mirrors the ratings only.
                 maxLength: 65536
                 type: string
               severity:
@@ -466,9 +466,9 @@ spec:
                   transcript:
                     description: |-
                       Transcript points at the conversation this stage produced. The turns
-                      themselves live in a ConfigMap owned by this run — far too large for a
-                      status subresource — so what is recorded here is where to find them and
-                      enough of a summary to render without fetching.
+                      themselves are far too large for a status subresource, so they live in
+                      a ConfigMap owned by this run. This field records where to find them and
+                      enough of a summary to render without fetching them.
                     properties:
                       name:
                         description: Name of the ConfigMap holding the turns, in the

@@ -1,4 +1,4 @@
-# Patchy documentation — Zensical configuration
+# Patchy documentation: Zensical configuration
 # https://zensical.org/docs/setup/basics/
 #
 # Zensical can also read mkdocs.yml, but new projects should use zensical.toml.
@@ -12,7 +12,7 @@ repo_url = "https://github.com/bitwise-media-group/patchy"
 repo_name = "bitwise-media-group/patchy"
 # The `#__consent` link re-opens the cookie consent dialog so visitors can
 # change their choice at any time (see [project.extra.consent] below).
-copyright = '© 2026 Bitwise Media Group Ltd — <a href="#__consent">Change cookie settings</a>'
+copyright = '© 2026 Bitwise Media Group Ltd · <a href="#__consent">Change cookie settings</a>'
 
 # Paths are relative to docs_dir (default: "docs"). tokens.css is the
 # status page's vendored design tokens, re-scoped to Material's schemes; it

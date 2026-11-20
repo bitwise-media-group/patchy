@@ -1,22 +1,23 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The base L3/L4 story. A plain NetworkPolicy cannot match hostnames, so the
-# agent egress rule reads "TCP 443 to anywhere outside the cluster" — that
+# The base L3/L4 policies. A plain NetworkPolicy cannot match hostnames, so
+# the agent egress rule reads "TCP 443 to anywhere outside the cluster". That
 # permits api.anthropic.com, and also every other host on 443. Two things
-# carry the isolation, in this order:
+# provide the isolation, in this order:
 #
-#   1. CREDENTIAL ABSENCE (the real control): the agent pod holds no forge
-#      credential AT ALL — not even in the init container. The repository
+#   1. CREDENTIAL ABSENCE (the main control): the agent pod holds no forge
+#      credential AT ALL, not even in the init container. The repository
 #      arrives as a digest-verified tarball fetched from source-controller's
 #      artifact server over the cluster network.
 #   2. Hostname policy (defence in depth): agent.networkPolicy.mode picks the
-#      dialect the cluster enforces — cilium, gke (Dataplane V2's
-#      FQDNNetworkPolicy) or istio — and defaults to detecting it.
+#      policy type the cluster enforces (cilium, gke for Dataplane V2's
+#      FQDNNetworkPolicy, or istio). By default it detects the right one.
 #
-# When a hostname mode IS active the broad rule below is dropped, because
-# network policies are additive: leaving "443 to anywhere" in place would
-# union with the allowlist and make it decorative. See patchy.broadEgress.
+# When a hostname mode IS active, the chart drops the broad rule below,
+# because network policies are additive. Leaving "443 to anywhere" in place
+# would combine with the allowlist and make it useless. See
+# patchy.broadEgress.
 #
 # See deploy/kustomize/base/networkpolicy.yaml for the full discussion.
 {{- if and .Values.agent.networkPolicy.cilium.enabled .Values.agent.networkPolicy.istio.enabled }}
@@ -35,19 +36,19 @@
 ---
 # ---- {{ $c.name }} ----------------------------------------------------------
 # Ingress: 8081 from anywhere (kubelet probes arrive from the node IP, which
-# no pod selector can match){{ if eq $c.name "integration-controller" }}, plus 8080 — the provider webhook
-# receivers; the fronting ingress controller may live in any namespace, and
+# no pod selector can match){{ if eq $c.name "integration-controller" }}, plus 8080 for the provider webhook
+# receivers. The ingress controller in front may live in any namespace, and
 # the per-Integration HMAC signature check is the authentication. Tighten the
 # from: to your ingress namespace if you want L3 on top of the HMAC{{ end }}{{ if eq $c.name "source-controller" }}, plus
-# 9790 — the artifact server — from the agent namespace only{{ end }}.
+# 9790 (the artifact server) from the agent namespace only{{ end }}.
 #
-# Egress: DNS, then TCP 443/6443 — the Kubernetes API server (every
+# Egress: DNS, then TCP 443/6443 for the Kubernetes API server (every
 # controller is a CR controller), the forge API where the controller uses
 # one, and any OTLP collector. 6443 covers kind/kubeadm API servers; managed
-# clusters usually use 443.{{ if eq $c.name "context-controller" }} The link-local rule is EKS Pod Identity:
-# the SDK's other in-cluster credential path fetches from the node-local
-# agent at 169.254.170.23:80 over HTTP (fd00:ec2::23 on IPv6 clusters) —
-# harmless elsewhere, since nothing else answers on that address.{{ end }}
+# clusters usually use 443.{{ if eq $c.name "context-controller" }} The link-local rule is for EKS Pod Identity.
+# The SDK's other in-cluster credential path fetches from the node-local
+# agent at 169.254.170.23:80 over HTTP (fd00:ec2::23 on IPv6 clusters). The
+# rule is harmless elsewhere, because nothing else answers on that address.{{ end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -121,10 +122,10 @@ spec:
                 port: 80
         {{- end }}
         {{- with $c.vals.networkPolicy.extraEgress }}
-        # Operator-supplied additions (<controller>.networkPolicy.extraEgress)
-        # — a generic Integration's resolver or enhancer endpoint on a port
-        # other than 443, say, or an egress proxy (.Values.proxy / spec.proxy)
-        # listening on 3128/8080. Rendered verbatim.
+        # Operator-supplied additions (<controller>.networkPolicy.extraEgress),
+        # for example a generic Integration's resolver or enhancer endpoint on
+        # a port other than 443, or an egress proxy (.Values.proxy /
+        # spec.proxy) listening on 3128/8080. Rendered as written.
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}
@@ -132,9 +133,9 @@ spec:
 {{- if .Values.agent.networkPolicy.create }}
 ---
 # ---- agent namespace: default deny, both directions ------------------------
-# Nothing may reach an agent pod (the job controllers read its output from
-# the pod log through the API server, not from the pod), and an agent pod may
-# reach nothing except what the egress rule below re-permits.
+# Nothing may reach an agent pod. (The job controllers read its output from
+# the pod log through the API server and never connect to the pod.) An agent
+# pod may reach nothing except what the egress rule below allows.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -151,21 +152,28 @@ spec:
     policyTypes: [Ingress, Egress]
 {{- if or $broadEgress (ne $mode "cilium") }}
 ---
-# DNS; source-controller's artifact server (the init container's
-# credential-less, digest-verified tarball fetch — the ONLY in-cluster
-# destination an agent may dial); and, unless a hostname mode has taken over
-# egress, TCP 443 externally (the agent container's `claude -p` ->
-# api.anthropic.com), nothing else. The except: blocks keep an agent away from
-# the API server, kubelet, and other workloads — adjust
-# agent.networkPolicy.clusterCIDRs to your cluster's pod/service/node ranges.
+# This policy allows:
 #
-# Under mode `cilium` this whole policy is skipped: the CiliumNetworkPolicy
-# already grants DNS (through the proxy, which is what makes toFQDNs resolve
-# at all), the artifact server and the model API, and a second additive policy
-# granting unproxied DNS alongside it would only widen that. Under mode `gke`
-# it still renders — an FQDNNetworkPolicy is egress-only and cannot name a
-# resolver or a ClusterIP Service, so DNS and the artifact server must come
-# from here — but without the 443 rule, which is what leaves the
+#   * DNS;
+#   * source-controller's artifact server. This is the init container's
+#     tarball fetch, which uses no credential and verifies the digest;
+#   * the egress broker, when a brokered runner (claude, codex) is enabled.
+#     All of those pods' model traffic goes there;
+#   * TCP 443 to external hosts, only while the broad rule applies (see
+#     agent.networkPolicy.broadEgress). No runner patchy ships needs it.
+#
+# Nothing else is allowed. The except: blocks keep an agent away from the API
+# server, kubelet, and other workloads. Adjust agent.networkPolicy.clusterCIDRs
+# to your cluster's pod/service/node ranges.
+#
+# Under mode `cilium` this policy is skipped unless broadEgress=always keeps
+# it while a new mode is soaked. The CiliumNetworkPolicy already
+# grants DNS (through the proxy, which is what makes toFQDNs resolve at all),
+# the artifact server, and the model API. A second additive policy that
+# granted unproxied DNS beside it would only widen that. Under mode `gke` it
+# still renders, because an FQDNNetworkPolicy is egress-only and cannot name a
+# resolver or a ClusterIP Service. So DNS and the artifact server must come
+# from here. But it renders without the 443 rule, which leaves the
 # FQDNNetworkPolicy as the only route out to the internet.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -207,8 +215,8 @@ spec:
                 port: 9790
         {{- if include "patchy.brokerEnabled" . }}
         # The egress credential broker: ALL of a claude or codex pod's model
-        # traffic. Brokered pods need no other egress at all — not even
-        # api.anthropic.com or api.openai.com.
+        # traffic goes here. Brokered pods need no other egress at all, not
+        # even api.anthropic.com or api.openai.com.
         - to:
               - namespaceSelector:
                     matchLabels:

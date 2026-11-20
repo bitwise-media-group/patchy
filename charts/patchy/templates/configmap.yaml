@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: MIT
 #
 # One ConfigMap per controller, consumed with envFrom. Every key is a PATCHY_*
-# environment variable (internal/cli/options.go maps them back onto flags):
-# the shared keys come from .Values.config — each overridable per controller
-# by repeating the key under <controller>.config — and the
-# controller-specific keys from <controller>.config, so each ConfigMap
-# carries exactly the settings its binary binds. The key vocabulary mirrors
+# environment variable (internal/cli/options.go maps them back onto flags).
+# The shared keys come from .Values.config. You can override each one per
+# controller by repeating the key under <controller>.config. The
+# controller-specific keys come from <controller>.config. So each ConfigMap
+# carries only the settings its binary binds. The key names match
 # deploy/kustomize/base/configmap.yaml.
 #
-# NOT here: forge/provider credentials. They live in Secrets referenced by
-# the Integration and Forge custom resources (spec.secretRef) — see crs.yaml
-# and deploy/kustomize/base/secrets.example.yaml.
+# NOT here: forge/provider credentials. They live in Secrets that the
+# Integration and Forge custom resources reference (spec.secretRef). See
+# the patchy-config chart and deploy/kustomize/base/secrets.example.yaml.
 #
-# The data is assembled as a dict so the extra maps (config.extra, then
+# The data is built as a dict so the extra maps (config.extra, then
 # <controller>.config.extra) can override any derived key without rendering
 # it twice.
 {{- range $c := list
@@ -26,9 +26,9 @@
 {{- $g := $.Values.config }}
 {{- $own := $c.vals.config }}
 {{/*
-The health address is fixed: the containerPort, probes, and NetworkPolicy
-ports all say 8081, so a knob here would just let the pieces disagree. Same
-for :8080 (integration) and :9790 (source).
+The health address is fixed. The containerPort, probes, and NetworkPolicy
+ports all say 8081, so a setting here would only let them disagree. The same
+goes for :8080 (integration) and :9790 (source).
 */}}
 {{- $data := dict
     "PATCHY_HEALTH_ADDR" ":8081"
@@ -47,16 +47,17 @@ for :8080 (integration) and :9790 (source).
 {{- $_ := set $data "PATCHY_ARTIFACT_DIR" "/data/artifacts" }}
 {{/*
 The binary's own default base URL assumes the kustomize Service name
-(patchy-source-controller); the chart's Service is <fullname>-source-
-controller, so the URL minted into Repository statuses is pinned here.
+(patchy-source-controller). The chart's Service is
+<fullname>-source-controller, so the chart sets the URL written into
+Repository statuses here.
 */}}
 {{- $_ := set $data "PATCHY_ARTIFACT_BASE_URL" (printf "http://%s-source-controller.%s.svc.cluster.local:9790" (include "patchy.fullname" $) $.Release.Namespace) }}
 {{- if $.Values.evaluationController.enabled }}
 {{/*
-The internal workspace-blob endpoint the evaluation controller streams
-uploads to (NetworkPolicy-gated to that one client). Rendered only when the
-evaluation controller is deployed — without it the second listener never
-starts.
+The internal workspace-blob endpoint that the evaluation controller streams
+uploads to (a NetworkPolicy limits it to that one client). It is rendered
+only when the evaluation controller is deployed. Without it, the second
+listener never starts.
 */}}
 {{- $_ := set $data "PATCHY_ARTIFACT_INTERNAL_ADDR" ":9791" }}
 {{- $_ := set $data "PATCHY_WORKSPACE_RETENTION" $.Values.evaluationController.workspaceRetention }}
@@ -64,11 +65,11 @@ starts.
 {{- else if or (eq $c.name "investigation-controller") (eq $c.name "remediation-controller") }}
 {{/*
 The job-controller block, shared by both: how the agent Jobs run, and the
-budgets a remediation may spend. One runner per enabled harness stamps its
-own PATCHY_<HARNESS>_AGENT_IMAGE and
-credential keys, and PATCHY_HARNESSES restricts the controllers to exactly the
-harnesses enabled here (network-policy rendering can't probe credentials, so
-enablement is explicit). Pinning a runner's image digest is one edit under
+budgets a remediation may spend. Each enabled harness gets one runner, which
+sets its own PATCHY_<HARNESS>_AGENT_IMAGE and credential keys.
+PATCHY_HARNESSES limits the controllers to the harnesses enabled here.
+Enablement is explicit because network-policy rendering cannot probe
+credentials. To pin a runner's image digest, edit one value:
 agent.runners.<harness>.image.
 */}}
 {{- $_ := set $data "PATCHY_MAX_ATTEMPTS" ($own.maxAttempts | default $g.maxAttempts) }}
@@ -83,9 +84,9 @@ agent.runners.<harness>.image.
 {{- $_ := set $data (printf "PATCHY_%s_AGENT_IMAGE" (upper $id)) (include "patchy.image" (dict "root" $ "binary" (printf "%s-agent-runner" $id) "image" $r.image)) }}
 {{- if has $id (splitList " " (include "patchy.brokeredHarnesses" $)) }}
 {{/*
-Claude and codex are brokered: the broker URL + provider stamps replace the
-PATCHY_<HARNESS>_SECRET* keys — no model credential exists in the agent
-namespace anymore.
+Claude and codex are brokered. The broker URL and provider keys replace the
+PATCHY_<HARNESS>_SECRET* keys, so no model credential exists in the agent
+namespace.
 */}}
 {{- $_ := include "patchy.providerData" (dict "root" $ "data" $data "id" $id) }}
 {{- end }}
@@ -116,11 +117,11 @@ namespace anymore.
 {{- end }}
 {{- end }}
 {{/*
-The global egress proxy (spec.proxy on a Forge/GitHub Integration overrides
-it per resource). NO_PROXY always starts with the cluster-internal suffixes
-so in-cluster traffic (the artifact endpoint, the egress broker, the API
-server) never detours through the proxy. Set before the extra loops so
-config.extra keeps the last word.
+The global egress proxy (spec.proxy on a Forge or GitHub Integration
+overrides it per resource). NO_PROXY always starts with the cluster-internal
+suffixes, so in-cluster traffic (the artifact endpoint, the egress broker,
+the API server) never goes through the proxy. This is set before the extra
+loops, so config.extra still wins.
 */}}
 {{- $p := $.Values.proxy | default dict }}
 {{- if or $p.httpsProxy $p.httpProxy }}
@@ -156,11 +157,11 @@ metadata:
     {{- end }}
 data:
     {{- range $k, $v := $data }}
-    {{- /* Helm parses every values.yaml number as a float64, and toString
+    {{- /* Helm parses every values.yaml number as a float64. toString
            renders a large one in scientific notation ("1.2e+06"), which the
-           binaries' strconv.Atoi rejects at startup. Integral floats are
-           therefore rendered as integers; genuine fractions (confidence
-           thresholds) fall through unchanged. */ -}}
+           binaries' strconv.Atoi rejects at startup. So whole-number floats
+           are rendered as integers. Real fractions (confidence thresholds)
+           pass through unchanged. */ -}}
     {{- $s := $v | toString }}
     {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
     {{- $s = int64 $v | toString }}

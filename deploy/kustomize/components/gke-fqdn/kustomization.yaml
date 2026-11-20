@@ -7,28 +7,28 @@
 #     components:
 #         - ../../components/gke-fqdn
 #
-# On a self-managed Cilium use ../cilium instead, and on an Istio mesh
-# ../istio — the same allowlist, enforced in a different plane. Never combine
-# two of them.
+# On a self-managed Cilium use ../cilium instead, and on an Istio mesh use
+# ../istio. Both give the same allowlist, enforced in a different place.
+# Never combine two of them.
 #
-# Every runner patchy ships is brokered (claude, codex): its pods reach no
-# external host at all, only DNS, source-controller's artifact server and the
-# egress broker — all of which base/networkpolicy.yaml grants. So this
-# component renders NO FQDNNetworkPolicy; a non-brokered runner added later
-# would get one here (networking.gke.io/v1alpha1, selecting its pods by the
-# patchy.bitwisemedia.uk/harness label, listing only its model API on 443).
-# It REQUIRES the cluster to be created or updated with
-# `--enable-fqdn-network-policy` only once such a policy exists.
+# Every runner patchy ships is brokered (claude, codex). Their pods reach no
+# external host at all. They reach only DNS, source-controller's artifact
+# server and the egress broker, and base/networkpolicy.yaml grants all of
+# those. So this component renders NO FQDNNetworkPolicy. A non-brokered
+# runner added later would get one here (networking.gke.io/v1alpha1,
+# selecting its pods by the patchy.bitwisemedia.uk/harness label, listing
+# only its model API on 443). Only once such a policy exists does it REQUIRE
+# the cluster to be created or updated with `--enable-fqdn-network-policy`.
 #
 # What it does do is DROP the base policy's "TCP 443 to anywhere outside the
-# cluster" egress rule. Network policies are ADDITIVE — a packet matching ANY
+# cluster" egress rule. Network policies are ADDITIVE. A packet matching ANY
 # policy that selects the pod is allowed, and no policy can subtract from
-# another — so with the broad rule removed, a brokered pod's egress is
-# exactly DNS + the artifact server + the broker. The `test` op pins the
-# rule's position: if base/networkpolicy.yaml reorders its egress rules, the
-# build fails instead of silently removing the wrong one (an earlier revision
-# removed index 2 — the broker rule — after the broker rule was inserted
-# ahead of it, leaving the broad rule in place).
+# another. So with the broad rule removed, a brokered pod's egress is only
+# DNS + the artifact server + the broker. The `test` op pins the rule's
+# position. If base/networkpolicy.yaml reorders its egress rules, the build
+# fails instead of silently removing the wrong one. (An earlier revision
+# removed index 2, the broker rule, after the broker rule was inserted ahead
+# of it. That left the broad rule in place.)
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 

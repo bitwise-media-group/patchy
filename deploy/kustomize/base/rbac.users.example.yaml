@@ -1,67 +1,69 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# DOCUMENTATION, not a resource — deliberately absent from kustomization.yaml
-# (like secrets.example.yaml). Copy into your environment overlay and bind to
-# your own users/SSO groups.
+# DOCUMENTATION, not a resource. It is left out of kustomization.yaml on
+# purpose (like secrets.example.yaml). Copy it into your environment overlay
+# and bind to your own users/SSO groups.
 #
 # Two clients consume these grants, and they are authorized differently:
 #
 #   * the STATUS PAGE evaluates them per signed-in user by asking the cluster
-#     (SubjectAccessReview) — those users need no kubeconfig and never talk to
+#     (SubjectAccessReview). Those users need no kubeconfig and never talk to
 #     the API server themselves;
 #   * the patchy CLI acts as the user's OWN kubeconfig identity, so the API
 #     server authorizes it directly.
 #
-# The CLI is why every role below viewer also grants native `update`: without
-# it no client acting as the user could write a finding at all. RBAC has no
-# notion of a field, so `update` alone would grant the whole resource — the
-# ValidatingAdmissionPolicy in admission-policy.yaml is what narrows it back
-# down, binding each spec field to its custom verb for every client equally.
-# Grant `update` only alongside that policy, and note that `create`/`delete`
-# are deliberately absent: with them, a user could delete a finding and
-# recreate it with an approval already set.
+# The CLI is why every findings role below, except the viewer, also grants
+# native `update`. Without it, no client acting as the user could write a
+# finding at all. RBAC has no
+# notion of a field, so `update` alone would grant the whole resource. The
+# ValidatingAdmissionPolicy in admission-policy.yaml narrows it back down. It
+# binds each spec field to its custom verb, for every client equally. Grant
+# `update` only alongside that policy. Note that `create`/`delete` are left
+# out on purpose: with them, a user could delete a finding and recreate it
+# with an approval already set.
 #
 # What the verbs buy:
 #
-#   * viewing findings   — native `get` on findings
-#   * the action buttons — the CUSTOM verbs approve / retry / expedite /
+#   * viewing findings:    native `get` on findings.
+#   * the action buttons:  the CUSTOM verbs approve / retry / expedite /
 #                          suspend / resume on findings.patchy.bitwisemedia.uk.
-#                          Custom verbs are plain strings to RBAC; nothing
-#                          else consumes them, so granting one confers exactly
-#                          one button. approve releases holds and revives
-#                          handed-off findings; retry recovers a Failed
-#                          finding to the state it failed from; expedite skips
-#                          the waiting stages (accumulation window, minimum
-#                          age, queue position).
-#   * the configuration view — native `get` on integrations shows the
+#                          Custom verbs are plain strings to RBAC. Nothing
+#                          else consumes them, so each one grants one
+#                          button. approve releases holds and revives
+#                          handed-off findings. retry returns a Failed
+#                          finding to the state it failed from. expedite
+#                          skips the waiting stages (accumulation window,
+#                          minimum age, queue position).
+#   * the configuration view: native `get` on integrations shows the
 #                          Forges/Integrations/enhancers configuration page.
-#   * the backfill trigger — the CUSTOM verb backfill on
+#   * the backfill trigger: the CUSTOM verb backfill on
 #                          integrations.patchy.bitwisemedia.uk stamps
-#                          spec.backfill: a one-shot list-alerts walk that
-#                          ingests alerts predating webhook coverage.
-#   * the user menu's demo tooling — the CUSTOM verbs replay / reset on
+#                          spec.backfill. That starts a one-shot list-alerts
+#                          walk that ingests alerts predating webhook
+#                          coverage.
+#   * the user menu's demo tooling: the CUSTOM verbs replay / reset on
 #                          integrations.patchy.bitwisemedia.uk. replay asks
 #                          the integration-controller to redeliver the
-#                          webhook delivery log; reset deletes every
+#                          webhook delivery log. reset deletes every
 #                          pipeline resource in the namespace (findings,
 #                          runs, repositories, rollups). Grant sparingly.
 #
 # MIGRATION (pre-1.0 breaking change): replay and reset used to be verbs on
-# findings.patchy.bitwisemedia.uk. They moved to integrations — the resource
-# they actually act on, and the one the integrations admission policy's
-# authorizer checks — so existing bindings that grant `replay, reset` on
+# findings.patchy.bitwisemedia.uk. They moved to integrations, which is the
+# resource they act on and the one the integrations admission policy's
+# authorizer checks. Existing bindings that grant `replay, reset` on
 # findings must move those verbs to an integrations rule (with the native
 # update/patch to write the stamp), as patchy-findings-admin below does.
 #
 # Metrics (rollup statistics) need native get on findingrollups, on the
 # status page and through the API server alike (`patchy get rollups` also
-# needs list) — every role below already carries both.
+# needs list). Every role below already carries both.
 #
 # Subjects come from the OIDC claims (auth config claims: username/groups),
 # so bind Users to the username claim's values (e.g. email) and Groups to the
-# groups claim's values. The example bindings are namespaced to `patchy`:
-# grants apply per namespace, uniformly across the findings in it.
+# groups claim's values. The example bindings are namespaced to `patchy`.
+# Grants apply per namespace, equally to every finding in it.
 ---
 # Read-only: sees the findings board and detail, never an action button.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -88,8 +90,8 @@ rules:
       verbs: [get, list]
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
-      # update is the native verb the API server checks; the admission policy
-      # is what limits it to spec.approval for this role.
+      # update is the native verb the API server checks. The admission policy
+      # limits it to spec.approval for this role.
       verbs: [update, patch, approve]
 ---
 # Viewer + every action: approve, retry, expedite, suspend, resume.
@@ -109,7 +111,7 @@ rules:
 ---
 # Operator + the configuration view, the backfill trigger, and the user
 # menu's demo tooling: replay the webhook delivery log, reset (delete) all
-# pipeline state. Grant replay/reset sparingly — demo/dev environments.
+# pipeline state. Grant replay/reset sparingly, in demo/dev environments.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -123,9 +125,9 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
       verbs: [update, patch, approve, retry, expedite, suspend, resume]
-    # get/list shows the configuration view (and `patchy get integrations`);
-    # update/patch is the native verb the stamp write needs; the custom
-    # verbs are what the admission policy and the access reviews check.
+    # get/list shows the configuration view (and `patchy get integrations`).
+    # update/patch is the native verb the stamp write needs. The admission
+    # policy and the access reviews check the custom verbs.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, update, patch, backfill, replay, reset]
@@ -165,9 +167,9 @@ subjects:
 ---
 # Remote-evaluation submitters (the evolve CLI): create submits an
 # evaluation and uploads workspaces, get reads snapshots and streams the SSE
-# monitor, delete cancels. Native verbs only — no custom verbs, no admission
-# policy involved; these bindings are the evaluation API's entire
-# authorization surface.
+# monitor, delete cancels. Native verbs only, with no custom verbs and no
+# admission policy. These bindings are all the authorization the evaluation
+# API has.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

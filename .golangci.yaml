@@ -40,13 +40,13 @@ linters:
     exclusions:
         generated: lax
         rules:
-            # kubebuilder markers are single-line by grammar — they cannot be
+            # kubebuilder markers are single-line by grammar, so they cannot be
             # wrapped to satisfy lll.
             - linters:
                   - lll
               source: '^\s*// \+kubebuilder:'
             # controller-runtime deprecates Result.Requeue in favour of
-            # RequeueAfter, but the write-conflict paths want exactly what
+            # RequeueAfter, but the write-conflict paths need what
             # Requeue gives: an immediate, rate-limited retry with no fixed
             # delay and no error log. golangci-lint 2.13+ reports it.
             - linters:

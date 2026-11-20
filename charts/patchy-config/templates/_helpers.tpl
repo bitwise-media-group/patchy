@@ -41,8 +41,8 @@ app.kubernetes.io/part-of: patchy
 
 {{/*
 Object annotations: commonAnnotations plus optional per-object extras, which
-win key-by-key. Context: dict "root" $ ["extra" <map>]. Empty output when
-both maps are empty — wrap the annotations: key in `with`.
+win key by key. Context: dict "root" $ ["extra" <map>]. The output is empty
+when both maps are empty, so wrap the annotations: key in `with`.
 */}}
 {{- define "patchy-config.annotations" -}}
 {{- $a := merge (dict) (.extra | default dict) (.root.Values.commonAnnotations | default dict) -}}

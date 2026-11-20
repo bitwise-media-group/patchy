@@ -1,18 +1,19 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Two Services, because only two things are dialled by anything:
+# Two Services, because only two components are ever called by anything else:
 #
-#   * <fullname>-integration-controller:8080 — the single internet-facing
+#   * <fullname>-integration-controller:8080: the single internet-facing
 #     entry point (the provider webhook receivers, e.g. POST
-#     /github/webhooks). Fronted by `webhook.ingress` / `webhook.httpRoute`.
-#   * <fullname>-source-controller:9790 — the artifact server the agent pods
-#     fetch SHA-pinned repository tarballs from (in-cluster only; the
+#     /github/webhooks). `webhook.ingress` or `webhook.httpRoute` sits in
+#     front of it.
+#   * <fullname>-source-controller:9790: the artifact server. Agent pods
+#     fetch SHA-pinned repository tarballs from it (in-cluster only; the
 #     NetworkPolicies restrict it to the agent namespace).
 #
-# The other controllers serve nothing but kubelet probes on :8081, which hit
-# the pod directly — no Service needed. type NodePort + nodePort covers the
-# kind/dev case.
+# The other controllers serve only kubelet probes on :8081. The kubelet hits
+# the pod directly, so they need no Service. type NodePort + nodePort covers
+# the kind/dev case.
 {{- range $c := list
     (dict "name" "integration-controller" "vals" .Values.integrationController "portName" "http")
     (dict "name" "source-controller" "vals" .Values.sourceController "portName" "artifact")
@@ -43,8 +44,8 @@ spec:
           nodePort: {{ . }}
           {{- end }}
         {{- if and (eq $c.name "source-controller") $.Values.evaluationController.enabled }}
-        # The internal workspace-blob endpoint, dialled only by the
-        # evaluation controller (NetworkPolicy-gated).
+        # The internal workspace-blob endpoint. Only the evaluation
+        # controller calls it (a NetworkPolicy enforces this).
         - name: internal
           port: 9791
           targetPort: internal

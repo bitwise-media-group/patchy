@@ -10,7 +10,7 @@ import (
 
 // Label, annotation, and finalizer keys shared by every controller. The truth
 // behind hashed label values (repository URLs, accumulation keys) always lives
-// in the owning object's spec — labels exist only for selectors.
+// in the owning object's spec. Labels exist only for selectors.
 const (
 	// LabelKeyHash carries the hex-encoded accumulation-key hash on a Finding.
 	LabelKeyHash = "patchy.bitwisemedia.uk/key-hash"
@@ -70,13 +70,14 @@ type LocalSecretReference struct {
 }
 
 // ProxyConfig routes the referencing resource's GitHub traffic through an
-// HTTP/HTTPS forward proxy — the GitHub Enterprise Cloud IP-allowlist
-// pattern. When set it overrides the process HTTPS_PROXY/HTTP_PROXY/NO_PROXY
-// environment for this resource's traffic; unset, the environment applies.
+// HTTP/HTTPS forward proxy, for example when a GitHub Enterprise Cloud
+// organisation only accepts traffic from allowlisted IPs. When set, it overrides the process
+// HTTPS_PROXY/HTTP_PROXY/NO_PROXY environment for this resource's traffic.
+// When unset, the environment applies.
 type ProxyConfig struct {
 	// URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
-	// and https. Credentials must not be embedded in the URL — put them in
-	// the credential Secret under "proxyUsername" + "proxyPassword".
+	// and https. Do not embed credentials in the URL. Put them in the
+	// credential Secret under "proxyUsername" + "proxyPassword".
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern=`^https?://[^@\s]+$`
 	URL string `json:"url"`
@@ -198,7 +199,7 @@ const (
 
 // AgentEstimate is the investigation's prediction of what a remediation will
 // need. It is advisory: it never reduces a run's budget. Its only operational
-// effect is the approval gate — an estimate above what patchy will spend
+// effect is the approval gate. An estimate above what patchy will spend
 // unattended holds the finding in AwaitingApproval, and approving it grants
 // the estimate (bounded by the manual budget). Everything else it does is
 // reporting: estimate against granted against actual, and the skew averages
@@ -215,8 +216,8 @@ type AgentEstimate struct {
 }
 
 // AgentParameters bound one agent run: which model it uses and how much it
-// may spend. MaxTurns/TokenBudget are what the run was actually GRANTED —
-// the automated budget, or the investigation's estimate (bounded by the
+// may spend. MaxTurns/TokenBudget are what the run was granted: the
+// automated budget, or the investigation's estimate (bounded by the
 // manual budget) when a human approved it. They are never derived downward
 // from the estimate: a run always gets at least the automated budget,
 // whatever the investigation predicted, including when it predicted nothing.
@@ -302,17 +303,17 @@ type StageResult struct {
 	// +kubebuilder:validation:MaxLength=4096
 	Detail string `json:"detail,omitempty"`
 	// Transcript points at the conversation this stage produced. The turns
-	// themselves live in a ConfigMap owned by this run — far too large for a
-	// status subresource — so what is recorded here is where to find them and
-	// enough of a summary to render without fetching.
+	// themselves are far too large for a status subresource, so they live in
+	// a ConfigMap owned by this run. This field records where to find them and
+	// enough of a summary to render without fetching them.
 	// +optional
 	Transcript *TranscriptRef `json:"transcript,omitempty"`
 }
 
 // TranscriptRef locates one agent run's captured conversation. The ConfigMap
 // is owned by the run that produced it, which is in turn owned by its Finding:
-// deleting the Finding on TTL cascades to both, so a transcript is retained
-// exactly as long as the finding it explains.
+// deleting the Finding on TTL cascades to both. A transcript is kept for as
+// long as the finding it explains.
 type TranscriptRef struct {
 	// Name of the ConfigMap holding the turns, in the run's own namespace.
 	Name string `json:"name"`

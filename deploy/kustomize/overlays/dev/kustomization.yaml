@@ -17,15 +17,15 @@ resources:
     - crs-dev.yaml
     - ingress-integration.yaml
     # Canned status-page data (suspended findings + rollup statistics).
-    # `kubectl apply -k` creates the objects; run `mise run status-demo` to
-    # seed their statuses (phases, rollup buckets) — see the file header.
+    # `kubectl apply -k` creates the objects. Run `mise run status-demo` to
+    # seed their statuses (phases, rollup buckets). See the file header.
     - findings-demo.yaml
 
-# No Cilium component: kind runs kindnet, which honours NetworkPolicy only if
-# you swap the CNI. Base NetworkPolicies are applied and simply have no effect
-# on a stock kind cluster — do not read a green dev apply as a working sandbox.
+# No Cilium component: kind runs kindnet, which ignores NetworkPolicy unless
+# you swap the CNI. Base NetworkPolicies are applied but have no effect on a
+# stock kind cluster. A green dev apply does not show that the sandbox works.
 
-# Local images: `make snapshot` builds them (per-arch, unpushed — retag the
+# Local images: `make snapshot` builds them (per-arch, unpushed; retag the
 # host-arch one as patchy/<name>:dev), then `kind load docker-image patchy/...`.
 images:
     - name: ghcr.io/bitwise-media-group/patchy/integration-controller
@@ -73,9 +73,9 @@ patches:
           - op: add
             path: /spec/ports/0/nodePort
             value: 30079
-    # Laptop-sized. Requests tiny — a kind node has no headroom. Limits stay
-    # (kubescape C-0270/C-0271 gate on them) but loose enough to never
-    # throttle a dev loop.
+    # Laptop-sized. Requests are tiny, because a kind node has no headroom.
+    # Limits stay (kubescape C-0270/C-0271 check for them), but they are
+    # loose enough to never throttle a dev loop.
     - target:
           kind: Deployment
           labelSelector: app.kubernetes.io/part-of=patchy

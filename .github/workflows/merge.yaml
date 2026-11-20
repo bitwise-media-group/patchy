@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Fast-forward merge — thin caller for the org's reusable merge workflow. It drives
+# Fast-forward merge: a thin caller for the org's reusable merge workflow. It drives
 # both fast-forward flows from one caller: a maintainer comments `/merge` to merge
 # an approved, green PR now, or arms it (`/auto-merge` comment or the `auto-merge`
 # label) to merge automatically the moment it is approved and every required check
@@ -15,9 +15,9 @@
 # context (so `/merge` and `/auto-merge` work even for fork PRs). The approval signal
 # is captured by the companion merge-review-ack.yaml, whose completed run re-enters
 # via workflow_run; that is what turns an approval into a merge attempt for fork and
-# same-repo PRs alike. The workflow_run list names every workflow that must pass —
-# "Continuous Integration" (ci.yaml) and "Security Analysis" (security.yaml) — plus
-# "Merge Review Ack" (merge-review-ack.yaml); whichever finishes last triggers the
+# same-repo PRs alike. The workflow_run list names every workflow that must pass
+# ("Continuous Integration" in ci.yaml and "Security Analysis" in security.yaml), plus
+# "Merge Review Ack" (merge-review-ack.yaml). Whichever finishes last triggers the
 # attempt, and ff-merge re-verifies all checks before moving the ref. The hourly
 # schedule sweeps armed PRs as a backstop for any missed event. None of these run PR
 # code.

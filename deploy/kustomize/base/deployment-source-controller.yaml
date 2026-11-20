@@ -12,9 +12,9 @@ metadata:
         app.kubernetes.io/part-of: patchy
         app.kubernetes.io/component: controller
 spec:
-    # One replica + Recreate: the artifact store is local state (the emptyDir
-    # below), so two replicas would serve two disjoint artifact sets. Leader
-    # election is additional insurance during rollouts.
+    # One replica + Recreate. The artifact store is local state (the emptyDir
+    # below), so two replicas would serve two separate artifact sets. Leader
+    # election adds protection during rollouts.
     replicas: 1
     strategy:
         type: Recreate
@@ -95,10 +95,10 @@ spec:
                         mountPath: /tmp
             volumes:
                 # Artifact storage (PATCHY_ARTIFACT_DIR=/data/artifacts).
-                # Artifacts are reproducible — a re-fetch at the pinned SHA
-                # rebuilds them — so an emptyDir is acceptable; swap in a PVC
-                # in your overlay if repository archives are large or the API
-                # quota is tight.
+                # Artifacts are reproducible, because a re-fetch at the pinned
+                # SHA rebuilds them. So an emptyDir is acceptable. Swap in a
+                # PVC in your overlay if repository archives are large or the
+                # API quota is tight.
                 - name: data
                   emptyDir: {}
                 # The root filesystem is read-only; Go's os.CreateTemp and the

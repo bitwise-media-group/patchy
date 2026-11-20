@@ -26,12 +26,12 @@ data:
     PATCHY_STATIC_CONTEXT_FILE: /etc/patchy/context/cmdb.yaml
 
     # ---- the fake harness --------------------------------------------------
-    # PATCHY_HARNESSES restricts the enabled set to just the fake runner
-    # (internal/harness.Fake: scripted output, no model call), so dev needs no
-    # model credential at all — the fake runner wires no Secret, and the
-    # claude/codex runners configured in the base are simply not enabled. The
-    # model choices stay canonical; the fake harness runs any model. This
-    # string is what the job controllers write into the Job spec, so it must
+    # PATCHY_HARNESSES limits the enabled set to the fake runner
+    # (internal/harness.Fake: scripted output, no model call). So dev needs
+    # no model credential at all. The fake runner wires no Secret, and the
+    # claude/codex runners configured in the base are not enabled. The model
+    # choices stay canonical, and the fake harness runs any model. The job
+    # controllers write the image string below into the Job spec, so it must
     # match the `images:` rename in kustomization.yaml (kustomize does not
     # rewrite ConfigMap values).
     PATCHY_HARNESSES: fake

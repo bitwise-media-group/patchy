@@ -1,22 +1,22 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Default values mirror deploy/kustomize/base. Everything specific to one
-# controller — its image, config, scheduling, serviceAccount, service, and
-# networkPolicy — lives under that controller's top-level key
-# (integrationController, sourceController, contextController,
-# investigationController, remediationController); only settings that are
-# genuinely shared stay global. The controllers install into the release
-# namespace; the agent sandbox namespace is created by the chart (see `agent:`
-# below). The Secrets patchy expects are NOT created here — see the chart
-# README and deploy/kustomize/base/secrets.example.yaml.
+# Default values mirror deploy/kustomize/base. Each controller's own settings
+# (image, config, scheduling, serviceAccount, service, and networkPolicy) live
+# under that controller's top-level key (integrationController,
+# sourceController, contextController, investigationController,
+# remediationController). Only settings that several controllers share stay
+# global. The controllers install into the release namespace. The chart
+# creates the agent sandbox namespace (see `agent:` below). The chart does NOT
+# create the Secrets patchy expects. See the chart README and
+# deploy/kustomize/base/secrets.example.yaml.
 
 # Every image is <repository>/<binary>, the names goreleaser publishes. `tag`
 # defaults to v<appVersion>. Per-component overrides live under
-# <controller>.image / agent.runners.<harness>.image and win key-by-key; a
-# component `digest` pins the image (and beats any tag). Pinning a runner's
-# digest here also lands in its PATCHY_<HARNESS>_AGENT_IMAGE — unlike
-# kustomize, there is one knob, not two.
+# <controller>.image and agent.runners.<harness>.image, and win key by key. A
+# component `digest` pins the image and takes precedence over any tag. A
+# runner digest pinned here also goes into its PATCHY_<HARNESS>_AGENT_IMAGE.
+# Kustomize needs both set separately; here one setting covers both.
 image:
     repository: ghcr.io/bitwise-media-group/patchy
     tag: ""
@@ -26,33 +26,34 @@ image:
 nameOverride: ""
 fullnameOverride: ""
 
-# The patchy.bitwisemedia.uk CRDs — the state machine itself (Finding,
-# Investigation, Remediation, Repository, Forge, Integration, FindingRollup).
-# They render as templates (not the crds/ directory) so upgrades track schema
-# changes; `keep` stamps helm.sh/resource-policy: keep so uninstall never
-# deletes the CRDs — and with them the all-time FindingRollup statistics.
+# The patchy.bitwisemedia.uk CRDs (Finding, Investigation, Remediation,
+# Repository, Forge, Integration, FindingRollup) hold the pipeline's state
+# machine. They render as templates (not the crds/ directory) so upgrades pick
+# up schema changes. `keep` stamps helm.sh/resource-policy: keep, so uninstall
+# never deletes the CRDs. Deleting them would also delete the all-time
+# FindingRollup statistics.
 crds:
     install: true
     keep: true
 
 # Field-level authorization for the human actions on Findings
-# (approve/retry/expedite/suspend/resume). RBAC has no notion of a field, so
-# `update` on findings otherwise grants the whole resource; this policy binds
-# each spec field to its own custom verb, in the API server's admission chain,
-# for every client — the CLI, kubectl, curl alike.
+# (approve/retry/expedite/suspend/resume). RBAC cannot grant access to a
+# single field, so `update` on findings otherwise grants the whole resource.
+# This policy binds each spec field to its own custom verb. It runs in the API
+# server's admission chain, so it applies to every client: the CLI, kubectl,
+# and curl.
 #
-# Requires Kubernetes 1.30+ (ValidatingAdmissionPolicy GA). The template FAILS
-# the render rather than skipping itself on an older cluster: silently dropping
-# it would leave the verb ladder advisory with nothing to say so.
+# Requires Kubernetes 1.30+ (ValidatingAdmissionPolicy GA). On an older
+# cluster the template FAILS the render instead of skipping itself. Dropping
+# it silently would leave the custom verbs advisory, with no warning.
 #
 # Disable it only if you accept that anyone granted `update` on findings can
 # change any field, including forging an approval.
 admissionPolicy:
     enabled: true
-    # Additional usernames exempt from the policy, for a controller of your own
-    # that legitimately writes Finding spec. The chart's own controllers and
-    # status server are exempted automatically from their resolved
-    # ServiceAccount names.
+    # More usernames exempt from the policy, for your own controller that
+    # needs to write Finding spec. The chart's own controllers and status
+    # server are exempt automatically, by their resolved ServiceAccount names.
     extraExemptSubjects: []
 
 # Extra labels stamped on every object the chart renders.
@@ -63,28 +64,28 @@ commonLabels: {}
 # service/serviceAccount/webhook annotations) win key-by-key.
 commonAnnotations: {}
 
-# Egress proxy for every controller's outbound HTTP(S) traffic — the estate
-# whose GitHub org enforces an IP allowlist reachable only through a corporate
-# forward proxy. Rendered into each controller's ConfigMap as
-# HTTPS_PROXY/HTTP_PROXY/NO_PROXY (Go's standard proxy environment).
+# Egress proxy for every controller's outbound HTTP(S) traffic. Use it when
+# your GitHub org enforces an IP allowlist that you can reach only through a
+# corporate forward proxy. The values render into each controller's ConfigMap
+# as HTTPS_PROXY/HTTP_PROXY/NO_PROXY (Go's standard proxy environment).
 # Precedence: a spec.proxy on a Forge or GitHub Integration overrides these
-# for that resource's traffic; config.extra (and <controller>.config.extra)
-# still wins over what is derived here. When either proxy is set, NO_PROXY is
-# auto-prefixed with "localhost,127.0.0.1,.svc,.cluster.local" so in-cluster
-# traffic (the artifact endpoint, the egress broker, the API server) never
-# detours through the proxy; noProxy appends to that list. Remember the
-# controllers' NetworkPolicies allow only their declared egress — reaching a
-# proxy on e.g. 3128/8080 needs <controller>.networkPolicy.extraEgress.
+# for that resource's traffic. config.extra (and <controller>.config.extra)
+# still wins over what is derived here. When either proxy is set, NO_PROXY
+# starts with "localhost,127.0.0.1,.svc,.cluster.local", so in-cluster traffic
+# (the artifact endpoint, the egress broker, the API server) never goes
+# through the proxy. noProxy appends to that list. The controllers'
+# NetworkPolicies allow only their declared egress, so reaching a proxy on,
+# for example, port 3128 or 8080 needs <controller>.networkPolicy.extraEgress.
 proxy:
     httpsProxy: ""
     httpProxy: ""
     noProxy: ""
 
 # Settings shared by more than one controller. Each controller renders its own
-# ConfigMap (consumed with envFrom) holding these plus its `config` block, and
-# may repeat any key here under <controller>.config to override it for that
-# controller alone; every key is the PATCHY_* environment variable minus the
-# prefix — see internal/cli/options.go.
+# ConfigMap (consumed with envFrom) holding these plus its `config` block. You
+# can repeat any key here under <controller>.config to override it for that
+# controller alone. Every key is the PATCHY_* environment variable without the
+# prefix. See internal/cli/options.go.
 config:
     # The listen (:8080), health (:8081), and artifact (:9790) addresses are
     # not values: the chart hardcodes them everywhere they appear
@@ -93,8 +94,8 @@ config:
     logLevel: warn
     # Agent attempts per finding before it fails (both job controllers).
     maxAttempts: 2
-    # Long-waiting work gains +1 effective priority per interval, up to the
-    # cap — starvation protection for low-priority findings.
+    # Work that waits a long time gains +1 effective priority per interval, up
+    # to the cap. This stops low-priority findings from starving.
     priorityAgingInterval: 24h
     priorityAgingCap: 25
     # Extra PATCHY_* keys rendered verbatim into every controller's ConfigMap
@@ -103,25 +104,25 @@ config:
     # these.
     extra: {}
 
-# The pipeline switch-on — the Integration and Forge custom resources — lives
-# in the sibling patchy-config chart, installed AFTER this one: Helm validates
-# every manifest against the API server before applying anything, so the CRs
-# cannot ride in the same first install as the CRDs they depend on.
+# The Integration and Forge custom resources, which switch the pipeline on,
+# live in the sibling patchy-config chart. Install it AFTER this one. Helm
+# validates every manifest against the API server before applying anything,
+# so the CRs cannot go in the same first install as the CRDs they depend on.
 
 # ---- webhook entry point ----------------------------------------------------
 # Providers deliver webhooks to ONE URL. The integration-controller is the
-# single internet-facing component serving the provider receivers (GitHub:
-# POST /github/webhooks); each delivery is validated against the matching
-# Integration's webhookSecret. Expose it with ONE of the flavours here (see
+# only internet-facing component. It serves the provider receivers (GitHub:
+# POST /github/webhooks) and validates each delivery against the matching
+# Integration's webhookSecret. Expose it with ONE of these options (see
 # docs/deployment/webhook.md):
 #
-#   ingress — a plain networking.k8s.io/v1 Ingress; works with any ingress
+#   ingress: a plain networking.k8s.io/v1 Ingress. Works with any ingress
 #   controller.
-#   httpRoute — the Gateway API equivalent; attaches to a Gateway you bring
-#   via parentRefs, and TLS is that Gateway's concern.
+#   httpRoute: the Gateway API equivalent. It attaches to a Gateway you
+#   provide through parentRefs, and that Gateway handles TLS.
 webhook:
     # The single external hostname the provider reaches, e.g.
-    # patchy.example.com. Required when either flavour below is enabled.
+    # patchy.example.com. Required when either option below is enabled.
     host: ""
     ingress:
         enabled: false
@@ -140,35 +141,37 @@ webhook:
         #   sectionName: https
 
 # ---- integration-controller -------------------------------------------------
-# The single internet-facing entry point: the provider webhook receivers on
-# :8080 (HMAC-validated per Integration), scanner-alert ingestion into
-# Findings, tracking-issue projection, and the human signals (approve
-# comment, issue close, PR merge) applied back onto the Findings. Every
-# controller block has the same shape; the knobs are commented once, here.
+# The only internet-facing entry point. It runs the provider webhook receivers
+# on :8080 (HMAC-validated per Integration), ingests scanner alerts into
+# Findings, projects Findings to tracking issues, and applies the human
+# signals (approve comment, issue close, PR merge) back onto the Findings.
+# Every controller block has the same shape, so the settings are commented
+# once, here.
 integrationController:
-    # Key-by-key override of the global `image` for this binary; a `digest`
-    # pins.
+    # Key-by-key override of the global `image` for this binary. A `digest`
+    # pins the image.
     image: {}
-    # This controller's own PATCHY_* settings. Any shared `config` key
-    # (logLevel, ...) may be repeated here to override it for this controller
+    # This controller's own PATCHY_* settings. You can repeat any shared
+    # `config` key (logLevel, ...) here to override it for this controller
     # alone.
     config:
         # DESIGN.md requirement 2: alerts of one advisory type accumulate
         # into a single finding for an hour.
         accumulationWindow: 1h
-        # Findings projected to tracking issues in parallel. Conservative on
-        # purpose: every projection may spend GitHub API requests, and
-        # parallelism multiplies burst pressure on the installation's rate
+        # Findings projected to tracking issues in parallel. Kept low on
+        # purpose: every projection may use GitHub API requests, and more
+        # parallel work means bigger bursts against the installation's rate
         # limit.
         projectionConcurrency: 2
         # Extra PATCHY_* keys for this controller only (full variable name ->
         # value); wins over `config.extra` and anything the chart derives.
         extra: {}
-    # Size controller memory to the finding backlog: every controller holds
+    # Size controller memory to the finding backlog. Every controller holds
     # the namespace's Findings in an informer cache (~1-2KiB per lean
-    # finding, more with large alert snippets), so a brownfield estate of
-    # hundreds of thousands of findings needs limits in the gigabytes. The
-    # defaults suit thousands, not millions — see docs/contributing/benchmarks.md.
+    # finding, more with large alert snippets). An estate that starts with
+    # hundreds of thousands of existing findings needs limits in the
+    # gigabytes. The defaults suit thousands of findings, not millions. See
+    # docs/contributing/benchmarks.md.
     resources:
         requests:
             cpu: 50m
@@ -187,29 +190,31 @@ integrationController:
         # Defaults to <fullname>-integration-controller.
         name: ""
         annotations: {}
-    # The webhook receivers' Service, fronted by `webhook` above. type
-    # NodePort + nodePort covers the kind/dev case.
+    # The webhook receivers' Service, behind `webhook` above. For kind or
+    # local development, use type NodePort with nodePort.
     service:
         type: ClusterIP
         port: 8080
         nodePort: null
         annotations: {}
-    # The controller's L3/L4 NetworkPolicy: webhooks + probes in, DNS + TLS +
-    # the Kubernetes API out. Ingress allows 8080 from anywhere (kubelet
-    # probes arrive from the node IP, which no pod selector can match; your
-    # ingress controller may live in any namespace); the per-Integration HMAC
-    # signature check is the authentication. extraEgress appends verbatim
-    # NetworkPolicy egress rules — a generic Integration's resolver endpoint
-    # on a port other than 443, say; endpoints on 443 need nothing.
+    # The controller's L3/L4 NetworkPolicy: webhooks and probes in; DNS, TLS,
+    # and the Kubernetes API out. Ingress allows 8080 from anywhere, because
+    # kubelet probes arrive from the node IP (no pod selector can match it)
+    # and your ingress controller may run in any namespace. The
+    # per-Integration HMAC signature check provides the authentication.
+    # extraEgress appends NetworkPolicy egress rules as written. Use it, for
+    # example, for a generic Integration's resolver endpoint on a port other
+    # than 443. Endpoints on 443 need nothing.
     networkPolicy:
         create: true
         extraEgress: []
 
 # ---- source-controller ------------------------------------------------------
-# The Forge/Repository reconcilers plus the artifact server on :9790: the
-# SHA-pinned repository tarballs the agent pods fetch (credential-less; the
-# URL carries a random id and the Job pins the sha256 digest). Artifacts live
-# in an emptyDir — they are reproducible from the pinned SHA.
+# The Forge and Repository reconcilers, plus the artifact server on :9790.
+# The server holds the SHA-pinned repository tarballs that agent pods fetch
+# without credentials (the URL carries a random id and the Job pins the
+# sha256 digest). Artifacts live in an emptyDir, because they can be rebuilt
+# from the pinned SHA.
 sourceController:
     image: {}
     config:
@@ -230,7 +235,7 @@ sourceController:
         create: true
         name: ""
         annotations: {}
-    # The artifact server's Service — in-cluster only by design (the
+    # The artifact server's Service. It is in-cluster only (the
     # NetworkPolicies restrict it to the agent namespace).
     service:
         type: ClusterIP
@@ -242,30 +247,34 @@ sourceController:
 
 # ---- context-controller -----------------------------------------------------
 # The enhancer chain over Opened findings: the cloud tag/label enhancers, the
-# generic HTTP fan-out, and the CMDB placeholder. Its external access is the
-# cloud inventory lookups plus any generic Integrations' enhancer endpoints,
-# and only when an Integration enables them — the cloud lookups read-only and
-# credential-less: the Google Cloud enhancer uses workload identity
-# (annotate serviceAccount with iam.gke.io/gcp-service-account and grant
-# roles/cloudasset.viewer), the AWS enhancer the SDK default chain (on EKS,
-# Pod Identity — associate the service account — or IRSA — annotate with
-# eks.amazonaws.com/role-arn; elsewhere, web-identity federation), the Azure
-# enhancer the Azure default chain (Workload ID on AKS: annotate serviceAccount
-# with azure.workload.identity/client-id and label the pod
-# azure.workload.identity/use: "true" via podLabels; elsewhere, workload
-# identity federation through the AZURE_CLIENT_ID/AZURE_TENANT_ID/
-# AZURE_FEDERATED_TOKEN_FILE env vars and a projected service-account token).
-# Set PATCHY_STATIC_CONTEXT_FILE via config.extra to feed the static
-# enhancer.
+# generic HTTP fan-out, and the static context file. Its only external calls are
+# the cloud inventory lookups and any generic Integrations' enhancer
+# endpoints, and only when an Integration turns them on. The cloud lookups are
+# read-only and use no stored credential:
+#
+#   Google Cloud: workload identity. Annotate serviceAccount with
+#   iam.gke.io/gcp-service-account and grant roles/cloudasset.viewer.
+#   AWS: the SDK default chain. On EKS, use Pod Identity (associate the
+#   service account) or IRSA (annotate with eks.amazonaws.com/role-arn).
+#   Elsewhere, use web-identity federation.
+#   Azure: the Azure default chain. On AKS, use Workload ID: annotate
+#   serviceAccount with azure.workload.identity/client-id and label the pod
+#   azure.workload.identity/use: "true" via podLabels. Elsewhere, use
+#   workload identity federation through the AZURE_CLIENT_ID/AZURE_TENANT_ID/
+#   AZURE_FEDERATED_TOKEN_FILE env vars and a projected service-account
+#   token.
+#
+# To feed the static enhancer, set PATCHY_STATIC_CONTEXT_FILE via
+# config.extra.
 contextController:
     image: {}
     config:
         # Findings enhanced in parallel (each finding's chain still runs
         # serially).
         enhanceConcurrency: 4
-        # Concurrent outbound generic enhancer calls across ALL findings —
-        # the global bound on pressure against external processes. 0 means
-        # unbounded.
+        # Concurrent outbound generic enhancer calls across ALL findings.
+        # This is the global limit on load against external processes. 0
+        # means unbounded.
         enhanceMaxOutbound: 8
         # How long the generic enhancer endpoint list and signing secrets
         # are cached between API-server reads. A rotated webhook secret
@@ -288,17 +297,18 @@ contextController:
         create: true
         name: ""
         annotations: {}
-    # extraEgress appends verbatim NetworkPolicy egress rules — a generic
-    # Integration's enhancer endpoint on a port other than 443, say;
-    # endpoints on 443 need nothing.
+    # extraEgress appends NetworkPolicy egress rules as written. Use it, for
+    # example, for a generic Integration's enhancer endpoint on a port other
+    # than 443. Endpoints on 443 need nothing.
     networkPolicy:
         create: true
         extraEgress: []
 
 # ---- investigation-controller -----------------------------------------------
-# The gate (creates Repository + Investigation, parks repo-less findings) and
-# the analysis scheduler: launches the analysis agent Jobs, stamps results,
-# routes the verdict edges on Finding status.
+# The gate (creates the Repository and Investigation, and parks findings that
+# have no repository) and the analysis scheduler (launches the analysis agent
+# Jobs, records their results, and applies the verdict's phase transition to
+# Finding status).
 investigationController:
     image: {}
     config:
@@ -309,9 +319,9 @@ investigationController:
         # DESIGN.md requirement 6: below this, remediation waits for
         # approval.
         confidenceThreshold: "0.75"
-        # Findings admitted through the gate in parallel (the analysis
-        # scheduler itself stays serial — its slot arithmetic is a
-        # documented serialization contract).
+        # Findings admitted through the gate in parallel. The analysis
+        # scheduler itself stays serial, because its slot arithmetic relies
+        # on a documented serialization contract.
         gateConcurrency: 4
         extra: {}
     resources:
@@ -334,8 +344,8 @@ investigationController:
         create: true
 
 # ---- remediation-controller -------------------------------------------------
-# Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
-# loop — the one deleter of expired Findings.
+# Queue admission, the remediation scheduler, push and PR, and the rollup/TTL
+# loop. It is the only component that deletes expired Findings.
 remediationController:
     image: {}
     config:
@@ -365,13 +375,13 @@ remediationController:
         create: true
 
 # ---- evaluation-controller ---------------------------------------------------
-# The remote-evaluation engine (templates/evaluation-controller.yaml): the
-# evolve-facing authenticated HTTP API (workspace upload, submission, SSE
-# monitoring) plus the reconcilers that run each submitted unit in a
-# sandboxed agent Job. OPTIONAL and off by default — deployments that never
-# submit remote evaluations render none of it. Enabling it also renders
-# source-controller's internal blob endpoint (:9791) the workspace uploads
-# stream through.
+# The remote-evaluation engine (templates/evaluation-controller.yaml). It
+# runs the authenticated HTTP API that evolve calls (workspace upload,
+# submission, SSE monitoring), plus the reconcilers that run each submitted
+# unit in a sandboxed agent Job. OPTIONAL and off by default. Deployments
+# that never submit remote evaluations render none of it. Enabling it also
+# renders source-controller's internal blob endpoint (:9791), which the
+# workspace uploads stream through.
 evaluationController:
     enabled: false
     # Override of <prefix>/evaluation-controller; same shape as
@@ -388,15 +398,16 @@ evaluationController:
         maxSubmissionBytes: 8388608
         maxWorkspaceBytes: 67108864
         # Evaluation Jobs may run much longer than a single finding stage
-        # (a unit sweeps every case), so the deadline is its own knob;
-        # the Job TTL reuses agent.jobTTL.
+        # (a unit sweeps every case), so the deadline is its own setting.
+        # The Job TTL reuses agent.jobTTL.
         jobDeadline: 2h
         # Extra PATCHY_* keys for the evaluation controller only.
         extra: {}
     # Bearer-token authentication for the API, mounted at
-    # /etc/patchy/auth/config.yaml. REQUIRED (unlike the status server there
-    # is no unauthenticated posture): set exactly one of the two. No client
-    # secret — evolve is a public PKCE client; the API only verifies tokens.
+    # /etc/patchy/auth/config.yaml. REQUIRED: unlike the status server, there
+    # is no unauthenticated mode. Set exactly one of the two fields. There is
+    # no client secret, because evolve is a public PKCE client and the API
+    # only verifies tokens.
     auth:
         # Name of an existing Secret with a config.yaml key (see
         # deploy/kustomize/base/secrets.example.yaml).
@@ -410,8 +421,8 @@ evaluationController:
         #         clientID: evolve
         #         # claims: {username: email, groups: groups}
     # The API's external hostname, e.g. patchy-evals.example.com. Required
-    # when either exposure flavour below is enabled; its own hostname keeps
-    # the machine edge apart from the human surfaces.
+    # when either exposure option below is enabled. A separate hostname keeps
+    # the machine-facing edge apart from the human-facing ones.
     host: ""
     ingress:
         enabled: false
@@ -424,16 +435,16 @@ evaluationController:
         parentRefs: []
     rbac:
         # Render the example submitter ClusterRole (create/get/delete on
-        # evaluations — native verbs; RBAC bindings are the API's whole
-        # authorization surface). Bindings are yours to bring.
+        # evaluations, all native verbs). The API's authorization comes
+        # entirely from RBAC bindings. You provide the bindings.
         userRoles: false
-    # The evolve-runner fleet: evolve + each harness CLI, shipped from the
-    # evolve repository (NOT chart <prefix>/<binary> images), pinned here by
-    # the operator. A runner is enabled when `enabled: true`. Both are
-    # brokered like their finding siblings and reuse
-    # agent.runners.<harness>.provider — one broker route per model vendor,
-    # whichever fleet exercises it. The per-harness egress network policies
-    # apply to evaluation Jobs unchanged.
+    # The evolve-runner images: evolve plus each harness CLI. They ship from
+    # the evolve repository (NOT the chart's <prefix>/<binary> images), and
+    # the operator pins them here. A runner is enabled when `enabled: true`.
+    # Both go through the egress broker like their finding counterparts and
+    # reuse agent.runners.<harness>.provider. There is one broker route per
+    # model vendor, whichever set of runners uses it. The per-harness egress
+    # network policies apply to evaluation Jobs unchanged.
     runners:
         claude:
             enabled: true
@@ -441,9 +452,9 @@ evaluationController:
         codex:
             enabled: false
             image: ghcr.io/bitwise-media-group/evolve-runner-codex:latest
-    # Workspace bundles unused this long are swept from source-controller's
-    # cache; a needed-but-swept bundle surfaces as WorkspaceLost and the
-    # client re-uploads.
+    # Workspace bundles unused for this long are removed from
+    # source-controller's cache. If a removed bundle is needed later, it
+    # shows up as WorkspaceLost and the client uploads it again.
     workspaceRetention: 168h
     resources:
         requests:
@@ -471,21 +482,27 @@ evaluationController:
 
 # ---- status-server ----------------------------------------------------------
 # The human-facing status page (templates/status-server.yaml): the findings
-# board/detail with the approve/retry/expedite/suspend/resume actions, and the rollup
-# statistics. Both require authentication (auth below) plus per-user RBAC —
-# native `get` on findings to view findings, `get` on findingrollups to view
-# metrics, and the custom verbs approve/retry/expedite/suspend/resume for the
-# action buttons (rbac.userRoles renders example roles). With no auth config
-# the server serves nothing; auth mode none opens everything (dev only).
+# board and detail views with the approve/retry/expedite/suspend/resume
+# actions, and the rollup statistics. Both need authentication (auth below)
+# plus per-user RBAC:
+#
+#   - native `get` on findings to view findings
+#   - `get` on findingrollups to view metrics
+#   - the custom verbs approve/retry/expedite/suspend/resume for the action
+#     buttons (rbac.userRoles renders example roles)
+#
+# With no auth config the server serves nothing. Auth mode none opens
+# everything (dev only).
 statusServer:
-    # The whole feature: disabling renders none of its resources.
+    # Set false to render none of the status server's resources.
     enabled: true
     image: {}
     # Stream a running agent's conversation into the investigation and
-    # remediation tabs. This grants the status server read access to pods and
-    # pod logs in the agent namespace — the read goes through the API server,
-    # never to an agent pod, so no network policy changes. Disabling it keeps
-    # transcripts of completed runs, which are read from their own ConfigMaps.
+    # remediation tabs. This gives the status server read access to pods and
+    # pod logs in the agent namespace. The read goes through the API server
+    # and never to an agent pod, so no network policy changes. With this off,
+    # you still see transcripts of completed runs, which are read from their
+    # own ConfigMaps.
     liveTranscripts: true
     config:
         # Extra PATCHY_* keys for the status server only.
@@ -498,8 +515,8 @@ statusServer:
         # deploy/kustomize/base/secrets.example.yaml #3). Wins over `config`.
         existingSecret: ""
         # Inline configuration rendered into a chart-managed Secret. Prefer
-        # existingSecret in production — the oidc clientSecret is a
-        # credential and values files land in revision history.
+        # existingSecret in production: the oidc clientSecret is a
+        # credential, and values files are stored in revision history.
         config: {}
         # config:
         #     mode: oidc
@@ -508,9 +525,9 @@ statusServer:
         #         clientID: patchy-status
         #         clientSecret: "..."
     # The status page's external hostname, e.g. patchy-status.example.com.
-    # Required when either exposure flavour below is enabled. Deliberately a
-    # separate hostname from webhook.host: the webhook edge authenticates
-    # HMAC-signed machines, this edge authenticates humans.
+    # Required when either exposure option below is enabled. Use a hostname
+    # separate from webhook.host. The webhook edge authenticates HMAC-signed
+    # machines; this edge authenticates humans.
     host: ""
     ingress:
         enabled: false
@@ -523,7 +540,7 @@ statusServer:
         parentRefs: []
     rbac:
         # Render the example user-facing ClusterRoles (viewer / approver /
-        # operator). Bindings are yours to bring — see
+        # operator). You provide the bindings. See
         # deploy/kustomize/base/rbac.users.example.yaml.
         userRoles: false
     resources:
@@ -552,27 +569,32 @@ statusServer:
 
 # ---- egress-broker ----------------------------------------------------------
 # The egress credential broker (templates/egress-broker.yaml): the reverse
-# proxy all claude and codex model traffic goes through. Agent pods
-# authenticate to it with an audience-bound projected ServiceAccount token
-# (validated via TokenReview); the broker injects or signs the model
-# credential outbound — the Anthropic or OpenAI API key, Bedrock SigV4, a
-# Vertex OAuth token, or the Foundry / Azure OpenAI key or Entra bearer. It is
-# what makes agent pods fully credential-less.
+# proxy that all claude and codex model traffic goes through. Agent pods
+# authenticate to it with an audience-bound projected ServiceAccount token,
+# which the broker validates via TokenReview. The broker then injects or
+# signs the model credential on the outbound request: the Anthropic or
+# OpenAI API key, Bedrock SigV4, a Vertex OAuth token, or the Foundry / Azure
+# OpenAI key or Entra bearer. This is why agent pods hold no credentials.
 #
-# Deploys exactly when a claude or codex runner is enabled (agent.runners.* or
-# evaluationController.runners.*) — there is no separate enabled knob,
-# because brokered is the only mode either has. Which providers it fronts are
-# agent.runners.claude.provider and agent.runners.codex.provider.
+# It deploys whenever a claude or codex runner is enabled (agent.runners.* or
+# evaluationController.runners.*), and only then. It has no separate enabled
+# setting, because both runners always go through the broker. The providers
+# it serves are set by agent.runners.claude.provider and
+# agent.runners.codex.provider.
 #
-# WORKLOAD IDENTITY: for bedrock/vertex/entra the broker's ServiceAccount is
-# the attachment point, same recipe as the context-controller enhancers —
-# IRSA: annotate with eks.amazonaws.com/role-arn (or associate EKS Pod
-# Identity and add its link-local rule to networkPolicy.extraEgress); GKE:
-# annotate with iam.gke.io/gcp-service-account; Azure: annotate with
-# azure.workload.identity/client-id and label the pod
-# azure.workload.identity/use: "true" via podLabels. Scope the cloud role to
-# Invoke only: bedrock:InvokeModel* / aiplatform.endpoints.predict /
-# Cognitive Services User (Foundry and Azure OpenAI alike).
+# WORKLOAD IDENTITY: for bedrock, vertex, and entra, attach the cloud identity
+# to the broker's ServiceAccount, the same way as for the context-controller
+# enhancers:
+#
+#   IRSA: annotate with eks.amazonaws.com/role-arn (or associate EKS Pod
+#   Identity and add its link-local rule to networkPolicy.extraEgress).
+#   GKE: annotate with iam.gke.io/gcp-service-account.
+#   Azure: annotate with azure.workload.identity/client-id and label the pod
+#   azure.workload.identity/use: "true" via podLabels.
+#
+# Scope the cloud role to Invoke only: bedrock:InvokeModel* /
+# aiplatform.endpoints.predict / Cognitive Services User (Foundry and Azure
+# OpenAI alike).
 egressBroker:
     image: {}
     config:
@@ -580,18 +602,18 @@ egressBroker:
         # PATCHY_FOUNDRY_BASE_URL, PATCHY_OPENAI_BASE_URL,
         # PATCHY_AZURE_BASE_URL, PATCHY_MAX_REQUEST_BYTES).
         extra: {}
-    # Idle keep-alive period for streamed model responses; long thinking
-    # pauses otherwise let intermediaries close the connection.
+    # Idle keep-alive period for streamed model responses. Without it, long
+    # thinking pauses can let intermediaries close the connection.
     ssePingInterval: 30s
-    # Secret (RELEASE namespace — the broker is its only consumer) holding
-    # the Anthropic credential under the `api-key` key. Used when the
-    # provider is anthropic. NOTE the migration: this Secret previously
-    # lived in the agent namespace as agent.runners.claude.secret.
+    # Secret in the RELEASE namespace (the broker is its only consumer) that
+    # holds the Anthropic credential under the `api-key` key. Used when the
+    # provider is anthropic. NOTE the migration: this Secret used to live in
+    # the agent namespace as agent.runners.claude.secret.
     anthropicSecret: patchy-anthropic
-    # How that credential authenticates: `key` injects it as x-api-key (an
-    # Anthropic API key); `token` sends it as an Authorization bearer — for
-    # a long-lived OAuth token minted with `claude setup-token` (the
-    # brokered replacement for the old secretEnv: CLAUDE_CODE_OAUTH_TOKEN).
+    # How that credential authenticates. `key` injects it as x-api-key (an
+    # Anthropic API key). `token` sends it as an Authorization bearer, for a
+    # long-lived OAuth token created with `claude setup-token`. This replaces
+    # the old secretEnv: CLAUDE_CODE_OAUTH_TOKEN setting.
     anthropicAuth: key
     # Secret (release namespace) holding the Foundry API key under `api-key`.
     # Set when provider foundry authenticates by key; leave empty for Entra
@@ -599,9 +621,10 @@ egressBroker:
     foundrySecret: ""
     # Secret (release namespace) holding the OpenAI platform API key under
     # `api-key`. Used when the codex provider is openai. NOTE the migration:
-    # this Secret previously lived in the agent namespace as
+    # this Secret used to live in the agent namespace as
     # agent.runners.codex.secret. A ChatGPT-plan workspace token
-    # (CODEX_ACCESS_TOKEN) cannot be brokered — use a platform API key.
+    # (CODEX_ACCESS_TOKEN) cannot go through the broker. Use a platform API
+    # key.
     openaiSecret: patchy-openai
     # Secret (release namespace) holding the Azure OpenAI API key under
     # `api-key`. Set when the codex provider is azure and authenticates by
@@ -622,30 +645,31 @@ egressBroker:
     serviceAccount:
         create: true
         name: ""
-        # The workload-identity attachment point (see the header comment).
+        # Where the workload identity attaches (see the header comment).
         annotations: {}
     service:
         type: ClusterIP
         port: 8080
         annotations: {}
-    # Ingress: 8080 from the agent namespace only (plus probes). Egress: DNS
-    # + TCP 443 (the model APIs) + the Kubernetes API for TokenReview.
-    # extraEgress appends verbatim rules — the EKS Pod Identity agent
-    # (169.254.170.23:80) or GKE metadata (169.254.169.254:80), say. Under
-    # agent.networkPolicy mode cilium those two are granted by a chart-rendered
-    # CiliumNetworkPolicy instead (toEntities host — Cilium ipBlock rules
-    # cannot match a node-local address), so extraEgress is not needed there.
+    # Ingress: 8080 from the agent namespace only (plus probes). Egress: DNS,
+    # TCP 443 (the model APIs), and the Kubernetes API for TokenReview.
+    # extraEgress appends rules as written, for example the EKS Pod Identity
+    # agent (169.254.170.23:80) or GKE metadata (169.254.169.254:80). Under
+    # agent.networkPolicy mode cilium, the chart grants those two through a
+    # CiliumNetworkPolicy instead (toEntities host, because Cilium ipBlock
+    # rules cannot match a node-local address). You do not need extraEgress
+    # there.
     networkPolicy:
         create: true
         extraEgress: []
 
-# The agent sandbox: the namespace and identity the two job controllers
-# create their ephemeral Jobs in, and the two agent stages' limits. Nothing
-# in this namespace holds a forge credential — the repository arrives as a
-# digest-verified tarball from source-controller's artifact server. A claude
-# or codex pod holds NO credential of any kind (its model traffic
-# authenticates broker-side; the pod carries only an identity token) — just
-# the per-Job handoff markdown.
+# The agent sandbox: the namespace and identity the job-launching controllers
+# create their short-lived Jobs in, and the limits for the two agent stages.
+# Nothing in this namespace holds a forge credential. The repository arrives
+# as a digest-verified tarball from source-controller's artifact server. A
+# claude or codex pod holds NO credential of any kind. Its model traffic is
+# authenticated at the broker, and the pod carries only an identity token
+# and the per-Job handoff markdown.
 agent:
     namespace: patchy-agents
     # Set false if the namespace is managed elsewhere; the chart then still
@@ -655,32 +679,33 @@ agent:
     # Job execution limits (both job controllers).
     jobDeadline: 1h
     jobTTL: 1h
-    # The agent stages. The investigate limits are absolute — that stage runs
-    # on exactly these.
+    # The agent stages. The investigate limits are absolute: that stage always
+    # runs with these values.
     #
-    # The remediation budget is split by who authorized the run, because the
-    # two answers are genuinely different questions:
+    # The remediation budget depends on who authorized the run, because the
+    # two cases answer different questions:
     #
     #   auto    what patchy will spend on a fix nobody is watching. Every
     #           remediation gets this, whatever the investigation estimated
-    #           (including when it estimated nothing). It is also the line
-    #           past which a fix stops being automatic: an estimate above it
-    #           holds the finding for a human instead of queueing it.
+    #           (including when it estimated nothing). It is also the limit
+    #           for automatic fixes: if an estimate is above it, the finding
+    #           waits for a human instead of joining the queue.
     #   manual  the most a human-approved run may spend. Approving an
-    #           over-auto estimate grants that estimate, so this bounds what
-    #           one approval can authorize. It must be at or above auto —
-    #           approving a fix must never buy less than leaving it alone.
+    #           estimate above auto grants that estimate, so this caps what
+    #           one approval can authorize. It must be at or above auto, so
+    #           approving a fix never gives it less than leaving it alone.
     #
-    # The investigation's own max_turns/token_budget are an ESTIMATE at every
-    # level and never a limit: a low estimate cannot starve a fix. The model
-    # suggestion IS still clamped to the allowlist. Models are canonical,
-    # provider-qualified ids; the harness that runs a model is derived from it.
-    # A family alias (anthropic/claude-sonnet, anthropic/claude-opus, ...)
-    # resolves at controller startup to the newest version patchy registers,
-    # so the defaults follow new releases without a values change; pin a
-    # concrete id (anthropic/claude-sonnet-5-5) to hold a version. A
-    # well-formed but unregistered version (anthropic/claude-opus-6) also
-    # runs: on the claude harness only, unpriced until registered.
+    # The investigation's own max_turns/token_budget are always an ESTIMATE
+    # and never a limit, so a low estimate cannot starve a fix. The suggested
+    # model IS still limited to the allowlist. Models are canonical,
+    # provider-qualified ids, and patchy derives the harness that runs a model
+    # from its id. A family alias (anthropic/claude-sonnet,
+    # anthropic/claude-opus, ...) resolves at controller startup to the newest
+    # version patchy registers, so the defaults follow new releases without a
+    # values change. Pin a concrete id (anthropic/claude-sonnet-5-5) to hold a
+    # version. A well-formed but unregistered version (anthropic/claude-opus-6)
+    # also runs, but only on the claude harness, and without pricing until it
+    # is registered.
     modelAllowlist: anthropic/claude-sonnet,anthropic/claude-opus
     investigate:
         model: anthropic/claude-sonnet
@@ -700,14 +725,14 @@ agent:
         manual:
             maxTurns: 240
             tokenBudget: 1200000
-    # The per-harness runner fleet. A harness is enabled when its runner is
-    # `enabled: true` — both are brokered, so there is no credential Secret in
-    # the agent namespace to probe; a missing broker-side credential surfaces
-    # at the broker's /readyz. A Job runs the image, provider, and egress
-    # policy of the harness resolved for its model, so an OpenAI model routes to the
-    # codex runner and an Anthropic model to the claude runner. Every
-    # allowlisted model must have at least one enabled harness that supports
-    # it, or the controllers refuse to start.
+    # The per-harness runners. A harness is enabled when its runner has
+    # `enabled: true`. Both runners go through the broker, so there is no
+    # credential Secret in the agent namespace to check. A missing
+    # broker-side credential shows up at the broker's /readyz. A Job uses the
+    # image, provider, and egress policy of the harness that matches its
+    # model, so an OpenAI model goes to the codex runner and an Anthropic
+    # model to the claude runner. Every allowlisted model needs at least one
+    # enabled harness that supports it, or the controllers refuse to start.
     runners:
         claude:
             enabled: true
@@ -715,13 +740,13 @@ agent:
             # <controller>.image (repository / tag / digest).
             image: {}
             # Claude is BROKERED: all its model traffic goes through the
-            # egress credential broker (`egressBroker` below deploys exactly
-            # when this runner is enabled), and NO credential of any kind
-            # enters the agent pod — not even the Anthropic API key. There
-            # are therefore no secret/secretKey/secretEnv keys here (setting
-            # them is ignored with a NOTES warning; the Anthropic key moved
-            # to `egressBroker.anthropicSecret` in the RELEASE namespace) and
-            # no hosts/dnsPatterns either — a claude pod's only egress is
+            # egress credential broker (`egressBroker` below deploys whenever
+            # this runner is enabled). NO credential of any kind enters the
+            # agent pod, not even the Anthropic API key. So there are no
+            # secret/secretKey/secretEnv keys here. Setting them is ignored
+            # with a NOTES warning, and the Anthropic key moved to
+            # `egressBroker.anthropicSecret` in the RELEASE namespace. There
+            # are also no hosts/dnsPatterns: a claude pod's only egress is
             # DNS, the artifact server, and the broker.
             #
             # `provider` selects which model API the broker fronts:
@@ -737,9 +762,9 @@ agent:
             #   foundry    Microsoft Foundry; requires `resource` (or a full
             #              base URL via egressBroker.config.extra) and a
             #              `modelMap` naming your deployment per canonical
-            #              model id — deployment names cannot be derived.
-            #              Credential: egressBroker.foundrySecret (API key)
-            #              or Entra via the broker's workload identity.
+            #              model id, because patchy cannot derive deployment
+            #              names. Credential: egressBroker.foundrySecret (API
+            #              key) or Entra via the broker's workload identity.
             #
             # `modelMap` overrides the derived provider model ids
             # (canonical id -> provider id); `env` is extra agent-pod env for
@@ -753,17 +778,17 @@ agent:
                 modelMap: {}
                 env: {}
         codex:
-            # Off by default; enable it and supply the OpenAI credential to
-            # the broker to let the investigation choose OpenAI models for
+            # Off by default. Enable it and give the broker the OpenAI
+            # credential to let the investigation choose OpenAI models for
             # remediation.
             enabled: false
             image: {}
-            # Codex is BROKERED exactly like claude: no credential enters the
-            # pod and its only egress is DNS, the artifact server, and the
-            # broker. The secret/secretKey/secretEnv/hosts/dnsPatterns keys
-            # are gone (setting the secret ones is ignored with a NOTES
-            # warning; the OpenAI key moved to `egressBroker.openaiSecret` in
-            # the RELEASE namespace). The pod reaches the broker through a
+            # Codex is BROKERED the same way as claude: no credential enters
+            # the pod, and its only egress is DNS, the artifact server, and
+            # the broker. The secret/secretKey/secretEnv/hosts/dnsPatterns
+            # keys are gone. Setting the secret ones is ignored with a NOTES
+            # warning, and the OpenAI key moved to `egressBroker.openaiSecret`
+            # in the RELEASE namespace. The pod reaches the broker through a
             # custom model provider in a rendered codex config.toml.
             #
             # `provider` selects which model API the broker fronts:
@@ -773,9 +798,9 @@ agent:
             #   azure   Azure OpenAI; requires `resource` (or a full base URL
             #           via egressBroker.config.extra PATCHY_AZURE_BASE_URL)
             #           and a `modelMap` naming your deployment per canonical
-            #           model id — deployment names cannot be derived.
-            #           Credential: egressBroker.azureSecret (API key) or
-            #           Entra via the broker's workload identity.
+            #           model id, because patchy cannot derive deployment
+            #           names. Credential: egressBroker.azureSecret (API key)
+            #           or Entra via the broker's workload identity.
             #
             # `env` is extra agent-pod env for the provider (credential names
             # rejected at startup).
@@ -784,56 +809,56 @@ agent:
                 resource: ""
                 modelMap: {}
                 env: {}
-    # The sandbox policies: default-deny both directions plus DNS, the
-    # artifact server, and TCP-443-only external egress. A plain
-    # NetworkPolicy cannot match hostnames; enforcement at that level needs
-    # one of the `mode` dialects below, which render one policy per enabled
-    # runner (selecting pods by their harness label) so each reaches only its
-    # own model API. Credential absence is the real control either way — see
-    # deploy/kustomize/base/networkpolicy.yaml.
+    # The sandbox policies: deny all traffic both ways by default, then allow
+    # DNS, the artifact server, and external egress on TCP 443 only. A plain
+    # NetworkPolicy cannot match hostnames. To enforce hostnames, pick one of
+    # the `mode` options below. Each renders one policy per enabled runner
+    # (selecting pods by their harness label), so each runner reaches only
+    # its own model API. Either way, the main protection is that the pod holds
+    # no credential. See deploy/kustomize/base/networkpolicy.yaml.
     networkPolicy:
         create: true
-        # Which hostname-enforcement dialect the cluster gets:
+        # Which hostname-enforcement option the cluster gets:
         #
         #   auto    detect it (default). Helm resolves .Capabilities against
         #           the live cluster on install/upgrade and on every
-        #           helm-controller reconcile, so this picks `gke` when GKE's
+        #           helm-controller reconcile. Auto picks `gke` when GKE's
         #           FQDNNetworkPolicy CRD is present, `cilium` when a real
         #           Cilium is, and `none` otherwise. Auto never picks `cilium`
-        #           on GKE: Dataplane V2 publishes cilium.io CRDs but has not
-        #           honoured CiliumNetworkPolicy since 1.21.5-gke.1300 and
-        #           rejects every L7 rule, so a CNP there enforces nothing
-        #           while looking like it does. Off-cluster `helm template`
-        #           sees no cluster and resolves to `none` — pin the mode when
-        #           you need a deterministic render.
+        #           on GKE. Dataplane V2 publishes cilium.io CRDs, but it has
+        #           not applied CiliumNetworkPolicy since 1.21.5-gke.1300 and
+        #           rejects every L7 rule. A CNP there enforces nothing even
+        #           though it looks active. Off-cluster `helm template` sees
+        #           no cluster and resolves to `none`. Pin the mode when you
+        #           need a deterministic render.
         #   none    base NetworkPolicy only.
         #   cilium  CiliumNetworkPolicy with toFQDNs; needs Cilium's DNS
-        #           proxy. Setting this explicitly on GKE is trusted (a
-        #           self-managed Cilium without Dataplane V2) but is a
-        #           silent no-op on Dataplane V2 itself.
-        #   gke     FQDNNetworkPolicy on GKE Dataplane V2; the cluster needs
-        #           --enable-fqdn-network-policy (that flag is what installs
-        #           the CRD, which is what makes auto-detection honest).
+        #           proxy. If you set this on GKE, the chart trusts it (for a
+        #           self-managed Cilium without Dataplane V2). On Dataplane V2
+        #           itself it silently does nothing.
+        #   gke     FQDNNetworkPolicy on GKE Dataplane V2. The cluster needs
+        #           --enable-fqdn-network-policy. That flag installs the CRD,
+        #           which is what makes auto-detection reliable.
         #   istio   REGISTRY_ONLY Sidecar + ServiceEntry per runner, and adds
-        #           the injection label to the agent namespace. Never chosen
-        #           by auto: CRD presence says nothing about native sidecars,
-        #           without which the agent Job never completes.
+        #           the injection label to the agent namespace. Auto never
+        #           chooses it: CRD presence says nothing about native
+        #           sidecars, and without them the agent Job never completes.
         #
-        # A legacy values file setting cilium.enabled or istio.enabled still
-        # works — those are consulted when mode is `auto`.
+        # An old values file that sets cilium.enabled or istio.enabled still
+        # works. The chart reads those when mode is `auto`.
         mode: auto
         # The base policy's "TCP 443 to anywhere outside the cluster" rule.
-        # Network policies are ADDITIVE — a packet matching ANY policy that
-        # selects the pod is allowed, and no policy can subtract from another
-        # — so keeping this rule alongside an FQDN allowlist makes the
-        # allowlist decorative: the union is still "443 to anywhere".
+        # Network policies are ADDITIVE: a packet that matches ANY policy
+        # selecting the pod is allowed, and no policy can remove what another
+        # allows. Keeping this rule next to an FQDN allowlist makes the
+        # allowlist useless, because the union is still "443 to anywhere".
         #
-        #   auto    drop it when mode is cilium or gke, keep it when mode is
+        #   auto    drop it when mode is cilium or gke. Keep it when mode is
         #           none or istio (the sidecar enforces on SNI in a separate
-        #           plane and still wants the L3 floor beneath it). Default.
-        #   always  keep it regardless. The honest setting while soaking a new
-        #           mode: if the mode turns out not to be enforcing, egress
-        #           fails open rather than blackholing every runner.
+        #           layer and still needs the L3 rule beneath it). Default.
+        #   always  keep it regardless. Use this while you test a new mode:
+        #           if the mode turns out not to enforce, egress stays open
+        #           instead of blocking every runner.
         #   never   drop it regardless.
         broadEgress: auto
         # Cluster-internal ranges the agent egress must NOT reach (pod/
@@ -844,11 +869,11 @@ agent:
             - 172.16.0.0/12
             - 192.168.0.0/16
             - 169.254.0.0/16
-        # Cilium only: cluster-local DNS names every runner pod may resolve on
-        # top of its own model host — this is what lets the artifact fetch
-        # resolve source-controller's Service. GKE's FQDN policy cannot name a
+        # Cilium only: cluster-local DNS names every runner pod may resolve,
+        # on top of its own model host. This lets the artifact fetch resolve
+        # source-controller's Service. GKE's FQDN policy cannot name a
         # resolver, so under mode `gke` DNS comes from the base policy and
-        # this is unused.
+        # this setting is unused.
         clusterDNSPatterns:
             - "*.svc.cluster.local"
         # Deprecated aliases for `mode`, honoured only while mode is `auto`.
@@ -857,7 +882,7 @@ agent:
             enabled: false
         # The same allowlist as per-runner Istio Sidecars (REGISTRY_ONLY) +
         # ServiceEntries. Requires native sidecars (istiod with
-        # ENABLE_NATIVE_SIDECARS=true) and the Istio CNI node agent — see
+        # ENABLE_NATIVE_SIDECARS=true) and the Istio CNI node agent. See
         # deploy/kustomize/components/istio.
         istio:
             enabled: false

@@ -8,6 +8,6 @@
 # binary, which removed the only vulnerable-package surface the gate ever
 # flagged (npm's vendored node_modules). When a base-image finding must be
 # accepted, add an ignore rule here pinned to the vulnerable version and its
-# path — so a reintroduction anywhere else still fails the gate — with a
+# path, so a reintroduction anywhere else still fails the gate. Add a
 # comment saying why it is acceptable and when to delete it.
 ignore: []

@@ -1,10 +1,10 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The credential-less end-to-end overlay: everything from dev, with GitHub
-# replaced by the e2e suite's fake API running in-cluster and the model
-# replaced by a scripted agent — the whole CRD pipeline runs with zero real
-# credentials and nothing on the host.
+# The credential-less end-to-end overlay. It is everything from dev, with two
+# replacements: the e2e suite's fake API, running in-cluster, replaces
+# GitHub, and a scripted agent replaces the model. The full CRD pipeline runs
+# with zero real credentials and nothing on the host.
 #
 #     PATCHY_OVERLAY=dev-fake make dev-colima      # deploy (builds the fake images too)
 #     mise run replay -- -dev-secret \
@@ -23,9 +23,9 @@ resources:
 
 patches:
     # The scripted agent image (hack/fake-agent) as the fake runner instead of
-    # the real agent-runner: prints canned PATCHY-EVENT lines, needs no model
-    # key. The dev overlay already restricts the enabled set to the fake
-    # harness (PATCHY_HARNESSES: fake); this just swaps its image.
+    # the real agent-runner. It prints canned PATCHY-EVENT lines and needs no
+    # model key. The dev overlay already limits the enabled set to the fake
+    # harness (PATCHY_HARNESSES: fake); this only swaps its image.
     - patch: |
           apiVersion: v1
           kind: ConfigMap

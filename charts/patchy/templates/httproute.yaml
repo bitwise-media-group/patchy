@@ -1,20 +1,23 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The webhook entry point, Gateway API flavour (webhook.httpRoute): one
-# HTTPRoute on one hostname, in front of the integration-controller — the
-# only component that faces the internet.
+# The webhook entry point, Gateway API version (webhook.httpRoute): one
+# HTTPRoute on one hostname, in front of the integration-controller. That is
+# the only component that faces the internet.
 #
-# The paths are fixed to one per provider on purpose: those are the only
-# endpoints a provider needs, and each authenticates its own way —
-# /github/webhooks by HMAC over the raw body, /google-cloud/webhooks by the
-# OIDC token a Pub/Sub push subscription signs, /wiz/webhooks by the shared
-# bearer token a Wiz automation action carries. /generic/ is the one prefix
-# covering many paths — each generic Integration listens at
-# /generic/<name>/webhooks under its own HMAC secret, so the list stays
-# static however many there are. The probes stay cluster-internal. Requires
-# the Gateway API CRDs and a Gateway to attach to via parentRefs — see
-# docs/deployment/webhook.md.
+# The route has one fixed path per provider. A provider needs no other
+# endpoint, and each path authenticates in its own way:
+#
+#   * /github/webhooks: an HMAC over the raw body.
+#   * /google-cloud/webhooks: the OIDC token a Pub/Sub push subscription
+#     signs.
+#   * /wiz/webhooks: the shared bearer token a Wiz automation action carries.
+#   * /generic/: the one prefix that covers many paths. Each generic
+#     Integration listens at /generic/<name>/webhooks under its own HMAC
+#     secret, so this list stays the same however many there are.
+#
+# The probes stay cluster-internal. The route needs the Gateway API CRDs and
+# a Gateway to attach to through parentRefs. See docs/deployment/webhook.md.
 {{- if .Values.webhook.httpRoute.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

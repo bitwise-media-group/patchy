@@ -3,8 +3,8 @@
 
 # The fake GitHub image the dev-fake overlay runs in-cluster: the e2e suite's
 # in-memory GitHub API (e2e/fakegithub/cmd) behind the same distroless-static
-# runtime as the controllers. Like Dockerfile.controller, no Go toolchain in
-# here — the binary is cross-compiled on the host and handed in via the build
+# runtime as the controllers. Like Dockerfile.controller, there is no Go
+# toolchain in here: the binary is cross-compiled on the host and handed in via the build
 # context (bin/):
 #
 #   (cd e2e && CGO_ENABLED=0 GOOS=linux GOARCH=<arch> \

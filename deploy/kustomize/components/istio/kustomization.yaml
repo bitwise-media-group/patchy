@@ -2,28 +2,28 @@
 # SPDX-License-Identifier: MIT
 #
 # Optional component: hostname egress allowlist for the agent sandbox, for
-# Istio meshes — the Istio counterpart of ../cilium (enable one or the other,
-# not both). Enable it from an overlay with
+# Istio meshes. It is the Istio counterpart of ../cilium (enable one or the
+# other, not both). Enable it from an overlay with
 #
 #     components:
 #         - ../../components/istio
 #
-# REQUIREMENTS — both are hard, read before enabling:
+# REQUIREMENTS. Both are mandatory, so read them before enabling:
 #
 #   * Native sidecars (Kubernetes >= 1.29, istiod running with
 #     ENABLE_NATIVE_SIDECARS=true). With the classic injection model the
-#     proxy is an ordinary container: the Job never completes because
-#     istio-proxy outlives the agent, and the "prepare" init container runs
-#     BEFORE the proxy exists — its `git clone` is redirected into a black
-#     hole. Native sidecars start the proxy first and stop it last, which
-#     fixes both.
+#     proxy is an ordinary container. That causes two failures. The Job
+#     never completes, because istio-proxy outlives the agent. And the
+#     "prepare" init container runs BEFORE the proxy exists, so its
+#     tarball fetch is redirected into a black hole. Native sidecars start the
+#     proxy first and stop it last, which fixes both.
 #   * The Istio CNI node agent. patchy-agents enforces the "restricted" Pod
-#     Security Standard; the classic istio-init container needs
+#     Security Standard. The classic istio-init container needs
 #     NET_ADMIN/NET_RAW and would be rejected at admission.
 #
-# Injection is switched on by the namespace label patched below. A revisioned
+# The namespace label patched below switches injection on. A revisioned
 # (canary) Istio install uses `istio.io/rev: <revision>` instead of
-# `istio-injection: enabled` — adjust the patch to your install.
+# `istio-injection: enabled`, so adjust the patch to your install.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 

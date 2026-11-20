@@ -4,8 +4,8 @@
 # The dev pipeline switch-on: one GitHub Integration and one GitHub Forge,
 # both referencing the throwaway patchy-github Secret (secret-dev.yaml).
 # With the placeholder token every GitHub call fails until the Secret is
-# replaced — but webhook validation, ingestion, and the CR state machine all
-# run, which is exactly what `mise run replay` exercises.
+# replaced. But webhook validation, ingestion, and the CR state machine all
+# run, and that is what `mise run replay` tests.
 ---
 apiVersion: patchy.bitwisemedia.uk/v1alpha1
 kind: Integration

@@ -1,12 +1,12 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Continuous integration — thin caller for the org's reusable ci workflow (v5+:
-# mise-task aware). It discovers the canonical tasks this repo defines and runs
-# `mise run lint` / `build` / `test` as one parallel job each, then Codecov
-# uploads from coverage/ — emitted by `mise run test`. `lint` carries all
-# check-mode static analysis — golangci-lint, govulncheck, addlicense,
-# markdownlint, prettier --check — with the pinned tools coming from the
+# Continuous integration: a thin caller for the org's reusable ci workflow (v5+
+# is mise-task aware). It discovers the canonical tasks this repo defines and runs
+# `mise run lint` / `build` / `test` as one parallel job each. Codecov then
+# uploads from coverage/, which `mise run test` writes. `lint` runs all
+# check-mode static analysis (golangci-lint, govulncheck, addlicense,
+# markdownlint, prettier --check). The pinned tools come from the
 # toolchain submodule at .mise/ (no package.json or .node-version: mise
 # provisions its own Node for the prose linters). Go itself comes from the root
 # mise.toml pin, not go.mod.
@@ -20,7 +20,7 @@ on:
         branches: [main]
     pull_request:
 
-# the reusable workflow's jobs only need contents:read; grant just that ceiling
+# the reusable workflow's jobs only need contents:read; grant only that ceiling
 permissions:
     contents: read
 

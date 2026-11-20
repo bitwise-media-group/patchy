@@ -7,16 +7,16 @@ metadata:
     name: patchy-config
     namespace: patchy
 data:
-    # DESIGN.md requirements 2 and 5, literally: accumulate for an hour, pick
-    # up only what is older than an hour.
+    # DESIGN.md requirements 2 and 5, as written: accumulate for an hour, and
+    # pick up only what is older than an hour.
     PATCHY_ACCUMULATION_WINDOW: 1h
     PATCHY_FINDING_MIN_AGE: 1h
 
-    # The real models (canonical, provider-qualified; the harness is derived
-    # from the model) the investigation may choose between. Only the claude
-    # runner is enabled here; add `codex` to
-    # PATCHY_HARNESSES and OpenAI models to the allowlist to let the
-    # investigation choose them — plus PATCHY_OPENAI_API_KEY_FILE and the
+    # The real models the investigation may choose between (canonical,
+    # provider-qualified; the harness is derived from the model). Only the
+    # claude runner is enabled here. To let the investigation choose OpenAI
+    # models, add `codex` to PATCHY_HARNESSES and the models to the
+    # allowlist. Also set PATCHY_OPENAI_API_KEY_FILE and create the
     # patchy-openai Secret in the patchy namespace, for the broker's openai
     # route (codex is brokered like claude; see base/configmap.yaml).
     PATCHY_HARNESSES: claude
@@ -36,8 +36,8 @@ data:
     PATCHY_JOB_TTL: 6h
 
     # Must be the same tag as the claude-agent-runner entry in
-    # kustomization.yaml's `images:` block — this string is copied verbatim
-    # into every claude Job the controllers create, and kustomize does not
+    # kustomization.yaml's `images:` block. The controllers copy this string
+    # unchanged into every claude Job they create, and kustomize does not
     # rewrite ConfigMap values. release-please bumps both. (Pin
     # PATCHY_CODEX_AGENT_IMAGE too when that runner is enabled.)
     PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.13.0 # x-release-please-version

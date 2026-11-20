@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: repositories.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -194,7 +194,7 @@ spec:
               resolvedSHA:
                 description: |-
                   ResolvedSHA is the commit the artifact is pinned to; investigation and
-                  remediation both work this exact tree, and it is the push base.
+                  remediation both work on this tree, and it is the push base.
                 type: string
             type: object
         required:

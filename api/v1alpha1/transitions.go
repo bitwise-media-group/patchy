@@ -11,9 +11,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Phase is the Finding lifecycle state. Queued is a real phase — remediation
-// runs in priority order with bounded concurrency, so findings observably
-// wait for a slot.
+// Phase is the Finding lifecycle state. Queued is a real phase because
+// remediation runs in priority order with bounded concurrency, so findings
+// visibly wait for a slot.
 // +kubebuilder:validation:Enum=Opened;Enhanced;Investigating;Queued;AwaitingApproval;Remediating;InReview;Remediated;Failed;Dismissed;HandedOff
 type Phase string
 
@@ -69,7 +69,7 @@ var transitions = map[Phase][]Phase{
 
 // terminal is the set of phases that complete a Finding for TTL purposes
 // (status.completedAt is set on entry). Dismissed and HandedOff keep outgoing
-// edges — they are revivable terminals; revival clears completedAt and
+// edges because they are revivable terminals. Revival clears completedAt and
 // cancels the TTL.
 var terminal = map[Phase]bool{
 	PhaseRemediated: true,
@@ -95,8 +95,9 @@ func Terminal(p Phase) bool {
 }
 
 // RetryTarget returns the phase a Failed finding recovers to when a human
-// retries it — the recoverable state immediately before the failure — or ""
-// when the finding is not Failed or its history holds no retryable phase.
+// retries it. That is the recoverable state immediately before the failure.
+// It returns "" when the finding is not Failed or its history holds no
+// retryable phase.
 // The failed stage is re-attempted by the normal machinery from there: the
 // investigation gate opens a fresh attempt from Enhanced, the remediation
 // spawner from Queued.
@@ -122,8 +123,8 @@ func RetryTarget(f *Finding) Phase {
 
 // RetryRequested reports whether spec.retry is actionable: present and newer
 // than the failure's completion. A retry consumed by a transition (which
-// clears completedAt) can never re-fire — a later failure stamps a fresh
-// completedAt that outdates it.
+// clears completedAt) can never re-fire, because a later failure stamps a
+// fresh completedAt that outdates it.
 func RetryRequested(f *Finding) bool {
 	r := f.Spec.Retry
 	if r == nil {
@@ -135,7 +136,7 @@ func RetryRequested(f *Finding) bool {
 
 // SetPhase moves the Finding to phase `to` at time `now`: it validates the
 // transition, appends to status.phaseTimes, and maintains status.completedAt
-// (set on terminal entry, cleared on revival — the TTL contract is
+// (set on terminal entry and cleared on revival; the TTL contract is
 // completedAt + TTL). Callers running under conflict retry must call SetPhase
 // again after every re-Get so the transition is re-validated against fresh
 // state; an illegal transition returns an error and mutates nothing.

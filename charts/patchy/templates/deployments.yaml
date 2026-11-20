@@ -1,22 +1,26 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# One Deployment per controller, rendered from a single spec because they
-# differ only in image, resources, config, and ports: the
-# integration-controller additionally serves the provider webhook receivers
-# on 8080, the source-controller the artifact tarballs on 9790 (backed by a
-# /data emptyDir); every controller serves healthz/readyz on 8081. All five
-# are CRD controllers, so every pod mounts its service-account token —
-# rbac.yaml pins verb-by-verb what each identity may do.
+# One Deployment per controller, all rendered from a single spec. They differ
+# only in image, resources, config, and ports:
+#
+#   * the integration-controller also serves the provider webhook receivers
+#     on 8080;
+#   * the source-controller also serves the artifact tarballs on 9790
+#     (backed by a /data emptyDir);
+#   * every controller serves healthz/readyz on 8081.
+#
+# All five are CRD controllers, so every pod mounts its service-account
+# token. rbac.yaml sets what each identity may do, verb by verb.
 #
 # All five are singletons with strategy Recreate, ON PURPOSE. The binaries do
-# run leader election (a coordination.k8s.io Lease), but that is insurance
-# against a botched rollout racing two replicas — singleton-by-construction
-# stays the deployment model. Do not scale these.
+# run leader election (a coordination.k8s.io Lease), but only as insurance
+# against a bad rollout that races two replicas. The deployment model is
+# still one replica each. Do not scale these.
 #
-# No credential is mounted anywhere here: provider and forge credentials live
-# in Secrets referenced by the Integration and Forge custom resources
-# (spec.secretRef), read on demand through the API.
+# No credential is mounted anywhere here. Provider and forge credentials live
+# in Secrets that the Integration and Forge custom resources reference
+# (spec.secretRef). The controllers read them through the API when needed.
 {{- range $c := list
     (dict "name" "integration-controller" "vals" .Values.integrationController)
     (dict "name" "source-controller" "vals" .Values.sourceController)
@@ -144,12 +148,12 @@ spec:
             volumes:
                 {{- if eq $c.name "source-controller" }}
                 # Artifact storage (PATCHY_ARTIFACT_DIR=/data/artifacts).
-                # Artifacts are reproducible — a re-fetch at the pinned SHA
-                # rebuilds them — so an emptyDir is acceptable.
+                # Artifacts are reproducible: a re-fetch at the pinned SHA
+                # rebuilds them, so an emptyDir is acceptable.
                 - name: data
                   emptyDir: {}
                 {{- end }}
-                # The root filesystem is read-only; every binary wants a
+                # The root filesystem is read-only, and every binary needs a
                 # writable /tmp.
                 - name: tmp
                   emptyDir: {}

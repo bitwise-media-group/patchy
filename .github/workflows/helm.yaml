@@ -7,12 +7,12 @@
 # container images that version of the chart references to ghcr. A
 # `release: published` trigger would never fire here: goreleaser publishes the
 # release with the workflow's GITHUB_TOKEN, and GITHUB_TOKEN-driven events
-# start no workflows (GitHub's recursion guard) — so release.yaml calls this
+# start no workflows (GitHub's recursion guard). So release.yaml calls this
 # workflow directly, gated on the release_created output, passing the release
 # tag as `ref`. No --version/--app-version overrides are needed: release-please
 # stamps each Chart.yaml in the release PR (extra-files in
 # release-please-config.json), so the tagged commit already carries the right
-# version — the checkout below is at that tag when called from the release
+# version. The checkout below is at that tag when called from the release
 # pipeline, and at the chosen ref for a manual dispatch.
 #
 # Each pushed chart gets a keyless cosign signature and the same GitHub

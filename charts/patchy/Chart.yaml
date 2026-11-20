@@ -3,8 +3,8 @@
 apiVersion: v2
 name: patchy
 description: >-
-    Automated triage and remediation of GHAS/CodeQL security findings — Kubernetes custom resources as the state
-    machine, sandboxed coding agents as the fix.
+    Automated triage and remediation of GHAS/CodeQL security findings. Kubernetes custom resources hold the pipeline
+    state, and sandboxed coding agents write the fixes.
 type: application
 # Only Kubernetes lines that have not reached end-of-life are supported.
 kubeVersion: ">=1.34.0-0"

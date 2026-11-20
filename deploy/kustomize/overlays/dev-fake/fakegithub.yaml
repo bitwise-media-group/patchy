@@ -3,15 +3,15 @@
 #
 # The fake GitHub (e2e/fakegithub) as an in-cluster Deployment, so the
 # credential-less walkthrough needs no server running on the host. State is
-# in-memory and per-pod: `kubectl -n patchy rollout restart deployment
-# patchy-fakegithub` is the clean-slate button (and every `make dev-colima`
+# in-memory and per-pod. To start from a clean slate, run `kubectl -n patchy
+# rollout restart deployment patchy-fakegithub` (every `make dev-colima`
 # re-run restarts it anyway).
 #
-# Deliberately NOT labelled app.kubernetes.io/component: controller — the
-# base patchy-controllers NetworkPolicy selects that label and would confine
+# It is NOT labelled app.kubernetes.io/component: controller, on purpose. The
+# base patchy-controllers NetworkPolicy selects that label and would limit
 # ingress to 8080/8081. Its own policy (networkpolicy-fakegithub.yaml)
-# admits ingress on 9990 — from the controllers and the NodePort below —
-# and blocks all egress: the fake never dials out.
+# admits ingress on 9990 from the controllers and the NodePort below. That
+# policy blocks all egress, because the fake never dials out.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,8 +24,8 @@ metadata:
         app.kubernetes.io/part-of: patchy
         app.kubernetes.io/component: dev-fake
 spec:
-    # One replica, no persistence: the whole point is disposable in-memory
-    # state (issues, PRs, pushed refs) that a restart wipes.
+    # One replica, no persistence. The purpose is disposable in-memory state
+    # (issues, PRs, pushed refs) that a restart wipes.
     replicas: 1
     strategy:
         type: Recreate
@@ -41,7 +41,8 @@ spec:
                 app.kubernetes.io/part-of: patchy
                 app.kubernetes.io/component: dev-fake
         spec:
-            # The fake never talks to the Kubernetes API — no token needed.
+            # The fake never talks to the Kubernetes API, so it needs no
+            # token.
             automountServiceAccountToken: false
             securityContext:
                 runAsNonRoot: true
@@ -56,9 +57,9 @@ spec:
                   # when PATCHY_OVERLAY=dev-fake.
                   image: patchy/fakegithub:dev
                   args:
-                      # The URL stamped into tarball redirects must be the one
-                      # the follower (source-controller) can reach — the
-                      # in-cluster Service, not the host address the
+                      # The URL stamped into tarball redirects must be one
+                      # the follower (source-controller) can reach. That is
+                      # the in-cluster Service, not the host address the
                       # standalone default assumes.
                       - -external-url=http://patchy-fakegithub.patchy.svc.cluster.local:9990
                   ports:

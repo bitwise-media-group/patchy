@@ -1,44 +1,45 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Field-level authorization for human actions on Findings — the Helm rendering
-# of deploy/kustomize/base/admission-policy.yaml. Keep the two in step; the
-# validation expressions are the security control and the envtest suite in
-# internal/action runs against the kustomize copy.
+# Field-level authorization for human actions on Findings. This is the Helm
+# version of deploy/kustomize/base/admission-policy.yaml. Keep the two in
+# step. The validation expressions are the security control, and the envtest
+# suite in internal/action runs against the kustomize copy.
 #
 # WHY THIS EXISTS
 #
 # The custom verbs (approve, retry, expedite, suspend, resume) let a grant say
-# "this developer may approve findings, and nothing else". The status server can
-# honour that alone because it writes as its own ServiceAccount and asks
-# SubjectAccessReview first. Anything writing as the *user* — the patchy CLI,
-# kubectl, curl — is authorized by the API server, and RBAC has no notion of a
-# field: `update` on findings grants the whole object. Admission control is the
-# only server-side mechanism that can express the difference, and because it
-# runs in the API server it applies to every client equally.
+# "this developer may approve findings, and nothing else". The status server
+# can enforce that by itself, because it writes as its own ServiceAccount and
+# asks SubjectAccessReview first. Anything that writes as the *user* (the
+# patchy CLI, kubectl, curl) is authorized by the API server. RBAC has no
+# concept of a field: `update` on findings grants the entire object.
+# Admission control is the only server-side mechanism that can express the
+# difference. It runs in the API server, so it applies to every client
+# equally.
 #
-# Unlike the kustomize copy, the exempt subjects are computed from the release's
-# actual ServiceAccount names — a renamed release or an overridden
-# serviceAccount.name would otherwise silently drop a controller out of the
+# Unlike the kustomize copy, the exempt subjects are computed from the
+# release's actual ServiceAccount names. Otherwise a renamed release or an
+# overridden serviceAccount.name would silently drop a controller out of the
 # exemption and stall the pipeline.
 {{- if .Values.admissionPolicy.enabled }}
 {{/*
-Gate on KubeVersion rather than Capabilities.APIVersions: an offline
-`helm template` reports only a minimal built-in API list, so an APIVersions
-check would fail every render that is not against a live cluster. KubeVersion is
-defined in both cases and overridable with --kube-version.
+Check KubeVersion and not Capabilities.APIVersions. An offline `helm template`
+reports only a minimal built-in API list, so an APIVersions check would fail
+every render that is not against a live cluster. KubeVersion is defined in
+both cases, and you can override it with --kube-version.
 
-This FAILS rather than skipping itself, because silently omitting the policy is
-the one outcome nobody would notice: the chart would install, the verbs would
-look granted, and every one of them would be advisory.
+This check FAILS the render instead of skipping the policy. If the policy
+were silently left out, nobody would notice: the chart would install, the
+verbs would look granted, and none of them would be enforced.
 
 Chart.yaml's own kubeVersion is currently stricter than this, so in practice
-helm rejects an old cluster first. The check stays because it names the reason —
-and because the day someone relaxes that constraint, this is what stops the
-verb ladder quietly becoming decorative.
+helm rejects an old cluster first. The check stays because it states the
+reason. And if someone relaxes that constraint one day, this check stops the
+custom verbs from quietly losing all effect.
 */}}
 {{- if not (semverCompare ">=1.30.0-0" .Capabilities.KubeVersion.Version) }}
-{{- fail (printf "admissionPolicy.enabled is true but this cluster is %s; ValidatingAdmissionPolicy needs Kubernetes 1.30+. Upgrade, or set admissionPolicy.enabled=false and accept that the custom finding verbs become advisory — anyone holding `update` on findings could then change any field, including forging an approval." .Capabilities.KubeVersion.Version) }}
+{{- fail (printf "admissionPolicy.enabled is true but this cluster is %s; ValidatingAdmissionPolicy needs Kubernetes 1.30+. Upgrade, or set admissionPolicy.enabled=false and accept that the custom finding verbs become advisory: anyone holding `update` on findings could then change any field, including forging an approval." .Capabilities.KubeVersion.Version) }}
 {{- end }}
 {{- $ns := .Release.Namespace }}
 {{- $subjects := list }}
@@ -66,15 +67,15 @@ metadata:
     annotations: {{- . | nindent 8 }}
     {{- end }}
 spec:
-    # Fail closed: a policy that cannot compile or evaluate must not become an
-    # open door.
+    # Fail closed: a policy that cannot compile or evaluate must not let
+    # every request through.
     failurePolicy: Fail
     matchConstraints:
         resourceRules:
-            # CREATE is matched alongside UPDATE deliberately. Without it, a
+            # CREATE is matched alongside UPDATE. Without it, a
             # user holding create+delete could delete a finding and recreate it
-            # with spec.approval already set, laundering an approval they were
-            # never granted.
+            # with spec.approval already set. That would give them an approval
+            # they were never granted.
             - apiGroups: [patchy.bitwisemedia.uk]
               apiVersions: [v1alpha1]
               operations: [CREATE, UPDATE]
@@ -82,7 +83,7 @@ spec:
     matchConditions:
         # The patchy controllers own spec: ingest writes it, accumulation folds
         # alerts into it, and the status server does its own SubjectAccessReview
-        # before writing. They are exempt; everyone else is evaluated.
+        # before writing. They are exempt. Every other client is evaluated.
         - name: not-a-patchy-controller
           expression: >-
               !(request.userInfo.username in [{{ range $i, $s := $subjects }}{{ if $i }}, {{ end }}'{{ $s }}'{{ end }}])
@@ -91,9 +92,9 @@ spec:
           expression: >-
               authorizer.group('patchy.bitwisemedia.uk').resource('findings')
                 .namespace(request.namespace)
-        # oldObject is null on CREATE, so every rule below reads "unchanged from
-        # old, OR authorized". On a create that means "there is nothing to be
-        # unchanged from", which is what makes presetting a field count as
+        # oldObject is null on CREATE, and every rule below reads "unchanged
+        # from old, OR authorized". On a create there is nothing to be
+        # unchanged from. So setting a field at create time counts as
         # changing it.
         - name: old
           expression: "oldObject"
@@ -133,16 +134,16 @@ spec:
               " requires the 'expedite' verb on findings.patchy.bitwisemedia.uk"
           reason: Forbidden
 
-        # --- everything else in spec is the pipeline's, not a human's ---------
+        # --- everything else in spec belongs to the pipeline -----------------
         #
-        # Enumerated field by field because CEL cannot subtract keys from a
-        # struct. A field added to FindingSpec must be added here too — the test
-        # TestAdmissionPolicyCoversEveryFindingSpecField enforces that against
+        # Listed field by field because CEL cannot subtract keys from a
+        # struct. A field added to FindingSpec must be added here too. The test
+        # TestAdmissionPolicyCoversEveryFindingSpecField checks this against
         # the kustomize copy, so keep this list identical to it.
         #
-        # spec.related is deliberately absent: relationship edges are documented
-        # as human-writable (api/v1alpha1/finding_types.go) and carry no
-        # authority.
+        # spec.related is not listed, because relationship edges are
+        # documented as human-writable (api/v1alpha1/finding_types.go) and
+        # carry no authority.
         - expression: >-
               variables.old == null || (
                 variables.old.spec.integrationRef == object.spec.integrationRef
@@ -166,9 +167,10 @@ spec:
 
         # --- metadata that carries meaning -----------------------------------
         #
-        # The rollup finalizers guarantee a finding's spend is aggregated before
-        # deletion, and the selector labels are what accumulation and child
-        # lookup key on. `update` would otherwise let a user break either.
+        # The rollup finalizers make sure a finding's spend is added to the
+        # rollup before deletion. Accumulation and child lookup select on the
+        # selector labels. Without these rules, `update` would let a user
+        # break either one.
         - expression: >-
               variables.old == null || (
                 variables.old.metadata.?finalizers == object.metadata.?finalizers
@@ -196,13 +198,15 @@ spec:
             matchLabels:
                 kubernetes.io/metadata.name: {{ .Release.Namespace }}
 ---
-# Field-level authorization for the request stamps on Integrations: the
+# Field-level authorization for the request fields on Integrations: the
 # backfill, replay and reset triggers each need their own custom verb on
-# integrations.patchy.bitwisemedia.uk. Two DELIBERATE divergences from the
-# findings policy above: no frozen-fields rule (IntegrationSpec is operator
-# configuration; plain `update` keeps working for the GitOps flow), and
-# clearing a request field needs no verb (a GitOps apply pruning a stamped
-# request must not be denied; cancelling carries no authority).
+# integrations.patchy.bitwisemedia.uk. This policy differs from the findings
+# policy above in two intended ways:
+#
+#   * No frozen-fields rule. IntegrationSpec is operator configuration, and
+#     plain `update` keeps working for the GitOps flow.
+#   * Clearing a request field needs no verb. A GitOps apply that prunes a
+#     set request must not be denied, and cancelling carries no authority.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -212,21 +216,21 @@ metadata:
     annotations: {{- . | nindent 8 }}
     {{- end }}
 spec:
-    # Fail closed: a policy that cannot compile or evaluate must not become an
-    # open door.
+    # Fail closed: a policy that cannot compile or evaluate must not let
+    # every request through.
     failurePolicy: Fail
     matchConstraints:
         resourceRules:
-            # CREATE is matched alongside UPDATE for the same laundering
-            # reason as findings: recreating an Integration with a request
-            # field preset must not smuggle the action past the verb.
+            # CREATE is matched alongside UPDATE for the same reason as for
+            # findings. Recreating an Integration with a request field already
+            # set must not get the action past the verb check.
             - apiGroups: [patchy.bitwisemedia.uk]
               apiVersions: [v1alpha1]
               operations: [CREATE, UPDATE]
               resources: [integrations]
     matchConditions:
         # Same exemption as the findings policy: the status server does its
-        # own SubjectAccessReview before stamping a request, and the
+        # own SubjectAccessReview before setting a request, and the
         # controllers never write Integration spec at all.
         - name: not-a-patchy-controller
           expression: >-
@@ -236,9 +240,10 @@ spec:
           expression: >-
               authorizer.group('patchy.bitwisemedia.uk').resource('integrations')
                 .namespace(request.namespace)
-        # oldObject is null on CREATE, so each rule reads "absent, OR
-        # unchanged from old, OR authorized": presetting a request on a
-        # fresh object counts as setting it, while omitting it stays free.
+        # oldObject is null on CREATE, and each rule reads "absent, OR
+        # unchanged from old, OR authorized". So a request already present
+        # on a new object counts as setting it, and leaving it out needs no
+        # verb.
         - name: old
           expression: "oldObject"
     validations:

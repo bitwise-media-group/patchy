@@ -13,9 +13,8 @@ metadata:
         app.kubernetes.io/component: controller
 spec:
     # One replica + Recreate. The binaries do run leader election (a
-    # coordination.k8s.io Lease), but that is insurance against a botched
-    # rollout racing two replicas — singleton-by-construction stays the
-    # deployment model.
+    # coordination.k8s.io Lease), but that only guards against a bad rollout
+    # racing two replicas. The deployment model is still a single replica.
     replicas: 1
     strategy:
         type: Recreate

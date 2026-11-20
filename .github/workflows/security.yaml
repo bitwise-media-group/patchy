@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 
-# Security analysis — thin caller for the org's reusable security workflow. It runs
+# Security analysis: a thin caller for the org's reusable security workflow. It runs
 # CodeQL over the repository's GitHub Actions workflows (build-free) and the Go
 # module (autobuild; go from the mise pins), on every push and pull request plus a
 # weekly scheduled run so newly published queries reach already-merged code.

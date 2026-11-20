@@ -2,11 +2,11 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Build every patchy binary into bin/ — one controller per concern plus the
+# Build every patchy binary into bin/: one controller per concern plus the
 # agent runtime. Same ldflags contract as .goreleaser.yaml: version metadata
 # stamped into internal/version. MODULE/VERSION/COMMIT/DATE/LDFLAGS override
 # the derived defaults. BUILD_TAGS defaults to withui, which embeds the
-# status page SPA (internal/web/ui/dist — build it first: mise run ui);
+# status page SPA (internal/web/ui/dist; build it first with mise run ui);
 # BUILD_TAGS='' compiles the stub instead.
 set -eu
 

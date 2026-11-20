@@ -1,35 +1,38 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Defence in depth for the agent sandbox on Cilium CNIs: FQDN matching on top
-# of the base "TCP 443 anywhere" NetworkPolicy. Requires Cilium with
-# DNS-based policy enabled (the DNS proxy). One policy is rendered per enabled
-# runner, selecting that harness's pods by their harness label. The brokered
-# runners (claude, codex) reach no external host at all — only the egress
-# broker; a non-brokered runner reaches only its own model API.
+# Defence in depth for the agent sandbox on Cilium CNIs: FQDN matching in
+# place of the base agent-egress NetworkPolicy and its broad 443 rule. This needs Cilium with
+# DNS-based policy enabled (the DNS proxy). The chart renders one policy per
+# enabled runner, which selects that harness's pods by their harness label.
+# The brokered runners (claude, codex) reach no external host at all, only
+# the egress broker. A non-brokered runner reaches only its own model API.
 #
-# Each runner's pods need exactly two destinations:
+# Each runner's pods need two destinations and no others:
 #
 #   * source-controller's artifact server (in-cluster, port 9790): the init
-#     container's credential-less, digest-verified tarball fetch. No forge
-#     host appears in this policy at all — the pod never talks to GitHub.
+#     container's tarball fetch, which uses no credential and verifies the
+#     digest. No forge host appears in this policy at all, because the pod
+#     never talks to GitHub.
 #   * the egress broker (brokered runners) or the runner's own model API
-#     (agent.runners.<harness>.hosts): the agent container's harness CLI.
+#     (agent.runners.<harness>.hosts): used by the agent container's harness
+#     CLI.
 #
-# If your CNI is not Cilium, leave this disabled; the base NetworkPolicy
-# still applies and is the floor. See deploy/kustomize/components/cilium.
+# If your CNI is not Cilium, leave this disabled. The base NetworkPolicy
+# still applies as the baseline. See deploy/kustomize/components/cilium.
 #
-# NOT FOR GKE. Dataplane V2 is Cilium, but it ignores this CRD and rejects
-# every L7 rule, so a policy rendered there enforces nothing while looking
-# like it does — use mode `gke` (networkpolicy-gke.yaml) instead. `mode: auto`
-# never picks cilium on a GKE cluster for exactly this reason; setting
-# `mode: cilium` explicitly is trusted, for a self-managed Cilium on GKE
-# without Dataplane V2.
+# NOT FOR GKE. Dataplane V2 runs Cilium, but it ignores this CRD and rejects
+# every L7 rule. A policy rendered there enforces nothing while it appears to
+# work. Use mode `gke` (networkpolicy-gke.yaml) instead. This is why
+# `mode: auto` never picks cilium on a GKE cluster. Setting `mode: cilium`
+# explicitly is trusted, for a self-managed Cilium on GKE without
+# Dataplane V2.
 #
-# Under this mode the base agent-egress NetworkPolicy is not rendered at all
-# (see networkpolicy.yaml): policies are additive, so its DNS and 443 rules
-# would union with — and undo — what this one restricts. Everything the pod
-# needs is below, and the namespace default-deny remains the floor, so a
+# Under this mode the base agent-egress NetworkPolicy is not rendered (see
+# networkpolicy.yaml), unless agent.networkPolicy.broadEgress=always keeps it
+# while a new mode is soaked. Policies are additive, so its DNS and 443 rules
+# would combine with this policy and undo what it restricts. Everything the
+# pod needs is below. The namespace default-deny is still the baseline, so a
 # missing CRD fails closed.
 {{- if and .Values.agent.networkPolicy.create (eq (include "patchy.egressMode" .) "cilium") }}
 {{- $root := . }}
@@ -55,7 +58,7 @@ spec:
             {{- include "patchy.agentPodSelector" $root | nindent 12 }}
             patchy.bitwisemedia.uk/harness: {{ $id | quote }}
     egress:
-        # DNS via Cilium's proxy — this is what makes toFQDNs work at all:
+        # DNS through Cilium's proxy. This is what makes toFQDNs work at all:
         # the proxy watches the answers and programs the resolved IPs into
         # the policy. Only this runner's model host and the cluster-local
         # names (for the artifact fetch) may be resolved.
@@ -74,7 +77,8 @@ spec:
                         {{- end }}
 
         # The INIT container's artifact fetch: source-controller's tarball
-        # server, in-cluster, credential-less, digest-verified.
+        # server, in-cluster. The fetch uses no credential and verifies the
+        # digest.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: {{ $root.Release.Namespace }}
@@ -86,10 +90,10 @@ spec:
 
         {{- if has $id $brokered }}
         # Brokered (claude, codex): the agent container's ONLY destination is
-        # the egress credential broker — a cluster-local endpoint, so this
-        # policy carries no toFQDNs at all. The DNS rule above resolves only
-        # the cluster-local names (clusterDNSPatterns); no external name
-        # resolves from a brokered pod, period.
+        # the egress credential broker. That is a cluster-local endpoint, so
+        # this policy has no toFQDNs at all. The DNS rule above resolves only
+        # the cluster-local names (clusterDNSPatterns). No external name
+        # resolves from a brokered pod.
         - toEndpoints:
               - matchLabels:
                     io.kubernetes.pod.namespace: {{ $root.Release.Namespace }}

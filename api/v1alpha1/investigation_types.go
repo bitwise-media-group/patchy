@@ -18,8 +18,8 @@ type Analysis struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-// InvestigationSpec identifies one analysis attempt. It is immutable — a new
-// attempt is a new Investigation (CEL-enforced).
+// InvestigationSpec identifies one analysis attempt. It is immutable, so a
+// new attempt is a new Investigation (CEL-enforced).
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new Investigation for a new attempt"
 type InvestigationSpec struct {
 	// FindingRef is the owning Finding (UID-pinned).
@@ -82,12 +82,12 @@ type InvestigationStatus struct {
 	HoldReasons []HoldReason `json:"holdReasons,omitempty"`
 	// RemediationParameters are the stage-2 parameters the investigation
 	// suggested: the model to run, and (on Estimate) its prediction of the
-	// turns and tokens the fix will need. The prediction is advisory — the
-	// grant is resolved by the remediation spawner, never here.
+	// turns and tokens the fix will need. The prediction is advisory. The
+	// remediation spawner resolves the grant, never this field.
 	// +optional
 	RemediationParameters *AgentParameters `json:"remediationParameters,omitempty"`
-	// Report is the full analysis report markdown (single copy — the Finding
-	// mirrors ratings only).
+	// Report is the full analysis report markdown. This is the only copy: the
+	// Finding mirrors the ratings only.
 	// +optional
 	// +kubebuilder:validation:MaxLength=65536
 	Report string `json:"report,omitempty"`

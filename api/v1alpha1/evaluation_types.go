@@ -8,10 +8,10 @@ import (
 )
 
 // EvaluationPhase is the lifecycle of one evaluation submission. It is a
-// local enum, not part of the Finding phase taxonomy in transitions.go: the
-// evaluation-controller is the single writer and derives the phase from child
-// counts, so no transition table is needed. Expiry is deletion (TTL), not a
-// phase.
+// local enum and is not part of the Finding phase taxonomy in
+// transitions.go. The evaluation-controller is the single writer and derives
+// the phase from child counts, so no transition table is needed. Expiry is
+// deletion (TTL) rather than a phase.
 // +kubebuilder:validation:Enum=Pending;Running;Complete;Failed
 type EvaluationPhase string
 
@@ -58,8 +58,8 @@ type WorkspaceRef struct {
 
 // UnitPlan is one evaluation unit: a skill evaluated on one model at one
 // tier. The fields patchy schedules on (harness selection, workspace,
-// timeout) are typed; everything else the in-pod client needs travels opaquely
-// in ExecJSON — patchy never learns evaluation semantics.
+// timeout) are typed. Everything else the in-pod client needs travels opaquely
+// in ExecJSON, so patchy never learns evaluation semantics.
 type UnitPlan struct {
 	// Skill under evaluation.
 	// +kubebuilder:validation:MinLength=1
@@ -108,8 +108,8 @@ type UnitPlan struct {
 	ExecJSON string `json:"execJSON,omitempty"`
 }
 
-// EvaluationSpec is one submission. It is immutable — resubmission is a new
-// Evaluation (CEL-enforced).
+// EvaluationSpec is one submission. It is immutable, so a resubmission is a
+// new Evaluation (CEL-enforced).
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; submit a new Evaluation"
 type EvaluationSpec struct {
 	// Submitter is the authenticated username the API mapped from the

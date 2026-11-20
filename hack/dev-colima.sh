@@ -4,7 +4,7 @@
 #
 # One-command local dev loop on Colima: start the VM+k3s if needed, snapshot
 # the images, retag the host-arch ones as patchy/<app>:dev (the tags the dev
-# overlay expects — the shared Docker/k3s image store makes the tag the whole
+# overlay expects. The shared Docker/k3s image store makes the tag the whole
 # "load" step), apply the overlay, and restart the deployments so a re-run
 # redeploys the fresh build. See docs/deployment/colima.md.
 set -eu
@@ -20,17 +20,17 @@ done
 # verify the colima kube context answers (catches a colima started without
 # --kubernetes). Passing any --k3s-arg replaces colima's default
 # [--disable=traefik], so an inert arg (--tls-san=localhost) keeps the
-# bundled traefik ingress controller enabled — the dev overlay ships an
+# bundled traefik ingress controller enabled, because the dev overlay ships an
 # Ingress for the integration-controller that it satisfies.
 colima status >/dev/null 2>&1 || colima start --kubernetes \
   --cpu "${COLIMA_CPU:-4}" --memory "${COLIMA_MEMORY:-8}" \
   --k3s-arg=--tls-san=localhost
 kubectl --context colima get --raw /readyz >/dev/null || {
-  echo "error: colima is running but k3s is not reachable — start with --kubernetes" >&2
+  echo "error: colima is running but k3s is not reachable. Start it with --kubernetes" >&2
   exit 1
 }
 kubectl --context colima get ingressclass traefik >/dev/null 2>&1 || {
-  echo "note: no traefik IngressClass — this colima predates the traefik-enabled start;" >&2
+  echo "note: no traefik IngressClass. This colima predates the traefik-enabled start;" >&2
   echo "      'colima stop' and re-run to reinstall k3s with the ingress controller" >&2
 }
 
@@ -51,7 +51,7 @@ done
 
 # PATCHY_OVERLAY=dev-fake swaps in the credential-less stack: the scripted
 # agent image (hack/fake-agent) and the fake GitHub running in-cluster
-# (e2e/fakegithub, cross-compiled here — the Dockerfile carries no Go
+# (e2e/fakegithub, cross-compiled here because the Dockerfile carries no Go
 # toolchain, matching Dockerfile.controller). See docs/deployment/colima.md.
 overlay="${PATCHY_OVERLAY:-dev}"
 if [ "$overlay" = dev-fake ]; then
@@ -82,16 +82,16 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
       --dry-run=client -o yaml |
     kubectl --context colima apply -f -
 else
-  echo "note: GITHUB_TOKEN not set — GitHub calls will fail on the placeholder" >&2
+  echo "note: GITHUB_TOKEN not set, so GitHub calls will fail on the placeholder" >&2
   echo "      credential; see docs/deployment/colima.md#github-credentials" >&2
 fi
 
-# same :dev tag every run — restart so pods pick up the retagged image
+# same :dev tag every run, so restart to make pods pick up the retagged image
 kubectl --context colima -n patchy rollout restart deployment -l app.kubernetes.io/part-of=patchy
 kubectl --context colima -n patchy rollout status deployment -l app.kubernetes.io/part-of=patchy --timeout=120s
 
 # where the ingress answers depends on colima's network mode: with a reachable
-# VM address colima deliberately does NOT forward guest 80/443 to the host
+# VM address colima does NOT forward guest 80/443 to the host
 # (traefik is reached at the VM IP); without one, lima forwards them and
 # localhost works. Probe for the webhook route: GET on a POST-only handler
 # answering 405 proves the request reached the controller.
@@ -103,5 +103,5 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   [ "$code" = "405" ] && break
   sleep 2
 done
-[ "$code" = "405" ] || echo "note: $ingress answered $code, not the expected 405 — traefik may still be starting" >&2
-echo "patchy dev stack ready — webhook ingress: $ingress  nodeport: http://localhost:30079/healthz"
+[ "$code" = "405" ] || echo "note: $ingress answered $code, not the expected 405; traefik may still be starting" >&2
+echo "patchy dev stack ready. Webhook ingress: $ingress  nodeport: http://localhost:30079/healthz"

@@ -1,7 +1,7 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The one settings surface for all five controllers, consumed with envFrom.
+# The one settings surface for every patchy binary, consumed with envFrom.
 #
 # Every key is a PATCHY_* environment variable, which internal/cli/options.go
 # maps back onto a cobra flag: prefix PATCHY, dashes become underscores
@@ -9,13 +9,13 @@
 # and the Deployments pass no flags other than the `serve` subcommand, so what
 # is here is what runs.
 #
-# A key a given binary does not bind is simply ignored by that binary, which
-# is why one ConfigMap can serve all five (PATCHY_ACCUMULATION_WINDOW is inert
-# in the remediation-controller, and so on).
+# A binary ignores any key it does not bind, which is why one ConfigMap can
+# serve them all (PATCHY_ACCUMULATION_WINDOW has no effect in the
+# remediation-controller, and so on).
 #
 # NOT here: GitHub credentials and webhook secrets. Provider and forge
 # credentials live in Secrets referenced by the Integration and Forge custom
-# resources (spec.secretRef) — see crs.example.yaml and secrets.example.yaml.
+# resources (spec.secretRef). See crs.example.yaml and secrets.example.yaml.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -46,11 +46,13 @@ data:
     PATCHY_ARTIFACT_ADDR: ":9790"
     PATCHY_ARTIFACT_DIR: /data/artifacts
     # The internal workspace-blob endpoint evaluation-controller streams
-    # uploads to (NetworkPolicy-gated to that one client). Unset disables it —
-    # remove this key when the evaluation controller is not deployed.
+    # uploads to (a NetworkPolicy opens it to that one client only). Unset
+    # disables it, so remove this key when the evaluation controller is not
+    # deployed.
     PATCHY_ARTIFACT_INTERNAL_ADDR: ":9791"
-    # Workspace bundles unused this long are swept; a needed-but-swept bundle
-    # surfaces as WorkspaceLost and the client re-uploads.
+    # Workspace bundles unused for this long are deleted. If a deleted bundle
+    # is needed later, it shows up as WorkspaceLost and the client uploads it
+    # again.
     PATCHY_WORKSPACE_RETENTION: 168h
 
     # ---- context-controller -------------------------------------------------
@@ -81,7 +83,7 @@ data:
     # objects retain the all-time statistics. "0" keeps findings forever.
     PATCHY_FINDING_TTL: 336h
     # Long-waiting remediations gain +1 effective priority per interval, up to
-    # the cap — starvation protection for low-priority findings.
+    # the cap. This stops low-priority findings from waiting forever.
     PATCHY_PRIORITY_AGING_INTERVAL: 24h
     PATCHY_PRIORITY_AGING_CAP: "25"
 
@@ -91,50 +93,58 @@ data:
     PATCHY_AGENT_NAMESPACE: patchy-agents
     PATCHY_AGENT_SERVICE_ACCOUNT: patchy-agent
     # The per-harness runner fleet. A harness is enabled when it is in
-    # PATCHY_HARNESSES and its runner image is set; claude and codex are
-    # brokered, so no credential Secret is involved (the egress broker holds
-    # the model credential). The model chosen for a stage decides which runner
-    # (image + broker route + egress policy) the Job uses. Each runner image is ALSO pinned by the `images:` block in
-    # kustomization.yaml for provenance, so overlays must keep the two in step
-    # (the `images:` block does not rewrite these ConfigMap values).
+    # PATCHY_HARNESSES and its runner image is set. claude and codex go
+    # through the egress broker, so no credential Secret is involved (the
+    # broker holds the model credential). The model chosen for a stage decides
+    # which runner (image + broker route + egress policy) the Job uses. Each
+    # runner image is ALSO pinned by the `images:` block in kustomization.yaml
+    # for provenance, so overlays must keep the two in step (the `images:`
+    # block does not rewrite these ConfigMap values).
     PATCHY_HARNESSES: claude
     PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:latest
-    # The claude runner is BROKERED: all of its model traffic goes through
+    # The claude runner is BROKERED. All of its model traffic goes through
     # the egress credential broker (deployment-egress-broker.yaml), and no
-    # credential of any kind enters a claude agent pod — the Anthropic key
+    # credential of any kind enters a claude agent pod. The Anthropic key
     # lives with the broker in the patchy namespace (see
-    # secrets.example.yaml), never in patchy-agents. There are therefore no
+    # secrets.example.yaml), never in patchy-agents. So there are no
     # PATCHY_CLAUDE_SECRET* keys anymore; the broker URL and provider
-    # selection replace them. Provider one of anthropic|bedrock|vertex|
-    # foundry; bedrock needs PATCHY_CLAUDE_PROVIDER_REGION, vertex that plus
-    # PATCHY_CLAUDE_PROVIDER_PROJECT_ID, foundry a PATCHY_CLAUDE_MODEL_MAP of
-    # canonical-id=deployment-name pairs.
+    # selection replace them. The provider is one of
+    # anthropic|bedrock|vertex|foundry:
+    #   * bedrock needs PATCHY_CLAUDE_PROVIDER_REGION;
+    #   * vertex needs that plus PATCHY_CLAUDE_PROVIDER_PROJECT_ID;
+    #   * foundry needs a PATCHY_CLAUDE_MODEL_MAP of
+    #     canonical-id=deployment-name pairs.
     PATCHY_BROKER_URL: http://patchy-egress-broker.patchy.svc.cluster.local:8080
     PATCHY_CLAUDE_PROVIDER: anthropic
-    # Read only by egress-broker: the mounted Anthropic credential file
-    # (matches the Secret volume in deployment-egress-broker.yaml) and how it
-    # authenticates — `key` injects x-api-key (an API key); `token` sends an
+    # Only egress-broker reads these two keys. The first is the mounted
+    # Anthropic credential file (it matches the Secret volume in
+    # deployment-egress-broker.yaml). The second sets how it authenticates:
+    # `key` injects x-api-key (an API key), and `token` sends an
     # Authorization bearer, for a `claude setup-token` OAuth token. A
     # bedrock/vertex/foundry overlay replaces these with the broker's own
     # PATCHY_BEDROCK_REGION / PATCHY_VERTEX_REGION / PATCHY_FOUNDRY_RESOURCE
     # (+ PATCHY_FOUNDRY_AUTH / PATCHY_FOUNDRY_API_KEY_FILE) keys.
     PATCHY_ANTHROPIC_API_KEY_FILE: /etc/patchy/anthropic/api-key
     PATCHY_ANTHROPIC_AUTH: key
-    # The codex runner is BROKERED exactly like claude: no credential enters
-    # a codex pod; its rendered config.toml points the CLI at the broker.
-    # Provider one of openai|azure; azure needs a PATCHY_CODEX_MODEL_MAP of
-    # canonical-id=deployment-name pairs. Enable it with three changes in an
-    # overlay: add `codex` to PATCHY_HARNESSES, uncomment
-    # PATCHY_OPENAI_API_KEY_FILE below (the broker's openai route), and
-    # create the patchy-openai Secret in the patchy namespace (see
-    # secrets.example.yaml). For azure set PATCHY_AZURE_RESOURCE plus
-    # PATCHY_AZURE_AUTH (key → PATCHY_AZURE_API_KEY_FILE and a mounted
-    # Secret; entra → the broker's workload identity) instead.
+    # The codex runner is BROKERED in the same way as claude. No credential
+    # enters a codex pod, and its rendered config.toml points the CLI at the
+    # broker. The provider is one of openai|azure; azure needs a
+    # PATCHY_CODEX_MODEL_MAP of canonical-id=deployment-name pairs. To enable
+    # it, make three changes in an overlay:
+    #   1. add `codex` to PATCHY_HARNESSES;
+    #   2. uncomment PATCHY_OPENAI_API_KEY_FILE below (the broker's openai
+    #      route);
+    #   3. create the patchy-openai Secret in the patchy namespace (see
+    #      secrets.example.yaml).
+    # For azure, set PATCHY_AZURE_RESOURCE plus PATCHY_AZURE_AUTH instead
+    # (key → PATCHY_AZURE_API_KEY_FILE and a mounted Secret; entra → the
+    # broker's workload identity).
     PATCHY_CODEX_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/codex-agent-runner:latest
     PATCHY_CODEX_PROVIDER: openai
-    # Read only by egress-broker; matches the optional patchy-openai volume
-    # in deployment-egress-broker.yaml. Left off until codex is enabled: a
-    # configured route whose key file is missing fails the broker's /readyz.
+    # Only egress-broker reads this. It matches the optional patchy-openai
+    # volume in deployment-egress-broker.yaml. It stays commented out until
+    # codex is enabled, because a configured route whose key file is missing
+    # fails the broker's /readyz.
     # PATCHY_OPENAI_API_KEY_FILE: /etc/patchy/openai/api-key
     PATCHY_JOB_DEADLINE: 1h
     PATCHY_JOB_TTL: 1h
@@ -147,38 +157,38 @@ data:
     # Anthropic model to the claude runner.
     #
     # A family alias (anthropic/claude-sonnet, anthropic/claude-opus, ...)
-    # resolves at controller startup to the newest version patchy registers,
-    # and only that concrete id reaches the pods, the CRDs and the rollups —
-    # pin a concrete id to hold a version across upgrades. A well-formed but
-    # unregistered version (anthropic/claude-opus-6) also runs: on the claude
-    # harness only, and unpriced until patchy registers it.
+    # resolves at controller startup to the newest version patchy registers.
+    # Only that concrete id reaches the pods, the CRDs and the rollups. Pin a
+    # concrete id to keep a version across upgrades. A well-formed but
+    # unregistered version (anthropic/claude-opus-6) also runs, but only on
+    # the claude harness, and with no price until patchy registers it.
     #
-    # The INVESTIGATE_* limits are absolute — that stage runs on exactly
-    # these.
+    # The INVESTIGATE_* limits are absolute. That stage always runs on these
+    # values.
     #
     # The remediation budget is split by who authorized the run:
     #
     #   REMEDIATE_AUTO_* is what patchy will spend on a fix nobody is
     #   watching. Every remediation gets it whatever the investigation
-    #   predicted (including when it predicted nothing), and it is the line
-    #   past which a fix stops being automatic — an estimate above it holds
+    #   predicted (including when it predicted nothing). It is also the line
+    #   past which a fix stops being automatic. An estimate above it holds
     #   the finding in AwaitingApproval instead of queueing it.
     #
     #   REMEDIATE_MANUAL_* is the most a human-approved run may spend.
-    #   Approving an over-auto estimate GRANTS that estimate, so these bound
-    #   what one approval can authorize. They must be at or above the AUTO
-    #   values — approving a fix must never buy less than leaving it alone —
-    #   and the runner refuses to start otherwise.
+    #   Approving an estimate above the AUTO values GRANTS that estimate, so
+    #   these values cap what one approval can authorize. They must be at or
+    #   above the AUTO values, because approving a fix must never buy less
+    #   than leaving it alone. The runner refuses to start otherwise.
     #
     # The investigation's own max_turns / token_budget are an ESTIMATE at
-    # every level and never a limit: a low estimate cannot starve a fix. The
-    # model suggestion IS still clamped to the allowlist, and every
+    # every level and never a limit, so a low estimate cannot starve a fix.
+    # The model suggestion IS still clamped to the allowlist. Every
     # allowlisted model must have an enabled harness that supports it, or the
     # controllers refuse to start.
     #
-    # The token budgets are enforced by the runner watching the harness's
-    # streamed usage events and killing the process group when the cumulative
-    # output-token count is exceeded — the CLI has no such flag itself.
+    # The runner enforces the token budgets. It watches the harness's
+    # streamed usage events and kills the process group when the cumulative
+    # output-token count is exceeded. The CLI has no such flag itself.
     PATCHY_MODEL_ALLOWLIST: anthropic/claude-sonnet,anthropic/claude-opus
 
     PATCHY_INVESTIGATE_MODEL: anthropic/claude-sonnet
@@ -197,9 +207,9 @@ data:
     # The remote-evaluation engine (optional; only read by
     # evaluation-controller). The evolve-runner images are the counterpart of
     # the agent-runner images above: evolve + the harness CLI, shipped from
-    # the evolve repository and pinned by the operator. Both are brokered and
-    # reuse the PATCHY_<HARNESS>_PROVIDER* keys above — one broker route per
-    # model vendor, whichever fleet exercises it.
+    # the evolve repository and pinned by the operator. Both go through the
+    # broker and reuse the PATCHY_<HARNESS>_PROVIDER* keys above. There is
+    # one broker route per model vendor, whichever fleet uses it.
     PATCHY_MAX_CONCURRENT_UNITS: "4"
     PATCHY_EVALUATION_TTL: 72h
     PATCHY_EVOLVE_CLAUDE_IMAGE: ghcr.io/bitwise-media-group/evolve-runner-claude:latest

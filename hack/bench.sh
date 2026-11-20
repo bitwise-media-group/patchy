@@ -15,7 +15,7 @@ mkdir -p coverage/bench
 stamp=$(date +%Y%m%d-%H%M%S)
 out="coverage/bench/${stamp}.txt"
 
-# -p 1: benchmark binaries must not run concurrently — parallel packages
+# -p 1: benchmark binaries must not run concurrently, because parallel packages
 # compete for cores and poison every number.
 go test -p 1 ./internal/... -run '^$' -bench . -benchmem -timeout 30m "$@" | tee "${out}"
 

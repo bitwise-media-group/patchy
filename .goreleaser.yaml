@@ -3,14 +3,14 @@
 
 # GoReleaser config. Releases are cut by release-please: when its release PR merges,
 # the reusable release workflow (.github/workflows/release.yaml) pushes the vX.Y.Z
-# tag, leaves a draft GitHub release, and runs `goreleaser release` — which adopts
+# tag, leaves a draft GitHub release, and runs `goreleaser release`, which adopts
 # that draft (use_existing_draft + mode: replace below). Build locally without
 # publishing via `make snapshot`.
 #
 # Produces cross-platform binary archives + checksums + SBOMs, keyless cosign
 # signatures (linux/windows) and Developer ID-signed, notarized darwin
 # binaries, the container images (multi-arch manifests built by buildx from
-# the repo-root Dockerfile.* — dockers_v2 below — and pushed to ghcr on
+# the repo-root Dockerfile.* by dockers_v2 below, and pushed to ghcr on
 # release), and a Homebrew cask for the workstation CLI pushed to
 # bitwise-media-group/homebrew-tap.
 version: 2
@@ -174,7 +174,7 @@ builds:
     # the cluster, which is why it alone builds for windows and has no container
     # image: nothing would ever run it in a pod.
     #
-    # Its darwin build (and kubectl-patchy's) is a separate build id purely so
+    # Its darwin build (and kubectl-patchy's) is a separate build id only so
     # binary_signs (cosign) can exclude it by id: goreleaser runs binary_signs
     # BEFORE notarize, and notarization rewrites the Mach-O in place, so a
     # cosign bundle over the pre-notarized bytes would never verify against
@@ -246,13 +246,13 @@ builds:
           - arm64
 
 # Two archives, split by where the binary runs: the cluster components in one,
-# the workstation CLI in the other. The split is what keeps the Homebrew cask
-# below honest — `brew install patchy` puts the CLI (and its kubectl-plugin
-# alias) on a laptop without also unpacking seven binaries that only ever run
-# in a pod — and the CLI archive is the only one carrying darwin and windows:
-# the cluster binaries build linux-only, since they only ever run in a pod
-# (they are pure API clients and would run anywhere, but nobody deploys a
-# released server binary on a workstation — local dev builds from source).
+# the workstation CLI in the other. The split keeps the Homebrew cask below
+# lean: `brew install patchy` puts the CLI (and its kubectl-plugin alias) on a
+# laptop without also unpacking the cluster binaries that only ever run in a pod.
+# The CLI archive is also the only one carrying darwin and windows. The
+# cluster binaries build linux-only, since they only ever run in a pod. (They
+# are pure API clients and would run anywhere, but nobody deploys a released
+# server binary on a workstation. Local dev builds from source.)
 archives:
     - id: patchy
       ids:
@@ -278,7 +278,7 @@ archives:
           # Pre-generated shell completions (committed by `mise run docs`), so
           # the cask installs them as static files instead of executing the
           # binary at install time (see homebrew_casks.completions below).
-          # kubectl_complete-patchy is in there too — it is not a shell
+          # kubectl_complete-patchy is in there too. It is not a shell
           # completion script but the executable kubectl runs to complete
           # `kubectl patchy …`, so it ships as a cask binary rather than a
           # completion.
@@ -288,13 +288,13 @@ checksum:
     name_template: checksums.txt
 
 # ^ref: https://goreleaser.com/customization/package/dockers_v2/
-# Container images — one per binary, each a linux/amd64 + linux/arm64 manifest.
+# Container images: one per binary, each a linux/amd64 + linux/arm64 manifest.
 # buildx assembles them from the binaries built above: nothing is compiled
 # inside Docker; the Dockerfiles only COPY $TARGETPLATFORM/<binary> out of the
 # generated build context. Image names match deploy/kustomize. `goreleaser
 # release` pushes (the release workflow logs in to ghcr and sets up
-# buildx/QEMU); `make snapshot` builds per-arch local images without pushing —
-# it needs a running docker with buildx.
+# buildx/QEMU). `make snapshot` builds per-arch local images without pushing,
+# and needs a running docker with buildx.
 dockers_v2:
     - id: source-controller
       ids: [source-controller]
@@ -475,8 +475,8 @@ dockers_v2:
           org.opencontainers.image.version: "{{ .Version }}"
 
 # ^ref: https://goreleaser.com/customization/package/docker_digests/
-# Writes dist/digests.txt — one `<hex digest>  <image:tag>` line per published
-# image/manifest, sha256sum format — which the release workflow feeds to
+# Writes dist/digests.txt, with one `<hex digest>  <image:tag>` line per
+# published image/manifest in sha256sum format. The release workflow feeds it to
 # actions/attest so the images get the same GitHub build-provenance
 # attestation as every file in checksums.txt. Verify with:
 #   gh attestation verify --owner bitwise-media-group \
@@ -486,13 +486,13 @@ docker_digest:
 
 # ^ref: https://goreleaser.com/customization/sign/docker/
 # Keyless cosign signatures over the pushed container images. The empty
-# `artifacts` default selects exactly the dockers_v2 image artifacts above, and
+# `artifacts` default selects only the dockers_v2 image artifacts above, and
 # signing targets the immutable digest, not the tag. Signatures are pushed to
 # ghcr as OCI artifacts next to each image: cosign v3 stores each signature as
 # a sigstore bundle attached via the OCI referrers API, the format the
 # platform's kyverno verification reads (type: SigstoreBundle rules).
 # --use-signing-config=false only pins the v2 trust services (Fulcio + public
-# Rekor v1) — it does not change the storage format, so do not mistake it for
+# Rekor v1). It does not change the storage format, so do not mistake it for
 # a legacy-format (.sig tag) pin.
 # Runs only on publish; `make snapshot` additionally skips it via --skip=sign.
 # Verify with:
@@ -565,13 +565,13 @@ notarize:
 # One SBOM per BINARY, not per archive.
 #
 # The archive is a tarball of every binary, so an archive-scoped SBOM lists the
-# union of all seven dependency trees and cannot answer "does this CVE affect
+# union of every binary's dependency tree and cannot answer "does this CVE affect
 # source-controller?". A binary-scoped SBOM can: syft reads the module list Go
 # embeds at link time, which contains only what that binary actually links.
 # The CLI's rendering stack (glamour, chroma, bluemonday) therefore appears in
-# patchy's SBOM and in none of the controllers' — the dependency boundary as
-# evidence attached to the shipped artifact, rather than as an assertion about
-# how the Go linker behaves. Verify by hand with:
+# patchy's SBOM and in none of the controllers'. That makes the dependency
+# boundary evidence attached to the shipped artifact, instead of an assertion
+# about how the Go linker behaves. Verify by hand with:
 #   go version -m bin/source-controller | grep charmbracelet
 sboms:
     - artifacts: binary
@@ -581,8 +581,8 @@ sboms:
       # syft is a lazy mise pin, so `syft` on PATH is a mise shim that re-reads
       # the repo's mise config (walking up from dist/, the cataloger's cwd).
       # GoReleaser runs catalogers with a scrubbed env (HOME/USER/TMP*/PATH
-      # only), which drops the trust the CI mise setup grants via env — the
-      # shim then refuses mise.toml as untrusted. Pass that trust through.
+      # only), which drops the trust the CI mise setup grants via env. The
+      # shim then refuses mise.toml as untrusted, so pass that trust through.
       # Both are unset locally, where `mise trust` state under HOME applies.
       env:
           - MISE_TRUSTED_CONFIG_PATHS={{ envOrDefault "MISE_TRUSTED_CONFIG_PATHS" "" }}
@@ -633,10 +633,10 @@ release:
     mode: replace
 
 # ^ref: https://goreleaser.com/customization/homebrew_casks/
-# The workstation CLI as a Homebrew cask — the cluster components are installed
-# by helm/kustomize from the ghcr images above and have no business in a tap.
-# `ids` sources the cask from the CLI-only archive, so the cask ships exactly
-# the two binaries it declares.
+# The workstation CLI as a Homebrew cask. The cluster components are installed
+# by helm/kustomize from the ghcr images above and do not belong in a tap.
+# `ids` sources the cask from the CLI-only archive, so the cask ships only the
+# two binaries it declares.
 homebrew_casks:
     - name: patchy
       ids: [patchy-cli]
@@ -647,7 +647,7 @@ homebrew_casks:
       # kubectl_complete-patchy is what makes that second form *complete*:
       # kubectl ignores a plugin's own completion script and instead executes
       # kubectl_complete-<plugin> from PATH, so the hook has to be linked into
-      # bin like a binary — a bash_completion/zsh_completion stanza would put
+      # bin like a binary. A bash_completion/zsh_completion stanza would put
       # it somewhere kubectl never looks.
       binaries: [patchy, kubectl-patchy, completions/kubectl_complete-patchy]
       # Static completion stanzas, NOT generate_completions_from_executable:
@@ -655,8 +655,8 @@ homebrew_casks:
       # and install as plain files, so the cask never executes the binary at
       # install time and the install is reproducible from the archive alone.
       # (Static bash_completion / zsh_completion / fish_completion artifacts are
-      # also ordered deterministically by Homebrew, which GeneratedCompletion —
-      # missing from brew's artifact sort table as of 6.0 — is not.)
+      # also ordered deterministically by Homebrew. GeneratedCompletion is not,
+      # because it is missing from brew's artifact sort table as of 6.0.)
       completions:
           bash: completions/patchy.bash
           zsh: completions/patchy.zsh

@@ -3,28 +3,30 @@
 #
 # RBAC, in full. One Role (+ RoleBinding) per controller in the patchy
 # namespace, verb-by-verb what its reconcilers use, plus one Role in
-# patchy-agents for each of the two job controllers.
+# patchy-agents shared by the three job-launching controllers
+# (investigation, remediation, evaluation).
 #
 # Conventions the rules encode:
 #
-#   * The CRs are the state machine. Writers are exclusive per field — the
-#     transition table in DESIGN.md says which controller writes which edge —
-#     and the verbs here enforce the split at the API layer as far as RBAC
-#     can (RBAC is per-resource, not per-field; the reviewable writer table
-#     is the finer-grained control).
-#   * secrets get (never list/watch): provider/forge credentials are read on
-#     demand by name through the API reader (internal/kube disables the
-#     Secret cache), so no controller can enumerate Secrets.
+#   * The CRs are the state machine. Each field has exactly one writer. The
+#     transition table in DESIGN.md says which controller writes which edge.
+#     The verbs here enforce that split at the API layer as far as RBAC can.
+#     RBAC is per-resource, not per-field, so the reviewable writer table is
+#     the finer-grained control.
+#   * secrets get (never list/watch): controllers read provider/forge
+#     credentials by name, when needed, through the API reader
+#     (internal/kube disables the Secret cache). So no controller can
+#     enumerate Secrets.
 #   * leases + events: controller-runtime leader election. Deployments stay
-#     replicas:1 + Recreate; the lease is insurance against two replicas
-#     racing during a botched rollout.
-#   * The agent pods (patchy-agents) have NO role at all — see
+#     replicas:1 + Recreate. The lease guards against two replicas racing
+#     during a bad rollout.
+#   * The agent pods (patchy-agents) have NO role at all. See
 #     serviceaccount.yaml.
 ---
 # ---- integration-controller ------------------------------------------------
-# Ingests scanner webhooks into Findings (create/fold/duplicate-merge —
-# the one deleter of duplicate Findings), projects Findings to tracking
-# issues (reads the children's reports), and applies human signals
+# Ingests scanner webhooks into Findings (create/fold/duplicate-merge; it is
+# the only controller that deletes duplicate Findings). Projects Findings to
+# tracking issues (reads the children's reports). Applies human signals
 # (approve/close/PR-merge) to Finding spec + status.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -127,14 +129,15 @@ subjects:
       namespace: patchy
 ---
 # ---- context-controller ----------------------------------------------------
-# The enhancer chain: reads Opened findings, writes enrichments/owners and the
-# Opened→Enhanced edge to status, and sets spec.repository once for a cloud
-# finding that arrived without one (resolved from the resource's ownership
-# labels) — which is why it holds update on findings, not status alone.
-# Integrations are read-only: the dynamic enhancers take their configuration
-# from their Integrations. secrets get (by name, through the API reader): the
-# generic enhancer signs its outbound calls with its Integration's webhook
-# secret; the cloud enhancers still use workload identity and hold none.
+# The enhancer chain. It reads Opened findings and writes enrichments/owners
+# and the Opened→Enhanced edge to status. It also sets spec.repository once
+# for a cloud finding that arrived without one (resolved from the resource's
+# ownership labels). That is why it holds update on findings, not status
+# alone. Integrations are read-only, because the dynamic enhancers take
+# their configuration from their Integrations. secrets get (by name, through
+# the API reader): the generic enhancer signs its outbound calls with its
+# Integration's webhook secret. The cloud enhancers still use workload
+# identity and hold no secret.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -220,9 +223,10 @@ rules:
     - apiGroups: [""]
       resources: [secrets]
       verbs: [get]
-    # The agent transcript each run persists: a ConfigMap owner-referenced to
-    # the run, so the Finding's TTL cascade removes it. No list/watch — it is
-    # only ever addressed by its own deterministic name.
+    # The agent transcript each run persists. It is a ConfigMap
+    # owner-referenced to the run, so the Finding's TTL cascade removes it.
+    # No list/watch, because it is only ever addressed by its own
+    # deterministic name.
     - apiGroups: [""]
       resources: [configmaps]
       verbs: [create, get, update]
@@ -252,9 +256,10 @@ subjects:
 ---
 # ---- remediation-controller ------------------------------------------------
 # Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
-# loop. The one deleter of expired Findings (cascade deletes the children);
-# `update` on findings/investigations/remediations (not just status) is the
-# rollup finalizer removal.
+# loop. It is the only controller that deletes expired Findings (the cascade
+# deletes the children). It needs `update` on
+# findings/investigations/remediations (not only status) to remove the rollup
+# finalizer.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -297,9 +302,10 @@ rules:
     - apiGroups: [""]
       resources: [secrets]
       verbs: [get]
-    # The agent transcript each run persists: a ConfigMap owner-referenced to
-    # the run, so the Finding's TTL cascade removes it. No list/watch — it is
-    # only ever addressed by its own deterministic name.
+    # The agent transcript each run persists. It is a ConfigMap
+    # owner-referenced to the run, so the Finding's TTL cascade removes it.
+    # No list/watch, because it is only ever addressed by its own
+    # deterministic name.
     - apiGroups: [""]
       resources: [configmaps]
       verbs: [create, get, update]
@@ -328,15 +334,16 @@ subjects:
       namespace: patchy
 ---
 # ---- status-server ----------------------------------------------------------
-# The status page backend: reads Findings/FindingRollups for the projection
-# and writes SPEC only — approve records spec.approval, suspend and resume
-# toggle spec.suspend, replay stamps Integration spec.replay. Deliberately NO
-# */status: the status server never moves a phase (the transition table's
-# writers stay exclusive), and RBAC enforces that at the API layer. The
-# delete/deletecollection verbs back the access-review-gated reset action
-# (demo tooling): wipe the pipeline state, keep the configuration
-# (Integrations, Forges). No leases (no reconcilers, no leader election), no
-# secrets (the auth config is a mounted volume).
+# The status page backend. It reads Findings/FindingRollups for the
+# projection and writes SPEC only: approve records spec.approval, suspend and
+# resume toggle spec.suspend, replay stamps Integration spec.replay. It has
+# NO */status on purpose. The status server never moves a phase (each edge
+# in the transition table keeps a single writer), and RBAC enforces that at
+# the API layer. The delete/deletecollection verbs support the
+# access-review-gated reset action (demo tooling). Reset wipes the pipeline
+# state and keeps the configuration (Integrations, Forges). No leases (no
+# reconcilers, no leader election), no secrets (the auth config is a mounted
+# volume).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -358,8 +365,8 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write seam for the replay and backfill actions (spec.replay,
-    # spec.backfill); the cached client's informer needs list/watch.
+    # Spec-only write path for the replay and backfill actions (spec.replay,
+    # spec.backfill). The cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
@@ -369,16 +376,16 @@ rules:
       resources: [forges]
       verbs: [get, list, watch]
     # The persisted agent transcripts, read one at a time when a human opens a
-    # finding. Get only: they go through the uncached API reader, so no
-    # informer and no list/watch — caching every ConfigMap in the namespace to
-    # serve these would be a poor trade.
+    # finding. Get only: they go through the uncached API reader, so there is
+    # no informer and no list/watch. Caching every ConfigMap in the namespace
+    # to serve these would cost more than it saves.
     - apiGroups: [""]
       resources: [configmaps]
       verbs: [get]
 ---
 # Live transcripts: the status server follows a running agent's pod log to
 # stream its conversation into the investigation/remediation tabs. The read
-# goes through the API server — it never dials an agent pod, so the agents'
+# goes through the API server. It never dials an agent pod, so the agents'
 # default-deny ingress policy is untouched. Read-only and scoped to the agents
 # namespace: no Jobs, no Secrets, no writes. Drop this Role and its binding to
 # serve only the transcripts of completed runs.
@@ -435,9 +442,10 @@ subjects:
 # The one ClusterRole in the base: SubjectAccessReview is a cluster-scoped,
 # non-namespaced create-only API, so a namespaced Role cannot grant it. The
 # status server uses it to answer "may user U <verb> findings in patchy?"
-# for the signed-in user — the custom verbs (approve, suspend, resume) and
-# the native get that gates viewing (see rbac.users.example.yaml for the
-# grant grammar). Review-only: this confers no power to act, only to ask.
+# for the signed-in user. That covers the custom verbs (approve, suspend,
+# resume) and the native get that gates viewing (see rbac.users.example.yaml
+# for the grant grammar). Review-only: this grants no power to act, only to
+# ask.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -467,14 +475,17 @@ subjects:
       namespace: patchy
 ---
 # ---- evaluation-controller ---------------------------------------------------
-# The remote-evaluation engine: the HTTP API creates Evaluations (submissions)
-# and deletes them (cancel); the gate creates EvaluationUnit children; the
-# scheduler stamps unit statuses and rolls the parent up; the TTL loop deletes
-# expired Evaluations (cascade). `update` on evaluationunits (not just status)
-# is the jobs-finalizer removal. configmaps create/get/update: the per-unit
-# results objects, owner-referenced to their unit, only ever addressed by
-# deterministic name (plus get for the API's snapshot lift). No secrets in
-# this namespace — the auth config is a mounted volume.
+# The remote-evaluation engine:
+#   * the HTTP API creates Evaluations (submissions) and deletes them
+#     (cancel);
+#   * the gate creates EvaluationUnit children;
+#   * the scheduler stamps unit statuses and rolls the parent up;
+#   * the TTL loop deletes expired Evaluations (cascade).
+# It needs `update` on evaluationunits (not only status) to remove the jobs
+# finalizer. configmaps create/get/update: the per-unit results objects,
+# owner-referenced to their unit, only ever addressed by deterministic name
+# (plus get for the API's snapshot lift). No secrets in this namespace,
+# because the auth config is a mounted volume.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -524,8 +535,8 @@ subjects:
       namespace: patchy
 ---
 # SubjectAccessReview for the evaluation API: "may user U create/get/delete
-# evaluations in patchy?" — the bearer-authenticated submitters are authorized
-# by RBAC bindings on the evaluations resource (see rbac.users.example.yaml),
+# evaluations in patchy?" RBAC bindings on the evaluations resource authorize
+# the bearer-authenticated submitters (see rbac.users.example.yaml), with
 # native verbs only. Review-only, same as the status server's.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -555,14 +566,15 @@ subjects:
       name: patchy-evaluation-controller
       namespace: patchy
 ---
-# ---- patchy-agents: the two job controllers --------------------------------
+# ---- patchy-agents: the job-launching controllers ---------------------------
 # What internal/jobs uses, and nothing more:
 #   jobs      create (Create), get/list/watch (status + orphan reap), delete
 #   pods      get/list/watch (find the Job's pod)
 #   pods/log  get (read the PATCHY-EVENT: stream at Job completion)
 #   secrets   create/get/update/delete (the per-Job Secret carrying the
-#             handoff markdown — credential-less; update owner-references it
-#             to its Job, delete is the create-Job-failed rollback)
+#             handoff markdown, with no credentials in it; update
+#             owner-references it to its Job, delete rolls it back when
+#             creating the Job fails)
 # No secrets list/watch: each controller only ever addresses its own per-Job
 # Secret by name. The two controllers share the namespace; the
 # patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
@@ -615,8 +627,8 @@ subjects:
 # ---- egress-broker ----------------------------------------------------------
 # TokenReview is a cluster-scoped, create-only API, so a namespaced Role
 # cannot grant it. The broker uses it to validate each caller's projected
-# ServiceAccount token before any byte is proxied. Review-only, and the
-# broker's ONLY Kubernetes access of any kind — no Secret reads, no writes.
+# ServiceAccount token before any byte is proxied. Review-only. This is the
+# broker's ONLY Kubernetes access of any kind: no Secret reads, no writes.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: integrations.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -68,10 +68,11 @@ spec:
             type: object
           spec:
             description: |-
-              IntegrationSpec configures one external system. Exactly the provider block
-              matching spec.provider must be set (CEL-enforced) — integrations are
-              strongly typed; the generic provider is the deliberate escape hatch, typed
-              around patchy's own HTTP contract rather than a vendor's.
+              IntegrationSpec configures one external system. Only the provider block
+              matching spec.provider may be set, and it must be set (CEL-enforced).
+              Integrations are strongly typed. The generic provider is the intended
+              escape hatch: it is typed around patchy's own HTTP contract instead of a
+              vendor's.
             properties:
               aws:
                 description: AWS is the aws provider block.
@@ -191,13 +192,13 @@ spec:
               backfill:
                 description: |-
                   Backfill requests one bounded list-alerts walk of the provider's open
-                  alerts, ingesting the ones that predate webhook coverage — alerts
-                  raised before the App was installed on (or associated with) their
-                  repository, which no replay of the delivery log can ever surface.
+                  alerts, ingesting the ones that predate webhook coverage. These are
+                  alerts raised before the App was installed on (or associated with)
+                  their repository, which no replay of the delivery log can ever surface.
                   Ingestion is idempotent, so re-listing alerts that already have
                   findings is safe. Freshness against status.backfill.backfilledAt
-                  decides whether the request is still actionable — the controller
-                  never clears spec.
+                  decides whether the request is still actionable. The controller never
+                  clears spec.
                 properties:
                   at:
                     description: At is when the request was received.
@@ -316,10 +317,11 @@ spec:
                       fallbackRepository:
                         description: |-
                           FallbackRepository ("owner/repo") receives the tracking issues of
-                          findings that have no repository of their own — cloud findings whose
-                          resource carries no ownership labels. Without it those findings are
-                          visible only through kubectl and the status page. They still cannot be
-                          remediated: the issue is a human surface, not a work tree.
+                          findings that have no repository of their own, such as cloud findings
+                          whose resource carries no ownership labels. Without it those findings
+                          are visible only through kubectl and the status page. They still cannot
+                          be remediated, because the issue is only for humans and has no work
+                          tree.
                         type: string
                     required:
                     - enabled
@@ -333,8 +335,8 @@ spec:
                       url:
                         description: |-
                           URL of the proxy, e.g. "http://proxy.corp.example:3128". Schemes http
-                          and https. Credentials must not be embedded in the URL — put them in
-                          the credential Secret under "proxyUsername" + "proxyPassword".
+                          and https. Do not embed credentials in the URL. Put them in the
+                          credential Secret under "proxyUsername" + "proxyPassword".
                         minLength: 1
                         pattern: ^https?://[^@\s]+$
                         type: string
@@ -346,7 +348,7 @@ spec:
                     properties:
                       enabled:
                         description: |-
-                          Enabled turns the sweep on. Requires App credentials — the delivery
+                          Enabled turns the sweep on. It requires App credentials: the delivery
                           log is App-scoped, so a PAT integration cannot sweep.
                         type: boolean
                       lookback:
@@ -473,7 +475,7 @@ spec:
                   lookback window, including deliveries that already succeeded (the
                   receiver dedups; ingestion is idempotent). Freshness against
                   status.redelivery.replayedAt decides whether the request is still
-                  actionable — the controller never clears spec.
+                  actionable. The controller never clears spec.
                 properties:
                   at:
                     description: At is when the request was received.
@@ -495,7 +497,7 @@ spec:
                   redeliveries of already-handled GUIDs are ingested again. Issue
                   deletion requires admin-level repository permission on the
                   credential. Freshness against status.resetAt decides whether the
-                  request is still actionable — the controller never clears spec.
+                  request is still actionable. The controller never clears spec.
                 properties:
                   at:
                     description: At is when the request was received.
@@ -519,7 +521,7 @@ spec:
                   "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
                   generic: key "webhookSecret", the shared HMAC secret signing both
                   inbound deliveries and patchy's outbound resolver/enhancer calls.
-                  Required for github, wiz, and generic, optional otherwise — a
+                  Required for github, wiz, and generic, and optional otherwise. A
                   google-cloud integration holds no credential, since Pub/Sub
                   authenticates itself with a signed OIDC token. It stays permitted for
                   every provider so a future capability that does need one (SCC
@@ -622,8 +624,8 @@ spec:
                     description: |-
                       AttemptedAt echoes spec.backfill.at once the controller has attempted
                       that request, whether or not the walk succeeded. Unlike backfilledAt it
-                      never gates a retry — it lets observers distinguish a request the
-                      controller has not seen yet from one that failed and is being retried.
+                      never gates a retry. It lets observers tell a request the controller has
+                      not seen yet apart from one that failed and is being retried.
                     format: date-time
                     type: string
                   backfilledAt:
@@ -722,8 +724,9 @@ spec:
                 description: Installations summarizes the App installations.
                 items:
                   description: |-
-                    InstallationSummary counts one GitHub App installation — counts and
-                    accounts only, never a repository list (the estate is ~15K repositories).
+                    InstallationSummary counts one GitHub App installation. It holds counts
+                    and accounts only, never a repository list (the estate is ~15K
+                    repositories).
                   properties:
                     account:
                       description: Account the App is installed on.

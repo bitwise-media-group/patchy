@@ -7,9 +7,9 @@
 # then the top N largest symbols and top N largest packages per binary,
 # aggregated from `go tool nm -size`. -s strips the very symbol table nm
 # reads, so the analysis links each binary once more, unstripped, into a
-# temp dir — with the build cache warm from the build task these are
-# link-only. Symbol sizes attribute text/data only — pclntab and type
-# metadata scale with package count but stay unattributed — so the
+# temp dir. With the build cache warm from the build task these are
+# link-only. Symbol sizes attribute text/data only (pclntab and type
+# metadata scale with package count but stay unattributed), so the
 # per-package numbers are for ranking, not accounting.
 #
 # SIZE_TOP overrides the list depth (default 10). BUILD_TAGS matches
@@ -25,7 +25,7 @@ apps=""
 for dir in cmd/*/; do
   app="$(basename "$dir")"
   if [ ! -f "bin/$app" ]; then
-    echo "hack/size.sh: bin/$app missing — run 'make build' first" >&2
+    echo "hack/size.sh: bin/$app missing; run 'make build' first" >&2
     exit 1
   fi
   apps="$apps $app"

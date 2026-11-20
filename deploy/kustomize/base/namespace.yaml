@@ -13,10 +13,10 @@ metadata:
         pod-security.kubernetes.io/audit: restricted
         pod-security.kubernetes.io/warn: restricted
 ---
-# The agent sandbox. Ephemeral Jobs created at runtime by
-# remediation-controller (internal/jobs). Nothing here holds a GitHub
-# credential except the per-Job Secret the init container consumes, and that
-# Secret is garbage-collected with its Job.
+# The agent sandbox. Ephemeral Jobs created at runtime by the investigation,
+# remediation and evaluation controllers (internal/jobs). Nothing here holds
+# a credential. The per-Job Secret carries only the handoff markdown, and it
+# is garbage-collected with its Job.
 apiVersion: v1
 kind: Namespace
 metadata:

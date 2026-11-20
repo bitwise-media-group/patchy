@@ -1,37 +1,38 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# Defence in depth for the agent sandbox, for clusters running Istio.
+# An extra layer of protection for the agent sandbox, for clusters running
+# Istio.
 #
 # What this adds over base/networkpolicy.yaml: hostname matching. A plain
-# NetworkPolicy can only say "TCP 443 to the internet"; REGISTRY_ONLY makes
+# NetworkPolicy can only say "TCP 443 to the internet". REGISTRY_ONLY makes
 # the sidecar drop any outbound connection whose destination is not in the
-# mesh registry, and the only registry entries visible to the agent pods are
-# the patchy namespace's Services (source-controller's artifact server and the
-# egress broker). There is no ServiceEntry at all: every runner patchy ships
+# mesh registry. The only registry entries visible to the agent pods are the
+# patchy namespace's Services (source-controller's artifact server and the
+# egress broker). There is no ServiceEntry at all. Every runner patchy ships
 # is brokered (claude, codex), so no agent pod has an external host to allow.
 #
-# One Sidecar per harness, scoped by the patchy.bitwisemedia.uk/harness label.
-# A non-brokered runner added later would get a ServiceEntry for its model API
-# (exportTo: ".", MESH_EXTERNAL, TLS 443) listed in its own Sidecar only. The
-# codex Sidecar is inert until that runner is enabled (no pod carries the
-# label otherwise).
+# There is one Sidecar per harness, scoped by the
+# patchy.bitwisemedia.uk/harness label. A non-brokered runner added later
+# would get a ServiceEntry for its model API (exportTo: ".", MESH_EXTERNAL,
+# TLS 443) listed in its own Sidecar only. The codex Sidecar has no effect
+# until that runner is enabled (no pod carries the label otherwise).
 #
-# WHAT THIS DOES NOT DO — read this before believing the sandbox is airtight:
+# WHAT THIS DOES NOT DO. Read this before you assume the sandbox is airtight:
 #
-#   * A Sidecar serves the whole POD, not one container: the model-API
-#     route the agent container needs is reachable from the init container
-#     too, and vice versa for the artifact server. Credential absence is the
-#     control; this policy is the belt to its braces.
-#   * Unlike Cilium's DNS proxy, the sidecar does not constrain what names
-#     the pod may RESOLVE (DNS is UDP 53 straight to kube-dns, allowed by
+#   * A Sidecar serves the whole POD, not one container. The model-API route
+#     the agent container needs is reachable from the init container too,
+#     and the artifact server is reachable from the agent container. The
+#     missing credential is the main protection; this policy is a backup.
+#   * Unlike Cilium's DNS proxy, the sidecar does not limit which names the
+#     pod may RESOLVE (DNS is UDP 53 straight to kube-dns, allowed by
 #     base/networkpolicy.yaml). A prompt-injected agent can still exfiltrate
-#     via DNS queries. Istio's DNS capture does not close this; only a
-#     DNS-filtering resolver or Cilium-style DNS policy does.
+#     data through DNS queries. Istio's DNS capture does not close this. Only
+#     a DNS-filtering resolver or Cilium-style DNS policy does.
 #   * The enforcement point lives INSIDE the pod (iptables redirect to the
-#     proxy). That is sound here because the agent runs as uid 65532 with all
-#     capabilities dropped — it cannot rewrite the redirect — but it is a
-#     weaker vantage point than a CNI enforcing on the node.
+#     proxy). That is safe here because the agent runs as uid 65532 with all
+#     capabilities dropped, so it cannot rewrite the redirect. But it is a
+#     weaker position than a CNI enforcing on the node.
 ---
 apiVersion: networking.istio.io/v1
 kind: Sidecar
@@ -50,10 +51,10 @@ spec:
     outboundTrafficPolicy:
         mode: REGISTRY_ONLY
     egress:
-        # Brokered claude has NO external host: only the patchy namespace's
-        # Services — which is how the init container reaches
-        # source-controller's artifact server and the agent container the
-        # egress broker.
+        # Brokered claude has NO external host, only the patchy namespace's
+        # Services. Through them the init container reaches
+        # source-controller's artifact server, and the agent container
+        # reaches the egress broker.
         - hosts:
               - patchy/*
 ---

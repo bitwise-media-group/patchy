@@ -8,17 +8,17 @@
 # The custom verbs (approve, retry, expedite, suspend, resume) let a grant say
 # "this developer may approve findings, and nothing else". The status server can
 # honour that on its own because it writes as its own ServiceAccount and asks
-# SubjectAccessReview first. Anything writing as the *user* — the patchy CLI,
-# kubectl, curl — is authorized by the API server, and RBAC has no notion of a
-# field: `update` on findings grants the whole object. Without this policy,
-# granting a developer the ability to suspend a finding would also let them
-# rewrite its severity, forge an approval, or strip a finalizer.
+# SubjectAccessReview first. The API server authorizes anything that writes as
+# the *user* (the patchy CLI, kubectl, curl). RBAC has no notion of a field:
+# `update` on findings grants the whole object. Without this policy, granting
+# a developer the ability to suspend a finding would also let them rewrite its
+# severity, forge an approval, or strip a finalizer.
 #
 # Admission control is the only server-side mechanism that can express the
 # distinction (CRDs get only /status and /scale subresources, and CEL in a CRD
-# schema has no authorizer). Because it runs inside the API server's admission
-# chain, it applies to every client equally — there is no "go around the CLI"
-# path, which is the entire point.
+# schema has no authorizer). It runs inside the API server's admission chain,
+# so it applies to every client equally. No client can bypass it by not using
+# the CLI, and that is why it exists.
 #
 # WHAT IT ENFORCES
 #
@@ -32,7 +32,7 @@
 #
 # REQUIRES Kubernetes 1.30+ (ValidatingAdmissionPolicy GA, `authorizer` binding).
 # On an older cluster this resource will not apply, and enforcement silently
-# degrades to "whoever holds update owns the whole CR" — verify with:
+# falls back to "whoever holds update owns the whole CR". Verify with:
 #   kubectl api-resources | grep validatingadmissionpolic
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -47,11 +47,11 @@ spec:
     failurePolicy: Fail
     matchConstraints:
         resourceRules:
-            # CREATE is matched alongside UPDATE deliberately. Without it, a
+            # CREATE is matched alongside UPDATE on purpose. Without it, a
             # user holding create+delete could delete a finding and recreate it
-            # with spec.approval already set — laundering an approval they were
-            # never granted. The example roles withhold create/delete too; this
-            # is the second lock.
+            # with spec.approval already set. That would give them an approval
+            # they were never granted. The example roles withhold create/delete
+            # too; this is the second lock.
             - apiGroups: [patchy.bitwisemedia.uk]
               apiVersions: [v1alpha1]
               operations: [CREATE, UPDATE]
@@ -120,17 +120,17 @@ spec:
               " requires the 'expedite' verb on findings.patchy.bitwisemedia.uk"
           reason: Forbidden
 
-        # --- everything else in spec is the pipeline's, not a human's ---------
+        # --- the pipeline owns everything else in spec -----------------------
         #
-        # Enumerated field by field rather than compared wholesale, because the
-        # four fields above and spec.related are legitimately mutable and CEL
-        # cannot subtract keys from a struct. A field added to FindingSpec must
-        # be added here too — the codegen drift check will not catch that, so it
-        # is called out in docs/operate/cli.md.
+        # The fields are listed one by one instead of compared as a whole,
+        # because users may change the four fields above and spec.related, and
+        # CEL cannot subtract keys from a struct. A field added to FindingSpec
+        # must be added here too. The codegen drift check will not catch that,
+        # so docs/operate/cli.md calls it out.
         #
-        # spec.related is deliberately absent: relationship edges are documented
-        # as human-writable (api/v1alpha1/finding_types.go), and carry no
-        # authority.
+        # spec.related is left out on purpose. Relationship edges are
+        # documented as human-writable (api/v1alpha1/finding_types.go), and
+        # carry no authority.
         - expression: >-
               variables.old == null || (
                 variables.old.spec.integrationRef == object.spec.integrationRef
@@ -154,11 +154,11 @@ spec:
 
         # --- metadata that carries meaning -----------------------------------
         #
-        # Not housekeeping. The rollup finalizers are what guarantee a finding's
-        # spend is aggregated before it is deleted, and the selector labels
-        # (key-hash, severity, finding) are what accumulation and child lookup
-        # key on. `update` on findings would otherwise let a user quietly break
-        # either one.
+        # These fields matter. The rollup finalizers make sure a finding's
+        # spend is aggregated before it is deleted. Accumulation and child
+        # lookup key on the selector labels (key-hash, severity, finding).
+        # Without this rule, `update` on findings would let a user quietly
+        # break either one.
         - expression: >-
               variables.old == null || (
                 variables.old.metadata.?finalizers == object.metadata.?finalizers
@@ -190,14 +190,14 @@ spec:
 # operator's configuration grant) does not quietly include the ability to
 # fire pipeline actions.
 #
-# Two DELIBERATE divergences from the findings policy above:
-#   * No frozen-fields rule. IntegrationSpec is operator configuration —
-#     provider blocks, secretRef, interval, suspend — and plain `update`
+# This policy differs from the findings policy above in two intended ways:
+#   * No frozen-fields rule. IntegrationSpec is operator configuration
+#     (provider blocks, secretRef, interval, suspend), and plain `update`
 #     must keep working for the GitOps flow. Only the three request fields
-#     are verb-gated.
-#   * Clearing a request field needs no verb. A GitOps apply pruning a
-#     stamped spec.replay must not be denied; cancelling a pending request
-#     carries no authority of its own.
+#     need a verb.
+#   * Clearing a request field needs no verb. A GitOps apply that prunes a
+#     stamped spec.replay must not be denied, and cancelling a pending
+#     request carries no authority of its own.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -210,18 +210,18 @@ spec:
     failurePolicy: Fail
     matchConstraints:
         resourceRules:
-            # CREATE is matched alongside UPDATE for the same laundering
-            # reason as findings: recreating an Integration with a request
-            # field preset must not smuggle the action past the verb.
+            # CREATE is matched alongside UPDATE for the same reason as
+            # findings. Recreating an Integration with a request field preset
+            # must not get the action past the verb check.
             - apiGroups: [patchy.bitwisemedia.uk]
               apiVersions: [v1alpha1]
               operations: [CREATE, UPDATE]
               resources: [integrations]
     matchConditions:
-        # Same exemption as the findings policy: the status server does its
-        # own SubjectAccessReview before stamping a request, and the
-        # controllers never write Integration spec at all — exempting them
-        # is belt-and-braces against a future one that must.
+        # Same exemption as the findings policy. The status server does its
+        # own SubjectAccessReview before stamping a request. The controllers
+        # never write Integration spec at all. Exempting them is a safeguard
+        # in case a future controller must.
         - name: not-a-patchy-controller
           expression: >-
               !(request.userInfo.username in [

@@ -6,17 +6,17 @@
 # demo dataset so the UI renders representative content without running the
 # pipeline. Inspect it at the status page after seeding (see below).
 #
-# Three deliberate properties keep the controllers' hands off this data:
+# Three intended properties keep the controllers from touching this data:
 #
-#   * spec.suspend: true on every Finding — the context enhancer, the
+#   * spec.suspend: true on every Finding. The context enhancer, the
 #     investigation gate, and the remediation spawner all skip suspended
 #     findings, so nothing advances a canned phase. (It also means every row
-#     wears the `suspended` pill — that is what dev shows.)
-#   * no spec.trackingRef — the issue projection only projects findings that
+#     shows the `suspended` pill, and that is what dev shows.)
+#   * no spec.trackingRef. The issue projection only projects findings that
 #     carry one, so no GitHub calls are attempted for canned data
 #     (status.tracking is still seeded for display).
-#   * no status.completedAt on terminal phases — the rollup/TTL loop only
-#     aggregates and reaps findings with completedAt set, so canned terminal
+#   * no status.completedAt on terminal phases. The rollup/TTL loop only
+#     aggregates and reaps findings with completedAt set. So canned terminal
 #     findings are never folded into the (also canned) rollups and never
 #     TTL-deleted (dev's PATCHY_FINDING_TTL is 30m).
 #
@@ -407,7 +407,7 @@ status:
           markdown: "Owned by **podcast-platform**; secondary: web-platform (shared feed pipeline)."
           appliedAt: "2026-07-15T12:50:31Z"
         - enhancer: cmdb
-          markdown: "Runs in `prod/feeds` (public ingress). Feed sources are user-suppliable — treat parser input as hostile."
+          markdown: "Runs in `prod/feeds` (public ingress). Feed sources are user-suppliable, so treat parser input as hostile."
           appliedAt: "2026-07-15T12:50:31Z"
     priority: high
     investigation:
@@ -503,7 +503,7 @@ status:
     attempts:
         investigation: 1
         remediation: 1
-    # completedAt deliberately unset — see the header.
+    # completedAt is unset on purpose. See the header.
 ---
 apiVersion: patchy.bitwisemedia.uk/v1alpha1
 kind: Finding
@@ -635,7 +635,7 @@ spec:
         name: cloud-bitwise
     source: cloud-config-scan
     # No repository: config findings have no repo to patch, so this finding
-    # can never reach Queued/Remediating — it is handed to humans instead.
+    # can never reach Queued/Remediating. It is handed to humans instead.
     advisories: [CWE-284]
     ruleID: s3/public-read-policy
     title: Object storage bucket policy allows public read

@@ -3,19 +3,20 @@
 ---
 # The egress credential broker: the reverse proxy ALL claude and codex model
 # traffic goes through. Agent pods authenticate with an audience-bound
-# projected ServiceAccount token; the broker validates it via TokenReview and
+# projected ServiceAccount token. The broker validates it via TokenReview and
 # injects or signs the model credential outbound (Anthropic or OpenAI API
-# key, Bedrock SigV4, Vertex OAuth, Foundry / Azure OpenAI key or Entra). The
-# model credentials therefore live HERE, in the patchy namespace, and an
-# agent pod holds no credential of any kind. Not a controller: no
-# reconcilers, no leases.
+# key, Bedrock SigV4, Vertex OAuth, Foundry / Azure OpenAI key or Entra). So
+# the model credentials live HERE, in the patchy namespace, and an agent pod
+# holds no credential of any kind. It is not a controller: no reconcilers,
+# no leases.
 #
 # The base configures the anthropic provider (PATCHY_ANTHROPIC_API_KEY_FILE
-# in configmap.yaml + the patchy-anthropic Secret volume below) and mounts
-# the patchy-openai Secret optionally, so enabling codex's openai route is a
-# ConfigMap change (PATCHY_OPENAI_API_KEY_FILE). For bedrock/vertex/foundry/
-# azure, overlay the PATCHY_* provider keys and annotate
-# patchy-egress-broker's ServiceAccount with the cloud workload identity.
+# in configmap.yaml + the patchy-anthropic Secret volume below). It also
+# mounts the patchy-openai Secret as optional, so you enable codex's openai
+# route with a ConfigMap change (PATCHY_OPENAI_API_KEY_FILE). For
+# bedrock/vertex/foundry/azure, overlay the PATCHY_* provider keys and
+# annotate patchy-egress-broker's ServiceAccount with the cloud workload
+# identity.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,8 +26,8 @@ metadata:
         app: egress-broker
         app.kubernetes.io/name: egress-broker
         app.kubernetes.io/part-of: patchy
-        # Deliberately `broker`: it runs no reconcilers and serves no humans
-        # — it fronts model APIs for the agent sandbox.
+        # `broker` on purpose: it runs no reconcilers and serves no humans.
+        # It fronts model APIs for the agent sandbox.
         app.kubernetes.io/component: broker
 spec:
     replicas: 1
@@ -75,8 +76,9 @@ spec:
                       initialDelaySeconds: 5
                       periodSeconds: 20
                   # readyz fails while a configured route's credential source
-                  # is unusable — this replaced the job controllers' claude
-                  # Secret probing as "is the model credential present".
+                  # is unusable. This replaced the job controllers' claude
+                  # Secret probing as the "is the model credential present"
+                  # check.
                   readinessProbe:
                       httpGet:
                           path: /readyz
@@ -110,17 +112,18 @@ spec:
                 - name: tmp
                   emptyDir: {}
                 # The Anthropic API key, mounted as a file so a rotated
-                # Secret propagates without a restart (the broker reads it
+                # Secret takes effect without a restart (the broker reads it
                 # per request). Optional: a bedrock/vertex/foundry-entra
                 # overlay runs without it, and readyz reports an anthropic
-                # route whose key is actually missing.
+                # route whose key is missing.
                 - name: anthropic
                   secret:
                       secretName: patchy-anthropic
                       optional: true
-                # The OpenAI API key for codex's openai route, same posture.
-                # Optional: inert until PATCHY_OPENAI_API_KEY_FILE enables
-                # the route (configmap.yaml).
+                # The OpenAI API key for codex's openai route, handled the
+                # same way. Optional: it has no effect until
+                # PATCHY_OPENAI_API_KEY_FILE enables the route
+                # (configmap.yaml).
                 - name: openai
                   secret:
                       secretName: patchy-openai

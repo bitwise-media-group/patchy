@@ -9,7 +9,7 @@ metadata:
     {{- if .Values.crds.keep }}
     helm.sh/resource-policy: keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: findings.patchy.bitwisemedia.uk
 spec:
   group: patchy.bitwisemedia.uk
@@ -81,7 +81,7 @@ spec:
               FindingSpec is the finding to triage. integration-controller writes it at
               ingest and during accumulation; humans may set suspend and add related-to
               edges. The one other writer is context-controller, which sets repository
-              exactly once when a cloud finding arrived without one — see that field.
+              once when a cloud finding arrived without one (see that field).
             properties:
               advisories:
                 description: |-
@@ -96,8 +96,8 @@ spec:
                 items:
                   description: |-
                     Alert is one scanner alert folded into the finding during accumulation.
-                    IDs are strings — GHAS alert numbers render as decimal, other scanners use
-                    opaque identifiers.
+                    IDs are strings: GHAS alert numbers render as decimal, and other scanners
+                    use opaque identifiers.
                   properties:
                     id:
                       description: ID of the alert in the source system.
@@ -133,10 +133,10 @@ spec:
                       description: |-
                         Source is the source handler that produced this alert, denormalized
                         from the finding at ingest. Accumulation keys on source, so today every
-                        alert on a finding shares spec.source and this is redundant — but
-                        duplicate-of merges are defined to fold one finding into another, and
-                        the verdict write-back must hand each source only its own alerts.
-                        Recording provenance beats inferring it from the shape of an id.
+                        alert on a finding shares spec.source and this field is redundant.
+                        However, duplicate-of merges fold one finding into another, and the
+                        verdict write-back must hand each source only its own alerts. Recording
+                        provenance is more reliable than inferring it from the shape of an id.
                         Empty on alerts written before this field existed; readers fall back to
                         spec.source.
                       type: string
@@ -185,10 +185,10 @@ spec:
                     type: string
                   name:
                     description: |-
-                      Name is the provider's canonical, unique resource identifier — an SCC
-                      resourceName, e.g. "//storage.googleapis.com/projects/p/buckets/b". It
-                      is the accumulation scope for cloud findings, in place of the
-                      repository URL.
+                      Name is the provider's canonical, unique resource identifier, such as
+                      an SCC resourceName (e.g.
+                      "//storage.googleapis.com/projects/p/buckets/b"). It is the
+                      accumulation scope for cloud findings, in place of the repository URL.
                     minLength: 1
                     type: string
                   project:
@@ -256,7 +256,8 @@ spec:
                   description: |-
                     RelatedFinding is a directed edge between two findings, stored identically
                     on both endpoints (one of from/to is the holder's own name). Names may
-                    dangle after the other endpoint's TTL deletion — consumers tolerate that.
+                    dangle after the other endpoint's TTL deletion, and consumers tolerate
+                    that.
                   properties:
                     from:
                       description: From is the edge's source Finding name.
@@ -283,7 +284,8 @@ spec:
                   Repository the finding belongs to; nil when none has been identified.
                   integration-controller sets it at ingest for sources that name a
                   repository. For a cloud finding it starts nil and context-controller
-                  may set it — SET-ONCE, never overwritten. Three things depend on that:
+                  may set it. It is set once and never overwritten. Three things depend
+                  on that:
                   the rollup ledger re-derives its scope key at reversal time, the
                   investigation gate's Repository artifact has an immutable spec.url with
                   no update path, and the agent Jobs snapshot the repo in an annotation.
@@ -680,7 +682,7 @@ spec:
               priority:
                 description: |-
                   Priority is the scheduling priority derived from investigation results
-                  (investigation) — the remediation queue's sort dimension.
+                  (investigation). The remediation queue sorts on it.
                 enum:
                 - low
                 - medium

@@ -4,7 +4,7 @@
 #
 # Run the Tier-2 load suite: an envtest kube-apiserver, the real controller
 # binaries, and tens of thousands of findings driven through them. Opt-in by
-# construction — the tests skip without PATCHY_LOAD=1 — and sized by
+# construction (the tests skip without PATCHY_LOAD=1) and sized by
 # PATCHY_LOAD_N (default 50000; a 10000 smoke run finishes much faster).
 # Numbers land under coverage/bench/ beside the Tier-1 records. See
 # docs/contributing/benchmarks.md for the targets.

@@ -59,7 +59,7 @@ done
 # fails `helm install` client-side instead of mid-apply at the API server.
 # The CEL x-kubernetes-* keywords are stripped (they are not JSON Schema),
 # and every object carrying properties is closed with
-# additionalProperties: false — the API server would silently prune unknown
+# additionalProperties: false. The API server would silently prune unknown
 # fields; the chart rejects them. The whole file is generated: edit the
 # skeleton here, never the file.
 schema=charts/patchy-config/values.schema.json
@@ -123,4 +123,8 @@ yq -i -o=json '
     (.definitions.integrationSpec | .. | select(tag == "!!map" and has("properties"))."additionalProperties") = false |
     (.definitions.forgeSpec | .. | select(tag == "!!map" and has("properties"))."additionalProperties") = false
 ' "$schema"
-prettier --log-level warn --write "$schema"
+# bun fmt is the toolchain's Prettier (the same one prose.sh runs); the
+# repo's .prettierrc.yaml wins over the shared default when present.
+pcfg=.prettierrc.yaml
+[ -f "$pcfg" ] || pcfg=.mise/.prettierrc.yaml
+bun fmt --no-script --config "$pcfg" --log-level warn --write "$schema"

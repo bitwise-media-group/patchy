@@ -42,8 +42,8 @@ type CaseSummary struct {
 }
 
 // EvaluationUnitSpec identifies one unit of its parent Evaluation. It is
-// immutable and self-contained — launch never re-reads the parent
-// (CEL-enforced).
+// immutable (CEL-enforced) and self-contained: launch never re-reads the
+// parent.
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable"
 type EvaluationUnitSpec struct {
 	// EvaluationRef is the owning Evaluation (UID-pinned).

@@ -1,12 +1,17 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The evaluation controller, in one file (status-server precedent): it is an
-# optional component (evaluationController.enabled, default false), the only
-# controller with an auth mount and a machine-facing authenticated API, and
-# the only consumer of source-controller's internal blob endpoint — whose
-# conditional :9791 rendering in configmap/deployments/services/networkpolicy
-# is keyed on the same flag. Mirrors deploy/kustomize/base/
+# The evaluation controller, in one file (following status-server.yaml). It
+# is:
+#
+#   * an optional component (evaluationController.enabled, default false);
+#   * the only controller with an auth mount and a machine-facing
+#     authenticated API;
+#   * the only client of source-controller's internal blob endpoint. The same
+#     flag controls whether configmap/deployments/services/networkpolicy
+#     render that :9791 endpoint.
+#
+# Matches deploy/kustomize/base/
 # {deployment-evaluation-controller,rbac,service,networkpolicy}.yaml.
 {{- if .Values.evaluationController.enabled }}
 {{- $vals := .Values.evaluationController }}
@@ -52,11 +57,12 @@ metadata:
 {{- end }}
 ---
 {{/*
-The evolve-runner fleet: images ship from the evolve repository (they are NOT
-<prefix>/<binary> chart images), so runners.<harness>.image is a full
-reference the operator pins. Credentials reuse agent.runners.<harness> —
-one Secret per model vendor in the agents namespace, whichever fleet
-exercises it.
+The evolve-runner fleet. Its images ship from the evolve repository (they
+are NOT <prefix>/<binary> chart images), so runners.<harness>.image is a
+full reference that the operator pins. Model access reuses
+agent.runners.<harness>.provider: the egress broker holds one credential per
+model vendor in the release namespace, whichever fleet uses it, and
+evaluation pods hold none.
 */}}
 {{- $data := dict
     "PATCHY_HEALTH_ADDR" ":8081"
@@ -82,9 +88,9 @@ exercises it.
 {{- $_ := set $data (printf "PATCHY_EVOLVE_%s_IMAGE" (upper $id)) $r.image }}
 {{- if has $id (splitList " " (include "patchy.brokeredHarnesses" $)) }}
 {{/*
-The claude and codex evolve runners are brokered like their finding
-siblings: the shared broker/provider stamps (agent.runners.<harness>.provider)
-replace the PATCHY_<HARNESS>_SECRET* keys.
+The claude and codex evolve runners are brokered, like the finding runners
+for the same harness. The shared broker/provider keys
+(agent.runners.<harness>.provider) replace the PATCHY_<HARNESS>_SECRET* keys.
 */}}
 {{- $_ := include "patchy.providerData" (dict "root" $ "data" $data "id" $id) }}
 {{- end }}
@@ -113,8 +119,8 @@ metadata:
     {{- end }}
 data:
     {{- range $k, $v := $data }}
-    {{- /* Integral floats render as integers (Helm parses values numbers as
-           float64 and toString would produce scientific notation). */ -}}
+    {{- /* Whole-number floats render as integers. (Helm parses values numbers
+           as float64, and toString would produce scientific notation.) */ -}}
     {{- $s := $v | toString }}
     {{- if and (kindIs "float64" $v) (eq $v (floor $v)) }}
     {{- $s = int64 $v | toString }}
@@ -122,12 +128,16 @@ data:
     {{ $k }}: {{ $s | quote }}
     {{- end }}
 ---
-# The remote-evaluation engine's own kinds: the API creates Evaluations and
-# deletes them (cancel); the gate creates EvaluationUnit children; the
-# scheduler stamps statuses and rolls the parent up; the TTL loop deletes
-# expired Evaluations. `update` on evaluationunits (not just status) is the
-# jobs-finalizer removal; configmaps are the per-unit results objects,
-# addressed by deterministic name only.
+# The remote-evaluation engine's own kinds:
+#
+#   * the API creates Evaluations and deletes them (cancel);
+#   * the gate creates EvaluationUnit children;
+#   * the scheduler writes statuses and rolls them up into the parent;
+#   * the TTL loop deletes expired Evaluations.
+#
+# `update` on evaluationunits (as well as status) removes the jobs finalizer.
+# The configmaps are the per-unit results objects, read and written only by
+# their deterministic names.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -175,8 +185,8 @@ subjects:
       namespace: {{ .Release.Namespace }}
 ---
 # The agents-namespace grant: the same Job machinery as the two finding job
-# controllers (rbac.yaml binds them to an identical Role; the kind label
-# keeps the three watches apart — RBAC cannot express that split).
+# controllers (rbac.yaml binds them to an identical Role). The kind label
+# keeps the three watches apart, because RBAC cannot express that split.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -214,9 +224,9 @@ subjects:
       name: {{ include "patchy.serviceAccountName" (dict "root" . "name" $name "vals" $vals) }}
       namespace: {{ .Release.Namespace }}
 ---
-# SubjectAccessReview: "may user U create/get/delete evaluations?" — the
-# bearer-authenticated submitters are authorized by RBAC bindings on the
-# evaluations resource, native verbs only. Review-only.
+# SubjectAccessReview: "may user U create/get/delete evaluations?". RBAC
+# bindings on the evaluations resource authorize the bearer-authenticated
+# submitters, with native verbs only. Review-only.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -244,8 +254,8 @@ subjects:
       namespace: {{ .Release.Namespace }}
 {{- if $vals.rbac.userRoles }}
 ---
-# Example submitter tier. Bindings are yours to bring: bind Users/Groups to
-# the OIDC claims' values in the release namespace.
+# Example submitter tier. You supply the bindings: bind Users/Groups to the
+# OIDC claims' values in the release namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -394,9 +404,9 @@ spec:
           {{- end }}
 {{- if $vals.networkPolicy.create }}
 ---
-# Ingress: 8080 from anywhere (the fronting ingress/gateway lives wherever
-# yours does; bearer authentication carries the access control) plus 8081
-# probes. Egress: DNS, the Kubernetes API server, TCP 443 out (the OIDC
+# Ingress: 8080 from anywhere (the ingress or gateway in front can live in
+# any namespace, and bearer authentication provides the access control),
+# plus 8081 probes. Egress: DNS, the Kubernetes API server, TCP 443 out (the OIDC
 # issuer, an OTLP collector), and source-controller's internal blob endpoint
 # (:9791) for workspace uploads.
 apiVersion: networking.k8s.io/v1
@@ -442,8 +452,8 @@ spec:
 {{- end }}
 {{- if $vals.ingress.enabled }}
 ---
-# The evaluation API's exposure, plain-Ingress flavour: /api/v1 only lives
-# here, but routing the whole host keeps the rule simple.
+# How the evaluation API is exposed, plain Ingress version. Only /api/v1
+# lives here, but routing the whole host keeps the rule simple.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -477,7 +487,7 @@ spec:
 {{- end }}
 {{- if $vals.httpRoute.enabled }}
 ---
-# The evaluation API's exposure, Gateway API flavour.
+# How the evaluation API is exposed, Gateway API version.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

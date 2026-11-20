@@ -4,11 +4,11 @@
 # ---- repo-local tasks (the long tail the library intentionally omits) -------
 
 # Overrides the archetype's go-lint (.mise/archetypes/go/scripts/lint.sh:
-# golangci-lint plus a bare `govulncheck ./...`, once per GOOS in vars.goos —
+# golangci-lint plus a bare `govulncheck ./...`, once per GOOS in vars.goos,
 # patchy sets none, so the host's only). The golangci-lint pass is the same;
 # the override exists for govulncheck, which runs through hack/govulncheck.sh
 # so it can carry a reviewed acceptance list for advisories with no fix
-# (currently empty — see the script for how to accept one with a rationale
+# (currently empty; see the script for how to accept one with a rationale
 # and a re-review trigger). A bare govulncheck has no ignore mechanism.
 [go-lint]
 hide = true
@@ -25,7 +25,7 @@ dir = "{{cwd}}"
 run = "./hack/e2e.sh"
 
 # Deliver a recorded webhook fixture to a locally-running
-# integration-controller, signed with its secret — the local stand-in for
+# integration-controller, signed with its secret. It is the local stand-in for
 # GitHub's webhook leg. -dev-secret signs with the dev overlay's placeholder
 # webhook secret; -secret-file <file> supplies a real one. The task runs in
 # e2e/, so relative fixture paths resolve from there.
@@ -37,7 +37,7 @@ run = "go run ./replay"
 
 # The e2e suite's in-memory GitHub API as a standalone dev server. The
 # dev-fake overlay runs the same server in-cluster (nothing on the host
-# needed); this task is for running it directly — poking at the API,
+# needed); this task is for running it directly: poking at the API,
 # developing the fake itself. See docs/deployment/colima.md.
 [fakegithub]
 description = "run the fake GitHub API standalone on the host"
@@ -54,7 +54,7 @@ run = "./hack/codegen.sh"
 
 # The Tier-1 microbenchmark suite for the 2M-findings scale work: per-package
 # benchmarks over synthetic datasets (internal/loadgen) plus the env-gated
-# complexity-ratio assertions. Opt-in — never part of `make pr` or CI; the
+# complexity-ratio assertions. Opt-in: never part of `make pr` or CI; the
 # numbers are recorded under coverage/bench/ for benchstat comparison.
 [bench]
 description = "run the tier-1 microbenchmarks with complexity assertions"
@@ -62,7 +62,7 @@ dir = "{{cwd}}"
 run = "./hack/bench.sh"
 
 # The Tier-2 load suite: envtest + the real binaries at 50-100k findings
-# (PATCHY_LOAD_N sizes it). Opt-in for the same reason — a full run takes
+# (PATCHY_LOAD_N sizes it). Opt-in for the same reason: a full run takes
 # tens of minutes and is meant for before/after measurement, not the gate.
 [load]
 description = "run the opt-in load tests (envtest, real binaries, 50k+ findings)"
@@ -134,7 +134,7 @@ run = [
 ]
 
 # Redefines the archetype's build task (whole-task replacement): patchy is
-# multi-binary — one controller per concern plus the agent runtime — so the
+# multi-binary (one controller per concern plus the agent runtime), so the
 # single-app go-build is replaced by a loop over cmd/ (hack/build.sh; the
 # multiline tasks live in hack/ so shellcheck lints them). The ui task runs
 # first so the withui build can embed internal/web/ui/dist.
@@ -145,8 +145,8 @@ run = [{ task = "ui" }, "./hack/build.sh"]
 
 # Canned status-page data for dev: apply the demo Findings/FindingRollups
 # and seed their statuses (a subresource `kubectl apply -k` cannot write).
-# The data is deliberately inert — every finding suspended, no trackingRef,
-# no completedAt — see the manifest header.
+# The data is inert: every finding is suspended, with no trackingRef and
+# no completedAt. See the manifest header.
 [status-demo]
 description = "seed canned findings/rollups for the status page (dev cluster)"
 dir = "{{cwd}}"
@@ -173,7 +173,7 @@ run = "./hack/helm-lint.sh"
 
 # Everything derived from the CLI's cobra command tree: the per-command
 # reference under docs/cli (nav'd from docs/operate/cli.md) and the shell completions.
-# Kept repo-local because the archetype leaves `docs` to the app — see the
+# Kept repo-local because the archetype leaves `docs` to the app; see the
 # comment at the head of .mise/archetypes/go/tasks.toml.
 #
 # Both are committed rather than generated at release time: the Homebrew cask
@@ -198,9 +198,9 @@ run = [
 
 # Size report: the bin/ binaries the build task produced, plus the top-10
 # symbols and packages per binary from an unstripped link's symbol table
-# (hack/size.sh — it never rebuilds the stripped binaries, it reads bin/
+# (hack/size.sh: it never rebuilds the stripped binaries, it reads bin/
 # and fails with a hint when build has not run). Part of the pr gate,
-# after build, so dependency-graph growth stays visible per run — the CLI
+# after build, so dependency-graph growth stays visible per run. The CLI
 # reached 135 MB before anyone re-measured.
 [size]
 description = "report binary sizes with top symbols/packages per binary"

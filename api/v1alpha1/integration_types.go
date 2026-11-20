@@ -32,10 +32,11 @@ type GitHubIssues struct {
 	// +kubebuilder:default="/approve"
 	ApproveComment string `json:"approveComment,omitempty"`
 	// FallbackRepository ("owner/repo") receives the tracking issues of
-	// findings that have no repository of their own — cloud findings whose
-	// resource carries no ownership labels. Without it those findings are
-	// visible only through kubectl and the status page. They still cannot be
-	// remediated: the issue is a human surface, not a work tree.
+	// findings that have no repository of their own, such as cloud findings
+	// whose resource carries no ownership labels. Without it those findings
+	// are visible only through kubectl and the status page. They still cannot
+	// be remediated, because the issue is only for humans and has no work
+	// tree.
 	// +optional
 	FallbackRepository string `json:"fallbackRepository,omitempty"`
 }
@@ -50,12 +51,12 @@ type GitHubCodeScanningAlerts struct {
 
 // GitHubRedelivery configures the failed-delivery sweep: on every
 // reconcile interval the controller lists the App webhook's recent
-// deliveries and asks GitHub to redeliver those that never got a 2xx —
-// deliveries missed while the receiver was down or its queue was full.
+// deliveries and asks GitHub to redeliver those that never got a 2xx. These
+// are deliveries missed while the receiver was down or its queue was full.
 // GitHub does not retry failed deliveries on its own; without the sweep
 // they sit in the 30-day delivery log until redelivered by hand.
 type GitHubRedelivery struct {
-	// Enabled turns the sweep on. Requires App credentials — the delivery
+	// Enabled turns the sweep on. It requires App credentials: the delivery
 	// log is App-scoped, so a PAT integration cannot sweep.
 	Enabled bool `json:"enabled"`
 	// Lookback bounds how far back each sweep scans the delivery log.
@@ -89,13 +90,14 @@ type GitHubIntegration struct {
 }
 
 // GoogleCloudSCCMute configures muting the Security Command Center finding
-// when the investigation returns an "ignore" verdict — the cloud analogue of
-// dismissing a code-scanning alert.
+// when the investigation returns an "ignore" verdict. It is the cloud
+// equivalent of dismissing a code-scanning alert.
 //
 // RESERVED: the field is accepted and validated but not yet honoured. Muting
 // needs securitycenter.findings.setMute, a Google Cloud write permission the
-// integration-controller does not currently hold; the write-back seam
-// (pkg/source.Resolver) is in place so enabling it is one implementation.
+// integration-controller does not currently hold. The write-back interface
+// (pkg/source.Resolver) is in place, so enabling it needs only one
+// implementation.
 type GoogleCloudSCCMute struct {
 	// Enabled turns the mute-on-ignore write-back on.
 	Enabled bool `json:"enabled"`
@@ -104,8 +106,8 @@ type GoogleCloudSCCMute struct {
 // GoogleCloudSCC configures ingestion of Security Command Center findings.
 // SCC has no webhook: a NotificationConfig publishes findings to a Pub/Sub
 // topic and a push subscription forwards them to the receiver, which
-// authenticates the OIDC token Pub/Sub signs rather than an HMAC — a push
-// subscription cannot compute one over the body.
+// authenticates the OIDC token Pub/Sub signs. It does not use an HMAC,
+// because a push subscription cannot compute one over the body.
 type GoogleCloudSCC struct {
 	// Enabled turns the SCC ingestion capability on.
 	Enabled bool `json:"enabled"`
@@ -153,8 +155,8 @@ type AssetLabelKeys struct {
 
 // GoogleCloudAssetInventory enables the context enhancer that resolves the
 // repository (and attributes) of any finding whose cloud resource lives on
-// Google Cloud — whichever source ingested it — by reading the resource's
-// ownership labels from Cloud Asset Inventory. Read-only: the
+// Google Cloud, whichever source ingested it. It reads the resource's
+// ownership labels from Cloud Asset Inventory. It is read-only: the
 // context-controller authenticates by workload identity
 // (roles/cloudasset.viewer) and holds no Secret.
 type GoogleCloudAssetInventory struct {
@@ -175,7 +177,7 @@ type GoogleCloudAssetInventory struct {
 // GoogleCloudIntegration is the google-cloud provider block. It carries no
 // credential Secret: inbound findings authenticate themselves with a
 // Pub/Sub-signed OIDC token, and the asset-inventory enhancer authenticates
-// by workload identity. The two capabilities are independent — an integration
+// by workload identity. The two capabilities are independent: an integration
 // may enhance findings from another source (e.g. Wiz) without ingesting from
 // Security Command Center, or vice versa.
 type GoogleCloudIntegration struct {
@@ -187,8 +189,8 @@ type GoogleCloudIntegration struct {
 	CloudAssetInventory *GoogleCloudAssetInventory `json:"cloudAssetInventory,omitempty"`
 }
 
-// WizIssues configures ingestion of Wiz Issues — cloud misconfigurations and
-// toxic combinations — delivered by a Wiz automation-rule webhook. The rule's
+// WizIssues configures ingestion of Wiz Issues (cloud misconfigurations and
+// toxic combinations) delivered by a Wiz automation-rule webhook. The rule's
 // action body must follow the template documented in docs/integrations/wiz.md;
 // that template is the payload contract.
 type WizIssues struct {
@@ -216,7 +218,7 @@ type WizDefend struct {
 
 // WizAPI configures the Wiz GraphQL API client used for write-back: on a
 // dismissed finding the originating Wiz issue is rejected with a note. The
-// block is optional — without it Wiz ingestion is one-way, exactly like SCC.
+// block is optional. Without it Wiz ingestion is one-way, the same as SCC.
 // Credentials are the Wiz service-account keys "clientId" + "clientSecret" in
 // the integration's credential Secret.
 type WizAPI struct {
@@ -232,9 +234,10 @@ type WizAPI struct {
 
 // WizIntegration is the wiz provider block. Inbound deliveries carry the
 // shared bearer token stored under key "webhookToken" in the credential
-// Secret — a Wiz automation action sends a static header and cannot compute
-// an HMAC over the body. Issues and Defend are independent capabilities that
-// share the /wiz/webhooks path; the receiver discriminates by payload shape.
+// Secret, because a Wiz automation action sends a static header and cannot
+// compute an HMAC over the body. Issues and Defend are independent
+// capabilities that share the /wiz/webhooks path. The receiver tells them
+// apart by payload shape.
 type WizIntegration struct {
 	// Issues enables Wiz Issues ingestion.
 	// +optional
@@ -262,8 +265,8 @@ type AWSConfigAggregator struct {
 
 // AWSResourceExplorer names the AWS Resource Explorer view the resource-tags
 // enhancer searches. An organization-wide view answers for the whole estate
-// without per-account credentials; the view must include the tags property,
-// or every lookup would silently come back tagless — the enhancer refuses
+// without per-account credentials. The view must include the tags property,
+// or every lookup would silently come back tagless. The enhancer refuses
 // such a view at configuration time.
 type AWSResourceExplorer struct {
 	// ViewARN is the Resource Explorer view, e.g.
@@ -274,10 +277,10 @@ type AWSResourceExplorer struct {
 }
 
 // AWSResourceTags enables the context enhancer that resolves the repository
-// (and attributes) of any finding whose cloud resource lives on AWS —
-// whichever source ingested it — by reading the resource's tags from an
+// (and attributes) of any finding whose cloud resource lives on AWS,
+// whichever source ingested it. It reads the resource's tags from an
 // organization-level inventory. Exactly one inventory backend must be named.
-// Read-only: the context-controller authenticates by the SDK default
+// It is read-only: the context-controller authenticates by the SDK default
 // credential chain (EKS Pod Identity or IRSA on EKS, web-identity
 // federation elsewhere) and holds no Secret.
 // +kubebuilder:validation:XValidation:rule="has(self.configAggregator) != has(self.resourceExplorer)",message="exactly one of configAggregator or resourceExplorer must be set"
@@ -310,11 +313,11 @@ type AWSIntegration struct {
 }
 
 // AzureResourceTags enables the context enhancer that resolves the repository
-// (and attributes) of any finding whose cloud resource lives on Azure —
-// whichever source ingested it — by reading the resource's tags from Azure
+// (and attributes) of any finding whose cloud resource lives on Azure,
+// whichever source ingested it. It reads the resource's tags from Azure
 // Resource Graph. Resource Graph is tenant-wide and always on, so there is no
-// backend choice to make: one KQL lookup by ARM resource ID answers for every
-// subscription the ambient identity can read. Read-only: the
+// backend to choose. One KQL lookup by ARM resource ID answers for every
+// subscription the ambient identity can read. It is read-only: the
 // context-controller authenticates by the Azure default credential chain
 // (Microsoft Entra Workload ID on AKS, workload identity federation
 // elsewhere) and holds no Secret.
@@ -347,7 +350,8 @@ type AzureIntegration struct {
 // GenericResolver configures verdict write-back to the external process: on a
 // dismissed finding patchy POSTs the verdict and the finding's alerts to the
 // URL, signing the body the same way inbound deliveries are signed. The
-// process must treat the call as idempotent — patchy retries on failure.
+// process must treat the call as idempotent, because patchy retries on
+// failure.
 type GenericResolver struct {
 	// Enabled turns the write-back on.
 	Enabled bool `json:"enabled"`
@@ -364,8 +368,9 @@ type GenericResolver struct {
 // GenericSource configures the inbound findings webhook: the external process
 // POSTs patchy's documented findings payload (docs/integrations/generic.md)
 // to /generic/<integration-name>/webhooks, HMAC-signing each body with the
-// shared secret. Built for sources that are not event-driven — a process that
-// queries a warehouse store on its own schedule pushes whatever it found.
+// shared secret. It is meant for sources that are not event-driven, such as
+// a process that queries a warehouse store on its own schedule and pushes
+// whatever it found.
 type GenericSource struct {
 	// Enabled turns the inbound receiver on for this integration.
 	Enabled bool `json:"enabled"`
@@ -397,9 +402,9 @@ type GenericEnhancer struct {
 
 // GenericIntegration is the generic provider block: an external HTTP process
 // acting as a finding source, a context enhancer, or both. Unlike every other
-// provider, generic is not a namespace singleton — each generic Integration
+// provider, generic is not a namespace singleton. Each generic Integration
 // is its own identity: its name is the finding source id, the enhancer
-// attribution, and the webhook path segment, so any number may coexist.
+// attribution, and the webhook path segment. So any number may coexist.
 type GenericIntegration struct {
 	// Source enables the inbound findings webhook.
 	// +optional
@@ -409,10 +414,11 @@ type GenericIntegration struct {
 	Enhance *GenericEnhancer `json:"enhance,omitempty"`
 }
 
-// IntegrationSpec configures one external system. Exactly the provider block
-// matching spec.provider must be set (CEL-enforced) — integrations are
-// strongly typed; the generic provider is the deliberate escape hatch, typed
-// around patchy's own HTTP contract rather than a vendor's.
+// IntegrationSpec configures one external system. Only the provider block
+// matching spec.provider may be set, and it must be set (CEL-enforced).
+// Integrations are strongly typed. The generic provider is the intended
+// escape hatch: it is typed around patchy's own HTTP contract instead of a
+// vendor's.
 // +kubebuilder:validation:XValidation:rule="(self.provider == 'github') == has(self.github) && (self.provider == 'google-cloud') == has(self.googleCloud) && (self.provider == 'wiz') == has(self.wiz) && (self.provider == 'aws') == has(self.aws) && (self.provider == 'azure') == has(self.azure) && (self.provider == 'generic') == has(self.generic)",message="exactly the provider block matching spec.provider must be set"
 // +kubebuilder:validation:XValidation:rule="!(self.provider in ['github', 'wiz', 'generic']) || has(self.secretRef)",message="spec.secretRef is required for the github, wiz, and generic providers"
 type IntegrationSpec struct {
@@ -427,7 +433,7 @@ type IntegrationSpec struct {
 	// "clientId" + "clientSecret" when spec.wiz.api enables write-back. For
 	// generic: key "webhookSecret", the shared HMAC secret signing both
 	// inbound deliveries and patchy's outbound resolver/enhancer calls.
-	// Required for github, wiz, and generic, optional otherwise — a
+	// Required for github, wiz, and generic, and optional otherwise. A
 	// google-cloud integration holds no credential, since Pub/Sub
 	// authenticates itself with a signed OIDC token. It stays permitted for
 	// every provider so a future capability that does need one (SCC
@@ -445,7 +451,7 @@ type IntegrationSpec struct {
 	// lookback window, including deliveries that already succeeded (the
 	// receiver dedups; ingestion is idempotent). Freshness against
 	// status.redelivery.replayedAt decides whether the request is still
-	// actionable — the controller never clears spec.
+	// actionable. The controller never clears spec.
 	// +optional
 	Replay *ActionRequest `json:"replay,omitempty"`
 	// Reset requests the demo reset (stamped by the status page): the
@@ -455,17 +461,17 @@ type IntegrationSpec struct {
 	// redeliveries of already-handled GUIDs are ingested again. Issue
 	// deletion requires admin-level repository permission on the
 	// credential. Freshness against status.resetAt decides whether the
-	// request is still actionable — the controller never clears spec.
+	// request is still actionable. The controller never clears spec.
 	// +optional
 	Reset *ActionRequest `json:"reset,omitempty"`
 	// Backfill requests one bounded list-alerts walk of the provider's open
-	// alerts, ingesting the ones that predate webhook coverage — alerts
-	// raised before the App was installed on (or associated with) their
-	// repository, which no replay of the delivery log can ever surface.
+	// alerts, ingesting the ones that predate webhook coverage. These are
+	// alerts raised before the App was installed on (or associated with)
+	// their repository, which no replay of the delivery log can ever surface.
 	// Ingestion is idempotent, so re-listing alerts that already have
 	// findings is safe. Freshness against status.backfill.backfilledAt
-	// decides whether the request is still actionable — the controller
-	// never clears spec.
+	// decides whether the request is still actionable. The controller never
+	// clears spec.
 	// +optional
 	Backfill *BackfillRequest `json:"backfill,omitempty"`
 	// GitHub is the github provider block.
@@ -490,7 +496,7 @@ type IntegrationSpec struct {
 
 // BackfillRequest records who requested a manual alert backfill, when, and
 // over which repositories. Freshness against status.backfill.backfilledAt
-// decides whether the request is still actionable — the consuming controller
+// decides whether the request is still actionable. The consuming controller
 // never clears spec.
 type BackfillRequest struct {
 	// By is the requesting login.
@@ -508,8 +514,9 @@ type BackfillRequest struct {
 	Repositories []string `json:"repositories,omitempty"`
 }
 
-// InstallationSummary counts one GitHub App installation — counts and
-// accounts only, never a repository list (the estate is ~15K repositories).
+// InstallationSummary counts one GitHub App installation. It holds counts
+// and accounts only, never a repository list (the estate is ~15K
+// repositories).
 type InstallationSummary struct {
 	// ID of the installation.
 	ID int64 `json:"id"`
@@ -581,8 +588,8 @@ type BackfillStatus struct {
 	BackfilledAt *metav1.Time `json:"backfilledAt,omitempty"`
 	// AttemptedAt echoes spec.backfill.at once the controller has attempted
 	// that request, whether or not the walk succeeded. Unlike backfilledAt it
-	// never gates a retry — it lets observers distinguish a request the
-	// controller has not seen yet from one that failed and is being retried.
+	// never gates a retry. It lets observers tell a request the controller has
+	// not seen yet apart from one that failed and is being retried.
 	// +optional
 	AttemptedAt *metav1.Time `json:"attemptedAt,omitempty"`
 }

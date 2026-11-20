@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Seed the canned status-page data (dev only): apply the demo Findings and
-# FindingRollups, then patch their statuses — `kubectl apply` cannot write a
+# FindingRollups, then patch their statuses, because `kubectl apply` cannot write a
 # status subresource, so phases/rollup buckets need a second pass. Patching
 # the /status endpoint with the full object as a merge patch is safe: the
 # subresource endpoint persists only the status field.

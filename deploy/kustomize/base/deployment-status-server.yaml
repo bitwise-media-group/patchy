@@ -10,8 +10,8 @@ metadata:
         app: status-server
         app.kubernetes.io/name: status-server
         app.kubernetes.io/part-of: patchy
-        # Deliberately `server`, not `controller`: the status server runs no
-        # reconcilers — it serves humans. The NetworkPolicies select on this.
+        # `server`, not `controller`, on purpose: the status server runs no
+        # reconcilers and serves humans. The NetworkPolicies select on this.
         app.kubernetes.io/component: server
 spec:
     replicas: 1
@@ -52,11 +52,10 @@ spec:
                             fieldRef:
                                 fieldPath: metadata.namespace
                       # The mounted auth configuration. The Secret volume
-                      # below is optional: with no Secret the file is absent
-                      # and the server runs the rollups-only posture — public
-                      # statistics, no findings access, no sign-in. Mount a
-                      # real config (see secrets.example.yaml) to enable the
-                      # findings surface.
+                      # below is optional. With no Secret the file is absent
+                      # and the server serves no data: no findings, no
+                      # metrics, no sign-in. Mount a real config (see
+                      # secrets.example.yaml) to turn the page on.
                       - name: PATCHY_AUTH_CONFIG
                         value: /etc/patchy/auth/config.yaml
                   ports:
@@ -99,8 +98,8 @@ spec:
                       - name: tmp
                         mountPath: /tmp
             volumes:
-                # Auth configuration (see secrets.example.yaml). optional:
-                # absent means rollups-only.
+                # Auth configuration (see secrets.example.yaml). Optional:
+                # when absent, the server serves no data.
                 - name: auth
                   secret:
                       secretName: patchy-status-auth

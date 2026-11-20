@@ -1,17 +1,19 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# The egress credential broker, in one file (modeled on status-server.yaml):
-# the reverse proxy all claude and codex model traffic goes through. Deploys
-# exactly when a claude or codex runner is enabled — brokered is the only
-# mode either has, so claude or codex ⇒ broker and fake-only dev/e2e renders
-# none of this. Each enabled harness contributes its provider's route
-# (agent.runners.<harness>.provider). Agent pods
-# authenticate with an audience-bound projected ServiceAccount token; the
-# broker validates it via TokenReview (its ONLY Kubernetes access — no Secret
-# API reads, no leases, no reconcilers) and injects or signs the model
-# credential outbound. The model credentials therefore live HERE, in the
-# release namespace, not in the agent sandbox.
+# The egress credential broker, in one file (modeled on status-server.yaml).
+# It is the reverse proxy that all claude and codex model traffic goes
+# through. It deploys when, and only when, a claude or codex runner is
+# enabled. Brokered is the only mode either runner has, so claude or codex ⇒
+# broker, and a fake-only dev/e2e render has none of this. Each enabled
+# harness adds its provider's route (agent.runners.<harness>.provider).
+#
+# Agent pods authenticate with an audience-bound projected ServiceAccount
+# token. The broker validates it through TokenReview, which is its ONLY
+# Kubernetes access (no Secret API reads, no leases, no reconcilers). It then
+# injects or signs the model credential on the outbound request. So the model
+# credentials live HERE, in the release namespace, and never in the agent
+# sandbox.
 {{- if include "patchy.brokerEnabled" . }}
 {{- $vals := .Values.egressBroker }}
 {{- $name := "egress-broker" }}
@@ -110,8 +112,8 @@ data:
     {{- end }}
 ---
 # TokenReview is cluster-scoped, so the one grant needs a ClusterRole.
-# Review-only: the power to ask "whose token is this?", nothing else — no
-# Secret access, no writes, no other resource of any kind.
+# Review-only: the broker may ask "whose token is this?" and nothing else. It
+# has no Secret access, no writes, and no other resource of any kind.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -203,7 +205,7 @@ spec:
                       initialDelaySeconds: 5
                       periodSeconds: 20
                   # readyz fails while a configured route's credential source
-                  # is unusable — this is what replaced the job controllers'
+                  # is unusable. This replaced the job controllers' old
                   # claude-Secret probing.
                   readinessProbe:
                       httpGet:
@@ -261,7 +263,8 @@ spec:
                 - name: tmp
                   emptyDir: {}
                 # The model credentials, mounted as files so a rotated Secret
-                # propagates without a restart (the broker reads per request).
+                # takes effect without a restart (the broker reads them on
+                # every request).
                 {{- if eq $providerName "anthropic" }}
                 - name: anthropic
                   secret:
@@ -305,15 +308,19 @@ spec:
           protocol: TCP
 {{- if $vals.networkPolicy.create }}
 ---
-# Ingress: the proxy port from the agent namespace only — the broker answers
-# to agent pods and nobody else (the job controllers' advisory startup probe
-# uses the unauthenticated /readyz on the same port, so they are granted it
-# too) — plus 8081 probes from anywhere (kubelet probes arrive from the node
-# IP). Egress: DNS, then TCP 443/6443 — the model APIs and the Kubernetes API
+# Ingress:
+#
+#   * The proxy port, from the agent namespace only. The broker answers to
+#     agent pods and nobody else. (The job controllers' advisory startup
+#     probe uses the unauthenticated /readyz on the same port, so they are
+#     allowed it too.)
+#   * 8081 probes from anywhere (kubelet probes arrive from the node IP).
+#
+# Egress: DNS, then TCP 443/6443 for the model APIs and the Kubernetes API
 # server (TokenReview). extraEgress covers the cloud-identity side channels
-# (EKS Pod Identity 169.254.170.23:80, GKE metadata 169.254.169.254:80) —
-# but only on CNIs whose ipBlock can reach the node; under mode cilium the
-# CiliumNetworkPolicy below is what actually grants them.
+# (EKS Pod Identity 169.254.170.23:80, GKE metadata 169.254.169.254:80).
+# That works only on CNIs whose ipBlock can reach the node. Under mode
+# cilium, the CiliumNetworkPolicy below grants them instead.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -359,19 +366,20 @@ spec:
         {{- end }}
 {{- if and (eq (include "patchy.egressMode" .) "cilium") (has $providerName (list "bedrock" "vertex")) }}
 ---
-# The cloud-identity credential endpoint the broker's SDK dials — the EKS Pod
+# The broker's SDK calls a cloud-identity credential endpoint: the EKS Pod
 # Identity agent (bedrock, 169.254.170.23:80) or the GKE metadata server
-# (vertex, 169.254.169.254:80) — is a hostNetwork process on the pod's own
-# node. Cilium classifies traffic to any node-local address as the reserved
-# `host` entity, and its CIDR selectors (an ipBlock in the base policy above,
-# extraEgress included) never match reserved identities — so under Cilium an
-# ipBlock allow for that address silently matches nothing and the egress-
-# enforcing base policy drops the credential call. The host entity is the
-# only way to express this destination; policies union, so this rides
-# alongside the base NetworkPolicy rather than replacing it. Same egressMode
-# election as the agent-sandbox dialect (networkpolicy-cilium.yaml); the gke
-# mode needs no equivalent because Dataplane V2 always admits metadata-server
-# traffic.
+# (vertex, 169.254.169.254:80). That endpoint is a hostNetwork process on the
+# pod's own node. Cilium classifies traffic to any node-local address as the
+# reserved `host` entity. Its CIDR selectors (an ipBlock in the base policy
+# above, extraEgress included) never match reserved identities. So under
+# Cilium, an ipBlock allow for that address silently matches nothing, and
+# the base policy, which enforces egress, drops the credential call.
+#
+# The host entity is the only way to express this destination. Policies are
+# additive, so this policy sits beside the base NetworkPolicy and does not
+# replace it. It uses the same egressMode choice as the agent sandbox policy
+# (networkpolicy-cilium.yaml). The gke mode needs no equivalent, because
+# Dataplane V2 always allows metadata-server traffic.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

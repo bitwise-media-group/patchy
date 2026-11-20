@@ -1,31 +1,33 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# RBAC, in full: one Role (+ RoleBinding) per controller in the release
-# namespace, verb-by-verb what its reconcilers use (mirroring
-# deploy/kustomize/base/rbac.yaml), plus one shared Role in the agent
-# namespace for the two job controllers.
+# All of the chart's RBAC:
 #
-# Conventions the rules encode:
+#   * one Role (+ RoleBinding) per controller in the release namespace,
+#     granting the verbs its reconcilers use and no others (this matches
+#     deploy/kustomize/base/rbac.yaml);
+#   * one shared Role in the agent namespace for the two job controllers.
 #
-#   * The CRs are the state machine. Writers are exclusive per field — the
-#     transition table in DESIGN.md says which controller writes which edge —
-#     and the verbs here enforce the split at the API layer as far as RBAC
-#     can (RBAC is per-resource, not per-field).
-#   * secrets get (never list/watch): provider/forge credentials are read on
-#     demand by name through the API reader, so no controller can enumerate
-#     Secrets.
+# The rules follow these conventions:
+#
+#   * The CRs are the state machine. Each field has only one writer. The
+#     transition table in DESIGN.md says which controller writes which edge.
+#     The verbs here enforce that split at the API layer as far as RBAC can.
+#     (RBAC works per resource and cannot restrict single fields.)
+#   * secrets get (never list/watch): controllers read provider/forge
+#     credentials by name through the API reader when they need them, so no
+#     controller can list Secrets.
 #   * leases + events: controller-runtime leader election. Deployments stay
-#     replicas:1 + Recreate; the lease is insurance against two replicas
-#     racing during a botched rollout.
-#   * The agent pods have NO role at all — see serviceaccounts.yaml.
+#     replicas:1 + Recreate. The lease is insurance against two replicas
+#     racing during a bad rollout.
+#   * The agent pods have NO role at all. See serviceaccounts.yaml.
 {{- define "patchy.roleRules" -}}
 {{- if eq . "integration-controller" }}
 {{- /*
-Ingests scanner webhooks into Findings (create/fold/duplicate-merge — the
-one deleter of duplicate Findings), projects Findings to tracking issues
-(reads the children's reports), and applies human signals (approve/close/
-PR-merge) to Finding spec + status.
+Turns scanner webhooks into Findings (create/fold/duplicate-merge; it is the
+only controller that deletes duplicate Findings). It also projects Findings
+to tracking issues (reading the children's reports), and applies human
+signals (approve/close/PR-merge) to Finding spec + status.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
@@ -51,7 +53,7 @@ PR-merge) to Finding spec + status.
   verbs: [get]
 {{- else if eq . "source-controller" }}
 {{- /*
-Validates Forge credentials, resolves + pins Repositories, serves the
+Validates Forge credentials, resolves and pins Repositories, and serves the
 artifact tarballs. Writes only Forge/Repository status.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
@@ -65,14 +67,15 @@ artifact tarballs. Writes only Forge/Repository status.
   verbs: [get]
 {{- else if eq . "context-controller" }}
 {{- /*
-The enhancer chain: reads Opened findings, writes enrichments/owners and the
-Opened -> Enhanced edge to status, and sets spec.repository once for a cloud
-finding that arrived without one (resolved from the resource's ownership
-labels) -- which is why it holds update on findings, not status alone.
-Integrations are read-only: the dynamic enhancers take their configuration
-from their Integrations. secrets get (by name, through the API reader): the
-generic enhancer signs its outbound calls with its Integration's webhook
-secret; the cloud enhancers still use workload identity and hold none.
+The enhancer chain. It reads Opened findings and writes enrichments/owners
+and the Opened -> Enhanced edge to status. For a cloud finding that arrived
+without spec.repository, it sets that field once (resolved from the
+resource's ownership labels). That is why it holds update on findings as
+well as on status. Integrations are read-only: the dynamic enhancers take
+their configuration from their Integrations. secrets get (by name, through
+the API reader): the generic enhancer signs its outbound calls with its
+Integration's webhook secret. The cloud enhancers use workload identity and
+hold no secret.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
@@ -88,9 +91,9 @@ secret; the cloud enhancers still use workload identity and hold none.
   verbs: [get]
 {{- else if eq . "investigation-controller" }}
 {{- /*
-The gate (creates Repository + Investigation, parks repo-less findings) and
-the analysis scheduler (launches agent Jobs, stamps results, routes the
-verdict edges on Finding status).
+The gate (creates Repository + Investigation, and holds findings that have
+no repository) and the analysis scheduler (launches agent Jobs, records
+results, and sets the verdict edges on Finding status).
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
@@ -119,18 +122,18 @@ verdict edges on Finding status).
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]
-# The agent transcript each run persists: a ConfigMap owner-referenced to the
-# run, so the Finding's TTL cascade removes it. No list/watch — it is only ever
-# addressed by its own deterministic name.
+# The agent transcript each run saves: a ConfigMap owner-referenced to the
+# run, so the Finding's TTL cascade removes it. No list/watch, because the
+# controller only ever reads it by its own deterministic name.
 - apiGroups: [""]
   resources: [configmaps]
   verbs: [create, get, update]
 {{- else if eq . "remediation-controller" }}
 {{- /*
-Queue admission + the remediation scheduler + push/PR, and the rollup/TTL
-loop. The one deleter of expired Findings (cascade deletes the children);
-`update` on findings/investigations/remediations (not just status) is the
-rollup finalizer removal.
+Queue admission, the remediation scheduler, push/PR, and the rollup/TTL
+loop. It is the only controller that deletes expired Findings (the cascade
+deletes the children). It needs `update` on findings/investigations/
+remediations (as well as on status) to remove the rollup finalizer.
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
@@ -165,9 +168,9 @@ rollup finalizer removal.
 - apiGroups: [""]
   resources: [secrets]
   verbs: [get]
-# The agent transcript each run persists: a ConfigMap owner-referenced to the
-# run, so the Finding's TTL cascade removes it. No list/watch — it is only ever
-# addressed by its own deterministic name.
+# The agent transcript each run saves: a ConfigMap owner-referenced to the
+# run, so the Finding's TTL cascade removes it. No list/watch, because the
+# controller only ever reads it by its own deterministic name.
 - apiGroups: [""]
   resources: [configmaps]
   verbs: [create, get, update]
@@ -228,10 +231,11 @@ subjects:
 #   pods      get/list/watch (find the Job's pod)
 #   pods/log  get (read the PATCHY-EVENT: stream at Job completion)
 #   secrets   create/get/update/delete (the per-Job Secret carrying the
-#             handoff markdown — credential-less; update owner-references it
-#             to its Job, delete is the create-Job-failed rollback)
-# No secrets list/watch: each controller only ever addresses its own per-Job
-# Secret by name. The two controllers share the namespace; the
+#             handoff markdown, which holds no credential; update sets its
+#             owner reference to its Job, and delete rolls back when the Job
+#             create fails)
+# No secrets list/watch: each controller only ever reads its own per-Job
+# Secret by name. The two controllers share the namespace. The
 # patchy.bitwisemedia.uk/kind Job label keeps their watches and reapers out
 # of each other's way (RBAC cannot express that split).
 apiVersion: rbac.authorization.k8s.io/v1

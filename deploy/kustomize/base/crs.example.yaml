@@ -1,14 +1,16 @@
 # Copyright 2026 Bitwise Media Group Ltd.
 # SPDX-License-Identifier: MIT
 #
-# EXAMPLE ONLY — commented out and NOT in kustomization.yaml's resources
-# list. After the controllers are running, the pipeline is switched on by
-# applying two custom resources: an Integration (where findings come from and
-# where the tracking issues go) and a Forge (how repositories are cloned and
-# pushed). Put your real ones in an environment overlay.
+# EXAMPLE ONLY. Commented out and NOT in kustomization.yaml's resources list.
+# After the controllers are running, you switch the pipeline on by applying
+# two custom resources:
+#   * an Integration (where findings come from and where the tracking issues
+#     go);
+#   * a Forge (how repositories are cloned and pushed).
+# Put your real ones in an environment overlay.
 #
 # ---------------------------------------------------------------------------
-# 1. Integration — the external system patchy exchanges events with.
+# 1. Integration: the external system patchy exchanges events with.
 #
 # The integration-controller validates each webhook delivery against this
 # object's secret, ingests code-scanning alerts into Findings, projects
@@ -34,7 +36,7 @@
 #             enabled: true          # scanner ingestion + alert dismissal
 #
 # ---------------------------------------------------------------------------
-# 2. Forge — repository access for clone (source-controller, read) and
+# 2. Forge: repository access for clone (source-controller, read) and
 #    push + pull request (remediation-controller, write).
 #
 # Matching: host equality, then the optional orgs allowlist, then the

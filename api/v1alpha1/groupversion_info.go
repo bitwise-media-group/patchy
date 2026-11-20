@@ -12,9 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// The api package deliberately depends only on apimachinery (no
-// controller-runtime): it is imported by the e2e module and, eventually, the
-// UI.
+// The api package depends only on apimachinery (no controller-runtime),
+// because the e2e module imports it and, eventually, the UI will too.
 var (
 	// GroupVersion is the group and version used to register these objects.
 	GroupVersion = schema.GroupVersion{Group: "patchy.bitwisemedia.uk", Version: "v1alpha1"}

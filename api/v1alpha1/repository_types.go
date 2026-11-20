@@ -55,7 +55,7 @@ type RepositoryStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// ResolvedSHA is the commit the artifact is pinned to; investigation and
-	// remediation both work this exact tree, and it is the push base.
+	// remediation both work on this tree, and it is the push base.
 	// +optional
 	ResolvedSHA string `json:"resolvedSHA,omitempty"`
 	// Forge names the Forge whose credentials cloned the repository.

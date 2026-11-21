@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/bitwise-media-group/patchy/compare/v0.14.0...v0.14.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/configservice to v1.76.0 ([#690](https://github.com/bitwise-media-group/patchy/issues/690)) ([f14cf80](https://github.com/bitwise-media-group/patchy/commit/f14cf8087c6f75c037218570658e2da2a084f1dd))
+
 ## [0.14.0](https://github.com/bitwise-media-group/patchy/compare/v0.13.0...v0.14.0) (2026-11-20)
 
 

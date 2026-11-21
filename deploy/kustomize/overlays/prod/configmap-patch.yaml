@@ -55,4 +55,4 @@ data:
     # unchanged into every claude Job they create, and kustomize does not
     # rewrite ConfigMap values. release-please bumps both. (Pin
     # PATCHY_CODEX_AGENT_IMAGE too when that runner is enabled.)
-    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.14.0 # x-release-please-version
+    PATCHY_CLAUDE_AGENT_IMAGE: ghcr.io/bitwise-media-group/patchy/claude-agent-runner:v0.14.1 # x-release-please-version

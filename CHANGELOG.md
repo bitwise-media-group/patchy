@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.1](https://github.com/bitwise-media-group/patchy/compare/v0.14.0...v0.14.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#697](https://github.com/bitwise-media-group/patchy/issues/697)) ([b35dc51](https://github.com/bitwise-media-group/patchy/commit/b35dc51bf367014cbe0b830fb0a52b7d216b26dd))
+* **deps:** update aws-sdk-go-v2 monorepo ([#701](https://github.com/bitwise-media-group/patchy/issues/701)) ([5980b18](https://github.com/bitwise-media-group/patchy/commit/5980b18b333cc864a0b1661b9f640056020d3f9b))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/configservice to v1.76.0 ([#690](https://github.com/bitwise-media-group/patchy/issues/690)) ([f14cf80](https://github.com/bitwise-media-group/patchy/commit/f14cf8087c6f75c037218570658e2da2a084f1dd))
+* **deps:** update module github.com/moby/buildkit to v0.35.1 ([#702](https://github.com/bitwise-media-group/patchy/issues/702)) ([e59d8b4](https://github.com/bitwise-media-group/patchy/commit/e59d8b4b185d99e00dac480332b12ce144417374))
+* **deps:** update module google.golang.org/api to v0.316.0 ([#694](https://github.com/bitwise-media-group/patchy/issues/694)) ([3f5adfc](https://github.com/bitwise-media-group/patchy/commit/3f5adfcf3f2cb1c9421e1610d288e5d5c091df71))
+
 ## [0.14.0](https://github.com/bitwise-media-group/patchy/compare/v0.13.0...v0.14.0) (2026-11-20)
 
 

@@ -27,6 +27,7 @@ type fakeResetClient struct {
 	deleted      []string
 	closed       []string
 	opened       []string
+	reopened     []string // secret-scanning reopens
 	failDelete   bool
 	unauthorized bool
 	gone         bool // every call answers 404, as a deleted repository does
@@ -56,6 +57,14 @@ func (f *fakeResetClient) OpenAlert(_ context.Context, repo ghclient.Repo, numbe
 		return notFoundErr(fmt.Sprintf("open alert %s#%d", repo, number))
 	}
 	f.opened = append(f.opened, fmt.Sprintf("%s#%d", repo, number))
+	return nil
+}
+
+func (f *fakeResetClient) ReopenSecretAlert(_ context.Context, repo ghclient.Repo, number int) error {
+	if f.gone {
+		return notFoundErr(fmt.Sprintf("reopen secret alert %s#%d", repo, number))
+	}
+	f.reopened = append(f.reopened, fmt.Sprintf("%s#%d", repo, number))
 	return nil
 }
 
@@ -131,6 +140,46 @@ func TestRunReset(t *testing.T) {
 	}
 	if len(integs.Items) != 1 {
 		t.Errorf("integrations = %d, want the configuration untouched", len(integs.Items))
+	}
+}
+
+// Each dismissed alert is reopened through its own source's API. A code
+// alert and a secret alert can share a number, so the source decides, never
+// the id's shape; and a source whose capability is off reopens nothing.
+func TestRunResetReopensBySource(t *testing.T) {
+	mixed := projectable(v1alpha1.PhaseDismissed)
+	mixed.Spec.Alerts = []v1alpha1.Alert{
+		{ID: "42", Source: "ghas"},
+		{ID: "42", Source: "ghas-secrets"},
+		{ID: "7", Source: "ghas-secrets"},
+	}
+	tests := []struct {
+		name         string
+		secrets      bool
+		wantOpened   []string
+		wantReopened []string
+	}{
+		{"both capabilities", true, []string{"acme/orders#42"}, []string{"acme/orders#42", "acme/orders#7"}},
+		{"secret scanning off", false, []string{"acme/orders#42"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			integ := testIntegration()
+			if tt.secrets {
+				integ.Spec.GitHub.SecretScanningAlerts = &v1alpha1.GitHubSecretScanningAlerts{Enabled: true}
+			}
+			fc := &fakeResetClient{}
+			r, _ := newResetReconciler(t, fc, integ, mixed.DeepCopy())
+			if err := r.runReset(t.Context(), "patchy"); err != nil {
+				t.Fatalf("runReset() error = %v", err)
+			}
+			if !slices.Equal(fc.opened, tt.wantOpened) {
+				t.Errorf("code-scanning reopens = %v, want %v", fc.opened, tt.wantOpened)
+			}
+			if !slices.Equal(fc.reopened, tt.wantReopened) {
+				t.Errorf("secret-scanning reopens = %v, want %v", fc.reopened, tt.wantReopened)
+			}
+		})
 	}
 }
 

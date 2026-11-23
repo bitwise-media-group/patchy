@@ -72,6 +72,7 @@ type trackerClient interface {
 	Assign(ctx context.Context, repo ghclient.Repo, number int, logins []string) error
 	Close(ctx context.Context, repo ghclient.Repo, number int) error
 	DismissAlert(ctx context.Context, repo ghclient.Repo, number int, reason, comment string) error
+	ResolveSecretAlert(ctx context.Context, repo ghclient.Repo, number int, resolution, comment string) error
 }
 
 // FindingReconciler projects each Finding (and its children's results) onto
@@ -476,6 +477,12 @@ func (r *FindingReconciler) projectPhase(
 	case v1alpha1.PhaseAwaitingApproval:
 		notice := "patchy is holding this remediation for human approval. " +
 			"Comment `" + r.approveCommand(ctx, fnd) + "` to let it proceed."
+		if fnd.IsSecret() {
+			notice = "patchy is holding this leaked secret's cleanup for human approval. " +
+				"Rotate or revoke the credential with its issuer first: the pull request only removes it " +
+				"from the code, which does not invalidate it. Then comment `" + r.approveCommand(ctx, fnd) +
+				"` to open the cleanup pull request."
+		}
 		if err := r.notify(ctx, tracker, repo, number, fnd.Status.Owners, notice); err != nil {
 			return err
 		}
@@ -492,8 +499,7 @@ func (r *FindingReconciler) projectPhase(
 	case v1alpha1.PhaseDismissed:
 		// The alert write-back happens in resolveSource, before projection:
 		// it is owed whether or not this finding has a tracking issue.
-		if err := tracker.Comment(ctx, repo, number,
-			"patchy assessed this finding as a false positive / not exploitable and dismissed the alert(s)."); err != nil {
+		if err := tracker.Comment(ctx, repo, number, dismissedNotice(fnd)); err != nil {
 			return err
 		}
 		if err := tracker.Close(ctx, repo, number); err != nil {
@@ -536,7 +542,7 @@ func (r *FindingReconciler) notify(
 func (r *FindingReconciler) resolveAlerts(ctx context.Context, fnd *v1alpha1.Finding) error {
 	verdict := source.Verdict{
 		Kind:    source.VerdictIgnore,
-		Reason:  "false positive",
+		Reason:  verdictReason(fnd),
 		Comment: "Dismissed by patchy: investigation recommended ignore.",
 	}
 	var errs []error
@@ -583,6 +589,20 @@ func (r *FindingReconciler) resolverFor(
 			return nil, err
 		}
 		return ghas.NewResolver(gh, repo), nil
+	case ghas.SecretsID:
+		integ, err := selectIntegration(ctx, r.Client, fnd.Namespace, secretScanningEnabled)
+		if err != nil {
+			return nil, err
+		}
+		var repo ghclient.Repo
+		if fnd.Spec.Repository != nil {
+			repo, _ = parseOwnerRepo(fnd.Spec.Repository.Name)
+		}
+		gh, err := r.clientFor(ctx, integ, repo)
+		if err != nil {
+			return nil, err
+		}
+		return ghas.NewSecretsResolver(gh, repo), nil
 	case wiz.IssuesID:
 		integ, err := selectIntegration(ctx, r.Client, fnd.Namespace, wizIssuesEnabled)
 		if err != nil {
@@ -783,13 +803,67 @@ func (r *FindingReconciler) approveCommand(ctx context.Context, fnd *v1alpha1.Fi
 
 // noticeReason explains a hand-off from the finding's state.
 func noticeReason(fnd *v1alpha1.Finding) string {
-	if inv := fnd.Status.Investigation; inv != nil && inv.Recommendation == v1alpha1.RecommendationManual {
+	inv := fnd.Status.Investigation
+	if fnd.IsSecret() {
+		return secretNoticeReason(inv)
+	}
+	if inv != nil && inv.Recommendation == v1alpha1.RecommendationManual {
 		return " (investigation recommended a manual fix)"
 	}
 	if fnd.Spec.Repository == nil {
 		return " (no repository could be identified)"
 	}
 	return ""
+}
+
+// secretNoticeReason explains a leaked secret's hand-off. Whatever the
+// verdict, the first thing owed is rotation, so the notice leads with it.
+func secretNoticeReason(inv *v1alpha1.InvestigationSummary) string {
+	why := ""
+	if inv != nil {
+		switch inv.Recommendation {
+		case v1alpha1.RecommendationIgnore:
+			why = "the investigation judged it not a live credential, but with too little confidence to " +
+				"resolve the alert on its own word. "
+		case v1alpha1.RecommendationManual:
+			why = "the investigation recommended a manual fix. "
+		}
+	}
+	return ": it is a leaked secret. " + why +
+		"Rotate or revoke the credential with its issuer first; removing it from the code does not " +
+		"invalidate it. Then resolve the alert, or comment `/approve` for a cleanup pull request"
+}
+
+// verdictReason is the canonical write-back reason for a dismissed
+// finding: the investigation's own reason, defaulting to false positive.
+func verdictReason(fnd *v1alpha1.Finding) string {
+	if inv := fnd.Status.Investigation; inv != nil {
+		switch inv.DismissReason {
+		case v1alpha1.DismissUsedInTests:
+			return source.ReasonUsedInTests
+		case v1alpha1.DismissWontFix:
+			return source.ReasonWontFix
+		}
+	}
+	return source.ReasonFalsePositive
+}
+
+// dismissedNotice is the tracking comment for a dismissed finding, naming
+// the reason the alerts were closed with.
+func dismissedNotice(fnd *v1alpha1.Finding) string {
+	what := "a false positive / not exploitable"
+	switch verdictReason(fnd) {
+	case source.ReasonUsedInTests:
+		what = "used only in tests"
+	case source.ReasonWontFix:
+		what = "an accepted risk (won't fix)"
+	}
+	alerts := "dismissed the alert(s)"
+	if fnd.IsSecret() {
+		what = "not a live credential: " + what
+		alerts = "resolved the secret-scanning alert(s)"
+	}
+	return "patchy assessed this finding as " + what + " and " + alerts + "."
 }
 
 // issueURL derives the tracking item's html URL.

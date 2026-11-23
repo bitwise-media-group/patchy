@@ -106,6 +106,32 @@ func TestIngestCreatesFinding(t *testing.T) {
 	}
 }
 
+// A secret finding keeps its category and the exact columns of each
+// location: the agent Job slices the literal out by them to scrub it.
+func TestIngestCopiesCategoryAndColumns(t *testing.T) {
+	in, c := newIngestor(t)
+	f := testSourceFinding(5)
+	f.Source = "ghas-secrets"
+	f.Category = source.CategorySecret
+	f.Advisories = []string{"secret:slack_api_token"}
+	f.Locations = []source.Location{{Path: "config/app.yaml", StartLine: 4, EndLine: 4, StartColumn: 9, EndColumn: 49}}
+	if err := in.Ingest(t.Context(), testIntegration(), f); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	items := listFindings(t, c)
+	if len(items) != 1 {
+		t.Fatalf("findings = %d, want 1", len(items))
+	}
+	got := items[0]
+	if got.Spec.Category != v1alpha1.FindingCategorySecret || !got.IsSecret() {
+		t.Errorf("category = %q, want secret", got.Spec.Category)
+	}
+	want := v1alpha1.Location{Path: "config/app.yaml", StartLine: 4, EndLine: 4, StartColumn: 9, EndColumn: 49}
+	if locs := got.Spec.Alerts[0].Locations; len(locs) != 1 || locs[0] != want {
+		t.Errorf("locations = %+v, want %+v", locs, want)
+	}
+}
+
 // A finding ingested by an integration with no issues capability of its own
 // still gets a tracking issue: trackingRef falls back to the namespace's
 // issues-enabled integration.

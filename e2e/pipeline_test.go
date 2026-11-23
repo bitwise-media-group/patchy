@@ -204,9 +204,10 @@ func (cl *cluster) githubCredentials(t *testing.T, ghURL string) {
 			Provider:  v1alpha1.IntegrationProviderGitHub,
 			SecretRef: &v1alpha1.LocalSecretReference{Name: "patchy-github"},
 			GitHub: &v1alpha1.GitHubIntegration{
-				BaseURL:            ghURL,
-				Issues:             &v1alpha1.GitHubIssues{Enabled: true, ApproveComment: "/approve"},
-				CodeScanningAlerts: &v1alpha1.GitHubCodeScanningAlerts{Enabled: true},
+				BaseURL:              ghURL,
+				Issues:               &v1alpha1.GitHubIssues{Enabled: true, ApproveComment: "/approve"},
+				CodeScanningAlerts:   &v1alpha1.GitHubCodeScanningAlerts{Enabled: true},
+				SecretScanningAlerts: &v1alpha1.GitHubSecretScanningAlerts{Enabled: true},
 			},
 		},
 	}); err != nil {

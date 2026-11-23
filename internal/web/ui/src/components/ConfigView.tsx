@@ -43,6 +43,7 @@ function capabilityLabel(provider: string, cap: string): string {
   if (cap === "issues") return provider === "github" ? "Tracking issues" : "Issues feed";
   const labels: Record<string, string> = {
     codeScanningAlerts: "Code scanning alerts",
+    secretScanningAlerts: "Secret scanning alerts",
     redelivery: "Webhook redelivery",
     securityCommandCenter: "Security Command Center",
     cloudAssetInventory: "Cloud Asset Inventory",
@@ -56,7 +57,13 @@ function capabilityLabel(provider: string, cap: string): string {
 }
 
 // SOURCE_CAPS are the capabilities that bring findings in.
-const SOURCE_CAPS = new Set(["codeScanningAlerts", "securityCommandCenter", "defend", "source"]);
+const SOURCE_CAPS = new Set([
+  "codeScanningAlerts",
+  "secretScanningAlerts",
+  "securityCommandCenter",
+  "defend",
+  "source",
+]);
 const isSource = (i: IntegrationConfig) =>
   (i.capabilities ?? []).some((c) => SOURCE_CAPS.has(c) || (c === "issues" && i.provider === "wiz"));
 

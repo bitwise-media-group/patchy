@@ -282,6 +282,7 @@ func (in *Ingestor) create(
 			IntegrationRef: v1alpha1.LocalObjectReference{Name: integ.Name},
 			TrackingRef:    in.trackingRef(ctx, integ),
 			Source:         f.Source,
+			Category:       v1alpha1.FindingCategory(f.Category),
 			CloudResource:  toCloudResource(f.CloudResource),
 			Advisories:     f.Advisories,
 			RuleID:         f.RuleID,
@@ -373,10 +374,12 @@ func toAlert(f source.Finding) v1alpha1.Alert {
 			break
 		}
 		a.Locations = append(a.Locations, v1alpha1.Location{
-			Path:      loc.Path,
-			StartLine: int32(loc.StartLine),
-			EndLine:   int32(loc.EndLine),
-			Snippet:   truncate(loc.Snippet, 1024),
+			Path:        loc.Path,
+			StartLine:   int32(loc.StartLine),
+			EndLine:     int32(loc.EndLine),
+			StartColumn: int32(loc.StartColumn),
+			EndColumn:   int32(loc.EndColumn),
+			Snippet:     truncate(loc.Snippet, 1024),
 		})
 	}
 	return a

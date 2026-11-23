@@ -139,6 +139,8 @@ func (r *Receiver) handleGitHub(ctx context.Context, e webhook.Event) error {
 	switch e.Type {
 	case ghas.EventType:
 		return r.handleScanner(ctx, e)
+	case ghas.SecretsEventType:
+		return r.handleSecretScanner(ctx, e)
 	case "issues", "issue_comment", "pull_request":
 		integ, err := selectIntegration(ctx, r.Reader, r.Namespace, issuesEnabled)
 		if err != nil {
@@ -164,6 +166,21 @@ func (r *Receiver) handleScanner(ctx context.Context, e webhook.Event) error {
 		return err
 	}
 	return r.ingestAll(ctx, integ, ghas.New(&alertGetter{creds: r.Creds, integ: integ}), e)
+}
+
+// handleSecretScanner routes a secret-scanning delivery through the
+// secret-scanning source for the Integration that enables it. The delivery
+// carries the secret in plain text; the source reads only the alert number
+// from it and re-fetches the alert with the secret hidden.
+func (r *Receiver) handleSecretScanner(ctx context.Context, e webhook.Event) error {
+	integ, err := selectIntegration(ctx, r.Reader, r.Namespace, secretScanningEnabled)
+	if err != nil {
+		if errors.Is(err, ErrNoIntegration) {
+			return nil
+		}
+		return err
+	}
+	return r.ingestAll(ctx, integ, ghas.NewSecrets(&secretAlertGetter{creds: r.Creds, integ: integ}), e)
 }
 
 // handleSCC routes a Security Command Center notification through the SCC
@@ -259,6 +276,25 @@ func (g *alertGetter) GetAlert(ctx context.Context, repo ghclient.Repo, number i
 		return nil, err
 	}
 	return c.GetAlert(ctx, repo, number)
+}
+
+// secretAlertGetter adapts Integration credentials to the
+// ghas.SecretAlertGetter interface.
+type secretAlertGetter struct {
+	creds *Creds
+	integ *v1alpha1.Integration
+}
+
+// GetSecretAlert fetches the alert, secret hidden, with the Integration's
+// client for the repository.
+func (g *secretAlertGetter) GetSecretAlert(
+	ctx context.Context, repo ghclient.Repo, number int,
+) (*ghclient.SecretAlert, error) {
+	c, err := g.creds.Client(ctx, g.integ, repo)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetSecretAlert(ctx, repo, number)
 }
 
 func (r *Receiver) log() *slog.Logger {

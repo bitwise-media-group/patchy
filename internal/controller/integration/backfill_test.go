@@ -6,6 +6,8 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -303,6 +305,77 @@ func TestListerForGating(t *testing.T) {
 	gh := testIntegration()
 	gh.Spec.GitHub.CodeScanningAlerts = nil
 	if _, ok, err := r.listerFor(t.Context(), gh); !ok || err == nil {
-		t.Errorf("listerFor(github, no code scanning) = (ok %v, err %v), want a retryable error", ok, err)
+		t.Errorf("listerFor(github, no scanning) = (ok %v, err %v), want a retryable error", ok, err)
+	}
+}
+
+// A GitHub backfill lists every scanning capability the Integration
+// enables. The credential read comes after the gate, so a missing Secret
+// proves the gate passed.
+func TestListerForSecretScanningGate(t *testing.T) {
+	r := &IntegrationReconciler{Creds: NewCreds(fake.NewClientBuilder().WithScheme(kube.Scheme()).Build())}
+	gh := testIntegration()
+	gh.Spec.GitHub.CodeScanningAlerts = nil
+	gh.Spec.GitHub.SecretScanningAlerts = &v1alpha1.GitHubSecretScanningAlerts{Enabled: true}
+	_, ok, err := r.listerFor(t.Context(), gh)
+	if !ok || err == nil || strings.Contains(err.Error(), "backfill needs") {
+		t.Errorf("listerFor(github, secrets only) = (ok %v, err %v), want past the gate to the credential", ok, err)
+	}
+}
+
+// fixedLister yields a fixed set of findings.
+type fixedLister struct {
+	findings []source.Finding
+	complete bool
+	err      error
+}
+
+func (l fixedLister) List(_ context.Context, _ []string, yield func(source.Finding) bool) (bool, error) {
+	if l.err != nil {
+		return false, l.err
+	}
+	for _, f := range l.findings {
+		if !yield(f) {
+			return false, nil
+		}
+	}
+	return l.complete, nil
+}
+
+func TestMultiLister(t *testing.T) {
+	code := fixedLister{findings: []source.Finding{{Source: "ghas", AlertNumber: 1}}, complete: true}
+	secrets := fixedLister{findings: []source.Finding{{Source: "ghas-secrets", AlertNumber: 2}}, complete: true}
+	truncated := fixedLister{findings: []source.Finding{{Source: "ghas-secrets", AlertNumber: 3}}}
+
+	tests := []struct {
+		name         string
+		m            multiLister
+		stopAfter    int
+		want         []string
+		wantComplete bool
+		wantErr      bool
+	}{
+		{"both sources", multiLister{code, secrets}, 0, []string{"ghas#1", "ghas-secrets#2"}, true, false},
+		{"one truncated", multiLister{code, truncated}, 0, []string{"ghas#1", "ghas-secrets#3"}, false, false},
+		{"yield stops the walk", multiLister{code, secrets}, 1, []string{"ghas#1"}, false, false},
+		{"error", multiLister{code, fixedLister{err: errors.New("boom")}}, 0, []string{"ghas#1"}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			complete, err := tt.m.List(t.Context(), nil, func(f source.Finding) bool {
+				got = append(got, fmt.Sprintf("%s#%d", f.Source, f.AlertNumber))
+				return tt.stopAfter == 0 || len(got) < tt.stopAfter
+			})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("List() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if complete != tt.wantComplete {
+				t.Errorf("complete = %v, want %v", complete, tt.wantComplete)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("listed %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

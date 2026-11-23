@@ -35,6 +35,7 @@ type fakeTracker struct {
 	assigned      []string
 	closed        []int
 	dismissed     []int
+	resolved      []string // ResolveSecretAlert calls, "number/resolution"
 	bodyEdits     int
 }
 
@@ -123,6 +124,11 @@ func (f *fakeTracker) Close(_ context.Context, _ ghclient.Repo, number int) erro
 
 func (f *fakeTracker) DismissAlert(_ context.Context, _ ghclient.Repo, number int, _, _ string) error {
 	f.dismissed = append(f.dismissed, number)
+	return nil
+}
+
+func (f *fakeTracker) ResolveSecretAlert(_ context.Context, _ ghclient.Repo, number int, res, _ string) error {
+	f.resolved = append(f.resolved, fmt.Sprintf("%d/%s", number, res))
 	return nil
 }
 
@@ -385,6 +391,82 @@ func TestProjectDismissed(t *testing.T) {
 	}
 	if got := get(t, c, "finding-aa-1").Status.Tracking.State; got != "closed" {
 		t.Errorf("tracking state = %q, want closed", got)
+	}
+}
+
+// secretProjectable is a leaked-secret Finding ready for projection, on an
+// Integration that ingests both code and secret scanning.
+func secretProjectable(phase v1alpha1.Phase) (*v1alpha1.Finding, *v1alpha1.Integration) {
+	fnd := projectable(phase)
+	fnd.Spec.Source = "ghas-secrets"
+	fnd.Spec.Category = v1alpha1.FindingCategorySecret
+	fnd.Spec.Advisories = []string{"secret:slack_api_token"}
+	fnd.Spec.Alerts = []v1alpha1.Alert{{ID: "5", Source: "ghas-secrets"}}
+	fnd.Status.Tracking = &v1alpha1.TrackingStatus{Integration: "gh", IssueNumber: 7, URL: "u", State: "open"}
+	integ := testIntegration()
+	integ.Spec.GitHub.SecretScanningAlerts = &v1alpha1.GitHubSecretScanningAlerts{Enabled: true}
+	return fnd, integ
+}
+
+// A dismissed secret resolves its alert (never the code-scanning dismiss)
+// with the investigation's reason, and the comment says which.
+func TestProjectDismissedSecret(t *testing.T) {
+	tests := []struct {
+		reason      v1alpha1.DismissReason
+		wantResolve string
+		wantComment string
+	}{
+		{"", "5/false_positive", "false positive"},
+		{v1alpha1.DismissUsedInTests, "5/used_in_tests", "used only in tests"},
+		{v1alpha1.DismissWontFix, "5/wont_fix", "won't fix"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.reason), func(t *testing.T) {
+			tracker := newFakeTracker()
+			fnd, integ := secretProjectable(v1alpha1.PhaseDismissed)
+			fnd.Status.Investigation = &v1alpha1.InvestigationSummary{
+				Name: "i", Recommendation: v1alpha1.RecommendationIgnore, DismissReason: tt.reason,
+			}
+			tracker.issues[7] = &ghclient.Issue{Number: 7, State: "open"}
+			r, _ := newProjector(t, tracker, integ, fnd)
+
+			reconcileFinding(t, r)
+
+			if len(tracker.dismissed) != 0 {
+				t.Errorf("code-scanning dismissals = %v, want none", tracker.dismissed)
+			}
+			if want := []string{tt.wantResolve}; !slices.Equal(tracker.resolved, want) {
+				t.Errorf("resolved = %v, want %v", tracker.resolved, want)
+			}
+			if !slices.ContainsFunc(tracker.comments, func(c string) bool {
+				return strings.Contains(c, tt.wantComment) && strings.Contains(c, "secret-scanning alert")
+			}) {
+				t.Errorf("comments = %q, want one naming %q", tracker.comments, tt.wantComment)
+			}
+		})
+	}
+}
+
+// A handed-off or held secret tells its owners to rotate first.
+func TestProjectSecretNoticesLeadWithRotation(t *testing.T) {
+	for _, phase := range []v1alpha1.Phase{v1alpha1.PhaseHandedOff, v1alpha1.PhaseAwaitingApproval} {
+		t.Run(string(phase), func(t *testing.T) {
+			tracker := newFakeTracker()
+			fnd, integ := secretProjectable(phase)
+			fnd.Status.Investigation = &v1alpha1.InvestigationSummary{
+				Name: "i", Recommendation: v1alpha1.RecommendationIgnore,
+			}
+			tracker.issues[7] = &ghclient.Issue{Number: 7, State: "open"}
+			r, _ := newProjector(t, tracker, integ, fnd)
+
+			reconcileFinding(t, r)
+
+			if !slices.ContainsFunc(tracker.comments, func(c string) bool {
+				return strings.Contains(c, "Rotate or revoke the credential") && strings.Contains(c, "/approve")
+			}) {
+				t.Errorf("comments = %q, want a rotate-first notice with /approve", tracker.comments)
+			}
+		})
 	}
 }
 

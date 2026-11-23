@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/ghas"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 )
 
@@ -22,11 +23,12 @@ type resetClient interface {
 	DeleteIssue(ctx context.Context, repo ghclient.Repo, number int) error
 	Close(ctx context.Context, repo ghclient.Repo, number int) error
 	OpenAlert(ctx context.Context, repo ghclient.Repo, number int) error
+	ReopenSecretAlert(ctx context.Context, repo ghclient.Repo, number int) error
 }
 
 // runReset performs the demo reset: permanently delete every finding's
-// tracking issue, reopen the dismissed findings' own code-scanning alerts
-// (patchy dismissed them on false-positive verdicts). Only findings that
+// tracking issue, reopen the dismissed findings' own code- and
+// secret-scanning alerts (patchy closed them on ignore verdicts). Only findings that
 // still exist are covered; a demo reset happens within the finding TTL, so
 // nothing older lingers. Then it deletes every pipeline resource. GitHub
 // cleanup runs first and any failure aborts before the deletes: the
@@ -45,12 +47,21 @@ func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) 
 	if err != nil {
 		errs = append(errs, err)
 	}
-	scanner, err := r.resetIntegration(ctx, namespace, codeScanningEnabled)
-	if err != nil {
-		errs = append(errs, err)
+	scanners := map[string]*v1alpha1.Integration{}
+	for sourceID, has := range map[string]capability{
+		ghas.ID:        codeScanningEnabled,
+		ghas.SecretsID: secretScanningEnabled,
+	} {
+		integ, err := r.resetIntegration(ctx, namespace, has)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if integ != nil {
+			scanners[sourceID] = integ
+		}
 	}
 	for i := range findings.Items {
-		errs = append(errs, r.resetFinding(ctx, tracker, scanner, &findings.Items[i])...)
+		errs = append(errs, r.resetFinding(ctx, tracker, scanners, &findings.Items[i])...)
 	}
 	if err := errors.Join(errs...); err != nil {
 		return err
@@ -72,13 +83,15 @@ func (r *IntegrationReconciler) runReset(ctx context.Context, namespace string) 
 
 // resetFinding runs the GitHub cleanup for one finding: delete its tracking
 // issue (when a tracker Integration exists) and, for dismissed findings,
-// reopen its code-scanning alerts (when a scanner Integration exists).
+// reopen its GitHub alerts, each through the scanner Integration of the
+// source that raised it (scanners, keyed by source id).
 // Only admin-permission user tokens may delete issues. With any other
 // credential the delete falls back to closing the issue, which keeps a
 // replayed demo from duplicating open trackers at the cost of leaving
 // closed ones behind.
 func (r *IntegrationReconciler) resetFinding(
-	ctx context.Context, tracker, scanner *v1alpha1.Integration, fnd *v1alpha1.Finding,
+	ctx context.Context, tracker *v1alpha1.Integration, scanners map[string]*v1alpha1.Integration,
+	fnd *v1alpha1.Finding,
 ) []error {
 	if fnd.Spec.Repository == nil {
 		return nil
@@ -93,10 +106,19 @@ func (r *IntegrationReconciler) resetFinding(
 			errs = append(errs, err)
 		}
 	}
-	if scanner == nil || fnd.Status.Phase != v1alpha1.PhaseDismissed {
+	if fnd.Status.Phase != v1alpha1.PhaseDismissed {
 		return errs
 	}
-	return append(errs, r.resetAlerts(ctx, scanner, repo, fnd.Spec.Alerts)...)
+	// Grouped by source: a code-scanning and a secret-scanning alert can
+	// share a number, and reopening one through the other's API would
+	// touch the wrong alert. Alerts of any other source have nothing on
+	// GitHub to reopen.
+	for sourceID, alerts := range fnd.AlertsBySource() {
+		if scanner := scanners[sourceID]; scanner != nil {
+			errs = append(errs, r.resetAlerts(ctx, scanner, sourceID, repo, alerts)...)
+		}
+	}
+	return errs
 }
 
 // resetIssue removes one finding's tracking issue from the forge.
@@ -110,11 +132,12 @@ func (r *IntegrationReconciler) resetIssue(
 	return r.deleteOrCloseIssue(ctx, c, repo, number)
 }
 
-// resetAlerts reopens the code-scanning alerts a dismissed finding closed.
-// Alert ids that are not GitHub alert numbers come from a foreign source
-// and have nothing to reopen.
+// resetAlerts reopens one source's alerts that a dismissed finding closed:
+// code-scanning dismissals or secret-scanning resolutions. An id that is not
+// a GitHub alert number is corrupt state with nothing to reopen.
 func (r *IntegrationReconciler) resetAlerts(
-	ctx context.Context, scanner *v1alpha1.Integration, repo ghclient.Repo, alerts []v1alpha1.Alert,
+	ctx context.Context, scanner *v1alpha1.Integration, sourceID string, repo ghclient.Repo,
+	alerts []v1alpha1.Alert,
 ) []error {
 	c, err := r.resetClientFor(ctx, scanner, repo)
 	if err != nil {
@@ -129,7 +152,11 @@ func (r *IntegrationReconciler) resetAlerts(
 		if err != nil {
 			continue
 		}
-		if err := c.OpenAlert(ctx, repo, num); err != nil && !r.forgeGone(ctx, repo, err) {
+		reopen := c.OpenAlert
+		if sourceID == ghas.SecretsID {
+			reopen = c.ReopenSecretAlert
+		}
+		if err := reopen(ctx, repo, num); err != nil && !r.forgeGone(ctx, repo, err) {
 			errs = append(errs, err)
 		}
 	}

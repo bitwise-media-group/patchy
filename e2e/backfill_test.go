@@ -24,8 +24,10 @@ import (
 // alerts that predate webhook coverage are seeded on the fake, a
 // spec.backfill request with an exact-repo filter is stamped, and the
 // integration-controller lists and ingests exactly the filtered alerts,
-// echoing the request on status.backfill. A re-stamp is idempotent:
-// ingestion folds the same alerts back into the same finding.
+// echoing the request on status.backfill. Both scanning capabilities are
+// enabled, so code- and secret-scanning alerts come back as two finding
+// families. A re-stamp is idempotent: ingestion folds the same alerts back
+// into the same findings.
 func TestBackfill(t *testing.T) {
 	cl := startCluster(t)
 	gh := fakegithub.New()
@@ -39,6 +41,9 @@ func TestBackfill(t *testing.T) {
 	gh.SeedAlert("acme", "shop", 41)
 	gh.SeedAlert("acme", "shop", 42)
 	gh.SeedAlert("acme", "other", 7)
+	// And one leaked secret in each repository, again filtered to acme/shop.
+	gh.SeedSecretAlert("acme", "shop", 5)
+	gh.SeedSecretAlert("acme", "other", 9)
 
 	listen := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	cl.controller(t, "integration-controller", "--listen-addr", listen)
@@ -55,26 +60,33 @@ func TestBackfill(t *testing.T) {
 	first := metav1.NewTime(time.Now().UTC().Truncate(time.Second))
 	stampBackfill(t, cl, first)
 
-	// The walk ingests both filtered alerts into one finding family and
-	// echoes the request.
-	var fnd v1alpha1.Finding
-	eventually(t, "the backfilled finding to be created with both alerts", func() bool {
+	// The walk ingests the filtered code alerts into one finding family and
+	// the filtered secret into another, and echoes the request.
+	bySource := map[string]v1alpha1.Finding{}
+	eventually(t, "the backfilled findings to be created", func() bool {
 		var cur v1alpha1.FindingList
-		if err := cl.client.List(ctx, &cur, client.InNamespace(namespace)); err != nil || len(cur.Items) != 1 {
+		if err := cl.client.List(ctx, &cur, client.InNamespace(namespace)); err != nil || len(cur.Items) != 2 {
 			return false
 		}
-		fnd = cur.Items[0]
-		return len(fnd.Spec.Alerts) == 2
+		clear(bySource)
+		for _, f := range cur.Items {
+			bySource[f.Spec.Source] = f
+		}
+		return len(bySource["ghas"].Spec.Alerts) == 2 && len(bySource["ghas-secrets"].Spec.Alerts) == 1
 	})
-	if fnd.Spec.Source != "ghas" || fnd.Spec.Repository == nil ||
-		fnd.Spec.Repository.Name != "acme/shop" {
-		t.Errorf("backfilled finding = source %q repository %+v, want ghas acme/shop",
-			fnd.Spec.Source, fnd.Spec.Repository)
+	for src, fnd := range bySource {
+		if fnd.Spec.Repository == nil || fnd.Spec.Repository.Name != "acme/shop" {
+			t.Errorf("backfilled %s finding repository = %+v, want acme/shop", src, fnd.Spec.Repository)
+		}
+	}
+	if sec := bySource["ghas-secrets"]; sec.Spec.Category != v1alpha1.FindingCategorySecret ||
+		sec.Spec.Alerts[0].ID != "5" {
+		t.Errorf("secret finding = category %q alerts %+v, want secret alert 5", sec.Spec.Category, sec.Spec.Alerts)
 	}
 
 	st := waitBackfillEcho(t, cl, "status.backfill to echo the request", first)
-	if st.Listed != 2 || st.Ingested != 2 || st.Truncated || st.Error != "" {
-		t.Errorf("status.backfill = %+v, want listed 2 ingested 2 clean", st)
+	if st.Listed != 3 || st.Ingested != 3 || st.Truncated || st.Error != "" {
+		t.Errorf("status.backfill = %+v, want listed 3 ingested 3 clean", st)
 	}
 
 	// A second, newer request re-runs the walk; ingestion is idempotent, so
@@ -82,11 +94,15 @@ func TestBackfill(t *testing.T) {
 	second := metav1.NewTime(first.Add(2 * time.Second))
 	stampBackfill(t, cl, second)
 	waitBackfillEcho(t, cl, "the second backfill to be consumed", second)
-	if err := cl.client.List(ctx, &list, client.InNamespace(namespace)); err != nil || len(list.Items) != 1 {
-		t.Fatalf("findings after re-backfill = %d (err %v), want still 1", len(list.Items), err)
+	if err := cl.client.List(ctx, &list, client.InNamespace(namespace)); err != nil || len(list.Items) != 2 {
+		t.Fatalf("findings after re-backfill = %d (err %v), want still 2", len(list.Items), err)
 	}
-	if got := len(list.Items[0].Spec.Alerts); got != 2 {
-		t.Errorf("alerts after re-backfill = %d, want still 2 (no duplicates)", got)
+	alerts := 0
+	for _, f := range list.Items {
+		alerts += len(f.Spec.Alerts)
+	}
+	if alerts != 3 {
+		t.Errorf("alerts after re-backfill = %d, want still 3 (no duplicates)", alerts)
 	}
 }
 

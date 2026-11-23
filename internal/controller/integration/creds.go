@@ -284,6 +284,13 @@ func codeScanningEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.GitHub.CodeScanningAlerts != nil && i.Spec.GitHub.CodeScanningAlerts.Enabled
 }
 
+// secretScanningEnabled reports whether the Integration ingests
+// secret-scanning alerts.
+func secretScanningEnabled(i *v1alpha1.Integration) bool {
+	return !i.Spec.Suspend && i.Spec.GitHub != nil &&
+		i.Spec.GitHub.SecretScanningAlerts != nil && i.Spec.GitHub.SecretScanningAlerts.Enabled
+}
+
 // sccEnabled reports whether the Integration ingests Security Command Center
 // findings from a Pub/Sub push subscription.
 func sccEnabled(i *v1alpha1.Integration) bool {

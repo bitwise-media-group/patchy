@@ -89,9 +89,10 @@ func (r *IntegrationReconciler) runBackfill(
 }
 
 // listerFor resolves the backfill lister for the Integration: the ListerFor
-// hook when set (tests), else the ghas lister built from the credential
-// (the App installation fan-out, or the exact-repository PAT walk). ok is
-// false when the provider has no listing capability at all.
+// hook when set (tests), else a lister over every GitHub capability the
+// Integration enables (code scanning, secret scanning, or both), built from
+// the credential (the App installation fan-out, or the exact-repository PAT
+// walk). ok is false when the provider has no listing capability at all.
 func (r *IntegrationReconciler) listerFor(
 	ctx context.Context, integ *v1alpha1.Integration,
 ) (lister source.Lister, ok bool, err error) {
@@ -101,22 +102,68 @@ func (r *IntegrationReconciler) listerFor(
 	if integ.Spec.Provider != v1alpha1.IntegrationProviderGitHub {
 		return nil, false, nil
 	}
-	if !codeScanningEnabled(integ) {
-		return nil, true, errors.New(
-			"backfill needs spec.github.codeScanningAlerts enabled; there is no source to ingest into")
+	code, secrets := codeScanningEnabled(integ), secretScanningEnabled(integ)
+	if !code && !secrets {
+		return nil, true, errors.New("backfill needs spec.github.codeScanningAlerts or " +
+			"spec.github.secretScanningAlerts enabled; there is no source to ingest into")
 	}
 	app, isApp, err := r.Creds.App(ctx, integ)
 	if err != nil {
 		return nil, true, err
 	}
-	if isApp {
-		return ghas.NewLister(&ghclient.AppAlertEnumerator{App: app}), true, nil
+	var c *ghclient.Client
+	if !isApp {
+		// A PAT client is repository-independent; the enumerators require
+		// the request to name exact repositories, since a PAT cannot
+		// discover any.
+		if c, err = r.Creds.Client(ctx, integ, ghclient.Repo{}); err != nil {
+			return nil, true, err
+		}
 	}
-	// A PAT client is repository-independent; the enumerator requires the
-	// request to name exact repositories, since a PAT cannot discover any.
-	c, err := r.Creds.Client(ctx, integ, ghclient.Repo{})
-	if err != nil {
-		return nil, true, err
+	var listers multiLister
+	if code {
+		if isApp {
+			listers = append(listers, ghas.NewLister(&ghclient.AppAlertEnumerator{App: app}))
+		} else {
+			listers = append(listers, ghas.NewLister(&ghclient.PATAlertEnumerator{Client: c}))
+		}
 	}
-	return ghas.NewLister(&ghclient.PATAlertEnumerator{Client: c}), true, nil
+	if secrets {
+		if isApp {
+			listers = append(listers, ghas.NewSecretsLister(&ghclient.AppSecretAlertEnumerator{App: app}))
+		} else {
+			listers = append(listers, ghas.NewSecretsLister(&ghclient.PATSecretAlertEnumerator{Client: c}))
+		}
+	}
+	return listers, true, nil
+}
+
+// multiLister walks several sources' listings in turn as one backfill. It
+// is complete only when every listing is; a stopped yield ends the whole
+// walk, as it would a single listing.
+type multiLister []source.Lister
+
+// List implements source.Lister.
+func (m multiLister) List(
+	ctx context.Context, repos []string, yield func(source.Finding) bool,
+) (complete bool, err error) {
+	complete = true
+	for _, l := range m {
+		stopped := false
+		c, err := l.List(ctx, repos, func(f source.Finding) bool {
+			if !yield(f) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		if err != nil {
+			return false, err
+		}
+		if stopped {
+			return false, nil
+		}
+		complete = complete && c
+	}
+	return complete, nil
 }

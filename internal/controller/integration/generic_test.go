@@ -252,6 +252,12 @@ func TestValidateGeneric(t *testing.T) {
 			"reserved source id",
 		},
 		{
+			"reserved secret-scanning name",
+			testGenericIntegration("ghas-secrets"),
+			genericSecret("ghas-secrets", "s"),
+			"reserved source id",
+		},
+		{
 			"resolver without url",
 			testGenericIntegration("warehouse", func(g *v1alpha1.GenericIntegration) {
 				g.Source.Resolver = &v1alpha1.GenericResolver{Enabled: true}

@@ -33,7 +33,7 @@ const config: ConfigDataset = {
       secretRef: "integration-github",
       interval: "10m0s",
       ready: "True",
-      capabilities: ["issues", "codeScanningAlerts", "redelivery"],
+      capabilities: ["issues", "codeScanningAlerts", "secretScanningAlerts", "redelivery"],
       redelivery: {
         lastSweepAt: "2026-07-21T08:40:00Z",
         scanned: 112,

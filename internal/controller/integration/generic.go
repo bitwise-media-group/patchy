@@ -38,10 +38,11 @@ func GenericPathFor(name string) string { return generic.PathFor(name) }
 // by CEL on the CRD; re-checked here so the Ready condition tells the
 // operator even if the CRD predates the rule.
 var reservedSourceIDs = map[string]bool{
-	ghas.ID:      true,
-	scc.ID:       true,
-	wiz.IssuesID: true,
-	wiz.DefendID: true,
+	ghas.ID:        true,
+	ghas.SecretsID: true,
+	scc.ID:         true,
+	wiz.IssuesID:   true,
+	wiz.DefendID:   true,
 }
 
 // genericDecoder labels a generic delivery: the event type from the payload

@@ -9,6 +9,8 @@
 #     PATCHY_OVERLAY=dev-fake make dev-colima      # deploy (builds the fake images too)
 #     mise run replay -- -dev-secret \
 #         fixtures/webhooks/code_scanning_alert.created.json
+#     mise run replay -- -dev-secret \
+#         fixtures/webhooks/secret_scanning_alert.created.json
 #     kubectl get patchy -n patchy -w              # watch the pipeline
 #
 # The fake's API is reachable from the host at http://localhost:30990 (its
@@ -43,6 +45,11 @@ patches:
           - op: add
             path: /spec/github/baseURL
             value: http://patchy-fakegithub.patchy.svc.cluster.local:9990
+          # The fake serves secret scanning too, so the demo can show it.
+          - op: add
+            path: /spec/github/secretScanningAlerts
+            value:
+                enabled: true
     - target:
           group: patchy.bitwisemedia.uk
           kind: Forge

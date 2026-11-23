@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -354,5 +355,37 @@ func TestHandleBackfill(t *testing.T) {
 				t.Fatalf("spec.backfill = %+v, want stamped by op@acme.test", req)
 			}
 		})
+	}
+}
+
+func TestBackfillSupportedFollowsScanningCapabilities(t *testing.T) {
+	gh := func(code, secrets bool) *v1alpha1.Integration {
+		i := &v1alpha1.Integration{Spec: v1alpha1.IntegrationSpec{
+			Provider: v1alpha1.IntegrationProviderGitHub,
+			GitHub: &v1alpha1.GitHubIntegration{
+				CodeScanningAlerts:   &v1alpha1.GitHubCodeScanningAlerts{Enabled: code},
+				SecretScanningAlerts: &v1alpha1.GitHubSecretScanningAlerts{Enabled: secrets},
+			},
+		}}
+		return i
+	}
+	cases := []struct {
+		name  string
+		integ *v1alpha1.Integration
+		want  bool
+	}{
+		{"code scanning", gh(true, false), true},
+		{"secret scanning", gh(false, true), true},
+		{"neither", gh(false, false), false},
+		{"not github", &v1alpha1.Integration{Spec: v1alpha1.IntegrationSpec{
+			Provider: v1alpha1.IntegrationProviderWiz}}, false},
+	}
+	for _, tc := range cases {
+		if got := backfillSupported(tc.integ); got != tc.want {
+			t.Errorf("%s: backfillSupported() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if caps := capabilities(gh(false, true)); !slices.Contains(caps, "secretScanningAlerts") {
+		t.Errorf("capabilities = %v, want secretScanningAlerts", caps)
 	}
 }

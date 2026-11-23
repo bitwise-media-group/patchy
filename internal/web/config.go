@@ -264,13 +264,16 @@ func wireBackfill(integ *v1alpha1.Integration) *BackfillStatus {
 }
 
 // backfillSupported reports whether a backfill request could do anything on
-// this Integration: the github provider with code-scanning ingestion
-// enabled, the same gate the integration-controller's lister applies.
+// this Integration: the github provider with code-scanning or
+// secret-scanning ingestion enabled, the same gate the
+// integration-controller's lister applies.
 func backfillSupported(integ *v1alpha1.Integration) bool {
-	return integ.Spec.Provider == v1alpha1.IntegrationProviderGitHub &&
-		integ.Spec.GitHub != nil &&
-		integ.Spec.GitHub.CodeScanningAlerts != nil &&
-		integ.Spec.GitHub.CodeScanningAlerts.Enabled
+	if integ.Spec.Provider != v1alpha1.IntegrationProviderGitHub || integ.Spec.GitHub == nil {
+		return false
+	}
+	gh := integ.Spec.GitHub
+	return (gh.CodeScanningAlerts != nil && gh.CodeScanningAlerts.Enabled) ||
+		(gh.SecretScanningAlerts != nil && gh.SecretScanningAlerts.Enabled)
 }
 
 // capabilities names the Integration's enabled capabilities for display.
@@ -285,6 +288,7 @@ func capabilities(integ *v1alpha1.Integration) []string {
 	if gh := spec.GitHub; gh != nil {
 		add("issues", gh.Issues != nil && gh.Issues.Enabled)
 		add("codeScanningAlerts", gh.CodeScanningAlerts != nil && gh.CodeScanningAlerts.Enabled)
+		add("secretScanningAlerts", gh.SecretScanningAlerts != nil && gh.SecretScanningAlerts.Enabled)
 		add("redelivery", gh.Redelivery != nil && gh.Redelivery.Enabled)
 	}
 	if gc := spec.GoogleCloud; gc != nil {

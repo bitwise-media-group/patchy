@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package fakegithub is an in-memory GitHub REST API good enough to run the
-// patchy controllers against: code-scanning alerts, issues, labels,
+// patchy controllers against: code- and secret-scanning alerts, issues, labels,
 // comments, search, and the Git Data surface (refs, blobs, trees, commits)
 // the API push uses. It exists so the e2e suite can drive the real binaries
 // end to end with no network and no credentials.
@@ -66,9 +66,11 @@ type Server struct {
 	// the pre-existing estate a backfill walks. The get/update endpoints
 	// still fabricate alerts on the fly for webhook-driven flows.
 	alerts []seededAlert
-	pulls  map[int]*pull
-	git    gitData
-	next   int
+	// secrets is the secret-scanning surface (secrets.go).
+	secrets secretState
+	pulls   map[int]*pull
+	git     gitData
+	next    int
 	// Now stamps created_at; tests override it to age issues instantly.
 	Now func() time.Time
 }
@@ -78,6 +80,7 @@ func newState() (*Server, *http.ServeMux) {
 		issues:    make(map[int]*Issue),
 		comments:  make(map[int][]comment),
 		dismissed: make(map[int]string),
+		secrets:   secretState{resolved: make(map[int]string)},
 		pulls:     make(map[int]*pull),
 		git:       newGitData(),
 		next:      100,
@@ -190,6 +193,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_tarball/{owner}/{repo}/{ref...}", s.tarball)
 	mux.HandleFunc("GET /search/issues", s.searchIssues)
 	s.gitRoutes(mux)
+	s.secretRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("fakegithub: unhandled %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 	})

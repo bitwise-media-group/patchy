@@ -426,12 +426,14 @@ func testGenericIntegrationSchema(ctx context.Context, t *testing.T, c client.Cl
 	})); err == nil {
 		t.Error("Create(generic integration with schemeless URL) = nil, want pattern rejection")
 	}
-	if err := c.Create(ctx, generic("ghas", patchyv1.IntegrationSpec{
-		Provider:  patchyv1.IntegrationProviderGeneric,
-		SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
-		Generic:   block,
-	})); err == nil {
-		t.Error("Create(generic integration named ghas) = nil, want reserved-name rejection")
+	for _, name := range []string{"ghas", "ghas-secrets"} {
+		if err := c.Create(ctx, generic(name, patchyv1.IntegrationSpec{
+			Provider:  patchyv1.IntegrationProviderGeneric,
+			SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+			Generic:   block,
+		})); err == nil {
+			t.Errorf("Create(generic integration named %s) = nil, want reserved-name rejection", name)
+		}
 	}
 }
 

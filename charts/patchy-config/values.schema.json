@@ -330,6 +330,18 @@
                             "required": ["enabled"],
                             "type": "object",
                             "additionalProperties": false
+                        },
+                        "secretScanningAlerts": {
+                            "description": "SecretScanningAlerts enables secret-scanning ingestion.",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Enabled turns the secret-scanning capability on.",
+                                    "type": "boolean"
+                                }
+                            },
+                            "required": ["enabled"],
+                            "type": "object",
+                            "additionalProperties": false
                         }
                     },
                     "type": "object",

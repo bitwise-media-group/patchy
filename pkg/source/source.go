@@ -59,9 +59,26 @@ type Location struct {
 	Path      string `json:"path"`
 	StartLine int    `json:"start_line,omitempty"`
 	EndLine   int    `json:"end_line,omitempty"`
+	// StartColumn and EndColumn narrow the location within its lines, when
+	// the tool reports them (secret scanning does).
+	StartColumn int `json:"start_column,omitempty"`
+	EndColumn   int `json:"end_column,omitempty"`
 	// Snippet is the offending source excerpt, when the tool provides one.
 	Snippet string `json:"snippet,omitempty"`
 }
+
+// Category classifies a finding where that changes how the pipeline treats
+// it. The zero value is an ordinary code or configuration flaw.
+type Category string
+
+// Finding categories.
+const (
+	// CategorySecret is a leaked credential. The pipeline investigates it,
+	// but never opens a cleanup pull request without human approval, because
+	// the real fix (rotating the credential) is outside its reach. A source
+	// that sets it must never put the secret value in any field.
+	CategorySecret Category = "secret"
+)
 
 // Finding is a source-agnostic security finding. The integration-controller
 // keys accumulation on (scope, Source, primary advisory), where scope is the
@@ -73,6 +90,8 @@ type Location struct {
 type Finding struct {
 	// Source is the emitting Handler's ID, e.g. "ghas".
 	Source string
+	// Category classifies the finding; empty for an ordinary flaw.
+	Category Category
 	// Repo is the repository the finding was raised against. Zero on a cloud
 	// finding, whose repository (if it has one at all) is resolved later by a
 	// context enhancer.
@@ -127,11 +146,24 @@ const (
 	VerdictIgnore VerdictKind = "ignore"
 )
 
+// Canonical verdict reasons. A Resolver maps them onto its tool's own
+// vocabulary; the values are the human phrases GitHub code scanning also
+// uses, so a resolver that passes Reason through verbatim keeps working.
+const (
+	// ReasonFalsePositive: the finding is wrong, or not exploitable here.
+	ReasonFalsePositive = "false positive"
+	// ReasonUsedInTests: the flagged code or value exists only for tests.
+	ReasonUsedInTests = "used in tests"
+	// ReasonWontFix: the finding is real but accepted.
+	ReasonWontFix = "won't fix"
+)
+
 // Verdict is the pipeline's decision, as told to the originating tool.
 type Verdict struct {
 	// Kind is the decision.
 	Kind VerdictKind
-	// Reason is the tool-facing reason code, where the tool has a vocabulary.
+	// Reason is the canonical reason (ReasonFalsePositive and friends).
+	// Empty means ReasonFalsePositive.
 	Reason string
 	// Comment is human-readable justification.
 	Comment string

@@ -78,6 +78,34 @@ type FindingCloudResource struct {
 	DisplayName string `json:"displayName,omitempty"`
 }
 
+// FindingCategory classifies what kind of problem a finding is, where that
+// changes how the pipeline treats it. Empty is the default: a code or
+// configuration flaw that an automated fix can resolve.
+// +kubebuilder:validation:Enum=secret
+type FindingCategory string
+
+// Finding categories.
+const (
+	// FindingCategorySecret is a leaked credential. Its real fix is rotating
+	// or revoking the credential, which patchy cannot do, so a remediate
+	// verdict always waits for human approval and only ever cleans the
+	// literal out of the code; and an "ignore" below the confidence
+	// threshold is handed off rather than dismissed.
+	FindingCategorySecret FindingCategory = "secret"
+)
+
+// DismissReason is the investigation's reason for an "ignore" verdict, in
+// the vocabulary the write-back hands the originating tool.
+// +kubebuilder:validation:Enum=false_positive;used_in_tests;wont_fix
+type DismissReason string
+
+// Dismiss reasons.
+const (
+	DismissFalsePositive DismissReason = "false_positive"
+	DismissUsedInTests   DismissReason = "used_in_tests"
+	DismissWontFix       DismissReason = "wont_fix"
+)
+
 // Location is one source location an alert points at.
 type Location struct {
 	// Path of the file, repo-relative.
@@ -88,6 +116,12 @@ type Location struct {
 	// EndLine of the flagged region.
 	// +optional
 	EndLine int32 `json:"endLine,omitempty"`
+	// StartColumn of the flagged region (1-based), when the tool reports one.
+	// +optional
+	StartColumn int32 `json:"startColumn,omitempty"`
+	// EndColumn of the flagged region, when the tool reports one.
+	// +optional
+	EndColumn int32 `json:"endColumn,omitempty"`
 	// Snippet is the flagged source excerpt.
 	// +optional
 	// +kubebuilder:validation:MaxLength=1024
@@ -185,6 +219,11 @@ type FindingSpec struct {
 	// Source is the source handler ID (e.g. github-code-scanning).
 	// +kubebuilder:validation:MinLength=1
 	Source string `json:"source"`
+	// Category classifies the finding where that changes its routing (a
+	// leaked secret). Empty is an ordinary code or configuration flaw.
+	// Written at ingest and never again.
+	// +optional
+	Category FindingCategory `json:"category,omitempty"`
 	// Repository the finding belongs to; nil when none has been identified.
 	// integration-controller sets it at ingest for sources that name a
 	// repository. For a cloud finding it starts nil and context-controller
@@ -310,6 +349,10 @@ type InvestigationSummary struct {
 	// Recommendation verdict.
 	// +optional
 	Recommendation Recommendation `json:"recommendation,omitempty"`
+	// DismissReason is the investigation's reason for an "ignore", which the
+	// write-back hands the originating tool. Empty means false positive.
+	// +optional
+	DismissReason DismissReason `json:"dismissReason,omitempty"`
 	// Confidence decimal string in [0, 1].
 	// +optional
 	// +kubebuilder:validation:Pattern=`^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$`
@@ -519,3 +562,6 @@ type FindingList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Finding `json:"items"`
 }
+
+// IsSecret reports whether the finding is a leaked credential.
+func (f *Finding) IsSecret() bool { return f.Spec.Category == FindingCategorySecret }

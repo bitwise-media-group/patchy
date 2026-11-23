@@ -49,6 +49,16 @@ type GitHubCodeScanningAlerts struct {
 	Enabled bool `json:"enabled"`
 }
 
+// GitHubSecretScanningAlerts configures ingestion from GitHub secret
+// scanning webhooks: leaked credentials, investigated for whether they are
+// live, with alert resolution on a confident "ignore" verdict. A cleanup pull
+// request is only ever opened after human approval, because the real fix
+// (rotating the credential) is something patchy cannot do.
+type GitHubSecretScanningAlerts struct {
+	// Enabled turns the secret-scanning capability on.
+	Enabled bool `json:"enabled"`
+}
+
 // GitHubRedelivery configures the failed-delivery sweep: on every
 // reconcile interval the controller lists the App webhook's recent
 // deliveries and asks GitHub to redeliver those that never got a 2xx. These
@@ -84,6 +94,9 @@ type GitHubIntegration struct {
 	// CodeScanningAlerts enables scanner ingestion.
 	// +optional
 	CodeScanningAlerts *GitHubCodeScanningAlerts `json:"codeScanningAlerts,omitempty"`
+	// SecretScanningAlerts enables secret-scanning ingestion.
+	// +optional
+	SecretScanningAlerts *GitHubSecretScanningAlerts `json:"secretScanningAlerts,omitempty"`
 	// Redelivery enables the failed-delivery sweep.
 	// +optional
 	Redelivery *GitHubRedelivery `json:"redelivery,omitempty"`
@@ -644,7 +657,7 @@ type IntegrationStatus struct {
 //
 // A generic Integration's name doubles as its finding source id and label
 // value, so it must not shadow a built-in source id and must fit a label.
-// +kubebuilder:validation:XValidation:rule="self.spec.provider != 'generic' || !has(self.metadata.name) || !(self.metadata.name in ['ghas', 'gcp-scc', 'wiz-issues', 'wiz-defend'])",message="a generic integration may not use a reserved source id as its name"
+// +kubebuilder:validation:XValidation:rule="self.spec.provider != 'generic' || !has(self.metadata.name) || !(self.metadata.name in ['ghas', 'ghas-secrets', 'gcp-scc', 'wiz-issues', 'wiz-defend'])",message="a generic integration may not use a reserved source id as its name"
 // +kubebuilder:validation:XValidation:rule="self.spec.provider != 'generic' || !has(self.metadata.name) || size(self.metadata.name) <= 63",message="a generic integration's name must be at most 63 characters"
 type Integration struct {
 	metav1.TypeMeta   `json:",inline"`

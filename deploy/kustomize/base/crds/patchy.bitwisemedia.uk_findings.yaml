@@ -105,6 +105,11 @@ spec:
                         description: Location is one source location an alert points
                           at.
                         properties:
+                          endColumn:
+                            description: EndColumn of the flagged region, when the
+                              tool reports one.
+                            format: int32
+                            type: integer
                           endLine:
                             description: EndLine of the flagged region.
                             format: int32
@@ -116,6 +121,11 @@ spec:
                             description: Snippet is the flagged source excerpt.
                             maxLength: 1024
                             type: string
+                          startColumn:
+                            description: StartColumn of the flagged region (1-based),
+                              when the tool reports one.
+                            format: int32
+                            type: integer
                           startLine:
                             description: StartLine of the flagged region (1-based).
                             format: int32
@@ -165,6 +175,14 @@ spec:
                 - at
                 - by
                 type: object
+              category:
+                description: |-
+                  Category classifies the finding where that changes its routing (a
+                  leaked secret). Empty is an ordinary code or configuration flaw.
+                  Written at ingest and never again.
+                enum:
+                - secret
+                type: string
               cloudResource:
                 description: |-
                   CloudResource identifies the cloud resource this finding was raised
@@ -538,6 +556,15 @@ spec:
                     description: Confidence decimal string in [0, 1].
                     pattern: ^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$
                     type: string
+                  dismissReason:
+                    description: |-
+                      DismissReason is the investigation's reason for an "ignore", which the
+                      write-back hands the originating tool. Empty means false positive.
+                    enum:
+                    - false_positive
+                    - used_in_tests
+                    - wont_fix
+                    type: string
                   estimate:
                     description: |-
                       Estimate the investigation made for the remediation, mirrored here so
@@ -576,6 +603,7 @@ spec:
                       - lowConfidence
                       - exceedsAutomatedTurns
                       - exceedsAutomatedTokens
+                      - secretRotation
                       type: string
                     type: array
                     x-kubernetes-list-type: set

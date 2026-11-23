@@ -155,7 +155,7 @@ const (
 // HoldReason names why a finding stopped in AwaitingApproval instead of
 // going straight to Queued. A hold can have several reasons at once, so they
 // are reported as a set rather than folded into one flag.
-// +kubebuilder:validation:Enum=breakingChangeAvailable;lowConfidence;exceedsAutomatedTurns;exceedsAutomatedTokens
+// +kubebuilder:validation:Enum=breakingChangeAvailable;lowConfidence;exceedsAutomatedTurns;exceedsAutomatedTokens;secretRotation
 type HoldReason string
 
 // Approval-hold reasons.
@@ -172,6 +172,10 @@ const (
 	HoldExceedsAutomatedTurns HoldReason = "exceedsAutomatedTurns"
 	// HoldExceedsAutomatedTokens: as above, for output tokens.
 	HoldExceedsAutomatedTokens HoldReason = "exceedsAutomatedTokens"
+	// HoldSecretRotation: the finding is a leaked secret. A cleanup pull
+	// request removes the literal from the code but cannot rotate the
+	// credential, so a human must confirm rotation is in hand first.
+	HoldSecretRotation HoldReason = "secretRotation"
 )
 
 // RunKind discriminates the two agent run kinds.

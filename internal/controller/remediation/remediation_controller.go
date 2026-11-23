@@ -262,6 +262,10 @@ func (r *RemediationReconciler) launch(ctx context.Context, rem *v1alpha1.Remedi
 		// the investigation predicted.
 		MaxTurns:    rem.Spec.Parameters.MaxTurns,
 		TokenBudget: rem.Spec.Parameters.TokenBudget,
+		// A leaked secret's cleanup: the prompt's secret rules, and the
+		// locations the runner scrubs the literal by.
+		Secret:          fnd.IsSecret(),
+		SecretLocations: jobs.SecretLocations(&fnd),
 	})
 	if err != nil {
 		return fmt.Errorf("launch remediation job: %w", err)
@@ -406,7 +410,7 @@ func (r *RemediationReconciler) succeed(
 	// The stored report carries its machine frontmatter; the PR body is
 	// presentation, so render the markdown body only.
 	reportBody := report.StripFrontmatter(result.ReportMarkdown)
-	body, err := templates.PRBody(issueNumber, reportBody)
+	body, err := templates.PRBody(issueNumber, reportBody, fnd.IsSecret())
 	if err != nil {
 		body = reportBody
 	}

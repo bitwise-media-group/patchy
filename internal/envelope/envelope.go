@@ -90,9 +90,12 @@ type Investigation struct {
 	Likelihood     AnalysisResult `json:"likelihood"`
 	Impact         AnalysisResult `json:"impact"`
 	Recommendation string         `json:"recommendation,omitempty"`
-	Priority       string         `json:"priority,omitempty"`
-	Severity       string         `json:"severity,omitempty"`
-	Confidence     float64        `json:"confidence,omitempty"`
+	// DismissReason is the agent's reason for an ignore verdict
+	// (false_positive, used_in_tests, wont_fix); empty otherwise.
+	DismissReason string  `json:"dismiss_reason,omitempty"`
+	Priority      string  `json:"priority,omitempty"`
+	Severity      string  `json:"severity,omitempty"`
+	Confidence    float64 `json:"confidence,omitempty"`
 	// RemediationModel is the stage-2 model the analysis suggested; the
 	// controller clamps it to the allowlist before launching the job.
 	RemediationModel string `json:"remediation_model,omitempty"`

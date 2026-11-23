@@ -140,7 +140,8 @@ export type HoldReason =
   | 'breakingChangeAvailable'
   | 'lowConfidence'
   | 'exceedsAutomatedTurns'
-  | 'exceedsAutomatedTokens';
+  | 'exceedsAutomatedTokens'
+  | 'secretRotation';
 
 // Estimate is an investigation's prediction of a remediation's cost. It never
 // limits the run; see Budget.

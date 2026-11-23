@@ -87,6 +87,47 @@ False positive: the sink is constant.
 	}
 }
 
+func TestParseInvestigationDismissReason(t *testing.T) {
+	ignore := strings.NewReplacer(
+		"recommendation: remediate", "recommendation: ignore",
+		"model: claude-sonnet-5\n", "", "max_turns: 40\n", "", "token_budget: 200000\n", "",
+	).Replace(validInvestigation)
+	withReason := func(src, reason string) string {
+		return strings.Replace(src, "breaking_change_available: false\n",
+			"breaking_change_available: false\ndismiss_reason: "+reason+"\n", 1)
+	}
+	tests := []struct {
+		name    string
+		src     string
+		want    DismissReason
+		wantErr bool
+	}{
+		{name: "absent", src: ignore},
+		{name: "used in tests", src: withReason(ignore, "used_in_tests"), want: DismissUsedInTests},
+		{name: "wont fix", src: withReason(ignore, "wont_fix"), want: DismissWontFix},
+		{name: "false positive", src: withReason(ignore, "false_positive"), want: DismissFalsePositive},
+		{name: "unknown reason", src: withReason(ignore, "revoked"), wantErr: true},
+		{name: "not an ignore", src: withReason(validInvestigation, "used_in_tests"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inv, err := ParseInvestigation([]byte(tt.src))
+			if tt.wantErr {
+				if err == nil {
+					t.Error("ParseInvestigation() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseInvestigation() error = %v", err)
+			}
+			if inv.DismissReason != tt.want {
+				t.Errorf("DismissReason = %q, want %q", inv.DismissReason, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseInvestigationRepairsUnquotedColonSummary(t *testing.T) {
 	// Models write summaries as plain prose; "CWE-614: ..." is invalid as a
 	// plain YAML scalar. The parser must quote-and-retry rather than fail

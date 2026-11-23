@@ -21,6 +21,19 @@ const (
 	RecommendManual    Recommendation = "manual"
 )
 
+// DismissReason says why an "ignore" verdict holds, in the vocabulary the
+// write-back hands the originating tool.
+type DismissReason string
+
+// The dismiss reasons.
+const (
+	DismissFalsePositive DismissReason = "false_positive"
+	DismissUsedInTests   DismissReason = "used_in_tests"
+	DismissWontFix       DismissReason = "wont_fix"
+)
+
+var validDismissReasons = []DismissReason{DismissFalsePositive, DismissUsedInTests, DismissWontFix}
+
 // Level is a priority or severity value.
 type Level string
 
@@ -61,6 +74,9 @@ type Investigation struct {
 	// BreakingChangeAvailable marks that a better fix exists but would
 	// break external callers; the pipeline then holds for approval.
 	BreakingChangeAvailable bool `yaml:"breaking_change_available"`
+	// DismissReason is optional, and valid only with an ignore. Empty means
+	// a false positive.
+	DismissReason DismissReason `yaml:"dismiss_reason"`
 	// Model, MaxTurns and TokenBudget are required iff Recommendation is
 	// remediate. The model is clamped to the allowlist. The turn and token
 	// figures are an estimate and never limit the run they describe.
@@ -129,6 +145,15 @@ func (inv *Investigation) validate() error {
 		errs = append(errs, errors.New("confidence is required"))
 	case *inv.Confidence < 0 || *inv.Confidence > 1:
 		errs = append(errs, fmt.Errorf("confidence %v is outside [0, 1]", *inv.Confidence))
+	}
+	if inv.DismissReason != "" {
+		if !slices.Contains(validDismissReasons, inv.DismissReason) {
+			errs = append(errs, fmt.Errorf("dismiss_reason %q is not false_positive, used_in_tests, or wont_fix",
+				inv.DismissReason))
+		}
+		if inv.Recommendation != RecommendIgnore {
+			errs = append(errs, errors.New("dismiss_reason is only valid when recommending ignore"))
+		}
 	}
 	if inv.Recommendation == RecommendRemediate {
 		if inv.Model == "" {

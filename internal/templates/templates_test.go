@@ -164,7 +164,47 @@ func TestGoldens(t *testing.T) {
 		render func() (string, error)
 	}{
 		{"finding_issue.md", func() (string, error) { return RenderFindingIssue(testFinding()) }},
-		{"pr_body.md", func() (string, error) { return PRBody(123, "remediation report here") }},
+		{"pr_body.md", func() (string, error) { return PRBody(123, "remediation report here", false) }},
+		{"pr_body_secret.md", func() (string, error) { return PRBody(123, "remediation report here", true) }},
+		{"prompt_investigate_secret.md", func() (string, error) {
+			return RenderInvestigatePrompt(InvestigatePrompt{
+				IssuePath:         "/workspace/input/issue.md",
+				ReportPath:        "/workspace/reports/investigation.md",
+				AllowedModels:     []string{"claude-sonnet-5", "claude-opus-5"},
+				AutoMaxTurns:      80,
+				AutoTokenBudget:   400000,
+				ManualMaxTurns:    240,
+				ManualTokenBudget: 1200000,
+				Secret:            true,
+			})
+		}},
+		{"prompt_remediate_secret.md", func() (string, error) {
+			return RenderRemediatePrompt(RemediatePrompt{
+				IssuePath:         "/workspace/input/issue.md",
+				InvestigationPath: "/workspace/input/investigation.md",
+				ReportPath:        "/workspace/reports/remediation.md",
+				CommitScriptPath:  "/workspace/commit.sh",
+				Secret:            true,
+			})
+		}},
+		// A secret-scanning description with every flag set and a non-file
+		// location, so both location shapes are pinned.
+		{"finding_github_secret.md", func() (string, error) {
+			return RenderGitHubSecretDescription(GitHubSecret{
+				DisplayName: "GitHub Personal Access Token", SecretType: "github_personal_access_token",
+				Provider: "GitHub", Validity: "active",
+				PubliclyLeaked: true, MultiRepo: true, PushProtectionBypassed: true,
+				Locations: []GitHubSecretLocation{
+					{Kind: "commit", Path: "config/app.yaml", StartLine: 4, CommitSHA: "abc123"},
+					{Kind: "issue_comment", URL: "https://api.github.com/repos/acme/shop/issues/comments/1"},
+				},
+				MoreLocations: 3,
+				URL:           "https://github.com/acme/shop/security/secret-scanning/5",
+			})
+		}},
+		{"finding_github_secret_minimal.md", func() (string, error) {
+			return RenderGitHubSecretDescription(GitHubSecret{SecretType: "slack_api_token"})
+		}},
 		{"prompt_investigate.md", func() (string, error) {
 			return RenderInvestigatePrompt(InvestigatePrompt{
 				IssuePath:         "/workspace/input/issue.md",

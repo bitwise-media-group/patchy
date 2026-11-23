@@ -6,6 +6,7 @@ package jobs
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -24,6 +25,7 @@ import (
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/harness"
 	"github.com/bitwise-media-group/patchy/internal/provider"
+	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
 // Label keys and values identifying the Jobs patchy owns. The repo
@@ -56,6 +58,11 @@ const (
 const (
 	secretKeyIssue         = "issue.md"
 	secretKeyInvestigation = "investigation.md"
+	// secretKeySecrets is the leaked-secret handoff: present only for a
+	// secret finding, a JSON array of pkg/source Locations (path, lines,
+	// columns; never a value). agent-runner slices each literal out of the
+	// workspace by them and scrubs it from everything the run emits.
+	secretKeySecrets = "secrets.json"
 )
 
 // Broker caller-token projection: the volume a brokered runner's agent
@@ -96,6 +103,9 @@ mkdir -p /workspace/input
 cp /patchy/input/issue.md /workspace/input/issue.md
 if [ -f /patchy/input/investigation.md ]; then
   cp /patchy/input/investigation.md /workspace/input/investigation.md
+fi
+if [ -f /patchy/input/secrets.json ]; then
+  cp /patchy/input/secrets.json /workspace/input/secrets.json
 fi
 `
 
@@ -183,6 +193,40 @@ type Spec struct {
 	// omits it. This package does not know its shape: it is prompt garnish,
 	// not job configuration.
 	Calibration string
+	// Secret marks a leaked-credential finding. The Job then carries
+	// SecretLocations (possibly none) as the secrets.json handoff, which
+	// both switches the prompts to their secret variants and tells the
+	// runner what to scrub.
+	Secret          bool
+	SecretLocations []source.Location
+}
+
+// SecretLocations collects a secret finding's file locations for the Job
+// handoff: every alert's, in order, without duplicates. Nil for any other
+// finding.
+func SecretLocations(fnd *v1alpha1.Finding) []source.Location {
+	if !fnd.IsSecret() {
+		return nil
+	}
+	var out []source.Location
+	seen := map[source.Location]bool{}
+	for _, a := range fnd.Spec.Alerts {
+		for _, l := range a.Locations {
+			loc := source.Location{
+				Path:        l.Path,
+				StartLine:   int(l.StartLine),
+				EndLine:     int(l.EndLine),
+				StartColumn: int(l.StartColumn),
+				EndColumn:   int(l.EndColumn),
+			}
+			if loc.Path == "" || seen[loc] {
+				continue
+			}
+			seen[loc] = true
+			out = append(out, loc)
+		}
+	}
+	return out
 }
 
 // Client creates and observes agent Jobs in one namespace. It embeds the
@@ -252,8 +296,12 @@ func (c *Client) Create(ctx context.Context, spec Spec) (string, error) {
 	// per (finding, kind, attempt), so a duplicate reconcile, or a retry
 	// after a partial launch, adopts what already exists instead of
 	// failing on AlreadyExists.
+	handoff, err := buildSecret(name, c.cfg.Namespace, spec)
+	if err != nil {
+		return "", err
+	}
 	secrets := c.cs.CoreV1().Secrets(c.cfg.Namespace)
-	secret, err := secrets.Create(ctx, buildSecret(name, c.cfg.Namespace, spec), metav1.CreateOptions{})
+	secret, err := secrets.Create(ctx, handoff, metav1.CreateOptions{})
 	if apierrors.IsAlreadyExists(err) {
 		secret, err = secrets.Get(ctx, name, metav1.GetOptions{})
 	}
@@ -292,18 +340,29 @@ func (c *Client) Create(ctx context.Context, spec Spec) (string, error) {
 
 // buildSecret builds the per-Job Secret. It holds everything the init
 // container needs: the handoff markdown files.
-func buildSecret(name, namespace string, spec Spec) *corev1.Secret {
+func buildSecret(name, namespace string, spec Spec) (*corev1.Secret, error) {
 	data := map[string][]byte{
 		secretKeyIssue: []byte(spec.IssueMarkdown),
 	}
 	if spec.InvestigationMarkdown != "" {
 		data[secretKeyInvestigation] = []byte(spec.InvestigationMarkdown)
 	}
+	if spec.Secret {
+		locs := spec.SecretLocations
+		if locs == nil {
+			locs = []source.Location{}
+		}
+		raw, err := json.Marshal(locs)
+		if err != nil {
+			return nil, fmt.Errorf("jobs: encode secret locations: %w", err)
+		}
+		data[secretKeySecrets] = raw
+	}
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: jobLabels(spec)},
 		Type:       corev1.SecretTypeOpaque,
 		Data:       data,
-	}
+	}, nil
 }
 
 func (c *Client) buildJob(name string, spec Spec) (*batchv1.Job, error) {

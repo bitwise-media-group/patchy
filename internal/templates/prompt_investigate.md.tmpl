@@ -6,6 +6,35 @@ Read the finding first: `{{.IssuePath}}`.
 
 Investigate the repository as deeply as you need to. Read the flagged code, trace how it is reached, and check tests
 and callers. Do **not** modify any repository file in this stage. Your only output is the report described below.
+{{- if .Secret}}
+
+## This finding is a leaked secret
+
+GitHub secret scanning found a credential committed to this repository. The finding names its type and the
+`path:line` of each location. It does not contain the value, and nothing you write may contain it either.
+
+- **Never reproduce the secret value.** Not in the report, a summary, or a quoted snippet. Refer to it by its type and
+  `path:line`. If you need to show the surrounding code, replace the value with `«redacted»`.
+- Decide which of these it is:
+  - a **live credential**: a real key, token or password for a real service;
+  - a **placeholder or example**: documentation, a dummy value, or a sample configuration with an obviously fake value;
+  - a **test fixture**: a value that exists only so tests can run, and is never valid against a real service.
+- Check whether it is **still present at HEAD** (this working tree), or only in the history.
+- Assess **what it grants**: which service, what scope, and what someone holding it could do. That is the impact.
+- You have no network access, so you cannot check the credential with its issuer. Do not try.
+
+For a secret, the verdicts mean:
+
+- **ignore**: it is not a live credential. Set `dismiss_reason` to say why: `false_positive` for a placeholder, an
+  example, or a detection that is not a secret at all; `used_in_tests` for a test fixture; `wont_fix` for a real value
+  that is public by design (a publishable client key, say). The alert is resolved on GitHub with that reason only when
+  your confidence clears the threshold. Below it, a human decides.
+- **remediate**: the credential is real, it is still at HEAD, and the code can cleanly stop carrying it (by reading it
+  from configuration or a secret store instead). A human always approves this first, because the pull request cannot
+  rotate the credential, and rotation is the real fix.
+- **manual**: it is real but removing it needs judgement, or it is gone from HEAD and only the history still holds it.
+  Rewriting history is a human decision.
+{{- end}}
 
 ## What to assess
 
@@ -101,6 +130,9 @@ priority: low | medium | high | critical
 severity: low | medium | high | critical
 confidence: <number between 0.0 and 1.0>
 breaking_change_available: true | false
+{{- if .Secret}}
+dismiss_reason: false_positive | used_in_tests | wont_fix   # ignore only: why the alert can be resolved
+{{- end}}
 model: <model id, one of: {{join .AllowedModels ", "}}>   # remediate only: the model to remediate with
 max_turns: <integer>      # remediate only: ESTIMATED turns the fix needs (over {{.AutoMaxTurns}} asks for approval)
 token_budget: <integer>   # remediate only: ESTIMATED output tokens (over {{.AutoTokenBudget}} asks for approval)

@@ -29,11 +29,14 @@ func render(name string, data any) (string, error) {
 
 // PRBody renders the pull-request body for a remediation branch; issue is
 // the tracking issue number ("Fixes #issue" auto-links and auto-closes).
-func PRBody(issue int, report string) (string, error) {
+// secret heads the body with the rotate-before-merging warning a leaked
+// credential's cleanup needs.
+func PRBody(issue int, report string, secret bool) (string, error) {
 	return render("pr_body.md.tmpl", struct {
 		Issue  int
 		Report string
-	}{issue, report})
+		Secret bool
+	}{issue, report, secret})
 }
 
 // InvestigatePrompt is the data for the analysis-stage prompt (stage 1:
@@ -53,6 +56,9 @@ type InvestigatePrompt struct {
 	// Calibration is how earlier estimates compared to reality; nil omits the
 	// section (a cold start has no history to report).
 	Calibration *Calibration
+	// Secret marks a leaked-credential finding: the prompt adds the secret
+	// triage guidance and the dismiss_reason field.
+	Secret bool
 }
 
 // Calibration reports how previous remediations compared to what the
@@ -105,6 +111,9 @@ type RemediatePrompt struct {
 	InvestigationPath string
 	ReportPath        string
 	CommitScriptPath  string
+	// Secret marks a leaked-credential finding: the prompt adds the cleanup
+	// rules and the rotation reminder.
+	Secret bool
 }
 
 // RenderRemediatePrompt renders the remediation prompt.

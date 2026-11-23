@@ -230,6 +230,10 @@ func (r *InvestigationReconciler) launch(ctx context.Context, inv *v1alpha1.Inve
 		ArtifactURL:    repo.Status.Artifact.URL,
 		ArtifactDigest: repo.Status.Artifact.Digest,
 		Calibration:    r.calibration(ctx, repoName),
+		// A leaked secret's locations ride to the pod so the runner can
+		// scrub the literal from everything the run emits.
+		Secret:          fnd.IsSecret(),
+		SecretLocations: jobs.SecretLocations(&fnd),
 	})
 	if err != nil {
 		return fmt.Errorf("launch investigation job: %w", err)
@@ -387,6 +391,7 @@ func (r *InvestigationReconciler) apply(
 			Attempt:        inv.Spec.Attempt,
 			Outcome:        string(result.Outcome),
 			Recommendation: v1alpha1.Recommendation(result.Recommendation),
+			DismissReason:  dismissReasonOf(result),
 			Confidence:     agentresult.FormatConfidence(result.Confidence),
 			Exploitability: v1alpha1.Rating(result.Exploitability.Rating),
 			Likelihood:     v1alpha1.Rating(result.Likelihood.Rating),
@@ -423,8 +428,15 @@ func (r *InvestigationReconciler) route(
 	fnd *v1alpha1.Finding, result *envelope.Investigation,
 ) (v1alpha1.Phase, v1alpha1.Level, []v1alpha1.HoldReason) {
 	level := v1alpha1.Level(result.Priority)
+	secret := fnd.IsSecret()
 	switch v1alpha1.Recommendation(result.Recommendation) {
 	case v1alpha1.RecommendationIgnore:
+		// Dismissing a leaked secret resolves its alert on GitHub, and a
+		// wrong call there leaves a live credential unwatched. Only a
+		// confident ignore does that; anything less goes to a human.
+		if secret && result.Confidence < r.ConfidenceThreshold {
+			return v1alpha1.PhaseHandedOff, level, nil
+		}
 		return v1alpha1.PhaseDismissed, level, nil
 	case v1alpha1.RecommendationManual:
 		return v1alpha1.PhaseHandedOff, level, nil
@@ -438,12 +450,32 @@ func (r *InvestigationReconciler) route(
 		if result.Confidence < r.ConfidenceThreshold {
 			holds = append(holds, v1alpha1.HoldLowConfidence)
 		}
+		// A secret's cleanup PR never runs unattended: the code change
+		// cannot rotate the credential, so a human confirms that first.
+		if secret {
+			holds = append(holds, v1alpha1.HoldSecretRotation)
+		}
 		if len(holds) > 0 {
 			return v1alpha1.PhaseAwaitingApproval, level, holds
 		}
 		return v1alpha1.PhaseQueued, level, nil
 	default:
 		return v1alpha1.PhaseHandedOff, level, nil
+	}
+}
+
+// dismissReasonOf lifts the agent's dismiss reason, only for an ignore
+// verdict and only in the API's vocabulary; anything else is dropped (the
+// write-back then defaults to false positive) rather than failing the run.
+func dismissReasonOf(result *envelope.Investigation) v1alpha1.DismissReason {
+	if v1alpha1.Recommendation(result.Recommendation) != v1alpha1.RecommendationIgnore {
+		return ""
+	}
+	switch r := v1alpha1.DismissReason(result.DismissReason); r {
+	case v1alpha1.DismissFalsePositive, v1alpha1.DismissUsedInTests, v1alpha1.DismissWontFix:
+		return r
+	default:
+		return ""
 	}
 }
 

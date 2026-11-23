@@ -57,6 +57,8 @@ func holdText(r v1alpha1.HoldReason, p *v1alpha1.AgentParameters) string {
 				est.TokenBudget)
 		}
 		return "the fix is predicted to need more output tokens than run unattended"
+	case v1alpha1.HoldSecretRotation:
+		return "it is a leaked secret: rotate the credential first, since the fix only removes it from the code"
 	default:
 		return string(r)
 	}

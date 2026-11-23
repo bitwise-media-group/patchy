@@ -204,6 +204,8 @@ export function holdText(reason: HoldReason): string {
       return "the fix is predicted to need more turns than run unattended";
     case "exceedsAutomatedTokens":
       return "the fix is predicted to need more output tokens than run unattended";
+    case "secretRotation":
+      return "it is a leaked secret: rotate the credential first, since the fix only removes it from the code";
     default:
       return reason;
   }

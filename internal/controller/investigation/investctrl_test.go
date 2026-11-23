@@ -5,6 +5,7 @@ package investigation
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -417,6 +418,66 @@ func TestApplyRoutesVerdicts(t *testing.T) {
 			}
 			if inv.Status.Report == "" {
 				t.Error("report not stamped on the child")
+			}
+		})
+	}
+}
+
+// A leaked secret routes more conservatively: an ignore resolves the alert
+// on GitHub only above the confidence threshold, and a remediate never runs
+// unattended, however confident.
+func TestApplyRoutesSecretVerdicts(t *testing.T) {
+	cases := []struct {
+		name       string
+		rec        string
+		reason     string
+		confidence float64
+		wantPhase  v1alpha1.Phase
+		wantHolds  []v1alpha1.HoldReason
+		wantReason v1alpha1.DismissReason
+	}{
+		{
+			name: "confident ignore dismisses with its reason", rec: "ignore", reason: "used_in_tests",
+			confidence: 0.9, wantPhase: v1alpha1.PhaseDismissed, wantReason: v1alpha1.DismissUsedInTests,
+		},
+		{
+			name: "unknown reason is dropped", rec: "ignore", reason: "revoked",
+			confidence: 0.9, wantPhase: v1alpha1.PhaseDismissed,
+		},
+		{
+			name: "low-confidence ignore hands off", rec: "ignore", reason: "false_positive",
+			confidence: 0.5, wantPhase: v1alpha1.PhaseHandedOff, wantReason: v1alpha1.DismissFalsePositive,
+		},
+		{
+			name: "confident remediate still holds for rotation", rec: "remediate", confidence: 0.95,
+			wantPhase: v1alpha1.PhaseAwaitingApproval, wantHolds: []v1alpha1.HoldReason{v1alpha1.HoldSecretRotation},
+		},
+		{
+			name: "low-confidence remediate holds for both", rec: "remediate", confidence: 0.5,
+			wantPhase: v1alpha1.PhaseAwaitingApproval,
+			wantHolds: []v1alpha1.HoldReason{v1alpha1.HoldLowConfidence, v1alpha1.HoldSecretRotation},
+		},
+		{name: "manual hands off", rec: "manual", confidence: 0.9, wantPhase: v1alpha1.PhaseHandedOff},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			events := investigationEvent(tc.rec, tc.confidence, false)
+			events[0].Investigation.DismissReason = tc.reason
+			runner := &fakeRunner{done: true, events: events}
+			objs := investigationFixture()
+			objs[0].(*v1alpha1.Finding).Spec.Category = v1alpha1.FindingCategorySecret
+			r, c := newInvestigation(t, runner, objs...)
+			applyOnce(t, r)
+
+			f := getF(t, c)
+			if f.Status.Phase != tc.wantPhase {
+				t.Errorf("phase = %q, want %q", f.Status.Phase, tc.wantPhase)
+			}
+			if got := f.Status.Investigation.HoldReasons; !slices.Equal(got, tc.wantHolds) {
+				t.Errorf("holds = %v, want %v", got, tc.wantHolds)
+			}
+			if got := f.Status.Investigation.DismissReason; got != tc.wantReason {
+				t.Errorf("dismiss reason = %q, want %q", got, tc.wantReason)
 			}
 		})
 	}

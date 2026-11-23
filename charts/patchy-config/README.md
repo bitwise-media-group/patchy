@@ -45,6 +45,8 @@ integrations:
           approveComment: /approve
         codeScanningAlerts:
           enabled: true
+        # secretScanningAlerts:     # leaked credentials (secret_scanning_alert)
+        #   enabled: true
 
 forges:
   - name: github

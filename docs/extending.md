@@ -34,8 +34,9 @@ tool's API offers, and hands the **integration-controller** a normalised finding
 - locations
 - the evidence that becomes the Finding's description and the tracking issue's body
 
-The built-in `ghas` handler does this for `code_scanning_alert` deliveries. `gcp-scc` does it for Security Command
-Center notifications, which need no API call at all because the notification carries everything.
+The built-in `ghas` handler does this for `code_scanning_alert` deliveries, and `ghas-secrets` for
+`secret_scanning_alert` deliveries. `gcp-scc` does it for Security Command Center notifications, which need no API call
+at all because the notification carries everything.
 
 The interface is small:
 
@@ -56,12 +57,20 @@ repository is allowed. It goes through triage and is handed to a human instead o
 repository later, from an enhancer. A finding that names neither is not allowed, because there would be nothing to
 accumulate it against, so ingest rejects it.
 
+**Some findings are leaked secrets.** A source sets `Finding.Category` to `source.CategorySecret` for a leaked
+credential. Downstream branches on the category, never on the source id: the investigation gets the secret-triage
+prompt, an `ignore` dismisses only above the confidence threshold, and a `remediate` always waits for human approval
+because the real fix is rotation. Such a source must never put the secret value in any field. It locates the value
+instead (`Location` carries columns as well as lines), and the agent pod scrubs the located literal from everything it
+emits. A resolver receives the investigation's reason as one of the canonical `source.Reason*` values and maps it onto
+its tool's vocabulary.
+
 A source may also implement `source.Resolver` (`Resolve(ctx, alerts, verdict)`), the optional write-back. Write-back
 tells the original tool what patchy decided, so a finding dismissed here does not stay open there. `ghas` implements it
-by dismissing the code-scanning alert. The pipeline groups a finding's alerts by the source recorded on each one and
-hands each source only its own alerts. So which source an alert came from is recorded at ingest, never guessed from the
-shape of an identifier. If a source implements no write-back, the pipeline skips that step. A source that only reads is
-still a complete source.
+by dismissing the code-scanning alert, and `ghas-secrets` by resolving the secret-scanning alert. The pipeline groups a
+finding's alerts by the source recorded on each one and hands each source only its own alerts. So which source an alert
+came from is recorded at ingest, never guessed from the shape of an identifier. If a source implements no write-back,
+the pipeline skips that step. A source that only reads is still a complete source.
 
 A source that can list its tool's open alerts may implement `source.Lister`
 (`List(ctx, repos, yield) (complete bool, err error)`). This powers the

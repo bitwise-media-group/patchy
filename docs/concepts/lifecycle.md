@@ -20,7 +20,7 @@ closed without a change.
 | <span class="pt-pill pt-pill--soil">Opened</span>            | Ingested from the first alert; accumulating, awaiting enhancement                                             |
 | <span class="pt-pill pt-pill--seedling">Enhanced</span>      | The enhancer chain ran; ownership and infrastructure context recorded                                         |
 | <span class="pt-pill pt-pill--seedling">Investigating</span> | An `Investigation` child exists (creating the child is the lease); the analysis Job runs                      |
-| <span class="pt-pill pt-pill--amber">AwaitingApproval</span> | Verdict is `remediate` but below the confidence threshold, or held for a breaking change                      |
+| <span class="pt-pill pt-pill--amber">AwaitingApproval</span> | Verdict is `remediate` but below the confidence threshold, held for a breaking change, or a leaked secret     |
 | <span class="pt-pill pt-pill--seedling">Queued</span>        | Admitted to the remediation queue; waiting for a priority-ordered slot                                        |
 | <span class="pt-pill pt-pill--seedling">Remediating</span>   | A `Remediation` child holds a slot; the remediation Job runs                                                  |
 | <span class="pt-pill pt-pill--seedling">InReview</span>      | Branch pushed, pull request open; humans review                                                               |
@@ -50,6 +50,17 @@ works out the 0–100 scheduling priority from the ratings, and routes the findi
 | `remediate`, confidence below the threshold, or a breaking change | `AwaitingApproval`                                                      |
 | `remediate`, confidence at or above the threshold (0.75)          | `Queued`                                                                |
 | Stage outcome not `ok`                                            | `Enhanced` to retry while attempts remain, then `Failed`                |
+
+A leaked secret (a finding with `spec.category: secret`, from
+[GitHub secret scanning](../integrations/sources/github.md#secret-scanning)) routes more cautiously, because its real
+fix is rotating the credential, which no pull request can do:
+
+| Secret verdict                      | Finding moves to                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `ignore`, at or above the threshold | `Dismissed`: the alerts are resolved with the agent's `dismiss_reason`         |
+| `ignore`, below the threshold       | `HandedOff`: a human decides whether the credential is live                    |
+| `remediate`, however confident      | `AwaitingApproval` with the `secretRotation` hold; approval opens a cleanup PR |
+| `manual`                            | `HandedOff`                                                                    |
 
 A partial report is never trusted. The outcomes other than `ok` (`runtime_error`, `timeout`, `budget_exceeded`,
 `report_missing`, `report_invalid`) always retry or fail. They never route on whatever frontmatter survived. The
@@ -114,9 +125,9 @@ Each controller owns its own edges. Grouped by writer:
 | `Enhanced`      | `Investigating`    | The gate admits it (accumulation closed, minimum age); `Investigation` made |
 | `Investigating` | `Enhanced`         | Recoverable Job failure with attempts left                                  |
 | `Investigating` | `Queued`           | Verdict `remediate`, confident                                              |
-| `Investigating` | `AwaitingApproval` | Verdict `remediate`, below the threshold or a breaking change               |
-| `Investigating` | `Dismissed`        | Verdict `ignore`                                                            |
-| `Investigating` | `HandedOff`        | Verdict `manual`                                                            |
+| `Investigating` | `AwaitingApproval` | Verdict `remediate`, below the threshold, a breaking change, or a secret    |
+| `Investigating` | `Dismissed`        | Verdict `ignore` (for a secret, only at or above the threshold)             |
+| `Investigating` | `HandedOff`        | Verdict `manual`, or a secret's `ignore` below the threshold                |
 | `Investigating` | `Failed`           | Attempts exhausted                                                          |
 | `Failed`        | `Enhanced`         | Human retry of a failed investigation                                       |
 

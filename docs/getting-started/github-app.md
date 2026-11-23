@@ -17,27 +17,29 @@ fill in:
 
 Grant these permissions and no others:
 
-| Permission               | Access       | Why                                                          |
-| ------------------------ | ------------ | ------------------------------------------------------------ |
-| **Code scanning alerts** | Read & write | Read alert detail; dismiss false positives                   |
-| **Issues**               | Read & write | The tracking projection: open, label, comment, close         |
-| **Contents**             | Read & write | Download the repository archive; push the remediation branch |
-| **Pull requests**        | Read & write | Open the pull request a human reviews                        |
-| **Metadata**             | Read         | Mandatory for every App                                      |
+| Permission                 | Access       | Why                                                                 |
+| -------------------------- | ------------ | ------------------------------------------------------------------- |
+| **Code scanning alerts**   | Read & write | Read alert detail; dismiss false positives                          |
+| **Secret scanning alerts** | Read & write | Read leaked-secret alerts (value hidden); resolve confident ignores |
+| **Issues**                 | Read & write | The tracking projection: open, label, comment, close                |
+| **Contents**               | Read & write | Download the repository archive; push the remediation branch        |
+| **Pull requests**          | Read & write | Open the pull request a human reviews                               |
+| **Metadata**               | Read         | Mandatory for every App                                             |
 
 ## Webhook events
 
-Subscribe to these four events:
+Subscribe to these events:
 
-| Event                 | Purpose                                                              |
-| --------------------- | -------------------------------------------------------------------- |
-| `code_scanning_alert` | New findings arrive and accumulate into `Finding` resources          |
-| `issues`              | Human signals on the tracking issue: close hands off, reopen revives |
-| `issue_comment`       | The `/approve` release for held findings                             |
-| `pull_request`        | Close the loop when the remediation PR merges (or closes unmerged)   |
+| Event                   | Purpose                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `code_scanning_alert`   | New findings arrive and accumulate into `Finding` resources                                                                                |
+| `secret_scanning_alert` | Leaked credentials arrive as secret-category findings (optional; see [secret scanning](../integrations/sources/github.md#secret-scanning)) |
+| `issues`                | Human signals on the tracking issue: close hands off, reopen revives                                                                       |
+| `issue_comment`         | The `/approve` release for held findings                                                                                                   |
+| `pull_request`          | Close the loop when the remediation PR merges (or closes unmerged)                                                                         |
 
-The **integration-controller** consumes all four. It is the only webhook receiver in the system. Webhooks do not drive
-pipeline progress; the reconcile loops do. The webhook path carries only ingestion and human-in-the-loop signals.
+The **integration-controller** consumes all of them. It is the only webhook receiver in the system. Webhooks do not
+drive pipeline progress; the reconcile loops do. The webhook path carries only ingestion and human-in-the-loop signals.
 
 ## The webhook URL
 

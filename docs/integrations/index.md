@@ -25,14 +25,14 @@ An `Integration` plays up to three roles, and this section documents each role o
 
 ## Providers and their roles
 
-| Provider     | Finding source                        | Verdict write-back                                              | Context enhancer                                        | Forge                   | Tracking issues          |
-| ------------ | ------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------- | ----------------------- | ------------------------ |
-| GitHub       | [code scanning](sources/github.md)    | [alert dismissal](sources/github.md#what-patchy-writes-back)    | no                                                      | [yes](forges/github.md) | [yes](sources/github.md) |
-| Google Cloud | [SCC](sources/google-scc.md)          | [mute (not yet)](sources/google-scc.md#what-is-not-implemented) | [Google Cloud Asset Inventory](enhancers/google-cai.md) | no                      | no                       |
-| Wiz          | [Issues + Defend](sources/wiz.md)     | [issue rejection](sources/wiz.md#write-back-optional)           | no                                                      | no                      | no                       |
-| AWS          | no                                    | no                                                              | [resource tags](enhancers/aws.md)                       | no                      | no                       |
-| Azure        | no                                    | no                                                              | [resource tags](enhancers/azure.md)                     | no                      | no                       |
-| Generic HTTP | [inbound webhook](sources/generic.md) | [resolver](sources/generic.md#outbound-the-resolver-call)       | [enhance](enhancers/generic.md)                         | no                      | no                       |
+| Provider     | Finding source                                | Verdict write-back                                              | Context enhancer                                        | Forge                   | Tracking issues          |
+| ------------ | --------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------- | ----------------------- | ------------------------ |
+| GitHub       | [code and secret scanning](sources/github.md) | [alert dismissal](sources/github.md#what-patchy-writes-back)    | no                                                      | [yes](forges/github.md) | [yes](sources/github.md) |
+| Google Cloud | [SCC](sources/google-scc.md)                  | [mute (not yet)](sources/google-scc.md#what-is-not-implemented) | [Google Cloud Asset Inventory](enhancers/google-cai.md) | no                      | no                       |
+| Wiz          | [Issues + Defend](sources/wiz.md)             | [issue rejection](sources/wiz.md#write-back-optional)           | no                                                      | no                      | no                       |
+| AWS          | no                                            | no                                                              | [resource tags](enhancers/aws.md)                       | no                      | no                       |
+| Azure        | no                                            | no                                                              | [resource tags](enhancers/azure.md)                     | no                      | no                       |
+| Generic HTTP | [inbound webhook](sources/generic.md)         | [resolver](sources/generic.md#outbound-the-resolver-call)       | [enhance](enhancers/generic.md)                         | no                      | no                       |
 
 A provider that spans several columns is still **one Integration**. The `google-cloud` resource carries both the SCC
 source and the Google Cloud Asset Inventory enhancer, and you enable each one separately. A `generic` resource can be a

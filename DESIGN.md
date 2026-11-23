@@ -5,7 +5,9 @@ resources as the state machine and GitHub issues as a human-facing projection.
 
 ## Key requirements
 
-1. The solution ingests finding reports from GitHub Advanced Security (namely CodeQL findings), Google Cloud
+1. The solution ingests finding reports from GitHub Advanced Security (CodeQL code scanning, and secret scanning,
+   whose leaked credentials carry the `secret` category, never carry the secret value, and are never cleaned up
+   without human approval, since the real fix is rotation), Google Cloud
    Security Command Center, and Wiz (Issues and Defend detections), and is tool-agnostic through a plugin
    architecture — including a `generic` provider through which any external HTTP process (a scheduled job over a
    warehouse store, say — sources that are not event-driven) delivers findings in patchy's own documented contract,
@@ -173,8 +175,8 @@ The tracking-issue projection stamps a trimmed, human-facing label vocabulary (r
 is the state):
 
 ```txt
-security-source: "ghas"                          # the source handler that ingested the finding
-security-advisory: <CWE#,CVE#,GHSA#>             # one label per advisory identifier
+security-source: "ghas|ghas-secrets|..."        # the source handler that ingested the finding
+security-advisory: <CWE#,CVE#,GHSA#,secret:type> # one label per advisory identifier
 security-finding: "opened|enhanced|investigating|queued|remediating|in-review|remediated|awaiting-approval|dismissed|handed-off|failed"
 security-severity: "low|medium|high|critical"
 security-priority: "low|medium|high|critical"

@@ -1,7 +1,7 @@
-# GitHub code scanning
+# GitHub code and secret scanning
 
-GitHub is the only **two-way** source. Findings come in from code scanning, and patchy writes back to GitHub: tracking
-issues, dismissals, remediation branches and pull requests. Every other source is one-way.
+GitHub is the only **two-way** source. Findings come in from code scanning and secret scanning, and patchy writes back
+to GitHub: tracking issues, dismissals, remediation branches and pull requests. Every other source is one-way.
 
 !!! info "One provider, two resources"
 
@@ -34,6 +34,8 @@ spec:
     # baseURL: https://ghes.example.com/api/v3   # GHES only
     codeScanningAlerts:
       enabled: true # ingestion, and dismissal on an "ignore" verdict
+    secretScanningAlerts:
+      enabled: true # leaked credentials; see "Secret scanning" below
     issues:
       enabled: true # the tracking projection and the human signals back
       approveComment: /approve
@@ -64,6 +66,55 @@ Advisories are ordered with the most authoritative first. A rule with no recogni
 `rule:<rule id>`, so accumulation still has a stable key. Alerts in the same advisory family against the same repository
 fold into one `Finding` until the accumulation window closes.
 
+## Secret scanning
+
+`secretScanningAlerts` ingests `secret_scanning_alert` deliveries as findings from the `ghas-secrets` source. A leaked
+credential is not a code flaw. The real fix is rotating or revoking it with its issuer, and patchy cannot do that. So
+these findings take a more cautious path through the pipeline than code-scanning ones.
+
+**The secret value never enters patchy.** The delivery carries the plaintext, so the receiver reads only the action, the
+alert number and the repository from it. It then fetches the alert and its locations again with `hide_secret=true`, and
+the client has no field to keep a value in even if one came back. The value is not in the `Finding`, the tracking issue,
+the prompts or the logs. The agent pod does hold the repository, so it can read the secret. The Job therefore carries
+the secret's locations (path, lines and columns), and agent-runner slices the literal out of the working tree and scrubs
+it from the transcript, the report and the envelope.
+
+| Finding field             | From                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------ |
+| `spec.source`             | `ghas-secrets`                                                                                   |
+| `spec.category`           | `secret`                                                                                         |
+| `spec.advisories`         | `secret:<secret_type>`, e.g. `secret:github_personal_access_token`                               |
+| `spec.title`              | `<secret type display name> exposed`                                                             |
+| `spec.alerts[].locations` | each commit location's path, lines and columns (other kinds are listed in the description)       |
+| `spec.severity`           | `critical` if the credential is `active` or publicly leaked, `medium` if `inactive`, else `high` |
+| `spec.description`        | type, provider, validity, the GitHub flags, every location, and rotation-first guidance          |
+
+Each leaked instance is its own alert. Alerts of the same secret type in one repository accumulate into one finding.
+
+How a secret finding is routed after the investigation:
+
+| Verdict                             | Next phase         | What happens                                                          |
+| ----------------------------------- | ------------------ | --------------------------------------------------------------------- |
+| `ignore`, at or above the threshold | `Dismissed`        | The alert is **resolved** on GitHub with the agent's `dismiss_reason` |
+| `ignore`, below the threshold       | `HandedOff`        | A human decides; the alert stays open                                 |
+| `remediate`                         | `AwaitingApproval` | Always held (`secretRotation`), however confident the investigation   |
+| `manual`                            | `HandedOff`        | A human handles it                                                    |
+
+The investigation decides whether the value is a live credential, a placeholder or example, or a test fixture, whether
+it is still at HEAD, and what it grants. On an `ignore` it sets `dismiss_reason` to `false_positive`, `used_in_tests` or
+`wont_fix`, which becomes the GitHub resolution. The confidence threshold is the same `--confidence-threshold` the
+remediation gate uses.
+
+An approved `remediate` opens a **cleanup pull request**. It replaces the literal with a configuration or secret-store
+reference, never rewrites history, and opens with a "Rotate this credential before merging" warning. Approve it only
+once the credential has been rotated. The removed line does appear in the change itself and in the run archive's patch.
+That is the same content the repository and its history already hold.
+
+Only the `created` and `reopened` actions produce a finding. `resolved`, `validated`, `publicly_leaked` and the other
+actions change state on an alert patchy already has, and are not acted on yet: a secret that becomes publicly leaked
+after ingest keeps the severity it arrived with. A `category` field in the [generic source contract](generic.md), so
+that other tools can raise secret findings, is also not there yet.
+
 ## What patchy writes back
 
 Patchy writes back in three ways, and each one is gated differently:
@@ -72,7 +123,8 @@ Patchy writes back in three ways, and each one is gated differently:
   [projected labels](../../concepts/issue-labels.md), enrichments and reports as comments, and open/closed state. This
   is strictly one-way. Patchy never parses issue state back into pipeline state. Only the explicit signals below count.
 - **Alert dismissal.** An `ignore` verdict closes the code-scanning alert as a false positive. This is the write-back
-  half of the `codeScanningAlerts` capability. The SCC equivalent (muting) is
+  half of the `codeScanningAlerts` capability. A secret-scanning alert is resolved instead, with the investigation's
+  reason, and only above the confidence threshold. The SCC equivalent (muting) is
   [not yet implemented](google-scc.md#what-is-not-implemented).
 - **The remediation branch and pull request.** These are pushed through the [`Forge`](../forges/github.md) rather than
   the `Integration`, with a different credential and a different controller.
@@ -152,8 +204,9 @@ what Reset deletes.
 
 The sweep can only re-send deliveries that happened. Alerts raised _before_ the App was installed on (or associated
 with) a repository never produced a delivery, so no replay finds them. The backfill finds them. It is a one-shot walk of
-the provider's **open** alerts through the list API. It ingests each alert in the same way a webhook delivery would.
-This is idempotent, so alerts that already have findings fold into them.
+the provider's **open** alerts through the list API: code-scanning alerts, secret-scanning alerts, or both, by which
+capabilities the Integration enables. It ingests each alert in the same way a webhook delivery would. This is
+idempotent, so alerts that already have findings fold into them.
 
 Request it by setting `spec.backfill`. You can do this from the status page's configuration view, with
 `patchy backfill <integration>`, or directly. The RBAC verb is `backfill` on `integrations`, and the
@@ -184,7 +237,8 @@ How the backfill behaves:
   from.
 - **Only open alerts** are listed. Dismissed and fixed alerts are not backfilled.
 - The list API leaves out the rule-help markdown that a webhook-driven ingest fetches for each alert. So backfilled
-  findings fall back to the rule description. Everything else (accumulation, labels, tracking issues) behaves the same.
+  findings fall back to the rule description. A backfilled secret alert carries only its first detected location, where
+  a webhook-driven ingest fetches them all. Everything else (accumulation, labels, tracking issues) behaves the same.
 
 ## GitHub Enterprise Server
 
@@ -200,8 +254,8 @@ spec:
 ## Egress proxy
 
 `spec.github.proxy` routes all of this integration's GitHub traffic through an HTTP/HTTPS forward proxy. That covers
-issue projection, alert fetches and dismissals, the delivery sweep, and the backfill. Use it for GitHub Enterprise Cloud
-organizations behind an IP allowlist:
+issue projection, alert fetches, dismissals and resolutions, the delivery sweep, and the backfill. Use it for GitHub
+Enterprise Cloud organizations behind an IP allowlist:
 
 ```yaml
 spec:

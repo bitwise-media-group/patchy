@@ -193,7 +193,7 @@ Finally, point the GitHub delivery tunnel at the Ingress instead of the NodePort
 
 ```sh
 gh webhook forward --repo <owner>/<repo> \
-  --events code_scanning_alert,issues,issue_comment,pull_request \
+  --events code_scanning_alert,secret_scanning_alert,issues,issue_comment,pull_request \
   --url http://localhost/github/webhooks
 ```
 

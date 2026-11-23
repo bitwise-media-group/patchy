@@ -49,6 +49,10 @@ integrations: []
 #               # with no resolvable repository get their tracking issue
 #           codeScanningAlerts:
 #               enabled: true       # scanner ingestion + alert dismissal
+#           # secretScanningAlerts:   # leaked credentials: investigated, a
+#           #     enabled: true       # confident ignore resolves the alert, a
+#           # cleanup PR only ever after /approve; subscribe the App to the
+#           # secret_scanning_alert event (Secret scanning alerts: read & write)
 #
 # Security Command Center has no webhook. A Pub/Sub push subscription forwards
 # each notification to /google-cloud/webhooks, authenticated by the OIDC token

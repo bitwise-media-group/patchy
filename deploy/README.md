@@ -106,15 +106,17 @@ Register one App for the whole pipeline and install it on the repositories patch
 
 **Repository permissions:**
 
-| Permission           | Access       | Why                                                          |
-| -------------------- | ------------ | ------------------------------------------------------------ |
-| Code scanning alerts | Read & write | read alert detail; dismiss false positives (DESIGN.md req 6) |
-| Issues               | Read & write | the tracking projection: open, label, comment, close         |
-| Contents             | Read & write | download the repository archive; push the remediation branch |
-| Pull requests        | Read & write | open the PR the human reviews                                |
-| Metadata             | Read         | mandatory                                                    |
+| Permission             | Access       | Why                                                                        |
+| ---------------------- | ------------ | -------------------------------------------------------------------------- |
+| Code scanning alerts   | Read & write | read alert detail; dismiss false positives (DESIGN.md req 6)               |
+| Secret scanning alerts | Read & write | read leaked-secret alerts with the value hidden; resolve confident ignores |
+| Issues                 | Read & write | the tracking projection: open, label, comment, close                       |
+| Contents               | Read & write | download the repository archive; push the remediation branch               |
+| Pull requests          | Read & write | open the PR the human reviews                                              |
+| Metadata               | Read         | mandatory                                                                  |
 
-**Webhook events to subscribe:** `code_scanning_alert`, `issues`, `issue_comment`, `pull_request`.
+**Webhook events to subscribe:** `code_scanning_alert`, `secret_scanning_alert` (when `github.secretScanningAlerts` is
+enabled), `issues`, `issue_comment`, `pull_request`.
 
 **Webhook URL:** set exactly one, pointed at the integration-controller: `https://<your-host>/github/webhooks`. The
 integration-controller is the single receiver. It validates each delivery against the webhook secrets of your configured

@@ -13,7 +13,7 @@
 # 1. Integration: the external system patchy exchanges events with.
 #
 # The integration-controller validates each webhook delivery against this
-# object's secret, ingests code-scanning alerts into Findings, projects
+# object's secret, ingests code- and secret-scanning alerts into Findings, projects
 # Findings out as tracking issues, and applies the human signals (the
 # approve comment, issue close, PR merge) back onto the Findings.
 #
@@ -34,6 +34,8 @@
 #             approveComment: /approve
 #         codeScanningAlerts:
 #             enabled: true          # scanner ingestion + alert dismissal
+#         # secretScanningAlerts:      # leaked credentials; never carries the
+#         #     enabled: true          # value; cleanup PRs only after /approve
 #
 # ---------------------------------------------------------------------------
 # 2. Forge: repository access for clone (source-controller, read) and

@@ -14,7 +14,7 @@ colours or descriptions.
 
 | Key                       | Cardinality         | Values                                                                                                                                                                      |
 | ------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-source`         | single              | The source handler that ingested the finding, e.g. `ghas`, `gcp-scc`, `wiz-issues`, `wiz-defend`, or a generic Integration's name                                           |
+| `security-source`         | single              | The source handler that ingested the finding, e.g. `ghas`, `ghas-secrets`, `gcp-scc`, `wiz-issues`, `wiz-defend`, or a generic Integration's name                           |
 | `security-advisory`       | multi (one per id)  | The CWE, CVE and GHSA identifiers                                                                                                                                           |
 | `security-finding`        | single              | The phase, kebab-cased: `opened`, `enhanced`, `investigating`, `queued`, `awaiting-approval`, `remediating`, `in-review`, `remediated`, `dismissed`, `handed-off`, `failed` |
 | `security-severity`       | single              | `low` \| `medium` \| `high` \| `critical` (assigned by the scanner)                                                                                                         |

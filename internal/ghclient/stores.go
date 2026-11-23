@@ -37,6 +37,19 @@ type AlertStore interface {
 	DismissAlert(ctx context.Context, repo Repo, number int, reason, comment string) error
 }
 
+// SecretAlertStore is the secret-scanning surface. No method returns or
+// accepts a secret value.
+type SecretAlertStore interface {
+	// GetSecretAlert fetches one secret-scanning alert and its locations.
+	GetSecretAlert(ctx context.Context, repo Repo, number int) (*SecretAlert, error)
+	// ResolveSecretAlert resolves an alert; resolution must be one of
+	// GitHub's false_positive, used_in_tests, wont_fix or revoked.
+	ResolveSecretAlert(ctx context.Context, repo Repo, number int, resolution, comment string) error
+	// ReopenSecretAlert undoes a resolution; an open or missing alert is
+	// success.
+	ReopenSecretAlert(ctx context.Context, repo Repo, number int) error
+}
+
 // RepoStore is the repository/PR/search surface.
 type RepoStore interface {
 	// DefaultBranch returns the repository's default branch name.
@@ -51,7 +64,8 @@ type RepoStore interface {
 }
 
 var (
-	_ IssueStore = (*Client)(nil)
-	_ AlertStore = (*Client)(nil)
-	_ RepoStore  = (*Client)(nil)
+	_ IssueStore       = (*Client)(nil)
+	_ AlertStore       = (*Client)(nil)
+	_ SecretAlertStore = (*Client)(nil)
+	_ RepoStore        = (*Client)(nil)
 )

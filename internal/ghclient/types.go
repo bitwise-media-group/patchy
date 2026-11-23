@@ -67,3 +67,38 @@ type Alert struct {
 	Snippet         string
 	MostRecentSHA   string
 }
+
+// SecretAlert is patchy's view of a secret-scanning alert. It deliberately
+// has no field for the secret value: the client asks GitHub to hide it
+// (hide_secret=true) and never reads it even if one comes back, so the
+// value cannot reach a Finding, an issue, a prompt or a log through here.
+type SecretAlert struct {
+	Number                 int
+	SecretType             string
+	SecretTypeDisplayName  string
+	Provider               string
+	Validity               string
+	PubliclyLeaked         bool
+	MultiRepo              bool
+	PushProtectionBypassed bool
+	State                  string
+	HTMLURL                string
+	Locations              []SecretLocation
+}
+
+// SecretLocation is one place a secret was found. Only commit and
+// wiki-commit locations name a file; the other kinds (an issue body, a pull
+// request comment, a discussion) carry just the URL of where it was seen.
+type SecretLocation struct {
+	// Type is GitHub's location kind ("commit", "issue_body", ...).
+	Type        string
+	Path        string
+	StartLine   int
+	EndLine     int
+	StartColumn int
+	EndColumn   int
+	CommitSHA   string
+	// URL links to the location on GitHub: the blob for a commit location,
+	// the issue, comment or discussion otherwise.
+	URL string
+}

@@ -103,15 +103,37 @@ type AppAlertEnumerator struct {
 func (e *AppAlertEnumerator) Enumerate(
 	ctx context.Context, repos []string, yield func(Repo, *Alert) bool,
 ) (complete bool, err error) {
-	accounts, err := e.App.InstallationAccounts(ctx)
+	return appWalk(ctx, e.App, e.MaxAlerts, repos, codeScanningLists, yield)
+}
+
+// alertLists are one alert family's two listings: organization-wide and
+// per repository. The enumeration walks are generic over them, so code
+// scanning and secret scanning share one budget, filter and fan-out.
+type alertLists[A any] struct {
+	org  func(c *Client, ctx context.Context, org string, yield func(Repo, A) bool) (bool, error)
+	repo func(c *Client, ctx context.Context, repo Repo, yield func(A) bool) (bool, error)
+}
+
+// codeScanningLists are the code-scanning alert listings.
+var codeScanningLists = alertLists[*Alert]{
+	org:  (*Client).ListOrgAlerts,
+	repo: (*Client).ListRepoAlerts,
+}
+
+// appWalk is the App enumeration (AppAlertEnumerator's contract) over one
+// alert family.
+func appWalk[A any](
+	ctx context.Context, app *App, maxAlerts int, repos []string, lists alertLists[A], yield func(Repo, A) bool,
+) (complete bool, err error) {
+	accounts, err := app.InstallationAccounts(ctx)
 	if err != nil {
 		return false, err
 	}
-	budget := e.MaxAlerts
+	budget := maxAlerts
 	if budget <= 0 {
 		budget = DefaultMaxAlerts
 	}
-	metered := func(r Repo, a *Alert) bool {
+	metered := func(r Repo, a A) bool {
 		if budget <= 0 {
 			return false
 		}
@@ -126,11 +148,11 @@ func (e *AppAlertEnumerator) Enumerate(
 		var c bool
 		switch {
 		case len(entries) > 0 && !hasBareOwner(entries):
-			c, err = listMatchingRepoAlerts(ctx, acct.Client, entries, metered)
+			c, err = listMatchingRepos(ctx, acct.Client, entries, lists, metered)
 		case acct.Org:
-			c, err = acct.Client.ListOrgAlerts(ctx, acct.Account, metered)
+			c, err = lists.org(acct.Client, ctx, acct.Account, metered)
 		default:
-			c, err = listMatchingRepoAlerts(ctx, acct.Client, nil, metered)
+			c, err = listMatchingRepos(ctx, acct.Client, nil, lists, metered)
 		}
 		if err != nil {
 			return false, err
@@ -142,12 +164,12 @@ func (e *AppAlertEnumerator) Enumerate(
 	return true, nil
 }
 
-// listMatchingRepoAlerts enumerates the installation's repository
-// inventory and walks the alerts of the repositories matching entries
-// (all of them when entries is empty). This walk's cost scales with
-// repository count rather than alert count.
-func listMatchingRepoAlerts(
-	ctx context.Context, c *Client, entries []string, yield func(Repo, *Alert) bool,
+// listMatchingRepos enumerates the installation's repository inventory
+// and walks the alerts of the repositories matching entries (all of them
+// when entries is empty). This walk's cost scales with repository count
+// rather than alert count.
+func listMatchingRepos[A any](
+	ctx context.Context, c *Client, entries []string, lists alertLists[A], yield func(Repo, A) bool,
 ) (complete bool, err error) {
 	repos, allRepos, err := c.InstallationRepos(ctx)
 	if err != nil {
@@ -157,7 +179,7 @@ func listMatchingRepoAlerts(
 		if len(entries) > 0 && !RepoMatches(entries, repo) {
 			continue
 		}
-		c2, err := c.ListRepoAlerts(ctx, repo, func(a *Alert) bool { return yield(repo, a) })
+		c2, err := lists.repo(c, ctx, repo, func(a A) bool { return yield(repo, a) })
 		if err != nil {
 			return false, err
 		}
@@ -209,12 +231,20 @@ type PATAlertEnumerator struct {
 func (e *PATAlertEnumerator) Enumerate(
 	ctx context.Context, repos []string, yield func(Repo, *Alert) bool,
 ) (complete bool, err error) {
+	return patWalk(ctx, e.Client, e.MaxAlerts, repos, codeScanningLists, yield)
+}
+
+// patWalk is the PAT enumeration (PATAlertEnumerator's contract) over one
+// alert family.
+func patWalk[A any](
+	ctx context.Context, c *Client, maxAlerts int, repos []string, lists alertLists[A], yield func(Repo, A) bool,
+) (complete bool, err error) {
 	if len(repos) == 0 {
 		return false, errors.New(
 			"ghclient: a PAT backfill cannot discover repositories; list exact owner/name entries",
 		)
 	}
-	budget := e.MaxAlerts
+	budget := maxAlerts
 	if budget <= 0 {
 		budget = DefaultMaxAlerts
 	}
@@ -226,7 +256,7 @@ func (e *PATAlertEnumerator) Enumerate(
 			)
 		}
 		repo := Repo{Owner: owner, Name: name}
-		c, err := e.Client.ListRepoAlerts(ctx, repo, func(a *Alert) bool {
+		done, err := lists.repo(c, ctx, repo, func(a A) bool {
 			if budget <= 0 {
 				return false
 			}
@@ -236,7 +266,7 @@ func (e *PATAlertEnumerator) Enumerate(
 		if err != nil {
 			return false, err
 		}
-		if !c {
+		if !done {
 			return false, nil
 		}
 	}
@@ -292,4 +322,40 @@ func hasBareOwner(entries []string) bool {
 		}
 	}
 	return false
+}
+
+// secretScanningLists are the secret-scanning alert listings.
+var secretScanningLists = alertLists[*SecretAlert]{
+	org:  (*Client).ListOrgSecretAlerts,
+	repo: (*Client).ListRepoSecretAlerts,
+}
+
+// AppSecretAlertEnumerator is AppAlertEnumerator for open secret-scanning
+// alerts. Every listing asks GitHub to hide the secret values.
+type AppSecretAlertEnumerator struct {
+	App *App
+	// MaxAlerts bounds the walk; <= 0 means DefaultMaxAlerts.
+	MaxAlerts int
+}
+
+// Enumerate walks the App's installations' open secret-scanning alerts.
+func (e *AppSecretAlertEnumerator) Enumerate(
+	ctx context.Context, repos []string, yield func(Repo, *SecretAlert) bool,
+) (complete bool, err error) {
+	return appWalk(ctx, e.App, e.MaxAlerts, repos, secretScanningLists, yield)
+}
+
+// PATSecretAlertEnumerator is PATAlertEnumerator for open secret-scanning
+// alerts: exact owner/name entries only.
+type PATSecretAlertEnumerator struct {
+	Client *Client
+	// MaxAlerts bounds the walk; <= 0 means DefaultMaxAlerts.
+	MaxAlerts int
+}
+
+// Enumerate walks the named repositories' open secret-scanning alerts.
+func (e *PATSecretAlertEnumerator) Enumerate(
+	ctx context.Context, repos []string, yield func(Repo, *SecretAlert) bool,
+) (complete bool, err error) {
+	return patWalk(ctx, e.Client, e.MaxAlerts, repos, secretScanningLists, yield)
 }

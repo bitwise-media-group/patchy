@@ -93,21 +93,41 @@ type Recorder struct {
 	truncated bool
 }
 
+// MinSecretLen is the shortest value Redact scrubs. A shorter one would
+// redact half of any text by accident.
+const MinSecretLen = 8
+
+// Scrubbable keeps the values long enough to scrub, in order.
+func Scrubbable(secrets []string) []string {
+	keep := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		if len(s) >= MinSecretLen {
+			keep = append(keep, s)
+		}
+	}
+	return keep
+}
+
+// Redact replaces every occurrence of each secret in text with Redacted,
+// in order, so a longer value listed before its own prefix is scrubbed
+// whole. Values shorter than MinSecretLen are left alone.
+func Redact(text string, secrets []string) string {
+	for _, s := range secrets {
+		if len(s) >= MinSecretLen {
+			text = strings.ReplaceAll(text, s, Redacted)
+		}
+	}
+	return text
+}
+
 // NewRecorder returns a recorder that hands each admitted turn to emit.
 // secrets are literal credential values scrubbed from every captured field:
 // the pod can hold secrets (the broker caller token, any credential-named
 // environment variable) and a tool result can echo them.
 func NewRecorder(limits Limits, secrets []string, emit func(Turn)) *Recorder {
-	keep := make([]string, 0, len(secrets))
-	for _, s := range secrets {
-		// A short or empty value would redact half the transcript.
-		if len(s) >= 8 {
-			keep = append(keep, s)
-		}
-	}
 	return &Recorder{
 		limits:  limits.resolve(StreamDefaults),
-		secrets: keep,
+		secrets: Scrubbable(secrets),
 		now:     time.Now,
 		emit:    emit,
 	}
@@ -159,20 +179,14 @@ func (r *Recorder) record(t Turn) {
 		return
 	}
 
-	text := string(ansi.Strip([]byte(t.Text)))
-	for _, s := range r.secrets {
-		text = strings.ReplaceAll(text, s, Redacted)
-	}
+	text := Redact(string(ansi.Strip([]byte(t.Text))), r.secrets)
 	if r.limits.MaxTurnBytes > 0 {
 		cut, did := Truncate(text, r.limits.MaxTurnBytes)
 		text, t.Truncated = cut, t.Truncated || did
 	}
 	t.Text = text
 	t.Tool = string(ansi.Strip([]byte(t.Tool)))
-	t.Path = string(ansi.Strip([]byte(t.Path)))
-	for _, s := range r.secrets {
-		t.Path = strings.ReplaceAll(t.Path, s, Redacted)
-	}
+	t.Path = Redact(string(ansi.Strip([]byte(t.Path))), r.secrets)
 	if t.Truncated {
 		r.truncated = true
 	}

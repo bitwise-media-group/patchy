@@ -40,8 +40,12 @@ type Agent struct {
 	// scrub holds literal secret values registered for transcript redaction
 	// beyond what the environment heuristic finds: the broker caller token,
 	// whose env var names (ANTHROPIC_CUSTOM_HEADERS, PATCHY_BROKER_TOKEN)
-	// the heuristic does not flag.
+	// the heuristic does not flag, and the located literals of a leaked
+	// secret (loadSecrets).
 	scrub []string
+	// secret marks a leaked-credential finding (the secrets.json handoff
+	// was present); the prompts use their secret variants.
+	secret bool
 }
 
 // New builds an Agent.
@@ -74,6 +78,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// The analysis stage: one event, no continuation. The controller
 		// routes on the verdict.
 		ev := a.investigate(ctx)
+		a.redactInvestigation(ev)
 		a.emit(envelope.Event{Type: envelope.TypeInvestigation, Investigation: ev})
 		return nil
 	}
@@ -86,6 +91,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	rev := a.remediate(ctx, params)
+	a.redactRemediation(rev)
 	a.emit(envelope.Event{Type: envelope.TypeRemediation, Remediation: rev})
 	return nil
 }
@@ -102,7 +108,7 @@ func (a *Agent) prepare() error {
 	if err := os.MkdirAll(filepath.Dir(a.cfg.investigationPath()), 0o755); err != nil {
 		return fmt.Errorf("workspace: %w", err)
 	}
-	return nil
+	return a.loadSecrets()
 }
 
 // remediate runs stage 2 and packages the changeset.
@@ -148,6 +154,7 @@ func (a *Agent) remediate(ctx context.Context, params remediationParams) *envelo
 		InvestigationPath: a.cfg.inputInvestigation(),
 		ReportPath:        a.cfg.remediationPath(),
 		CommitScriptPath:  a.cfg.commitScript(),
+		Secret:            a.secret,
 	})
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -405,6 +412,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 		ManualMaxTurns:    a.cfg.RemediateManualMaxTurns,
 		ManualTokenBudget: a.cfg.RemediateManualTokenBudget,
 		Calibration:       a.cfg.Calibration,
+		Secret:            a.secret,
 	})
 	if err != nil {
 		ev.Outcome = envelope.OutcomeRuntimeError
@@ -464,6 +472,7 @@ func (a *Agent) investigate(ctx context.Context) *envelope.Investigation {
 	ev.Likelihood = envelope.AnalysisResult{Rating: string(inv.Likelihood.Rating), Summary: inv.Likelihood.Summary}
 	ev.Impact = envelope.AnalysisResult{Rating: string(inv.Impact.Rating), Summary: inv.Impact.Summary}
 	ev.Recommendation = string(inv.Recommendation)
+	ev.DismissReason = string(inv.DismissReason)
 	ev.Priority = string(inv.Priority)
 	ev.Severity = string(inv.Severity)
 	ev.Confidence = *inv.Confidence

@@ -317,6 +317,61 @@ func TestPATAlertEnumerator(t *testing.T) {
 	}
 }
 
+// A repository code scanning never analyzed answers 404 "no analysis
+// found". That is an empty listing, so the walk moves on to the next
+// repository instead of failing the whole backfill. A 404 past the first
+// page is still an error: the listing vanished mid-walk.
+func TestAlertListingNotFoundIsEmpty(t *testing.T) {
+	notFound := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"no analysis found"}`))
+	}
+	mux, c := newFakeClient(t)
+	mux.HandleFunc("GET /repos/o/unscanned/code-scanning/alerts", notFound)
+	mux.HandleFunc("GET /repos/o/unscanned/secret-scanning/alerts", notFound)
+	mux.HandleFunc("GET /repos/o/r/code-scanning/alerts", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, `[{"number":5}]`)
+	})
+	mux.HandleFunc("GET /repos/o/r/secret-scanning/alerts", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, `[{"number":6}]`)
+	})
+	mux.HandleFunc("GET /repos/o/paged/code-scanning/alerts", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "2" {
+			notFound(w, r)
+			return
+		}
+		w.Header().Set("Link", `<`+r.URL.Path+`?page=2>; rel="next"`)
+		writeJSON(t, w, `[{"number":1}]`)
+	})
+
+	repos := []string{"o/unscanned", "o/r"}
+	var code []int
+	complete, err := (&PATAlertEnumerator{Client: c}).Enumerate(context.Background(), repos,
+		func(_ Repo, a *Alert) bool { code = append(code, a.Number); return true })
+	if err != nil || !complete {
+		t.Fatalf("code Enumerate() = (%v, %v), want (true, nil)", complete, err)
+	}
+	if want := []int{5}; !reflect.DeepEqual(code, want) {
+		t.Errorf("code Enumerate() yielded %v, want %v", code, want)
+	}
+
+	var secrets []int
+	complete, err = (&PATSecretAlertEnumerator{Client: c}).Enumerate(context.Background(), repos,
+		func(_ Repo, a *SecretAlert) bool { secrets = append(secrets, a.Number); return true })
+	if err != nil || !complete {
+		t.Fatalf("secret Enumerate() = (%v, %v), want (true, nil)", complete, err)
+	}
+	if want := []int{6}; !reflect.DeepEqual(secrets, want) {
+		t.Errorf("secret Enumerate() yielded %v, want %v", secrets, want)
+	}
+
+	if _, err := c.ListRepoAlerts(context.Background(), Repo{Owner: "o", Name: "paged"},
+		func(*Alert) bool { return true }); err == nil {
+		t.Error("ListRepoAlerts() with a page-2 404: error = nil, want non-nil")
+	}
+}
+
 // A PAT cannot discover repositories: an empty filter and a bare prefix
 // are both errors, not empty results.
 func TestPATAlertEnumeratorRejectsPrefixes(t *testing.T) {

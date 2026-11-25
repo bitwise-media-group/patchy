@@ -267,15 +267,20 @@ func secretListQuery(after string, page int) string {
 }
 
 // listSecretPages walks a secret-alert listing at base, calling each for
-// every alert until it returns false or the listing is exhausted.
+// every alert until it returns false or the listing is exhausted. With
+// emptyOn404, a 404 on the first page is an empty listing (ListRepoAlerts'
+// rule: the repository has nothing to list).
 func (c *Client) listSecretPages(
-	ctx context.Context, base, what string, each func(*secretAlertJSON) bool,
+	ctx context.Context, base, what string, emptyOn404 bool, each func(*secretAlertJSON) bool,
 ) (complete bool, err error) {
 	after, page := "", 0
 	for {
 		var alerts []*secretAlertJSON
 		resp, err := c.getJSON(ctx, base+"?"+secretListQuery(after, page), &alerts)
 		if err != nil {
+			if emptyOn404 && after == "" && page == 0 && IsNotFound(err) {
+				return true, nil
+			}
 			return false, fmt.Errorf("ghclient: list %s secret alerts: %w", what, err)
 		}
 		for _, a := range alerts {
@@ -300,18 +305,18 @@ func (c *Client) ListOrgSecretAlerts(
 	ctx context.Context, org string, yield func(Repo, *SecretAlert) bool,
 ) (complete bool, err error) {
 	base := fmt.Sprintf("orgs/%s/secret-scanning/alerts", url.PathEscape(org))
-	return c.listSecretPages(ctx, base, org+" org", func(j *secretAlertJSON) bool {
+	return c.listSecretPages(ctx, base, org+" org", false, func(j *secretAlertJSON) bool {
 		return yield(j.repo(), j.toSecretAlert())
 	})
 }
 
 // ListRepoSecretAlerts walks one repository's open secret-scanning alerts,
-// with ListRepoAlerts' contract.
+// with ListRepoAlerts' contract (a first-page 404 is an empty listing).
 func (c *Client) ListRepoSecretAlerts(
 	ctx context.Context, repo Repo, yield func(*SecretAlert) bool,
 ) (complete bool, err error) {
 	base := fmt.Sprintf("repos/%s/%s/secret-scanning/alerts", url.PathEscape(repo.Owner), url.PathEscape(repo.Name))
-	return c.listSecretPages(ctx, base, repo.String(), func(j *secretAlertJSON) bool {
+	return c.listSecretPages(ctx, base, repo.String(), true, func(j *secretAlertJSON) bool {
 		return yield(j.toSecretAlert())
 	})
 }

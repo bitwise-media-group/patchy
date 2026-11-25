@@ -47,6 +47,11 @@ func (c *Client) ListOrgAlerts(
 // ListRepoAlerts walks one repository's open code-scanning alerts,
 // calling yield until it returns false or the listing is exhausted.
 // complete is false when yield ended the walk early.
+//
+// A 404 on the first page is an empty listing, not an error: GitHub
+// answers "no analysis found" for a repository code scanning has never
+// analyzed, which has no alerts to backfill. Failing there would wedge a
+// whole backfill on one repository without scanning.
 func (c *Client) ListRepoAlerts(
 	ctx context.Context, repo Repo, yield func(*Alert) bool,
 ) (complete bool, err error) {
@@ -54,6 +59,9 @@ func (c *Client) ListRepoAlerts(
 	for {
 		alerts, resp, err := c.gh.CodeScanning.ListAlertsForRepo(ctx, repo.Owner, repo.Name, opts)
 		if err != nil {
+			if opts.ListOptions.Page == 0 && IsNotFound(err) {
+				return true, nil
+			}
 			return false, fmt.Errorf("ghclient: list %s alerts: %w", repo, err)
 		}
 		for _, ga := range alerts {

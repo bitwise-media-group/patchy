@@ -135,11 +135,15 @@ run = [
   "bun run dev",
 ]
 
-# Screenshots of the status page for the docs (docs/assets/images/status-*.jpg,
-# dark and light): internal/web/ui/screenshot.ts runs the dev server in
-# --demo mode and drives headless Chrome over the DevTools protocol at
-# 1440×900. Needs Chrome (or CHROME_PATH); run it outside the Claude Code
-# sandbox, which blocks headless Chrome.
+# Screenshots of the status page for the docs, dark and light: the standing
+# status-*.jpg, plus the shots the current What's new page declares in its
+# front matter (docs/whats-new/index.md) under whats-new/<version>/.
+# internal/web/ui/screenshot.ts runs the dev server in --demo mode and drives
+# headless Chrome over the DevTools protocol at 1440×900. A local run writes
+# to the git-ignored preview folder internal/web/ui/screenshots/; the release
+# PR's workflow (release-screenshots.yaml) is what shoots them into
+# docs/assets/images/ and commits them. Needs Chrome (or CHROME_PATH); run it
+# outside the Claude Code sandbox, which blocks headless Chrome.
 # Example: mise run ui-screenshots -- --chrome /usr/bin/chromium
 [ui-screenshots]
 description = "re-shoot the status page screenshots used by the docs"

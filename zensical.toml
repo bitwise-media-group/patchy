@@ -21,6 +21,12 @@ extra_css = ["stylesheets/tokens.css", "stylesheets/extra.css"]
 
 nav = [
   { "Home" = "index.md" },
+  # The current release's page is the section index (/whats-new/); each
+  # earlier release keeps its own page, newest first. AGENTS.md says when
+  # the current page is frozen into <version>.md and listed here.
+  { "What's new" = [
+    "whats-new/index.md",
+  ] },
   { "Getting started" = [
     { "Overview" = "getting-started/index.md" },
     { "Create the GitHub App" = "getting-started/github-app.md" },

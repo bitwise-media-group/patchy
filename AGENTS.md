@@ -140,7 +140,8 @@ docs/ overrides/    Zensical docs site (zensical.toml at the root). The theme fo
                     pages keep their old URL through zensical.toml's redirect_maps. Run
                     `mise run serve` to preview and `mise run docs-build` to build; the shared
                     release workflow publishes it to GitHub Pages (oss.bitwisemedia.uk/patchy).
-                    uv installs zensical (pyproject.toml / uv.lock). docs/cli/ is GENERATED
+                    uv installs zensical (pyproject.toml / uv.lock). docs/whats-new/ is the
+                    per-release highlights (see "What's new" below). docs/cli/ is GENERATED
                     (docgen, above): edit the commands' Short, Long and Example, not the markdown.
                     docs/operate/cli.md is the hand-written tour.
 completions/        GENERATED shell completions. They are committed so the Homebrew cask installs
@@ -304,6 +305,62 @@ completions/        GENERATED shell completions. They are committed so the Homeb
 - Conventional Commits. release-please and goreleaser drive releases. `make pr` is the local gate.
 - The harness and runner packages are adapted from `../evolve` (`internal/harness`, `internal/runner`). Keep their
   "harness builds argv, runner executes, harness parses stdout" separation intact.
+
+## What's new (maintain with every feature)
+
+The docs site has a **What's new** section: one page per release that sells what the release adds, with screenshots,
+benchmark numbers and upgrade notes. It is not the changelog. release-please writes `CHANGELOG.md` from the commits;
+this page picks the highlights and says why they matter. `docs/whats-new/index.md` is the current release's page and
+the section's landing page (`/whats-new/`). Earlier releases are frozen at `docs/whats-new/<version>.md` and listed in
+the `zensical.toml` nav under "What's new", newest first. The docs site publishes only on a release, so readers always
+see a released version there.
+
+**Every `feat` commit updates it, in the same commit.** So does a `fix` or `perf` commit a user would notice. Add or
+extend a section on `index.md`:
+
+- Lead with what the reader gains, then how. Use plain words and link the reference docs for the details.
+- Back claims with numbers you measured: benchmarks (`mise run bench`) or load tests (`mise run load`). Say how they were
+  measured, and never invent a figure.
+- Show UI changes. Declare each shot in `index.md`'s front matter `screenshots` list (a `name`, the `hash` route to
+  load in the demo, and optionally text to `type` into the findings filter), and reference its dark and light images as
+  `../assets/images/whats-new/<version>/<name>.jpg#only-dark` and `<name>-light.jpg#only-light`, `<version>` being the
+  front matter `version`. **Never commit screenshots.** The release PR's workflow (`release-screenshots.yaml`) shoots
+  every declared shot and the docs' standing screenshots, and commits them to the release PR, so the images do not
+  exist until then. The paths are git-ignored, and `mise run ui-screenshots` writes a local preview to the git-ignored
+  `internal/web/ui/screenshots/` (it needs Chrome, which the Claude Code sandbox blocks). Images already tracked are
+  not covered by the ignore, so if a run with `--out docs/assets/images` changes them, restore them before committing.
+  The screenshots are stored in Git LFS (`.gitattributes`), so install git-lfs to see them in a local docs preview.
+- Breaking changes get an entry under "Upgrading" that says what to change.
+
+**The version is release-please's.** The page's version lives in its front matter, twice: `version`, and the `title`
+that Zensical renders as the page heading. Both lines carry an `x-release-please-version` comment, as does the home
+page's "What's new" button (`overrides/home.html`), and release-please's `extra-files` rewrite those lines when it opens
+a release PR. Keep every other version string, image paths included, off the marked lines.
+
+**A release freezes its page automatically.** When a release is cut, `release.yaml` calls
+`.github/workflows/whats-new.yaml`, which runs `hack/whats-new-freeze.sh <version>`:
+
+- It copies `index.md` to `docs/whats-new/<version>.md`, without the markers and with a link to the release.
+- It lists the copy in the `zensical.toml` nav, newest first.
+- It resets `index.md` to a placeholder (a one-paragraph maintenance-release page) for the next patch version.
+
+The result arrives as a pull request ("docs: freeze What's new for `<version>`") labelled `auto-merge`, signed by the
+FF Merge App. Approve it before the next release PR merges, or that release would be stamped onto the frozen release's
+page. A release with nothing to highlight (fixes and Renovate updates) publishes the placeholder, stamped with its
+version, instead of relabelling the last release's highlights. It gets no versioned page: when the page is still the
+untouched placeholder at release time, the script changes nothing and no pull request opens. Detection is an exact
+match on the placeholder text the script writes, so leave that text as it is until you replace it.
+
+**Before you edit `index.md`, compare its front matter `version` with `.release-please-manifest.json`:**
+
+- **Newer than the manifest:** the page is the next release's. Add to it, replacing the maintenance paragraph with your
+  highlights if it is still there. A breaking change bumps the minor version before 1.0 (any other change bumps the
+  patch), so set both front matter lines to match; the release PR corrects them either way.
+- **Equal to the manifest, and the page is still the placeholder:** the last release had nothing to highlight. Replace
+  the placeholder with your highlights and set both front matter lines to the next version.
+- **Equal to the manifest, with highlights:** the freeze pull request has not merged. Merge it first. If there is none,
+  rerun the What's New workflow from the Actions tab with that version, or run `hack/whats-new-freeze.sh <version>`
+  locally and commit the result.
 
 ## State machine (the heart of the system)
 

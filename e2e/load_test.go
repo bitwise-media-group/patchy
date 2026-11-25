@@ -363,8 +363,9 @@ func deliverLoad(t *testing.T, url, deliveryID string, payload []byte) {
 }
 
 // TestLoadStatusServer seeds N findings directly, then measures the real
-// status-server: the trimmed GET /api/findings list cold and warm, response
-// size raw and gzipped, and the per-finding detail route.
+// status-server: the first page of GET /api/findings (one pass over every
+// finding, with the facets) cold and warm, response size raw and gzipped,
+// and the per-finding detail route.
 func TestLoadStatusServer(t *testing.T) {
 	n, _ := loadParams(t)
 	cl := startCluster(t)
@@ -413,8 +414,8 @@ func TestLoadStatusServer(t *testing.T) {
 	}
 
 	coldLatency, rawBytes := get("")
-	t.Logf("LOAD status-server cold GET /api/findings: %v, %.1f MiB raw",
-		coldLatency.Round(time.Millisecond), float64(rawBytes)/(1<<20))
+	t.Logf("LOAD status-server cold GET /api/findings: %v, %.1f KiB raw",
+		coldLatency.Round(time.Millisecond), float64(rawBytes)/(1<<10))
 	var warmSum time.Duration
 	const warmRuns = 3
 	for range warmRuns {
@@ -424,8 +425,8 @@ func TestLoadStatusServer(t *testing.T) {
 	t.Logf("LOAD status-server warm GET /api/findings: %v avg over %d",
 		(warmSum / warmRuns).Round(time.Millisecond), warmRuns)
 	gzLatency, gzBytes := get("gzip")
-	t.Logf("LOAD status-server gzip GET /api/findings: %v, %.1f MiB on the wire (%.1fx smaller)",
-		gzLatency.Round(time.Millisecond), float64(gzBytes)/(1<<20), float64(rawBytes)/float64(gzBytes))
+	t.Logf("LOAD status-server gzip GET /api/findings: %v, %.1f KiB on the wire (%.1fx smaller)",
+		gzLatency.Round(time.Millisecond), float64(gzBytes)/(1<<10), float64(rawBytes)/float64(gzBytes))
 
 	// The per-finding detail route: the per-click cost the trimmed list
 	// defers to. Averaged over a handful of distinct findings so a single

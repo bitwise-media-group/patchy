@@ -58,6 +58,9 @@ type Server struct {
 	presignTTL time.Duration
 	// debounce overrides the watch coalescing window (tests).
 	debounce time.Duration
+	// findings mirrors the cached findings for the findings queries; it
+	// fills once StartWatch runs.
+	findings *findingStore
 }
 
 // NewServer builds the backend over the manager's cached client. log may be
@@ -75,6 +78,7 @@ func NewServer(c client.Client, namespace string, a auth.Authenticator, g Grante
 		broker:    newBroker(),
 		now:       time.Now,
 		reader:    c,
+		findings:  newFindingStore(),
 	}
 }
 
@@ -97,6 +101,7 @@ func (s *Server) WithTranscripts(reader client.Reader, tailer Tailer) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/findings", s.handleFindings)
+	mux.HandleFunc("GET /api/findings/suggest", s.handleSuggest)
 	mux.HandleFunc("GET /api/findings/{name}", s.handleFinding)
 	mux.HandleFunc("GET /api/rollups", s.handleRollups)
 	mux.HandleFunc("GET /api/rollups/repositories", s.handleRepositories)
@@ -194,23 +199,6 @@ func newUser(v viewer) *User {
 	}
 }
 
-// handleFindings serves the trimmed list dataset to an authenticated
-// identity whose RBAC grants viewing; per-finding detail comes from
-// /api/findings/{name}, and metrics from /api/rollups.
-func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
-	v, ok := s.authorize(w, r)
-	if !ok {
-		return
-	}
-	ds, err := s.buildDataset(r.Context(), true, v.grants.Verbs, newUser(v))
-	if err != nil {
-		s.log.LogAttrs(r.Context(), slog.LevelError, "build dataset", slog.Any("error", err))
-		http.Error(w, "failed to load findings", http.StatusInternalServerError)
-		return
-	}
-	writeJSONGzip(w, r, ds)
-}
-
 // handleFinding serves the full projection of one finding: description,
 // alerts, enrichments, the phase log, and the run reports the list payload
 // omits to stay small. Same view gate as the list; finding data never leaks
@@ -244,7 +232,7 @@ func (s *Server) handleRollups(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ds, err := s.buildDataset(r.Context(), false, nil, newUser(v))
+	ds, err := s.buildRollupSummary(r.Context(), newUser(v))
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build rollups", slog.Any("error", err))
 		http.Error(w, "failed to load rollups", http.StatusInternalServerError)
@@ -287,17 +275,16 @@ func stubPage(w http.ResponseWriter, _ *http.Request) {
 		`<code>-tags withui</code>), or use a release image.</p>`))
 }
 
-// writeJSON encodes v compactly as the response body. No indentation: the
-// dataset endpoints ship the whole backlog, and pretty-printing roughly
-// doubles the bytes for a payload only machines read.
+// writeJSON encodes v compactly as the response body. No indentation:
+// pretty-printing roughly doubles the bytes for a payload only machines read.
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// writeJSONGzip is writeJSON behind content negotiation, for the two dataset
-// endpoints whose payloads grow with the backlog (JSON this shape compresses
-// ~10×). Never used on /events: SSE needs every write flushed unbuffered.
+// writeJSONGzip is writeJSON behind content negotiation, for the data
+// endpoints whose payloads can run large (JSON this shape compresses ~10×).
+// Never used on /events: SSE needs every write flushed unbuffered.
 func writeJSONGzip(w http.ResponseWriter, r *http.Request, v any) {
 	w.Header().Add("Vary", "Accept-Encoding")
 	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {

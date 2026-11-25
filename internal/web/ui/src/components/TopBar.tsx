@@ -5,7 +5,7 @@
 // opens under the bar, with full-width tap targets.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { AdminVerb, Dataset } from "../types";
+import type { AdminVerb, DatasetHeader } from "../types";
 import type { DataMode } from "../api";
 import { readProvider, signOut } from "../auth";
 import { PERSONAS, type Persona } from "../mock/personas";
@@ -174,7 +174,7 @@ export function TopBar({
   adminBusy,
   onAdmin,
 }: {
-  dataset: Dataset | null;
+  dataset: DatasetHeader | null;
   mode: DataMode;
   route: Route;
   // Whether the configuration view is reachable for this user; the nav

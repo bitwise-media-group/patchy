@@ -136,7 +136,7 @@ func TestFindingsRequiresSessionAndViewGrant(t *testing.T) {
 				t.Errorf("body = %q, want %q", strings.TrimSpace(string(body)), tc.wantBody)
 			}
 			if tc.wantStatus == http.StatusOK {
-				var ds Dataset
+				var ds FindingsPage
 				if err := json.Unmarshal(body, &ds); err != nil {
 					t.Fatalf("decode: %v", err)
 				}
@@ -270,8 +270,8 @@ func TestMetricsRequireAuthorization(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&m); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got := m["findings"].([]any); len(got) != 0 {
-		t.Errorf("metrics summary carried %d findings", len(got))
+	if got, ok := m["findings"]; ok {
+		t.Errorf("metrics summary carried findings: %v", got)
 	}
 	if u, ok := m["user"].(map[string]any); !ok || u["name"] != "viewer" {
 		t.Errorf("metrics summary user = %v", m["user"])

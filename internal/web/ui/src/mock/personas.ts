@@ -2,7 +2,7 @@
 // server stamps userActions per finding from the requesting user's actual
 // grants; personas exist only so the demo can show every gating state.
 
-import type { ActionVerb, Dataset, IntegrationVerb } from "../types";
+import type { ActionVerb, IntegrationVerb } from "../types";
 
 export interface Persona {
   id: string;
@@ -28,12 +28,3 @@ export const PERSONAS: Persona[] = [
 ];
 
 export const DEFAULT_PERSONA = PERSONAS[2];
-
-// applyPersona stamps the persona's grants onto every finding, the way the
-// server would stamp the requesting user's resolved verbs.
-export function applyPersona(dataset: Dataset, persona: Persona): Dataset {
-  return {
-    ...dataset,
-    findings: dataset.findings.map((f) => ({ ...f, userActions: [...persona.grants] })),
-  };
-}

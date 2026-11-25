@@ -19,19 +19,23 @@ import (
 // scan delivering hundreds of alerts) into one refetch signal.
 const defaultDebounce = 500 * time.Millisecond
 
-// StartWatch registers change handlers on the Finding/FindingRollup and
-// Integration/Forge informers and publishes debounced findings-changed /
-// config-changed notifications to the SSE broker. It blocks until ctx is
+// StartWatch starts the findings mirror (findingstore.go), registers change
+// handlers on the Finding/FindingRollup and Integration/Forge informers, and
+// publishes debounced findings-changed / config-changed notifications to the
+// SSE broker. It blocks until ctx is
 // cancelled, so it fits a manager runnable: it runs after the cache has
 // synced and stops with the manager.
 func (s *Server) StartWatch(ctx context.Context, c cache.Cache) error {
-	watch := func(signal chan<- struct{}, objs ...client.Object) error {
-		notify := func() {
+	signaller := func(signal chan<- struct{}) func() {
+		return func() {
 			select {
 			case signal <- struct{}{}:
 			default:
 			}
 		}
+	}
+	watch := func(signal chan<- struct{}, objs ...client.Object) error {
+		notify := signaller(signal)
 		for _, obj := range objs {
 			informer, err := c.GetInformer(ctx, obj)
 			if err != nil {
@@ -53,8 +57,13 @@ func (s *Server) StartWatch(ctx context.Context, c cache.Cache) error {
 		return nil
 	}
 
+	// Findings signal through the mirror's handler, after it has the
+	// change; rollups signal directly.
 	findings := make(chan struct{}, 1)
-	if err := watch(findings, &v1alpha1.Finding{}, &v1alpha1.FindingRollup{}); err != nil {
+	if err := s.findings.start(ctx, c, s.namespace, signaller(findings)); err != nil {
+		return err
+	}
+	if err := watch(findings, &v1alpha1.FindingRollup{}); err != nil {
 		return err
 	}
 	config := make(chan struct{}, 1)

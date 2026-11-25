@@ -42,9 +42,21 @@ The findings view has four parts:
   findings.
 - The eleven-phase lifecycle rail with live counts. Select a phase to filter by it.
 - The same type-ahead filter as Metrics: free text, severity, phase, verdict and repository. Each applied filter shows
-  as a chip you can remove. <kbd>/</kbd> focuses the filter.
+  as a chip you can remove. <kbd>/</kbd> focuses the filter. Repositories add up like severities do: pick several, or
+  pick **Repositories starting with** or **Repositories containing** what you typed to cover every repository whose name
+  matches.
 - The list, showing each finding's severity, phase, confidence, verdict and age. The phase has a live dot while an agent
   run is active, and a `suspended` pill when the finding is suspended.
+
+The list puts the most severe first. It loads 50 findings at a time, and more load as you scroll. Filtering happens on
+the server, so the counts in the summary, the rail and the filter always cover every finding, not just the loaded rows.
+When findings change while you are scrolled down the list, the rows you are reading stay where they are and an
+**Updated. Show the latest** button appears; at the top of the list, changes appear straight away. The list holds at
+most 5,000 rows; past that, narrow the filters to see the rest.
+
+The filter is part of the page address (`#/?severity=critical&repoPrefix=payments`), so you can bookmark or share a
+filtered list and it opens with the same filter. The parameters are the ones
+[`GET /api/findings`](../configuration/status-server.md) takes.
 
 On narrow screens the rows stack and the navigation folds into a menu.
 

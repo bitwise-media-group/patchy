@@ -20,15 +20,14 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/version"
 )
 
-// Dataset is the payload behind GET /api/findings (the trimmed list
-// projection; no rollups) and GET /api/rollups (the metrics summary:
-// findings empty, no user). It mirrors ui/src/types.ts.
+// Dataset is the payload behind GET /api/rollups: the metrics summary, plus
+// the namespace, version and user the top bar renders. The findings list is
+// FindingsPage (GET /api/findings). It mirrors ui/src/types.ts.
 type Dataset struct {
-	GeneratedAt string           `json:"generatedAt"`
-	Namespace   string           `json:"namespace,omitempty"`
-	Version     string           `json:"version,omitempty"`
-	User        *User            `json:"user,omitempty"`
-	Findings    []FindingSummary `json:"findings"`
+	GeneratedAt string `json:"generatedAt"`
+	Namespace   string `json:"namespace,omitempty"`
+	Version     string `json:"version,omitempty"`
+	User        *User  `json:"user,omitempty"`
 	// Rollups is the metrics summary: the total, every model and harness
 	// shard, and the top repositories by findings. Repository shards grow
 	// with the estate, so the rest page through GET /api/rollups/repositories.
@@ -56,8 +55,8 @@ type User struct {
 // carries: what the findings table, filters, and stat tiles render, and
 // nothing whose size is unbounded (description, alert snippets, enrichment
 // markdown, run reports). The payload behind GET /api/findings scales with
-// finding count × row size, so the row stays bounded; everything else moves
-// to the per-finding detail route.
+// page size × row size, so the row stays bounded; everything else moves to
+// the per-finding detail route.
 type FindingSummary struct {
 	Name        string      `json:"name"`
 	CreatedAt   string      `json:"createdAt,omitempty"`
@@ -409,56 +408,18 @@ type MonthlyBucket struct {
 	CostMicroUSD int64 `json:"costMicroUSD,omitempty"`
 }
 
-// buildDataset assembles the list payload from the cached client: trimmed
-// finding summaries only. No Investigation/Remediation children are read,
-// so the build cost scales with finding count alone. userActions is stamped
-// uniformly because RBAC grants are namespace-scoped; the client intersects
-// them with each finding's state machine itself. withFindings=false produces
-// the metrics summary instead (no findings).
-func (s *Server) buildDataset(ctx context.Context, withFindings bool, verbs []string, user *User) (*Dataset, error) {
+// buildRollupSummary assembles the metrics summary (GET /api/rollups) from
+// the cached client. The findings list is a separate, paged payload
+// (FindingsPage, findingquery.go).
+func (s *Server) buildRollupSummary(ctx context.Context, user *User) (*Dataset, error) {
 	ds := &Dataset{
 		GeneratedAt: s.now().UTC().Format(time.RFC3339),
 		Namespace:   s.namespace,
 		Version:     version.Version,
 		User:        user,
-		Findings:    []FindingSummary{},
 	}
-
-	// The two payloads are disjoint: the findings list carries no rollups
-	// (the findings page never reads them), and the other is the metrics
-	// summary.
-	if !withFindings {
-		if err := s.addRollupSummary(ctx, ds); err != nil {
-			return nil, err
-		}
-		return ds, nil
-	}
-
-	// Sorting happens on index slices over the CR items, not on the projected
-	// wire structs: the wide Finding value is ~1KB, and a comparison sort
-	// moving those by value dominates the build at backlog scale.
-	var findings v1alpha1.FindingList
-	if err := s.client.List(ctx, &findings, client.InNamespace(s.namespace)); err != nil {
-		return nil, fmt.Errorf("list findings: %w", err)
-	}
-	// Newest first, stable across refetches. Truncated to the second, the
-	// precision of the projected RFC3339 stamps, so findings the client
-	// shows with the same time order by name.
-	sortStamp := func(f *v1alpha1.Finding) time.Time {
-		if t := f.Status.FirstObservedAt; t != nil && !t.IsZero() {
-			return t.Truncate(time.Second)
-		}
-		return f.CreationTimestamp.Truncate(time.Second)
-	}
-	order := indexOrder(len(findings.Items), func(a, b int) int {
-		if c := sortStamp(&findings.Items[b]).Compare(sortStamp(&findings.Items[a])); c != 0 {
-			return c
-		}
-		return cmp.Compare(findings.Items[a].Name, findings.Items[b].Name)
-	})
-	ds.Findings = make([]FindingSummary, 0, len(findings.Items))
-	for _, i := range order {
-		ds.Findings = append(ds.Findings, projectFindingSummary(&findings.Items[i], verbs))
+	if err := s.addRollupSummary(ctx, ds); err != nil {
+		return nil, err
 	}
 	return ds, nil
 }
@@ -517,16 +478,6 @@ func (s *Server) buildFindingDetail(ctx context.Context, name string, verbs []st
 	runs := s.loadRunDetails(ctx, name)
 	runs.attach(&f, &out)
 	return &out, nil
-}
-
-// indexOrder returns [0, n) sorted by cmpIdx.
-func indexOrder(n int, cmpIdx func(a, b int) int) []int {
-	order := make([]int, n)
-	for i := range order {
-		order[i] = i
-	}
-	slices.SortFunc(order, cmpIdx)
-	return order
 }
 
 // RunFindingIndex is the cache field index the detail projection looks a

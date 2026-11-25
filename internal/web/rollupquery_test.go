@@ -239,9 +239,9 @@ func TestRollupSummaryTrimsRepositories(t *testing.T) {
 		objs = append(objs, repoRollup(fmt.Sprintf("acme/r%02d", i), int64(i+1), 1, 0, 1))
 	}
 	s := testServer(t, objs...)
-	ds, err := s.buildDataset(t.Context(), false, nil, nil)
+	ds, err := s.buildRollupSummary(t.Context(), nil)
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
+		t.Fatalf("buildRollupSummary: %v", err)
 	}
 	if ds.RepositoryCount != summaryRepositories+5 {
 		t.Errorf("repositoryCount = %d", ds.RepositoryCount)

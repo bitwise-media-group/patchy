@@ -32,7 +32,11 @@ import (
 // asserts (the full contract is unit-tested in internal/web).
 type statusDataset struct {
 	Namespace string `json:"namespace"`
-	Findings  []struct {
+	Matched   int    `json:"matched"`
+	Facets    *struct {
+		Total int `json:"total"`
+	} `json:"facets"`
+	Findings []struct {
 		Name        string   `json:"name"`
 		Phase       string   `json:"phase"`
 		Suspend     bool     `json:"suspend"`
@@ -181,6 +185,12 @@ func statusCheckList(t *testing.T, base string) {
 	if ds.Namespace != namespace || len(ds.Findings) != 2 || len(ds.Rollups) != 0 {
 		t.Fatalf("dataset: ns=%q findings=%d rollups=%d", ds.Namespace, len(ds.Findings), len(ds.Rollups))
 	}
+	// The first page carries the facets; both findings fit on it.
+	if ds.Matched != 2 || ds.Facets == nil || ds.Facets.Total != 2 {
+		t.Fatalf("first page: matched=%d facets=%+v, want 2 and total 2", ds.Matched, ds.Facets)
+	}
+	statusCheckPaging(t, base)
+
 	for _, f := range ds.Findings {
 		for _, verb := range []string{"approve", "suspend", "resume"} {
 			if !slices.Contains(f.UserActions, verb) {
@@ -208,6 +218,33 @@ func statusCheckList(t *testing.T, base string) {
 				t.Errorf("list finding %v carried detail field %q", f["name"], key)
 			}
 		}
+	}
+}
+
+// statusCheckPaging walks the two-finding list one row at a time: the
+// cursor continues it with the other finding, and only the first page
+// carries the facets.
+func statusCheckPaging(t *testing.T, base string) {
+	t.Helper()
+	var first struct {
+		Findings   []struct{ Name string } `json:"findings"`
+		NextCursor string                  `json:"nextCursor"`
+	}
+	firstResp, err := http.Get(base + "/api/findings?limit=1")
+	if err != nil {
+		t.Fatalf("GET limit=1: %v", err)
+	}
+	if err := json.NewDecoder(firstResp.Body).Decode(&first); err != nil {
+		t.Fatalf("decode limit=1 page: %v", err)
+	}
+	_ = firstResp.Body.Close()
+	if len(first.Findings) != 1 || first.NextCursor == "" {
+		t.Fatalf("limit=1 page: %+v", first)
+	}
+	resp, next := getDataset(t, base+"/api/findings?limit=1&cursor="+first.NextCursor)
+	if resp.StatusCode != http.StatusOK || len(next.Findings) != 1 || next.Facets != nil ||
+		next.Findings[0].Name == first.Findings[0].Name {
+		t.Fatalf("cursor page: status %d, %+v", resp.StatusCode, next)
 	}
 }
 

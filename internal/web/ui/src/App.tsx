@@ -1,12 +1,11 @@
 import type { ComponentChildren } from "preact";
-import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   AuthRequiredError,
   ForbiddenError,
   dataMode,
   fetchConfig,
   fetchFinding,
-  fetchFindings,
   fetchRollups,
   postAction,
   postAdmin,
@@ -15,9 +14,10 @@ import {
   subscribeConfig,
 } from "./api";
 import { consumeLogoutMarker, readAuthError, readProvider, signInURL, signOut } from "./auth";
-import type { ActionVerb, AdminVerb, ConfigDataset, Dataset, Finding, Phase } from "./types";
-import { emptySelection, filterFindings, repoOptions, sortFindings, type Selection } from "./filters";
-import { useRoute } from "./router";
+import type { ActionVerb, AdminVerb, ConfigDataset, DatasetHeader, Finding, FindingsPage, Phase } from "./types";
+import { emptySelection, isFiltered, selectionFromSearch, selectionSearch, type Selection } from "./filters";
+import { useFindingsList } from "./findingsList";
+import { hrefForList, parseRoute, setListQuery, useRoute } from "./router";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
 import { ConfigView } from "./components/ConfigView";
 import { FindingDetail, MissingFinding } from "./components/FindingDetail";
@@ -31,11 +31,19 @@ import { useBodyThemeMode } from "./components/ThemeToggle";
 
 const TOAST_DISMISS_MS = 6000;
 
+// replaceHash points the URL at href without a history entry or a
+// hashchange. No hash at all, "#" and "#/" are the same unfiltered list.
+function replaceHash(href: string): void {
+  if (location.hash.replace(/^#?\/?/, "#/") !== href) history.replaceState(null, "", href);
+}
+
 export function App() {
   const mode = dataMode();
   const route = useRoute();
   const [themeMode, toggleTheme] = useBodyThemeMode();
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  // dataset is the header the top bar renders (namespace, version, user),
+  // from the findings list's first page or, failing that, the metrics summary.
+  const [dataset, setDataset] = useState<DatasetHeader | null>(null);
   const [error, setError] = useState<string | null>(null);
   // findingsBlocked is set when /api/findings said 401 ("unauthenticated")
   // or 403 (the denial message). Unauthenticated blocks every view; a 403
@@ -44,7 +52,9 @@ export function App() {
   const [authError] = useState<string | null>(() => readAuthError());
   const [persona, setPersona] = useState<Persona>(DEFAULT_PERSONA);
   const [busy, setBusy] = useState<ActionVerb | null>(null);
-  const [selection, setSelection] = useState<Selection>(emptySelection);
+  const [selection, setSelection] = useState<Selection>(() =>
+    route.view === "list" ? selectionFromSearch(route.query) : emptySelection(),
+  );
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastId = useRef(0);
 
@@ -54,35 +64,62 @@ export function App() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), TOAST_DISMISS_MS);
   }, []);
 
-  const load = useCallback(async (p: Persona) => {
-    try {
-      const data = await fetchFindings(p);
-      setDataset(data);
-      setError(null);
-      setFindingsBlocked(null);
-    } catch (e) {
-      if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
-        setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
-        // Signed in but not allowed findings: the metrics summary may still
-        // be allowed (its own grant), and carries the user and namespace the
-        // top bar renders.
-        if (e instanceof ForbiddenError) {
-          try {
-            setDataset(await fetchRollups());
-            setError(null);
-          } catch {
-            // Not allowed metrics either; the views explain their gates.
-          }
+  const onPage = useCallback(({ generatedAt, namespace, version, user }: FindingsPage) => {
+    setDataset({ generatedAt, namespace, version, user });
+    setError(null);
+    setFindingsBlocked(null);
+  }, []);
+  const onListFailure = useCallback(async (e: unknown) => {
+    if (e instanceof AuthRequiredError || e instanceof ForbiddenError) {
+      setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
+      // Signed in but not allowed findings: the metrics summary may still
+      // be allowed (its own grant), and carries the user and namespace the
+      // top bar renders.
+      if (e instanceof ForbiddenError) {
+        try {
+          setDataset(await fetchRollups());
+          setError(null);
+        } catch {
+          // Not allowed metrics either; the views explain their gates.
         }
-      } else {
-        setError(e instanceof Error ? e.message : String(e));
       }
+    } else {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+  const isAuthError = useCallback(
+    (e: unknown) => e instanceof AuthRequiredError || e instanceof ForbiddenError,
+    [],
+  );
 
+  // The filter is in the list route's query string (#/?severity=high&…), so
+  // a shared or saved link restores it. Links back to the list carry it
+  // (recorded here, before the children render theirs).
+  const search = selectionSearch(selection);
+  setListQuery(search);
+  // Opening a link, or a history step, onto the list applies its filter,
+  // and settles the URL on the canonical form (unknown values dropped).
   useEffect(() => {
-    void load(persona);
-  }, [load, persona]);
+    if (route.view !== "list") return;
+    const next = selectionFromSearch(route.query);
+    setSelection((sel) => (selectionSearch(sel) === selectionSearch(next) ? sel : next));
+    replaceHash(hrefForList(selectionSearch(next)));
+  }, [route]);
+  // A filter change rewrites the list's URL in place: no history entry (and
+  // no hashchange) per chip.
+  useEffect(() => {
+    if (parseRoute(location.hash).view === "list") replaceHash(hrefForList(search));
+  }, [search]);
+
+  // The findings list, a page at a time. It loads on every route: its first
+  // page also carries the header the top bar renders.
+  const list = useFindingsList(selection, persona, onPage, onListFailure, isAuthError);
+  // load refetches the list's first page. Its identity is stable (it reads
+  // the latest refresh through a ref), so the SSE subscription below is not
+  // reopened on every filter change.
+  const refreshList = useRef(list.refresh);
+  refreshList.current = list.refresh;
+  const load = useCallback(() => refreshList.current(), []);
 
   // The detail view lazily fetches its finding: the list payload carries
   // trimmed summaries only. detail is null while loading or when the finding
@@ -170,13 +207,13 @@ export function App() {
     }
   }, [findingsBlocked, authError]);
 
-  // One findings-changed signal refetches the list and, when a detail view
-  // is open, that one finding. Both requests are cheap: the list is trimmed
-  // and the detail is a single object.
+  // One findings-changed signal refetches the list's first page and, when a
+  // detail view is open, that one finding. Both requests are cheap: a page
+  // is bounded and the detail is a single object.
   useEffect(
     () =>
       subscribe(() => {
-        void load(persona);
+        load();
         if (detailName) void loadDetail(detailName, persona);
       }),
     [load, loadDetail, detailName, persona],
@@ -188,7 +225,7 @@ export function App() {
       try {
         await postAction(name, verb, persona);
         pushToast(`${verb} applied to ${name}.`, "green");
-        await load(persona);
+        load();
         if (detailRoute.current) await loadDetail(detailRoute.current, persona);
       } catch (e) {
         if (e instanceof AuthRequiredError) {
@@ -217,7 +254,7 @@ export function App() {
             : "All pipeline data deleted.",
           "green",
         );
-        await load(persona);
+        load();
       } catch (e) {
         if (e instanceof AuthRequiredError) {
           setFindingsBlocked("unauthenticated");
@@ -252,12 +289,6 @@ export function App() {
   const integrationActions =
     mode === "demo" ? persona.integrationActions : (dataset?.user?.integrationActions ?? []);
 
-  const findings = dataset?.findings ?? [];
-  const visible = useMemo(
-    () => sortFindings(filterFindings(findings, selection)),
-    [findings, selection],
-  );
-  const repos = useMemo(() => repoOptions(findings), [findings]);
 
   const panel = (title: string, detail: string, actions?: ComponentChildren) => (
     <div class="mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card">
@@ -266,7 +297,7 @@ export function App() {
       {authError ? <p class="mx-0 mt-0 mb-4.5 text-[13px] text-red">{authError}</p> : null}
       <div class="flex justify-center gap-2">
         {actions}
-        <button type="button" class="ps-action" onClick={() => void load(persona)}>
+        <button type="button" class="ps-action" onClick={load}>
           Retry
         </button>
       </div>
@@ -350,15 +381,20 @@ export function App() {
     body = (
       <>
         <FindingsOverview
-          findings={findings}
+          facets={list.facets}
           selected={selection.phases}
           onToggle={togglePhase}
           onOnly={(phase) => setSelection((sel) => ({ ...sel, phases: new Set([phase]) }))}
         />
         <div class="mt-4">
-          <FindingsFilter findings={findings} repos={repos} selection={selection} onChange={setSelection} />
+          <FindingsFilter facets={list.facets} selection={selection} onChange={setSelection} />
         </div>
-        <FindingsTable findings={visible} total={findings.length} onClear={() => setSelection(emptySelection())} />
+        <FindingsTable
+          list={list}
+          total={list.facets?.total ?? 0}
+          filtered={isFiltered(selection)}
+          onClear={() => setSelection(emptySelection())}
+        />
       </>
     );
   }

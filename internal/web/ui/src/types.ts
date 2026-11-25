@@ -415,20 +415,91 @@ export interface DatasetUser {
   integrationActions?: IntegrationVerb[];
 }
 
-// Dataset is the payload behind GET /api/findings (trimmed summaries, no
-// rollups) and GET /api/rollups (the metrics summary: findings empty). The
-// summary carries the total, model and harness shards and only the top
-// repositories; the rest page through GET /api/rollups/repositories
-// (RepositoryPage).
-export interface Dataset {
+// Dataset is the payload behind GET /api/rollups: the metrics summary, plus
+// the namespace, version and user the top bar renders. The summary carries
+// the total, model and harness shards and only the top repositories; the
+// rest page through GET /api/rollups/repositories (RepositoryPage). The
+// findings list is FindingsPage (GET /api/findings), which carries the same
+// header, so either can stand in for the top bar.
+export interface DatasetHeader {
   generatedAt: string;
   namespace?: string;
   version?: string;
   user?: DatasetUser;
-  findings: FindingSummary[];
+}
+
+export interface Dataset extends DatasetHeader {
   rollups?: Rollup[];
   // How many repository shards exist in all (summary only).
   repositoryCount?: number;
+}
+
+// FindingsQuery is the query string of GET /api/findings and
+// GET /api/findings/suggest (internal/web/findingquery.go). The repeatable
+// filters match any of their values; every set filter must match.
+export interface FindingsQuery {
+  phase?: Phase[];
+  severity?: Level[];
+  verdict?: Recommendation[];
+  // Repository terms match any of their values: exact "owner/name" names,
+  // and case-insensitive prefixes and substrings of the name (of the whole
+  // "owner/name" when the term holds a "/").
+  repo?: string[];
+  repoPrefix?: string[];
+  repoContains?: string[];
+  q?: string; // case-insensitive text search
+  limit?: number; // server caps at 200 (20 for suggest)
+  cursor?: string; // a previous page's nextCursor
+}
+
+// RepositoryCount is one repository and how many findings name it.
+export interface RepositoryCount {
+  name: string;
+  findings: number;
+}
+
+// FindingFacets counts every finding, whatever the filters: the phase rail
+// and the filter's tallies. A finding without a value counts in none.
+export interface FindingFacets {
+  total: number;
+  open: number;
+  running: number;
+  suspended: number;
+  phases?: Partial<Record<Phase, number>>;
+  severities?: Partial<Record<Level, number>>;
+  verdicts?: Partial<Record<Recommendation, number>>;
+  // The repositories with most findings, heaviest first.
+  repositories?: RepositoryCount[];
+  repositoryCount: number;
+}
+
+// FindingsPage is one page of GET /api/findings, most severe first. The
+// facets come on the first page only (no cursor).
+export interface FindingsPage extends DatasetHeader {
+  findings: FindingSummary[];
+  matched: number; // findings matching the filters, across every page
+  nextCursor?: string; // absent on the last page
+  facets?: FindingFacets;
+}
+
+// FindingSuggestions is GET /api/findings/suggest: the findings filter's
+// type-ahead for one typed term.
+export interface FindingSuggestions {
+  // Findings the filters match with the term as the text search.
+  matched: number;
+  // Repositories (filters aside) whose name contains the term, best first.
+  repositories: RepositoryCount[];
+  repositoryTotal: number;
+  // The term's reach as a repository prefix and substring filter.
+  prefix: RepositoryMatch;
+  contains: RepositoryMatch;
+}
+
+// RepositoryMatch is how many repositories a repository-name term matches,
+// and how many findings name them.
+export interface RepositoryMatch {
+  repositories: number;
+  findings: number;
 }
 
 // RepositorySort orders GET /api/rollups/repositories. "relevance" is the

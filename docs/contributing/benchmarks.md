@@ -23,7 +23,7 @@ Knobs:
 | Variable              | Applies to | Meaning                                                                        |
 | --------------------- | ---------- | ------------------------------------------------------------------------------ |
 | `PATCHY_BENCH_ASSERT` | bench      | Arms the `TestComplexity*` ratio assertions (`hack/bench.sh` sets it)          |
-| `PATCHY_BENCH_HUGE`   | bench      | Unlocks the 2M in-memory dataset build (~16GB; run with `-benchtime=1x`)       |
+| `PATCHY_BENCH_HUGE`   | bench      | Unlocks the 2M in-memory findings query (~16GB; run with `-benchtime=1x`)      |
 | `PATCHY_LOAD`         | load       | Gates the whole load suite (`hack/load.sh` sets it)                            |
 | `PATCHY_LOAD_N`       | load       | Findings per load test (default `50000`; budget ~15min at 50k, ~35min at 100k) |
 | `PATCHY_LOAD_ASSERT`  | load       | Arms the load suite's ratio assertion (the ingest decile check)                |
@@ -48,8 +48,8 @@ them as a report for you to compare with the targets below, and never assert the
 | Ingest fold cost ratio, 100k ÷ 1k backlog          | ≤ 3×            | `TestComplexityIngestFold` (asserted)                 |
 | Ingest per-alert cost, last ÷ first decile at load | ≤ 2.0           | `TestLoadIngest` (asserted with `PATCHY_LOAD_ASSERT`) |
 | Sustained ingest at 100k existing findings         | ≥ 500 alerts/s  | `TestLoadIngest` (reported)                           |
-| Dataset build per-finding cost ratio, 100k ÷ 10k   | ≤ 1.3×          | `TestComplexityBuildDataset` (asserted)               |
-| `GET /api/findings` at 100k findings               | ≤ 5s            | `TestLoadStatusServer` (reported)                     |
+| Findings page per-finding cost ratio, 100k ÷ 10k   | ≤ 1.3×          | `TestComplexityQueryFindings` (asserted)              |
+| `GET /api/findings` first page at 100k findings    | ≤ 250ms         | `TestLoadStatusServer` (reported)                     |
 | integration-controller peak RSS at 100k findings   | ≤ 2GiB          | `TestLoadIngest` (reported)                           |
 | Scheduler pick cost ratio, 2M ÷ 100k pending       | ≤ 30× (n log n) | `TestComplexityPick` (asserted)                       |
 
@@ -61,8 +61,8 @@ Etcd cannot hold 2M findings. So the claim "patchy handles 2M" breaks down into 
    The complexity assertions check this. A path that stays flat from 1k to 100k because it uses index lookups instead of
    scans also stays flat at 2M. The underlying structures (hash indexes, field indexers, the API server's own storage)
    do not change behavior past 100k.
-2. **Paths that are pure arithmetic run at the actual 2M** (scheduler `Pick` over 2M candidates, the 2M dataset build
-   behind `PATCHY_BENCH_HUGE`). Nothing there is extrapolated.
+2. **Paths that are pure arithmetic run at the actual 2M** (scheduler `Pick` over 2M candidates, the 2M findings-page
+   query behind `PATCHY_BENCH_HUGE`). Nothing there is extrapolated.
 3. **Memory grows linearly**: the informer caches use most of it, at ~1–2KiB per lean finding (managedFields stripped).
    100k findings ≈ 150–300MiB per controller, and 2M ≈ 3–6GiB. Size the controller limits to your backlog (see the
    comment in `charts/patchy/values.yaml`). Delayed-queue entries (accumulation windows, TTL requeues) add ~150–250B
@@ -76,6 +76,9 @@ Keeping these paths flat took the following changes, all of which landed with th
 - generation predicates on the Forge watches
 - bounded, parallel enhancer fan-out with a config cache that expires on a TTL
 - compact, gzipped dataset responses assembled with index sorts
+- the findings list read from a mirror of pointers into the informer cache. A cache `List` copies every finding even
+  without a deep copy: `BenchmarkListFindings` measures about 75MB and 6ms per request at 100k findings for the `List`,
+  against 0.8MB and 0.02ms for the mirror
 - managedFields stripped from every informer cache
 
 ## The rollup drain ceiling (documented, not fixed)

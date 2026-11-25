@@ -2,8 +2,12 @@
 // each finding stacks (what it is, then its state) with nothing to scroll
 // sideways. Rows are list items whose title is the link, stretched over the
 // whole row, so the pull-request link inside stays a separate, valid link.
+// Rows arrive a page at a time, and the next page loads as the end of the
+// list scrolls near (see findingsList.ts).
 
+import { useEffect, useRef } from "preact/hooks";
 import type { FindingSummary } from "../types";
+import { MAX_ROWS, type FindingsList } from "../findingsList";
 import { confidencePercent, DASH, formatAgo, formatConfidence, formatCount } from "../format";
 import { hrefForFinding } from "../router";
 import { shortName } from "../rollups";
@@ -93,24 +97,72 @@ function FindingRow({ finding }: { finding: FindingSummary }) {
   );
 }
 
+// LOAD_AHEAD_PX starts fetching the next page this far before the end of
+// the list comes into view, so steady scrolling rarely waits.
+const LOAD_AHEAD_PX = 800;
+
 export function FindingsTable({
-  findings,
+  list,
   total,
+  filtered,
   onClear,
 }: {
-  findings: FindingSummary[];
-  // How many there are before filtering, for the count line.
+  list: FindingsList;
+  // How many findings exist at all, filters aside, for the count line.
   total: number;
+  filtered: boolean;
   onClear?: () => void;
 }) {
-  const filtered = findings.length !== total;
+  const section = useRef<HTMLElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const loadMore = useRef(list.loadMore);
+  loadMore.current = list.loadMore;
+
+  // Load the next page as the end of the list nears. Re-observing whenever
+  // the rows change (a page appended, or a new selection's rows swapped in)
+  // makes the observer report again when the end is still in view, which it
+  // would not do on its own: it reports changes, not states.
+  const { hasMore, rows } = list;
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) loadMore.current();
+    }, { rootMargin: `${LOAD_AHEAD_PX}px 0px` });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, rows]);
+
+  const showLatest = () => {
+    list.showPending();
+    const top = section.current?.getBoundingClientRect().top ?? 0;
+    if (top < 0) section.current?.scrollIntoView({ block: "start" });
+  };
+
+  const capped = !list.hasMore && rows.length >= MAX_ROWS && list.matched > rows.length;
   return (
-    <section class="mt-4 overflow-hidden rounded-[10px] border border-line bg-surface" aria-labelledby="findings-count">
+    <section
+      ref={section}
+      class={`mt-4 overflow-hidden rounded-[10px] border border-line bg-surface transition-opacity ${list.switching ? "opacity-60" : ""}`}
+      aria-labelledby="findings-count"
+      aria-busy={list.switching || list.loadingMore}
+    >
       <header class="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-5 py-3">
         <h2 id="findings-count" class="m-0 text-[14px] font-semibold text-fg" aria-live="polite">
-          {filtered ? `${formatCount(findings.length)} of ${formatCount(total)} findings` : `${formatCount(total)} findings`}
+          {filtered ? `${formatCount(list.matched)} of ${formatCount(total)} findings` : `${formatCount(total)} findings`}
         </h2>
-        <span class="text-[13px] text-muted">Most severe first</span>
+        {list.pending ? (
+          <button
+            type="button"
+            class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line-3 bg-surface px-3 py-1 text-[13px] font-semibold text-ink hover:bg-surface-2"
+            onClick={showLatest}
+          >
+            <span class="ps-live-dot" aria-hidden="true" />
+            Updated. Show the latest
+          </button>
+        ) : (
+          <span class="text-[13px] text-muted">Most severe first</span>
+        )}
       </header>
       <div class={`${COLS} hidden min-h-10 border-b border-line bg-surface-2 px-5 text-[12.5px] font-semibold text-muted lg:grid`} aria-hidden="true">
         <span>Finding</span>
@@ -120,7 +172,7 @@ export function FindingsTable({
         <span>Verdict</span>
         <span>First seen</span>
       </div>
-      {findings.length === 0 ? (
+      {rows.length === 0 ? (
         <div class="px-5 py-10 text-center text-[14px] text-muted">
           {total === 0 ? (
             "Nothing here yet."
@@ -136,11 +188,29 @@ export function FindingsTable({
           )}
         </div>
       ) : (
-        <ul class="m-0 list-none p-0">
-          {findings.map((f) => (
-            <FindingRow key={f.name} finding={f} />
-          ))}
-        </ul>
+        <>
+          <ul class="m-0 list-none p-0">
+            {rows.map((f) => (
+              <FindingRow key={f.name} finding={f} />
+            ))}
+          </ul>
+          {/* Always laid out: an observer never reports a display:none target. */}
+          <div ref={sentinel} class="h-px" aria-hidden="true" />
+          <div class="border-t border-line px-5 py-3 text-center text-[13px] text-muted empty:hidden">
+            {list.moreFailed ? (
+              <>
+                Could not load more findings.{" "}
+                <button type="button" class="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline underline-offset-2" onClick={list.loadMore}>
+                  Try again
+                </button>
+              </>
+            ) : list.loadingMore ? (
+              "Loading more…"
+            ) : capped ? (
+              `Showing the first ${formatCount(rows.length)} of ${formatCount(list.matched)}. Narrow the filters to see the rest.`
+            ) : null}
+          </div>
+        </>
       )}
     </section>
   );

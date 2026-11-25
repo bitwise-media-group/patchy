@@ -21,7 +21,8 @@ only the page, which explains that sign-in is not configured. Auth mode `none` o
 
 | Route                                                             | Needs                                 | Serves                                                                                                                                                             |
 | ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/findings`                                               | `get` on `findings`                   | The trimmed list projection                                                                                                                                        |
+| `GET /api/findings`                                               | `get` on `findings`                   | The findings list, one page at a time (query below)                                                                                                                |
+| `GET /api/findings/suggest`                                       | `get` on `findings`                   | The findings filter's type-ahead: the search count for a term and the matching repositories                                                                        |
 | `GET /api/findings/{name}`                                        | `get` on `findings`                   | One finding in full: description, alerts, enrichments, the phase log and the run reports                                                                           |
 | `GET /api/findings/{name}/runs/{kind}/{attempt}/transcript`       | `get` on `findings`                   | An agent conversation as Server-Sent Events (`kind` is `investigation` or `remediation`)                                                                           |
 | `GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}` | `get` on `findings`                   | A presigned URL (`{url, expiresAt}`) for one [archived](../deployment/archival.md) object: `transcript`, `report`, `patch` or `manifest`. Each one is audit-logged |
@@ -33,6 +34,34 @@ only the page, which explains that sign-in is not configured. Auth mode `none` o
 | `POST /api/admin/{verb}`                                          | `replay` or `reset` on `integrations` | The namespace-wide demo tools: writes `spec.replay` or `spec.reset`                                                                                                |
 | `GET /events`                                                     | any read grant                        | The SSE refetch signal; it carries no content                                                                                                                      |
 | `/oauth2/…`, `/logout`                                            | none                                  | Sign-in and sign-out (mode `oidc`)                                                                                                                                 |
+
+The findings list never ships whole, because a backlog can run to millions. `GET /api/findings` answers one page of the
+filtered list, most severe first (then by phase, newest first, then name), with `matched` (how many match across every
+page) and a `nextCursor` to continue it. The first page also carries `facets`: counts by phase, severity and verdict,
+the open, running and suspended totals, and the repositories with most findings, all over every finding whatever the
+filters. It takes these query parameters:
+
+| Parameter      | Meaning                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `phase`        | A phase, such as `AwaitingApproval`. Repeat it to match any of several                   |
+| `severity`     | `critical`, `high`, `medium` or `low`. Repeatable                                        |
+| `verdict`      | `remediate`, `ignore` or `manual`. Repeatable                                            |
+| `repo`         | A repository, `owner/name`. Repeatable                                                   |
+| `repoPrefix`   | Repositories whose name starts with this, ignoring case. Repeatable                      |
+| `repoContains` | Repositories whose name contains this, ignoring case. Repeatable                         |
+| `q`            | Case-insensitive text in the name, title, rule, repository, advisories or owners         |
+| `limit`        | Page size, default 50, at most 200. `0` returns only the counts                          |
+| `cursor`       | The previous page's `nextCursor`. Pages never repeat or skip a row while findings change |
+
+`GET /api/findings/suggest` takes the same filters, with `q` as the typed term and `limit` (default 6, at most 20) as
+the number of repositories. It returns `matched` (what searching for the term would list), the repositories whose name
+contains the term with their finding counts, and `prefix` and `contains`: how many repositories and findings the term
+would match as a `repoPrefix` or `repoContains` filter.
+
+The three repository parameters add up, like the repeated values of one parameter: a finding passes if it is in any
+named repository or any repository a prefix or substring matches. A prefix or substring is matched against the name
+after the owner, so in an organization's install `media` does not match every `my-media-org/…` repository. Include a `/`
+(`my-media-org/pay`) to match the whole `owner/name`. At most 50 repository values are accepted.
 
 The metrics summary leaves out most repository rollups, because their number grows with your repositories. Its
 `repositoryCount` says how many there are. `GET /api/rollups/repositories` takes these query parameters:

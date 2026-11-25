@@ -1,7 +1,10 @@
 // Hash routing, so the page works from a static file server, over file://,
 // and inside the embedded server without rewrites.
 //
-//   #/                    findings list
+//   #/                    findings list, optionally filtered: ?{query},
+//                         the GET /api/findings filter parameters (phase,
+//                         severity, verdict, repo, repoPrefix, repoContains,
+//                         q), so a shared or saved link restores the filter
 //   #/finding/{name}      finding detail (optional /{tab})
 //   #/metrics             metrics, optionally sliced: /{kind}/{key}, where
 //                         kind is repository | model | harness | match (an
@@ -17,7 +20,7 @@ export type TabId = "overview" | "alerts" | "timeline" | "investigation" | "reme
 export type ConfigSection = "forges" | "integrations" | "enhancers";
 
 export type Route =
-  | { view: "list" }
+  | { view: "list"; query: string }
   | { view: "detail"; name: string; tab: TabId }
   | { view: "metrics"; slice: RollupSlice | null }
   | { view: "config"; section: ConfigSection };
@@ -27,7 +30,10 @@ const SLICE_KINDS: SliceKind[] = ["repository", "model", "harness", "match"];
 const SECTIONS: ConfigSection[] = ["forges", "integrations", "enhancers"];
 
 export function parseRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const raw = hash.replace(/^#\/?/, "");
+  const q = raw.indexOf("?");
+  const path = q < 0 ? raw : raw.slice(0, q);
+  const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "finding" && parts[1]) {
     const tab = TABS.includes(parts[2] as TabId) ? (parts[2] as TabId) : "overview";
     return { view: "detail", name: parts[1], tab };
@@ -47,11 +53,20 @@ export function parseRoute(hash: string): Route {
       : "integrations";
     return { view: "config", section };
   }
-  return { view: "list" };
+  return { view: "list", query: q < 0 ? "" : raw.slice(q + 1) };
 }
 
-export function hrefForList(): string {
-  return "#/";
+// The findings filter outlives a visit to a finding or the metrics, so
+// every link back to the list carries it. App records it on each render
+// (before its children render their links).
+let listQuery = "";
+
+export function setListQuery(query: string): void {
+  listQuery = query;
+}
+
+export function hrefForList(query: string = listQuery): string {
+  return query ? `#/?${query}` : "#/";
 }
 
 export function hrefForFinding(name: string, tab?: TabId): string {

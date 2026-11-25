@@ -2,12 +2,13 @@
 // and what needs a person (each clause filters the list to it), then the
 // lifecycle rail: every phase with its live count, each a filter toggle.
 // The rail is eight cells on a wide screen and four by two on a phone.
+// Every count is over all findings, whatever the filters: the server's
+// facets, not the loaded rows.
 
 import type { ComponentChildren } from "preact";
-import type { FindingSummary, Phase } from "../types";
-import { PHASE_ORDER, TERMINAL_PHASES } from "../types";
+import type { FindingFacets, Phase } from "../types";
+import { PHASE_ORDER } from "../types";
 import { PHASE_TITLES, formatCount } from "../format";
-import { phaseCounts } from "../filters";
 
 const CLOSED: Phase[] = ["Failed", "Dismissed", "HandedOff"];
 
@@ -22,22 +23,24 @@ function plural(n: number, one: string, many: string) {
 }
 
 export function FindingsOverview({
-  findings,
+  facets,
   selected,
   onToggle,
   onOnly,
 }: {
-  findings: FindingSummary[];
+  facets: FindingFacets | null;
   selected: Set<Phase>;
   onToggle: (phase: Phase) => void;
   // Replace the phase filter with exactly this phase.
   onOnly: (phase: Phase) => void;
 }) {
-  const { counts, suspended } = phaseCounts(findings);
-  const open = findings.filter((f) => f.phase && !TERMINAL_PHASES.has(f.phase)).length;
-  const running = findings.filter((f) => f.activeRun).length;
-  const awaiting = counts.get("AwaitingApproval") ?? 0;
-  const failed = counts.get("Failed") ?? 0;
+  const count = (phase: Phase) => facets?.phases?.[phase] ?? 0;
+  const total = facets?.total ?? 0;
+  const open = facets?.open ?? 0;
+  const running = facets?.running ?? 0;
+  const suspended = facets?.suspended ?? 0;
+  const awaiting = count("AwaitingApproval");
+  const failed = count("Failed");
 
   const clause = (n: number, text: string, phase: Phase) => (
     <button
@@ -56,7 +59,7 @@ export function FindingsOverview({
   return (
     <section aria-labelledby="findings-headline">
       <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">Findings</h1>
-      {findings.length === 0 ? (
+      {total === 0 ? (
         <p id="findings-headline" class="mt-2 mb-0 max-w-[60ch] text-[15px] text-muted">
           No findings yet. They appear here when a scanner reports an alert to one of your integrations.
         </p>
@@ -90,7 +93,7 @@ export function FindingsOverview({
       <div class="mt-5 rounded-[10px] border border-line bg-surface p-2">
         <ol class="m-0 grid list-none grid-cols-8 gap-1 p-0 max-lg:grid-cols-4" aria-label="Phases, in order. Select one to filter the list.">
           {PHASE_ORDER.map((phase) => {
-            const n = counts.get(phase) ?? 0;
+            const n = count(phase);
             const on = selected.has(phase);
             return (
               <li key={phase} class="min-w-0">
@@ -115,7 +118,7 @@ export function FindingsOverview({
         <div class="mt-1 flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-line px-1.5 pt-2">
           <span class="mr-1.5 text-[13px] text-muted max-sm:w-full max-sm:px-1 max-sm:pb-0.5">Closed without a change</span>
           {CLOSED.map((phase) => {
-            const n = counts.get(phase) ?? 0;
+            const n = count(phase);
             const on = selected.has(phase);
             return (
               <button

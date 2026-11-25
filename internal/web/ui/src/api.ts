@@ -11,7 +11,11 @@ import type {
   AdminVerb,
   ConfigDataset,
   Dataset,
+  DatasetHeader,
   Finding,
+  FindingSuggestions,
+  FindingsPage,
+  FindingsQuery,
   OfflineDataset,
   RepositoryPage,
   RepositoryQuery,
@@ -21,6 +25,7 @@ import type {
   TranscriptTurn,
 } from "./types";
 import { queryRepositoriesLocal, summarizeRollups } from "./rollups";
+import { queryFindingsLocal, queryParams, suggestFindingsLocal } from "./filters";
 import { availableActions, retryTarget } from "./actions";
 import { mockConfig } from "./mock/config";
 import { mockArchiveURL, mockDataset, mockTranscript } from "./mock/findings";
@@ -111,28 +116,49 @@ function demoPostAction(name: string, verb: ActionVerb, persona: Persona): void 
 
 // ---- public surface ------------------------------------------------------
 
+// offlineDataset is the full local dataset the offline modes answer from.
+function offlineDataset(): OfflineDataset {
+  return dataMode() === "snapshot" ? window.__PATCHY_STATUS_SNAPSHOT__!.dataset : demoDataset();
+}
+
 // offlineRollups is the full rollup list the offline modes carry; the live
 // server never sends it whole.
 function offlineRollups(): Rollup[] {
-  const mode = dataMode();
-  const data = mode === "snapshot" ? window.__PATCHY_STATUS_SNAPSHOT__!.dataset : demoDataset();
-  return data.rollups ?? [];
+  return offlineDataset().rollups ?? [];
 }
 
-// fetchFindings is the findings list. Like the server's, it carries no
-// rollups: the metrics page loads its own summary.
-export async function fetchFindings(persona: Persona = DEFAULT_PERSONA): Promise<Dataset> {
+// offlineHeader is the namespace, version and user the top bar renders.
+function offlineHeader(): DatasetHeader {
+  const { generatedAt, namespace, version, user } = offlineDataset();
+  return { generatedAt, namespace, version, user };
+}
+
+// fetchFindings is one page of the findings list, filtered and sorted
+// server-side; pass a page's nextCursor to continue it. The first page (no
+// cursor) carries the facets. Like the server's, it carries no rollups: the
+// metrics page loads its own summary. Offline modes answer the same query
+// from their full local list.
+export async function fetchFindings(
+  q: FindingsQuery,
+  persona: Persona = DEFAULT_PERSONA,
+  signal?: AbortSignal,
+): Promise<FindingsPage> {
   const mode = dataMode();
-  if (mode === "snapshot") return { ...window.__PATCHY_STATUS_SNAPSHOT__!.dataset, rollups: undefined };
-  if (mode === "demo") {
-    const data = demoDataset();
-    return {
-      ...data,
-      rollups: undefined,
-      findings: data.findings.map((f: Finding) => ({ ...f, userActions: [...persona.grants] })),
-    };
+  if (mode !== "live") {
+    const page = queryFindingsLocal(offlineDataset().findings, q);
+    const findings =
+      mode === "demo" ? page.findings.map((f: Finding) => ({ ...f, userActions: [...persona.grants] })) : page.findings;
+    return { ...offlineHeader(), ...page, findings };
   }
-  return request<Dataset>("/api/findings");
+  return request<FindingsPage>(`/api/findings?${queryParams(q)}`, { signal });
+}
+
+// suggestFindings is the findings filter's type-ahead for q.q: how many
+// findings the other filters match with it as the text search, and the
+// repositories whose name contains it.
+export async function suggestFindings(q: FindingsQuery, signal?: AbortSignal): Promise<FindingSuggestions> {
+  if (dataMode() !== "live") return suggestFindingsLocal(offlineDataset().findings, q);
+  return request<FindingSuggestions>(`/api/findings/suggest?${queryParams(q)}`, { signal });
 }
 
 // fetchFinding loads one finding's full detail: description, alerts,
@@ -145,9 +171,7 @@ export async function fetchFinding(
 ): Promise<Finding | null> {
   const mode = dataMode();
   if (mode !== "live") {
-    const data =
-      mode === "snapshot" ? window.__PATCHY_STATUS_SNAPSHOT__!.dataset : demoDataset();
-    const f = data.findings.find((x) => x.name === name);
+    const f = offlineDataset().findings.find((x) => x.name === name);
     if (!f) return null;
     return mode === "demo" ? { ...f, userActions: [...persona.grants] } : f;
   }
@@ -169,8 +193,7 @@ export async function fetchFinding(
 export async function fetchRollups(): Promise<Dataset> {
   const mode = dataMode();
   if (mode !== "live") {
-    const base = await fetchFindings();
-    return { ...base, findings: [], user: undefined, ...summarizeRollups(offlineRollups()) };
+    return { ...offlineHeader(), user: undefined, ...summarizeRollups(offlineRollups()) };
   }
   return request<Dataset>("/api/rollups");
 }

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Tier-1 microbenchmarks for the status-server dataset path: projecting one
-// Finding, assembling the list dataset at backlog scale, encoding it, the
-// one-finding detail build, and the SSE fan-out. Run via `mise run bench`;
+// Finding, querying a findings page at backlog scale, encoding it, and the
+// SSE fan-out. Run via `mise run bench`;
 // the TestComplexity* assertions are opt-in (PATCHY_BENCH_ASSERT=1). The
-// 2M-findings dataset build needs ~16GB and is also gated on
+// 2M-findings query needs ~16GB and is also gated on
 // PATCHY_BENCH_HUGE=1 (run it with -benchtime=1x).
 
 package web
@@ -13,15 +13,14 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
-	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/loadgen"
 )
 
@@ -38,31 +37,6 @@ var benchPhaseMix = map[v1alpha1.Phase]int{
 	v1alpha1.PhaseDismissed:     15,
 	v1alpha1.PhaseHandedOff:     10,
 	v1alpha1.PhaseFailed:        5,
-}
-
-// benchServer builds a Server over a fake client holding n findings, n/10
-// rollups, and n/2 investigation children. The list build must read findings
-// and rollups only; the children are seeded so a reintroduced child join
-// would show up in the BuildDataset numbers. The detail path is not benched
-// here: the fake client deep-copies every child per List regardless of the
-// field index, so it can only show the scan the real informer cache avoids
-// (the e2e load test measures the real thing).
-func benchServer(tb testing.TB, n int) *Server {
-	tb.Helper()
-	o := loadgen.Opts{PhaseMix: benchPhaseMix, AlertsPerFinding: 2}
-	rollups := max(n/10, 1)
-	children := n / 2
-	c := fake.NewClientBuilder().
-		WithScheme(kube.Scheme()).
-		WithLists(
-			&v1alpha1.FindingList{Items: loadgen.Findings(n, o)},
-			&v1alpha1.FindingRollupList{Items: loadgen.Rollups(rollups)},
-			&v1alpha1.InvestigationList{Items: loadgen.Investigations(children, o)},
-		).
-		WithIndex(&v1alpha1.Investigation{}, RunFindingIndex, RunFindingIndexer).
-		WithIndex(&v1alpha1.Remediation{}, RunFindingIndex, RunFindingIndexer).
-		Build()
-	return NewServer(c, loadgen.Namespace, nil, nil, nil)
 }
 
 // maximalFinding is a Finding with every projection branch populated.
@@ -134,39 +108,96 @@ func BenchmarkProjectFinding(b *testing.B) {
 	})
 }
 
-// BenchmarkBuildDataset assembles the trimmed list payload at each backlog
-// size: two Lists, the summary projection, and the newest-first sort.
-func BenchmarkBuildDataset(b *testing.B) {
+// findingBenchQueries are the list requests a reader makes: the first page
+// (which also tallies the facets), a page deep into the list, a filtered
+// page, a text search, and the filter's type-ahead.
+var findingBenchQueries = []struct{ name, raw string }{
+	{"first-page", "limit=50"},
+	{"deep-page", "limit=50&cursor=" + encodeCursor(findingKey{severity: 2, phase: 7, name: "m"})},
+	{"filtered", "limit=50&phase=Queued&severity=high"},
+	{"search", "limit=50&q=finding-12"},
+}
+
+// BenchmarkQueryFindings measures one GET /api/findings page at each
+// backlog size, over a reader that behaves like the real cache path (no
+// per-request copies): one pass with the filters, the bounded page heap,
+// and the facets on the first page.
+func BenchmarkQueryFindings(b *testing.B) {
 	for _, n := range []int{10_000, 100_000} {
-		b.Run(fmt.Sprintf("findings=%d", n), func(b *testing.B) {
-			benchBuildDataset(b, n)
+		s := cachedFindingServer(n)
+		for _, q := range findingBenchQueries {
+			b.Run(fmt.Sprintf("findings=%d/%s", n, q.name), func(b *testing.B) {
+				benchQueryFindings(b, s, q.raw)
+			})
+		}
+		b.Run(fmt.Sprintf("findings=%d/suggest", n), func(b *testing.B) {
+			v, _ := url.ParseQuery("q=repo-1&severity=high")
+			fq, err := parseFindingQuery(v, facetRepositories, maxSuggestLimit)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := s.suggestFindings(b.Context(), fq); err != nil {
+					b.Fatal(err)
+				}
+			}
 		})
 	}
 }
 
-// BenchmarkBuildDatasetHuge is the full 2M design target. ~16GB of working
+// BenchmarkQueryFindingsHuge is the full 2M design target. ~16GB of working
 // set: opt in with PATCHY_BENCH_HUGE=1 and run with -benchtime=1x.
-func BenchmarkBuildDatasetHuge(b *testing.B) {
-	if os.Getenv("PATCHY_BENCH_HUGE") == "" {
-		b.Skip("set PATCHY_BENCH_HUGE=1 (and -benchtime=1x) to build the 2M dataset")
+// BenchmarkListFindings is the read that starts every findings request:
+// a no-deep-copy cache List (the path until the mirror syncs), which still
+// copies every Finding struct, against the mirror's pointer snapshot.
+func BenchmarkListFindings(b *testing.B) {
+	for _, n := range []int{10_000, 100_000} {
+		for _, via := range []struct {
+			name string
+			s    *Server
+		}{{"cache-list", listedFindingServer(n)}, {"mirror", cachedFindingServer(n)}} {
+			b.Run(fmt.Sprintf("findings=%d/via=%s", n, via.name), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					items, err := via.s.listFindings(b.Context())
+					if err != nil || len(items) != n {
+						b.Fatalf("listed %d, %v", len(items), err)
+					}
+				}
+			})
+		}
 	}
-	benchBuildDataset(b, 2_000_000)
 }
 
-func benchBuildDataset(b *testing.B, n int) {
-	s := benchServer(b, n)
+func BenchmarkQueryFindingsHuge(b *testing.B) {
+	if os.Getenv("PATCHY_BENCH_HUGE") == "" {
+		b.Skip("set PATCHY_BENCH_HUGE=1 (and -benchtime=1x) to query the 2M backlog")
+	}
+	s := cachedFindingServer(2_000_000)
+	for _, q := range findingBenchQueries {
+		b.Run(q.name, func(b *testing.B) { benchQueryFindings(b, s, q.raw) })
+	}
+}
+
+func benchQueryFindings(b *testing.B, s *Server, raw string) {
+	v, _ := url.ParseQuery(raw)
+	fq, err := parseFindingQuery(v, defaultFindingLimit, maxFindingLimit)
+	if err != nil {
+		b.Fatal(err)
+	}
 	ctx := b.Context()
 	verbs := []string{"approve", "retry"}
 	user := &User{Name: "bench", LoggedIn: true}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		ds, err := s.buildDataset(ctx, true, verbs, user)
+		page, err := s.queryFindings(ctx, fq, verbs, user)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if len(ds.Findings) != n {
-			b.Fatalf("findings = %d, want %d", len(ds.Findings), n)
+		if len(page.Findings) > fq.limit {
+			b.Fatalf("page = %d rows, limit %d", len(page.Findings), fq.limit)
 		}
 	}
 }
@@ -176,11 +207,12 @@ type countingWriter struct{ n int64 }
 
 func (w *countingWriter) Write(p []byte) (int, error) { w.n += int64(len(p)); return len(p), nil }
 
-// BenchmarkDatasetEncode measures serializing the assembled dataset over
-// 10k findings, compact against indented, reporting response bytes.
+// BenchmarkDatasetEncode measures serializing the largest findings page a
+// client may ask for, compact against indented, reporting response bytes.
 func BenchmarkDatasetEncode(b *testing.B) {
-	s := benchServer(b, 10_000)
-	ds, err := s.buildDataset(b.Context(), true, []string{"approve"}, &User{Name: "bench"})
+	s := cachedFindingServer(10_000)
+	fq := findingQuery{limit: maxFindingLimit}
+	ds, err := s.queryFindings(b.Context(), fq, []string{"approve"}, &User{Name: "bench"})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -225,21 +257,23 @@ func BenchmarkSSEFanout(b *testing.B) {
 	}
 }
 
-// TestComplexityBuildDataset asserts the dataset build stays near-linear:
-// the per-finding cost at 100k may exceed the 10k cost by at most 30%
-// (n log n from the sort is tolerated; anything superlinear beyond that is
-// a regression).
-func TestComplexityBuildDataset(t *testing.T) {
+// TestComplexityQueryFindings asserts a first-page query stays near-linear:
+// the per-finding cost at 100k may exceed the 10k cost by at most 30%. The
+// page heap is bounded by the page size, so anything superlinear is a
+// regression (a full sort crept back in, say).
+func TestComplexityQueryFindings(t *testing.T) {
 	if os.Getenv("PATCHY_BENCH_ASSERT") == "" {
 		t.Skip("set PATCHY_BENCH_ASSERT=1 to run complexity assertions")
 	}
-	small := testing.Benchmark(func(b *testing.B) { benchBuildDataset(b, 10_000) })
-	large := testing.Benchmark(func(b *testing.B) { benchBuildDataset(b, 100_000) })
-	perSmall := float64(small.NsPerOp()) / 10_000
-	perLarge := float64(large.NsPerOp()) / 100_000
+	perFinding := func(n int) float64 {
+		s := cachedFindingServer(n)
+		res := testing.Benchmark(func(b *testing.B) { benchQueryFindings(b, s, "limit=50") })
+		return float64(res.NsPerOp()) / float64(n)
+	}
+	perSmall, perLarge := perFinding(10_000), perFinding(100_000)
 	ratio := perLarge / perSmall
-	t.Logf("buildDataset ns/finding: 10k %.0f, 100k %.0f, ratio %.2f", perSmall, perLarge, ratio)
+	t.Logf("queryFindings ns/finding: 10k %.0f, 100k %.0f, ratio %.2f", perSmall, perLarge, ratio)
 	if ratio > 1.3 {
-		t.Errorf("per-finding dataset cost grows superlinearly: 100k/10k per-item ratio = %.2f, want <= 1.3", ratio)
+		t.Errorf("per-finding query cost grows superlinearly: 100k/10k per-item ratio = %.2f, want <= 1.3", ratio)
 	}
 }

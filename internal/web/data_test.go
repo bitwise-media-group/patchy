@@ -154,11 +154,12 @@ func asMap(t *testing.T, v any) map[string]any {
 	return m
 }
 
-func TestBuildDatasetProjection(t *testing.T) {
+func TestFindingsPageProjection(t *testing.T) {
 	s := testServer(t, fullFinding(), testRollup(v1alpha1.ScopeTotal, "", "total"))
-	ds, err := s.buildDataset(t.Context(), true, []string{"approve"}, &User{Name: "dev", LoggedIn: true})
+	ds, err := s.queryFindings(t.Context(), findingQuery{limit: defaultFindingLimit}, []string{"approve"},
+		&User{Name: "dev", LoggedIn: true})
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
+		t.Fatalf("queryFindings: %v", err)
 	}
 	if ds.GeneratedAt != "2026-07-21T12:00:00Z" || ds.Namespace != "patchy" {
 		t.Errorf("stamps = %q/%q", ds.GeneratedAt, ds.Namespace)
@@ -166,11 +167,10 @@ func TestBuildDatasetProjection(t *testing.T) {
 	if ds.User == nil || ds.User.Name != "dev" || !ds.User.LoggedIn {
 		t.Errorf("user = %+v", ds.User)
 	}
-	// The findings list never carries rollups: the metrics summary is its
+	// The findings page never carries rollups: the metrics summary is its
 	// own payload.
-	if len(ds.Findings) != 1 || len(ds.Rollups) != 0 || ds.RepositoryCount != 0 {
-		t.Fatalf("findings/rollups/repositories = %d/%d/%d, want 1/0/0",
-			len(ds.Findings), len(ds.Rollups), ds.RepositoryCount)
+	if m := asMap(t, ds); m["rollups"] != nil || len(ds.Findings) != 1 {
+		t.Fatalf("findings = %d, rollups = %v; want 1 and none", len(ds.Findings), m["rollups"])
 	}
 
 	f := asMap(t, ds.Findings[0])
@@ -348,11 +348,11 @@ func TestBuildFindingDetailIsolatesSiblings(t *testing.T) {
 	}
 }
 
-func TestBuildDatasetRollupProjection(t *testing.T) {
+func TestRollupSummaryProjection(t *testing.T) {
 	s := testServer(t, testRollup(v1alpha1.ScopeTotal, "", "total"))
-	ds, err := s.buildDataset(t.Context(), false, nil, nil)
+	ds, err := s.buildRollupSummary(t.Context(), nil)
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
+		t.Fatalf("buildRollupSummary: %v", err)
 	}
 	if len(ds.Rollups) != 1 {
 		t.Fatalf("rollups = %d, want 1", len(ds.Rollups))
@@ -374,7 +374,7 @@ func TestBuildDatasetRollupProjection(t *testing.T) {
 	}
 }
 
-func TestBuildDatasetMinimalFinding(t *testing.T) {
+func TestFindingsPageMinimalFinding(t *testing.T) {
 	fnd := &v1alpha1.Finding{
 		ObjectMeta: metav1.ObjectMeta{Name: "bare", Namespace: "patchy"},
 		Spec: v1alpha1.FindingSpec{
@@ -384,9 +384,9 @@ func TestBuildDatasetMinimalFinding(t *testing.T) {
 		},
 	}
 	s := testServer(t, fnd)
-	ds, err := s.buildDataset(t.Context(), true, nil, nil)
+	ds, err := s.queryFindings(t.Context(), findingQuery{limit: defaultFindingLimit}, nil, nil)
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
+		t.Fatalf("queryFindings: %v", err)
 	}
 	f := asMap(t, ds.Findings[0])
 	// Optional zero values are omitted, not rendered as false/""/null noise.
@@ -403,37 +403,21 @@ func TestBuildDatasetMinimalFinding(t *testing.T) {
 	}
 }
 
-func TestBuildDatasetOrderingAndRollupsOnly(t *testing.T) {
-	older := fullFinding()
-	newer := fullFinding()
-	newer.Name = "gh-cs-orders-2"
-	at := metav1.NewTime(testClock.Add(-time.Minute))
-	newer.Status.FirstObservedAt = &at
-	s := testServer(t, older, newer,
+func TestRollupSummaryCarriesNoFindings(t *testing.T) {
+	s := testServer(t, fullFinding(),
 		testRollup(v1alpha1.ScopeRepository, "acme/orders", "repo-x"),
 		testRollup(v1alpha1.ScopeTotal, "", "total"))
 
-	ds, err := s.buildDataset(t.Context(), true, nil, nil)
+	pub, err := s.buildRollupSummary(t.Context(), nil)
 	if err != nil {
-		t.Fatalf("buildDataset: %v", err)
-	}
-	if ds.Findings[0].Name != "gh-cs-orders-2" {
-		t.Errorf("order = [%s, %s], want newest first", ds.Findings[0].Name, ds.Findings[1].Name)
-	}
-	if len(ds.Rollups) != 0 {
-		t.Errorf("findings dataset carried %d rollups", len(ds.Rollups))
-	}
-
-	pub, err := s.buildDataset(t.Context(), false, nil, nil)
-	if err != nil {
-		t.Fatalf("buildDataset(rollups): %v", err)
+		t.Fatalf("buildRollupSummary: %v", err)
 	}
 	m := asMap(t, pub)
-	if got := m["findings"].([]any); len(got) != 0 {
-		t.Errorf("rollups-only dataset carried %d findings", len(got))
+	if _, ok := m["findings"]; ok {
+		t.Error("rollup summary carried findings")
 	}
 	if _, ok := m["user"]; ok {
-		t.Error("rollups-only dataset carried user")
+		t.Error("rollup summary carried user")
 	}
 	// Summary order: the fixed shards by type, then the top repositories.
 	if len(pub.Rollups) != 2 || pub.Rollups[0].Scope.Type != "total" || pub.Rollups[1].Scope.Type != "repository" {

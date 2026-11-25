@@ -232,6 +232,47 @@ func TestIngestOpensSuccessorGeneration(t *testing.T) {
 	}
 }
 
+// Re-ingesting an alert a generation already tracks (a backfill re-listing
+// it, a webhook redelivery) changes nothing while that generation still
+// owns it. Once patchy has closed it out (Dismissed, Remediated), the alert
+// arriving open again is a new occurrence and opens a successor.
+func TestIngestRedeliveryOpensNoSuccessor(t *testing.T) {
+	tests := []struct {
+		phase v1alpha1.Phase
+		want  int
+	}{
+		{v1alpha1.PhaseInvestigating, 1},
+		{v1alpha1.PhaseQueued, 1},
+		{v1alpha1.PhaseAwaitingApproval, 1},
+		{v1alpha1.PhaseRemediating, 1},
+		{v1alpha1.PhaseInReview, 1},
+		{v1alpha1.PhaseHandedOff, 1},
+		{v1alpha1.PhaseFailed, 1},
+		{v1alpha1.PhaseDismissed, 2},
+		{v1alpha1.PhaseRemediated, 2},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.phase), func(t *testing.T) {
+			in, c := newIngestor(t)
+			integ := testIntegration()
+			if err := in.Ingest(t.Context(), integ, testSourceFinding(42)); err != nil {
+				t.Fatalf("Ingest: %v", err)
+			}
+			first := listFindings(t, c)[0]
+			first.Status.Phase = tt.phase
+			if err := c.Status().Update(t.Context(), &first); err != nil {
+				t.Fatalf("advance phase: %v", err)
+			}
+			if err := in.Ingest(t.Context(), integ, testSourceFinding(42)); err != nil {
+				t.Fatalf("re-Ingest: %v", err)
+			}
+			if items := listFindings(t, c); len(items) != tt.want {
+				t.Errorf("findings = %v, want %d", names(items), tt.want)
+			}
+		})
+	}
+}
+
 func TestIngestAlertOverflow(t *testing.T) {
 	in, c := newIngestor(t)
 	integ := testIntegration()

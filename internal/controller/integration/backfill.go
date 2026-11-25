@@ -32,8 +32,8 @@ func pendingBackfill(integ *v1alpha1.Integration) *v1alpha1.BackfillRequest {
 }
 
 // runBackfill performs one bounded list-alerts walk for a pending backfill
-// request, ingesting every listed alert (ingestion is idempotent, so
-// alerts that already have findings just fold in as duplicates). It never
+// request, ingesting every listed alert (ingestion is idempotent: an
+// alert a live finding already tracks changes nothing). It never
 // fails the reconcile; the outcome (including errors) lands on the
 // returned status. ran reports whether the request was consumed. False
 // means the walk itself failed (credentials, a fixable filter, the API)

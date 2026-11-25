@@ -112,6 +112,20 @@ func (in *Ingestor) Ingest(ctx context.Context, integ *v1alpha1.Integration, f s
 		return fmt.Errorf("list finding family %s: %w", hash, err)
 	}
 
+	// An alert a generation already tracks is a re-delivery, not news: the
+	// backfill re-lists every open alert, including those whose finding is
+	// mid-pipeline, and GitHub redelivers webhooks. Opening a successor for
+	// it would duplicate the investigation, the remediation and the
+	// tracking issue for one alert.
+	alertID := toAlert(f).ID
+	for i := range family.Items {
+		if cur := &family.Items[i]; tracks(cur, alertID) {
+			in.log().LogAttrs(ctx, slog.LevelDebug, "alert already tracked",
+				slog.String("finding", cur.Name), slog.String("alert", alertID))
+			return nil
+		}
+	}
+
 	// Fold into a live pre-investigation generation when one exists.
 	maxGen := 0
 	for i := range family.Items {
@@ -187,6 +201,23 @@ var errRaced = fmt.Errorf("finding advanced past accumulation")
 // splinter the family into one generation per alert.
 func foldable(p v1alpha1.Phase) bool {
 	return p == "" || p == v1alpha1.PhaseOpened || p == v1alpha1.PhaseEnhanced
+}
+
+// tracks reports whether fnd already owns the alert, so ingesting it again
+// must change nothing. A foldable generation is excluded: fold dedups by
+// alert ID itself. So are Dismissed and Remediated: patchy closed the alert
+// out, so its arriving open again (reopened, or the fix did not take) is
+// a new occurrence that deserves a successor. Every other phase, including
+// HandedOff and Failed, still has an owner working the alert.
+func tracks(fnd *v1alpha1.Finding, alertID string) bool {
+	if !fnd.DeletionTimestamp.IsZero() || foldable(fnd.Status.Phase) {
+		return false
+	}
+	switch fnd.Status.Phase {
+	case v1alpha1.PhaseDismissed, v1alpha1.PhaseRemediated:
+		return false
+	}
+	return slices.ContainsFunc(fnd.Spec.Alerts, func(a v1alpha1.Alert) bool { return a.ID == alertID })
 }
 
 // generationOf parses the trailing generation ordinal of a Finding name.

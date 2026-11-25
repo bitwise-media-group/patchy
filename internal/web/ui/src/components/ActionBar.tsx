@@ -37,7 +37,7 @@ export function ActionBar({
       role="group"
       aria-label="Actions"
     >
-      <span class="font-mono text-[12px] text-faint">Actions available to you:</span>
+      <span class="text-[13px] text-muted">Actions available to you</span>
       {verbs.map((verb) => {
         const meta = VERB_META[verb];
         const label =

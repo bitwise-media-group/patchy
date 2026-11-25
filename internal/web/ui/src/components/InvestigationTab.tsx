@@ -3,7 +3,7 @@ import { DASH, formatConfidence, formatCount, formatDate, formatTokens, holdText
 import { Icon } from "./icons";
 import { ArchiveLink } from "./ArchiveLink";
 import { Markdown } from "./Markdown";
-import { Pill, VerdictPill } from "./Pills";
+import { Pill, VerdictPill, outcomeLabel } from "./Pills";
 import { RunAccountingRows } from "./RunUsage";
 import { Conversation } from "./Transcript";
 
@@ -21,9 +21,9 @@ export function InvestigationTab({ finding }: { finding: Finding }) {
                 {inv.outcome === undefined ? (
                   DASH
                 ) : inv.outcome === "ok" ? (
-                  <Pill tone="green">{inv.outcome}</Pill>
+                  <Pill tone="green">{outcomeLabel(inv.outcome)}</Pill>
                 ) : (
-                  <Pill tone="red">{inv.outcome}</Pill>
+                  <Pill tone="red">{outcomeLabel(inv.outcome)}</Pill>
                 )}
               </dd>
             </div>

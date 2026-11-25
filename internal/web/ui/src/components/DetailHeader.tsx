@@ -117,7 +117,7 @@ export function DetailHeader({
         <UsageBadges finding={finding} />
         <PhasePill phase={finding.phase} label="Status" />
         <SeverityPill severity={finding.severity} label="Severity" />
-        {finding.suspend ? <Pill tone="amber">suspended</Pill> : null}
+        {finding.suspend ? <Pill tone="amber">Suspended</Pill> : null}
         <KebabMenu finding={finding} demo={demo} onSimulate403={onSimulate403} />
         <a class={ICON_BTN} href={hrefForList()} aria-label="Back to findings list">
           <Icon name="x" size={16} />

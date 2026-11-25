@@ -130,10 +130,10 @@ export function MetricsView({ slice }: { slice: RollupSlice | null }) {
         {slice === null ? (
           <div class="mt-4 flex flex-col gap-4">
             <RepositoryTable title="Repositories" refresh={refresh} />
-            <div class="grid grid-cols-2 gap-4 max-xl:grid-cols-1">
-              <AgentTable kind="model" title="Models" rollups={models} />
-              <AgentTable kind="harness" title="Harnesses" rollups={harnesses} />
-            </div>
+            {/* Stacked: the content column caps at 1240px, and side by side
+                each table would get too little room for its spend column. */}
+            <AgentTable kind="model" title="Models" rollups={models} />
+            <AgentTable kind="harness" title="Harnesses" rollups={harnesses} />
           </div>
         ) : slice.kind === "match" ? (
           <div class="mt-4">

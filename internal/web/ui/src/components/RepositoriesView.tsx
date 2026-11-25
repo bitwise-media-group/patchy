@@ -54,6 +54,7 @@ import { formatAgo, formatCount } from "../format";
 import { rank } from "../typeahead";
 import { FilterBox, Highlight, type FilterGroup, type FilterOption } from "./FilterBox";
 import { Icon } from "./icons";
+import { Pill } from "./Pills";
 
 const SUGGESTIONS = 6;
 const DEBOUNCE_MS = 150;
@@ -634,12 +635,6 @@ function RemoveButton({ name, onRemove, class: extra }: { name: string; onRemove
   );
 }
 
-// StatusPill is the app's pill set in the sans: on this page a pill is a
-// short phrase inside a sentence, not a status code.
-function StatusPill({ tone, children }: { tone: "amber" | "seedling" | "red"; children: ComponentChildren }) {
-  return <span class={`ps-pill ps-pill--${tone} font-sans text-[12.5px] font-semibold`}>{children}</span>;
-}
-
 // backfilledSentence reports a finished backfill that found nothing: the
 // repository had no open alerts when it was walked.
 function backfilledSentence(bf: RepositoryBackfill): string {
@@ -689,7 +684,7 @@ function QuietStatus({
   if (bf?.pending) {
     return (
       <>
-        <StatusPill tone="seedling">Backfill pending</StatusPill>
+        <Pill tone="seedling">Backfill pending</Pill>
         <span class="text-muted">
           Requested on {bf.integration}
           {bf.requestedAt ? ` ${ago(bf.requestedAt)}` : ""}
@@ -701,7 +696,7 @@ function QuietStatus({
   if (bf?.error) {
     return (
       <>
-        <StatusPill tone="red">Backfill failed</StatusPill>
+        <Pill tone="red">Backfill failed</Pill>
         <span class="min-w-0 truncate text-muted" title={bf.error}>
           {bf.error}
         </span>
@@ -725,7 +720,7 @@ function QuietStatus({
     const reason = accessReason(access);
     return (
       <>
-        <StatusPill tone="amber">Can't read alerts</StatusPill>
+        <Pill tone="amber">Can't read alerts</Pill>
         <span class="text-muted">{reason.charAt(0).toUpperCase() + reason.slice(1)}.</span>
         {forgeNote}
         {why}

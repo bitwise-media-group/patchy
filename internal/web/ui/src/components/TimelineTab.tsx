@@ -2,7 +2,7 @@
 // PR-merge events woven in at their timestamps.
 
 import type { Finding, Phase } from "../types";
-import { formatAgo, formatDate, PHASE_LABELS } from "../format";
+import { formatAgo, formatDate, PHASE_TITLES } from "../format";
 import { Icon, type IconName } from "./icons";
 
 type Entry = {
@@ -45,7 +45,7 @@ function entries(finding: Finding): Entry[] {
     const last = i === times.length - 1;
     out.push({
       key: `phase-${i}`,
-      title: PHASE_LABELS[pt.phase],
+      title: PHASE_TITLES[pt.phase],
       detail: last ? undefined : RECOVERY_DETAIL[pt.phase],
       at: pt.at,
       // A terminal phase keeps its own tone wherever it sits in history: a
@@ -85,9 +85,9 @@ export function TimelineTab({ finding }: { finding: Finding }) {
               {MARKER_ICON[e.tone] ? <Icon name={MARKER_ICON[e.tone]!} size={11} strokeWidth={2.6} /> : null}
             </span>
             <span class="ps-timeline__body">
-              <strong class="block font-mono text-[12px] font-semibold text-fg">{e.title}</strong>
+              <strong class="block text-[13.5px] font-semibold text-fg">{e.title}</strong>
               {e.detail ? <small class="mt-0.5 block text-[12px] text-muted">{e.detail}</small> : null}
-              <small class="mt-0.5 block font-mono text-[12px] text-faint">
+              <small class="mt-0.5 block text-[12.5px] text-faint tabular-nums">
                 {formatDate(e.at)} · {formatAgo(e.at)}
               </small>
             </span>

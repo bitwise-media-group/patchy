@@ -3,7 +3,7 @@
 // for the in-review phase pill.
 
 import type { PullRequestStatus } from "../types";
-import { PHASE_LABELS, formatDate } from "../format";
+import { formatDate } from "../format";
 import { Icon } from "./icons";
 
 export function PullRequestCard({ pr }: { pr: PullRequestStatus }) {
@@ -40,7 +40,7 @@ export function PullRequestPill({ pr }: { pr: PullRequestStatus }) {
       title={`pull request #${pr.number} · ${pr.state ?? "open"}`}
     >
       <Icon name="gitPullRequest" size={11} />
-      {PHASE_LABELS.InReview} #{pr.number}
+      PR #{pr.number}
       <Icon name="externalLink" size={10} />
     </a>
   );

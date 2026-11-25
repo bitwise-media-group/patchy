@@ -3,7 +3,7 @@ import { DASH, formatDate } from "../format";
 import { Icon } from "./icons";
 import { ArchiveLink } from "./ArchiveLink";
 import { Markdown } from "./Markdown";
-import { Pill } from "./Pills";
+import { Pill, outcomeLabel } from "./Pills";
 import { PullRequestCard } from "./PullRequest";
 import { BudgetRows, RunAccountingRows } from "./RunUsage";
 import { Conversation } from "./Transcript";
@@ -36,9 +36,9 @@ export function RemediationTab({ finding }: { finding: Finding }) {
                 {rem.success === undefined ? (
                   rem.outcome ?? DASH
                 ) : rem.success ? (
-                  <Pill tone="green">{rem.outcome ?? "ok"}</Pill>
+                  <Pill tone="green">{outcomeLabel(rem.outcome ?? "ok")}</Pill>
                 ) : (
-                  <Pill tone="red">{rem.outcome ?? "failed"}</Pill>
+                  <Pill tone="red">{outcomeLabel(rem.outcome ?? "failed")}</Pill>
                 )}
               </dd>
             </div>

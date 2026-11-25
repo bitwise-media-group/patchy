@@ -132,6 +132,15 @@ in-cluster port that only the status server can reach. Its answers are cached fo
 ![My repositories, with finding counts by phase](../assets/images/whats-new/0.15.0/repositories.jpg#only-dark)
 ![My repositories, with finding counts by phase](../assets/images/whats-new/0.15.0/repositories-light.jpg#only-light)
 
+## Easier to read at a glance
+
+Status pills now read as words, not code: **In review** rather than `in-review`, and **Critical** rather than
+`critical`, in the same typeface as the text around them. Rule ids, advisories and branch names keep their code style,
+because you search for those. The findings list leads each row with the repository's name instead of repeating its
+owner, and a finding's facts sit in one panel instead of six boxes. Its token and cost pills appear once an agent run
+has been accounted, rather than showing dashes before then. On the metrics page, the models and harnesses tables no
+longer cut off their spend column.
+
 ## A bigger demo
 
 The [demo](../demo.md) now holds 611 findings across 211 repositories, so infinite scroll, the counts and the repository

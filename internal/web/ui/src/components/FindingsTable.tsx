@@ -15,8 +15,6 @@ import { Icon } from "./icons";
 import { PhasePill, SeverityPill, VerdictPill, Pill } from "./Pills";
 import { PullRequestPill } from "./PullRequest";
 
-const owner = (key: string) => key.slice(0, key.lastIndexOf("/") + 1);
-
 const COLS = "lg:grid lg:grid-cols-[minmax(0,2.6fr)_0.8fr_1.2fr_0.8fr_0.8fr_0.7fr] lg:items-center lg:gap-4";
 
 function FindingRow({ finding }: { finding: FindingSummary }) {
@@ -31,9 +29,9 @@ function FindingRow({ finding }: { finding: FindingSummary }) {
           {finding.repository?.name ? (
             <>
               <Icon name="github" size={13} class="flex-none" />
-              <span class="truncate font-mono" title={finding.repository.name}>
-                {/* Phones drop the owner: in one organisation it is the same on every row. */}
-                <span class="max-sm:hidden">{owner(finding.repository.name)}</span>
+              {/* The owner is the same on nearly every row, so the name alone
+                  leads; the full name is the tooltip. */}
+              <span class="truncate font-medium" title={finding.repository.name}>
                 {shortName(finding.repository.name)}
               </span>
               <span class="flex-none text-faint" aria-hidden="true">
@@ -63,7 +61,7 @@ function FindingRow({ finding }: { finding: FindingSummary }) {
           ) : (
             <PhasePill phase={finding.phase} />
           )}
-          {finding.suspend ? <Pill tone="amber">suspended</Pill> : null}
+          {finding.suspend ? <Pill tone="amber">Suspended</Pill> : null}
           {finding.activeRun ? (
             <span class="inline-flex items-center gap-1.5 text-[12.5px] text-ink" title={`${finding.activeRun.kind} running`}>
               <span class="ps-live-dot" /> {finding.activeRun.kind}

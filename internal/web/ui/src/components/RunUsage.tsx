@@ -115,10 +115,11 @@ export function BudgetRows({
   );
 }
 
-// UsageBadges always renders both pills. A finding with no runs yet shows
-// dashes, so the header keeps its shape when accounting lands later.
+// UsageBadges renders the token and cost pills once an agent run has been
+// accounted. Before that they would only say "nothing yet" twice.
 export function UsageBadges({ finding }: { finding: Finding }) {
   const u = finding.totalUsage;
+  if (!totalTokens(u) && !u?.costMicroUSD) return null;
   return (
     <>
       <Pill tone="neutral" label="Tokens" title={usageBreakdown(u) ?? "No agent runs accounted yet"}>

@@ -4,7 +4,7 @@ import { DASH, formatConfidence, holdText } from "../format";
 import { hrefForFinding } from "../router";
 import { Icon } from "./icons";
 import { Markdown } from "./Markdown";
-import { Pill, RatingPill, VerdictPill } from "./Pills";
+import { Pill, RatingPill, VerdictPill, sentence } from "./Pills";
 
 // Scanner help text often opens with a heading that repeats the finding
 // title; drop it rather than render the title twice.
@@ -57,7 +57,7 @@ export function OverviewTab({ finding }: { finding: Finding }) {
         </span>
         {finding.priority ? (
           <span>
-            Priority: <strong class="font-mono text-fg">{finding.priority}</strong>
+            Priority: <strong class="text-fg">{sentence(finding.priority)}</strong>
           </span>
         ) : null}
       </div>
@@ -137,7 +137,7 @@ export function OverviewTab({ finding }: { finding: Finding }) {
           <ul class="m-0 flex list-none flex-col gap-2 p-0">
             {finding.related.map((r) => (
               <li class="flex items-center gap-2" key={`${r.relationship}-${r.name}`}>
-                <Pill tone="soil">{r.relationship}</Pill>
+                <Pill tone="soil">{sentence(r.relationship)}</Pill>
                 <a class="font-mono text-[12px] text-ink" href={hrefForFinding(r.name)}>
                   {r.name}
                 </a>

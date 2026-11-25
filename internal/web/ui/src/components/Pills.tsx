@@ -4,7 +4,7 @@
 
 import type { ComponentChildren } from "preact";
 import type { Level, Phase, Rating, Recommendation } from "../types";
-import { DASH, PHASE_LABELS } from "../format";
+import { DASH, PHASE_TITLES, SEVERITY_TITLES, VERDICT_TITLES } from "../format";
 
 export type Tone =
   | "green"
@@ -17,6 +17,20 @@ export type Tone =
   | "sev-medium"
   | "sev-high"
   | "sev-critical";
+
+// sentence turns a vocabulary value ("timed_out", "handed-off") into the
+// words a pill shows ("Timed out", "Handed off").
+export function sentence(value: string): string {
+  const s = value.replace(/[_-]+/g, " ").trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// RUN_OUTCOMES names the envelope outcomes a run can end with.
+const RUN_OUTCOMES: Record<string, string> = { ok: "Succeeded" };
+
+export function outcomeLabel(outcome: string): string {
+  return RUN_OUTCOMES[outcome] ?? sentence(outcome);
+}
 
 export function Pill({
   tone = "green",
@@ -50,7 +64,7 @@ export function SeverityPill({ severity, label }: { severity?: Level; label?: st
   if (!severity) return <Pill tone="neutral" label={label}>unknown</Pill>;
   return (
     <Pill tone={SEVERITY_TONE[severity]} label={label}>
-      {severity}
+      {SEVERITY_TITLES[severity]}
     </Pill>
   );
 }
@@ -73,7 +87,7 @@ export function PhasePill({ phase, label }: { phase?: Phase; label?: string }) {
   if (!phase) return <Pill tone="neutral" label={label}>unknown</Pill>;
   return (
     <Pill tone={PHASE_TONE[phase]} label={label}>
-      {PHASE_LABELS[phase]}
+      {PHASE_TITLES[phase]}
     </Pill>
   );
 }
@@ -88,7 +102,7 @@ const RATING_TONE: Record<Rating, Tone> = {
 
 export function RatingPill({ rating }: { rating?: Rating }) {
   if (!rating) return <Pill tone="neutral">{DASH}</Pill>;
-  return <Pill tone={RATING_TONE[rating]}>{rating}</Pill>;
+  return <Pill tone={RATING_TONE[rating]}>{sentence(rating)}</Pill>;
 }
 
 const VERDICT_TONE: Record<Recommendation, Tone> = {
@@ -99,5 +113,5 @@ const VERDICT_TONE: Record<Recommendation, Tone> = {
 
 export function VerdictPill({ verdict }: { verdict?: Recommendation }) {
   if (!verdict) return <span class="text-faint">{DASH}</span>;
-  return <Pill tone={VERDICT_TONE[verdict]}>{verdict}</Pill>;
+  return <Pill tone={VERDICT_TONE[verdict]}>{VERDICT_TITLES[verdict]}</Pill>;
 }

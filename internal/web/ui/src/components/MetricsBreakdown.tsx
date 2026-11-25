@@ -241,7 +241,7 @@ export function AgentTable({ kind, title, rollups }: { kind: SliceKind; title: s
               <th scope="col" class="text-right">
                 Run time
               </th>
-              <th scope="col" class="w-[26%]">
+              <th scope="col" class="text-right">
                 Spend
               </th>
             </tr>
@@ -263,12 +263,14 @@ export function AgentTable({ kind, title, rollups }: { kind: SliceKind; title: s
                   <td class="num">{formatPercent(t.runs ? t.succeeded / t.runs : undefined)}</td>
                   <td class="num">{t.runs ? formatMicroUSD(t.costMicroUSD / t.runs) : DASH}</td>
                   <td class="num">{formatMs(t.runs ? t.elapsedMilliseconds / t.runs : undefined)}</td>
-                  <td>
-                    <span class="flex items-center gap-3">
-                      <span class="block h-1.5 w-14 flex-none overflow-hidden rounded-full bg-code" aria-hidden="true">
+                  <td class="whitespace-nowrap">
+                    <span class="flex items-center justify-end gap-3">
+                      <span class="block h-1.5 w-12 flex-none overflow-hidden rounded-full bg-code" aria-hidden="true">
                         <span class="block h-full rounded-full bg-turf" style={{ width: `${(t.costMicroUSD / maxSpend) * 100}%` }} />
                       </span>
-                      <span class="w-[72px] text-right font-mono">{t.costMicroUSD ? formatMicroUSD(t.costMicroUSD) : DASH}</span>
+                      <span class="min-w-[5.5rem] text-right font-mono">
+                        {t.costMicroUSD ? formatMicroUSD(t.costMicroUSD) : DASH}
+                      </span>
                     </span>
                   </td>
                 </tr>

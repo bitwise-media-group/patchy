@@ -112,7 +112,7 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 	fp := &integration.FindingReconciler{
-		Client: mgr.GetClient(), Creds: creds, Namespace: namespace,
+		Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Creds: creds, Namespace: namespace,
 		Concurrency: opts.Int("projection-concurrency"), Log: log,
 	}
 	if err := fp.SetupWithManager(mgr); err != nil {

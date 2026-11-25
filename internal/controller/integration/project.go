@@ -79,6 +79,14 @@ type trackerClient interface {
 // its tracking issue, and owns the accumulation-window condition.
 type FindingReconciler struct {
 	client.Client
+	// APIReader reads past the informer cache (the manager's
+	// GetAPIReader); nil falls back to the cached Client (tests). The
+	// projection's side effects on the forge are not idempotent, so every
+	// "already done?" check before one, and every conflict retry recording
+	// one, must read the server: the cache can lag this reconciler's own
+	// writes, so a reconcile queued behind the one that posted a comment
+	// can start from a Finding without the annotation recording it.
+	APIReader client.Reader
 	// Creds builds Integration API clients.
 	Creds *Creds
 	// Namespace the Findings live in.
@@ -138,6 +146,9 @@ func (r *FindingReconciler) resolveSource(ctx context.Context, fnd *v1alpha1.Fin
 	}
 	if fnd.GetAnnotations()[AnnotationResolvedSource] == string(phase) {
 		return nil
+	}
+	if owed, err := r.owed(ctx, fnd, AnnotationResolvedSource, string(phase)); err != nil || !owed {
+		return err
 	}
 	if err := r.resolveAlerts(ctx, fnd); err != nil {
 		return err
@@ -260,7 +271,7 @@ func (r *FindingReconciler) unlinkIfGone(ctx context.Context, fnd *v1alpha1.Find
 	}
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Finding
-		if err := r.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		cur.Status.Tracking = nil
@@ -281,6 +292,16 @@ func (r *FindingReconciler) createIssue(
 	ctx context.Context, fnd *v1alpha1.Finding, integ *v1alpha1.Integration,
 	tracker trackerClient, repo ghclient.Repo,
 ) error {
+	// The cached Finding may predate the link a previous reconcile wrote;
+	// creating on its word would open a second issue.
+	var cur v1alpha1.Finding
+	if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if cur.Status.Tracking != nil {
+		fnd.Status.Tracking = cur.Status.Tracking
+		return nil // the next reconcile projects onto the linked issue
+	}
 	body, err := templates.RenderFindingIssue(fnd)
 	if err != nil {
 		return err
@@ -305,7 +326,7 @@ func (r *FindingReconciler) createIssue(
 	}
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Finding
-		if err := r.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		if cur.Status.Tracking == nil {
@@ -375,36 +396,44 @@ func (r *FindingReconciler) projectComments(
 
 	if inv := fnd.Status.Investigation; inv != nil && ann[AnnotationProjectedInvestigation] != inv.Name {
 		var child v1alpha1.Investigation
-		key := types.NamespacedName{Namespace: fnd.Namespace, Name: inv.Name}
-		if err := r.Get(ctx, key, &child); err == nil && child.Status.Report != "" {
-			// Status.Report carries the machine frontmatter; comments are
-			// presentation, so render the markdown body only.
-			comment := templates.RenderStageReportComment("Investigation", inv.Attempt,
-				report.StripFrontmatter(child.Status.Report))
-			if err := tracker.Comment(ctx, repo, number, comment); err != nil {
-				return err
-			}
-		}
-		if err := r.markProjected(ctx, fnd, map[string]string{AnnotationProjectedInvestigation: inv.Name}); err != nil {
+		if err := r.projectReport(ctx, fnd, tracker, repo, number, "Investigation", inv.Name, inv.Attempt,
+			AnnotationProjectedInvestigation, &child, func() string { return child.Status.Report }); err != nil {
 			return err
 		}
 	}
-
 	if rem := fnd.Status.Remediation; rem != nil && ann[AnnotationProjectedRemediation] != rem.Name {
 		var child v1alpha1.Remediation
-		key := types.NamespacedName{Namespace: fnd.Namespace, Name: rem.Name}
-		if err := r.Get(ctx, key, &child); err == nil && child.Status.Report != "" {
-			comment := templates.RenderStageReportComment("Remediation", rem.Attempt,
-				report.StripFrontmatter(child.Status.Report))
-			if err := tracker.Comment(ctx, repo, number, comment); err != nil {
-				return err
-			}
-		}
-		if err := r.markProjected(ctx, fnd, map[string]string{AnnotationProjectedRemediation: rem.Name}); err != nil {
+		if err := r.projectReport(ctx, fnd, tracker, repo, number, "Remediation", rem.Name, rem.Attempt,
+			AnnotationProjectedRemediation, &child, func() string { return child.Status.Report }); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// projectReport posts one stage child's report comment, once: annotation
+// names the child whose report was posted. Both the owed check and the
+// child read go to the server. The child's report lands just before the
+// Finding's summary names it, so a cached read can still see it empty and
+// would mark the report projected without ever posting it.
+func (r *FindingReconciler) projectReport(
+	ctx context.Context, fnd *v1alpha1.Finding, tracker trackerClient, repo ghclient.Repo, number int,
+	stage, name string, attempt int32, annotation string, child client.Object, reportOf func() string,
+) error {
+	owed, err := r.owed(ctx, fnd, annotation, name)
+	if err != nil || !owed {
+		return err
+	}
+	key := types.NamespacedName{Namespace: fnd.Namespace, Name: name}
+	if err := r.live().Get(ctx, key, child); err == nil && reportOf() != "" {
+		// Status.Report carries the machine frontmatter; comments are
+		// presentation, so render the markdown body only.
+		comment := templates.RenderStageReportComment(stage, attempt, report.StripFrontmatter(reportOf()))
+		if err := tracker.Comment(ctx, repo, number, comment); err != nil {
+			return err
+		}
+	}
+	return r.markProjected(ctx, fnd, map[string]string{annotation: name})
 }
 
 // projectEnrichments keeps one sticky comment per enhancer up to date: an
@@ -471,6 +500,15 @@ func (r *FindingReconciler) projectPhase(
 	phase := fnd.Status.Phase
 	if ann[AnnotationProjectedNotice] == string(phase) {
 		return nil
+	}
+	switch phase {
+	case v1alpha1.PhaseAwaitingApproval, v1alpha1.PhaseHandedOff, v1alpha1.PhaseFailed,
+		v1alpha1.PhaseDismissed, v1alpha1.PhaseRemediated:
+		if owed, err := r.owed(ctx, fnd, AnnotationProjectedNotice, string(phase)); err != nil || !owed {
+			return err
+		}
+	default:
+		return nil // no notice for this phase; skip the server read
 	}
 
 	switch phase {
@@ -699,7 +737,7 @@ func toAlertRefs(alerts []v1alpha1.Alert) []source.AlertRef {
 func (r *FindingReconciler) setTrackingState(ctx context.Context, fnd *v1alpha1.Finding, state string) {
 	_ = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Finding
-		if err := r.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		if cur.Status.Tracking == nil || cur.Status.Tracking.State == state {
@@ -710,12 +748,38 @@ func (r *FindingReconciler) setTrackingState(ctx context.Context, fnd *v1alpha1.
 	})
 }
 
+// live is the uncached reader (see APIReader).
+func (r *FindingReconciler) live() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
+// owed re-reads the Finding from the server and reports whether the
+// one-shot side effect recorded as annotation key=value is still owed.
+// The caller's cached copy has already said it is; this is the check that
+// counts. When it is not owed, fnd adopts the server's annotations.
+func (r *FindingReconciler) owed(ctx context.Context, fnd *v1alpha1.Finding, key, value string) (bool, error) {
+	var cur v1alpha1.Finding
+	if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	if cur.GetAnnotations()[key] == value {
+		fnd.SetAnnotations(cur.GetAnnotations())
+		return false, nil
+	}
+	return true, nil
+}
+
 // markProjected merges projection-state annotations onto the Finding under
-// conflict retry.
+// conflict retry. It re-reads from the server: a cached re-read can return
+// the same stale resourceVersion on every attempt and exhaust the retry,
+// failing the reconcile after the side effect it records already happened.
 func (r *FindingReconciler) markProjected(ctx context.Context, fnd *v1alpha1.Finding, set map[string]string) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Finding
-		if err := r.Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
+		if err := r.live().Get(ctx, client.ObjectKeyFromObject(fnd), &cur); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		ann := cur.GetAnnotations()

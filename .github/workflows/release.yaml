@@ -100,3 +100,18 @@ jobs:
             artifact-metadata: write
         with:
             ref: ${{ needs.release.outputs.tag_name }}
+
+    # Freeze the docs' What's new page for the release just cut and start the
+    # next one, as a pull request (whats-new.yaml). The docs job inside the
+    # reusable workflow has already published the site from the release commit.
+    whats-new:
+        needs: release
+        if: needs.release.outputs.release_created
+        uses: ./.github/workflows/whats-new.yaml # zizmor: ignore[self-repository] -- actionlint 1.7.12 (also in lint) rejects the $/ form
+        # the App token does the writing; the job token only reads the checkout
+        permissions:
+            contents: read
+        with:
+            version: ${{ needs.release.outputs.version }}
+        secrets:
+            FF_MERGE_PRIVATE_KEY: ${{ secrets.FF_MERGE_PRIVATE_KEY }}

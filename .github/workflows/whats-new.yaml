@@ -1,0 +1,136 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Freeze the docs' "What's new" page after a release. release.yaml calls this
+# when a run cut a release; it can also be run by hand from the Actions tab
+# (for example to regenerate the pull request after main has moved on).
+#
+# hack/whats-new-freeze.sh copies docs/whats-new/index.md (which the release
+# PR stamped with the version) to docs/whats-new/<version>.md, lists it in the
+# nav, and starts index.md again for the next version. The result is opened
+# as a pull request labelled auto-merge, so it lands once a maintainer
+# approves it and CI is green. A release with nothing to highlight (the page
+# still the untouched placeholder) changes nothing, so no pull request opens. Approve it before the next release PR merges,
+# or that release would be stamped onto the frozen release's page.
+#
+# The commit is made through the GraphQL createCommitOnBranch mutation as the
+# "FF Merge" App, so GitHub signs it (and the fast-forward merge keeps that
+# signature, as it does for every commit on main) and, unlike a GITHUB_TOKEN
+# push, its pull request triggers CI.
+name: What's New
+
+on:
+    workflow_call:
+        inputs:
+            version:
+                description: The version just released, no leading v (e.g. 0.15.0).
+                required: true
+                type: string
+        secrets:
+            FF_MERGE_PRIVATE_KEY:
+                description: Private key of the "FF Merge" App that authors the pull request.
+                required: true
+    workflow_dispatch:
+        inputs:
+            version:
+                description: The released version to freeze, no leading v (e.g. 0.15.0).
+                required: true
+                type: string
+
+permissions: {}
+
+concurrency:
+    group: whats-new-${{ inputs.version }}
+
+jobs:
+    freeze:
+        runs-on: ubuntu-latest
+        # the App token does the writing; the job token only reads the checkout
+        permissions:
+            contents: read
+        steps:
+            - name: Mint a GitHub App installation token
+              id: app-token
+              uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+              with:
+                  client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
+                  private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
+                  # create the branch and its commit, then open the pull request
+                  permission-contents: write
+                  permission-pull-requests: write
+
+            - name: Checkout main
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  persist-credentials: false # the commit goes through the API, not git push
+
+            - name: Freeze the page
+              id: freeze
+              env:
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  hack/whats-new-freeze.sh "$VERSION"
+                  if [ -z "$(git status --porcelain)" ]; then
+                      echo "changed=" >>"$GITHUB_OUTPUT"
+                  else
+                      echo "changed=true" >>"$GITHUB_OUTPUT"
+                  fi
+
+            - name: Open the pull request
+              if: steps.freeze.outputs.changed
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  set -euo pipefail
+                  branch="whats-new/freeze-v${VERSION}"
+                  head=$(git rev-parse HEAD)
+
+                  # (Re)point the branch at main's head; a rerun replaces the
+                  # previous attempt's commit.
+                  if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" >/dev/null 2>&1; then
+                      gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" \
+                          -f sha="$head" -F force=true >/dev/null
+                  else
+                      gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+                          -f ref="refs/heads/${branch}" -f sha="$head" >/dev/null
+                  fi
+
+                  # The three files the script writes, base64 for the API.
+                  additions='[]'
+                  for path in "docs/whats-new/${VERSION}.md" docs/whats-new/index.md zensical.toml; do
+                      contents=$(base64 <"$path" | tr -d '\n')
+                      additions=$(jq -c --arg path "$path" --arg contents "$contents" \
+                          '. + [{path: $path, contents: $contents}]' <<<"$additions")
+                  done
+
+                  jq -n \
+                      --arg repo "$GITHUB_REPOSITORY" \
+                      --arg branch "$branch" \
+                      --arg head "$head" \
+                      --arg headline "docs: freeze What's new for ${VERSION}" \
+                      --arg body "hack/whats-new-freeze.sh ${VERSION}: the release's page moves to docs/whats-new/${VERSION}.md and index.md starts the next version." \
+                      --argjson additions "$additions" \
+                      '{
+                        query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+                        variables: { input: {
+                          branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                          expectedHeadOid: $head,
+                          message: { headline: $headline, body: $body },
+                          fileChanges: { additions: $additions }
+                        } }
+                      }' | gh api graphql --input - >/dev/null
+
+                  if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+                      echo "pull request for ${branch} already open; its branch now holds the new commit"
+                      exit 0
+                  fi
+                  gh pr create --base main --head "$branch" --label auto-merge \
+                      --title "docs: freeze What's new for ${VERSION}" \
+                      --body "$(cat <<EOF
+                  Patchy ${VERSION} is released, so its What's new page is frozen at \`docs/whats-new/${VERSION}.md\` and listed in the nav, and \`docs/whats-new/index.md\` starts the next version as a maintenance-release page. The first feature commit replaces that text with its highlights.
+
+                  Approve this before the next release PR merges, or that release would be stamped onto ${VERSION}'s page. Generated by \`hack/whats-new-freeze.sh\` (\`.github/workflows/whats-new.yaml\`).
+                  EOF
+                  )"

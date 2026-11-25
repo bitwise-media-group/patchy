@@ -92,7 +92,7 @@ jobs:
               if: steps.pr.outputs.head
               uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
               with:
-                  version: v2026.11.7
+                  version: v2026.11.12
                   # only bun: the screenshot script needs nothing else
                   install_args: aqua:oven-sh/bun
 

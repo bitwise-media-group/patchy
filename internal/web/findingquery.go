@@ -177,7 +177,12 @@ func parseFindingQuery(v url.Values, defLimit, maxLimit int) (findingQuery, erro
 	if fq.limit, err = intParam(v, "limit", defLimit); err != nil {
 		return fq, err
 	}
-	fq.limit = min(fq.limit, maxLimit)
+	// An explicit bound rather than min(): CodeQL's uncontrolled-allocation
+	// check recognises a comparison as capping the user's value, and every
+	// slice sized from the limit downstream relies on this cap.
+	if fq.limit > maxLimit {
+		fq.limit = maxLimit
+	}
 	if raw := v.Get("cursor"); raw != "" {
 		k, err := decodeCursor(raw)
 		if err != nil {
@@ -527,11 +532,15 @@ func rankRepositories(repos map[string]int, needle string, limit int) ([]Reposit
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	out := make([]RepositoryCount, 0, min(limit, len(matches)))
-	for i := range min(limit, len(matches)) {
-		out = append(out, matches[i].RepositoryCount)
+	total := len(matches)
+	if len(matches) > limit {
+		matches = matches[:limit]
 	}
-	return out, len(matches)
+	out := make([]RepositoryCount, len(matches))
+	for i := range matches {
+		out[i] = matches[i].RepositoryCount
+	}
+	return out, total
 }
 
 // queryFindings answers one page of GET /api/findings. userActions is

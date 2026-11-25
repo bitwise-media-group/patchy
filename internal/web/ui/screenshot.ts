@@ -237,8 +237,8 @@ const chrome = Bun.spawn(
     "--no-default-browser-check",
     "--hide-scrollbars",
     "--force-color-profile=srgb",
-    // Ubuntu 24.04 (the GitHub runners) restricts the unprivileged user
-    // namespaces Chrome's sandbox needs; the page is our own demo.
+    // Ubuntu 24.04 and later (the GitHub runners) restrict the unprivileged
+    // user namespaces Chrome's sandbox needs; the page is our own demo.
     ...(process.env.CI ? ["--no-sandbox"] : []),
     "about:blank",
   ],

@@ -21,40 +21,59 @@
 # under .git/lfs), uploads the objects with `git lfs push`, and only then
 # commits the pointers, so the commit never names an object the server lacks.
 #
-# release-please rewrites its branch on every push to main, dropping this
-# commit, so the job runs again on each update of the PR (synchronize) and
-# skips the push it made itself. main's ruleset dismisses approvals on push,
-# so approve the release PR once the screenshot commit has landed.
+# release.yaml calls this after release-please, on every push to main that
+# did not cut a release. release-please rewrites its branch on each of those
+# runs (always-update), dropping this commit, so the images are shot again
+# for every update; the commit itself is to the release branch, which starts
+# no release run. main's ruleset dismisses approvals on push, so approve the
+# release PR once the screenshot commit has landed.
 name: Release Screenshots
 
 on:
-    pull_request:
-        branches: [main]
-        types: [opened, reopened, synchronize]
+    workflow_call:
+        secrets:
+            FF_MERGE_PRIVATE_KEY:
+                description: Private key of the "FF Merge" App that commits the images.
+                required: true
 
 permissions: {}
 
-# a newer push to the release branch supersedes a run still shooting
-concurrency:
-    group: release-screenshots-${{ github.event.pull_request.number }}
-    cancel-in-progress: true
-
 jobs:
     shoot:
-        # only release-please's PR, from this repository (a fork's branch of
-        # the same name would get no secrets anyway)
-        if: >-
-            github.head_ref == 'release-please--branches--main' &&
-            github.event.pull_request.head.repo.full_name == github.repository
         runs-on: ubuntu-latest
-        # the App token does the writing; the job token only reads the checkout
+        # a newer push to main (so a newer release PR head) supersedes a run
+        # still shooting
+        concurrency:
+            group: release-screenshots
+            cancel-in-progress: true
+        # the App token does the writing; the job token reads the checkout and
+        # looks the release PR up
         permissions:
             contents: read
+            pull-requests: read
+        env:
+            BRANCH: release-please--branches--main
         steps:
+            # The release run's outputs do not name the PR, so ask for it; a
+            # run with no release pending has none, and nothing to shoot.
+            - name: Find the release PR
+              id: pr
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  head=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --state open \
+                      --json headRefOid --jq '.[0].headRefOid // ""')
+                  if [ -n "$head" ]; then
+                      echo "head=${head}" >>"$GITHUB_OUTPUT"
+                  else
+                      echo "no open release PR on ${BRANCH}; nothing to shoot"
+                  fi
+
             - name: Checkout the release PR
+              if: steps.pr.outputs.head
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  ref: ${{ github.event.pull_request.head.sha }}
+                  ref: ${{ steps.pr.outputs.head }}
                   persist-credentials: false # the commit goes through the API, not git push
                   submodules: true # the shared toolchain at .mise/ pins bun
                   # the current images, so an unchanged one compares equal
@@ -64,30 +83,28 @@ jobs:
             # GitHub's runner images ship git-lfs; fail clearly if one ever
             # does not, rather than commit raw JPEGs past .gitattributes.
             - name: Check Git LFS
+              if: steps.pr.outputs.head
               run: |
                   git lfs version
                   git lfs install --local
 
-            # Our own commit triggers this workflow again; there is nothing new
-            # to shoot on it.
-            - name: Skip the screenshot commit itself
-              id: guard
-              run: |
-                  if [ "$(git log -1 --format=%s)" = "docs: refresh screenshots for the release" ]; then
-                      echo "skip=true" >>"$GITHUB_OUTPUT"
-                  fi
-
             - name: Setup mise
-              if: ${{ !steps.guard.outputs.skip }}
+              if: steps.pr.outputs.head
               uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
               with:
                   version: v2026.11.7
                   # only bun: the screenshot script needs nothing else
                   install_args: aqua:oven-sh/bun
 
-            # ubuntu-latest ships Google Chrome, which screenshot.ts finds on PATH.
+            # GitHub's Ubuntu runner images (24.04 and 26.04) ship Google Chrome,
+            # which screenshot.ts finds on PATH as google-chrome. Log its version:
+            # a Chrome update can change the rendering, and so the images.
+            - name: Check Chrome
+              if: steps.pr.outputs.head
+              run: google-chrome --version
+
             - name: Shoot the screenshots
-              if: ${{ !steps.guard.outputs.skip }}
+              if: steps.pr.outputs.head
               working-directory: internal/web/ui
               run: |
                   bun install --frozen-lockfile --ignore-scripts
@@ -95,7 +112,7 @@ jobs:
 
             - name: Collect the changed images
               id: images
-              if: ${{ !steps.guard.outputs.skip }}
+              if: steps.pr.outputs.head
               run: |
                   # tracked images that changed, and new ones, ignored (by
                   # design, .gitignore) or not
@@ -122,12 +139,11 @@ jobs:
               if: steps.images.outputs.changed
               env:
                   GH_TOKEN: ${{ steps.app-token.outputs.token }}
-                  BRANCH: ${{ github.head_ref }}
-                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  HEAD_SHA: ${{ steps.pr.outputs.head }}
               run: |
                   set -euo pipefail
                   # release-please may have rewritten the branch while we shot;
-                  # its push started a newer run, which shoots that head instead.
+                  # the push to main behind that runs this again on the new head.
                   current=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" --jq .object.sha)
                   if [ "$current" != "$HEAD_SHA" ]; then
                       echo "the release branch moved to ${current}; leaving it to the newer run"

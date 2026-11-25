@@ -115,3 +115,19 @@ jobs:
             version: ${{ needs.release.outputs.version }}
         secrets:
             FF_MERGE_PRIVATE_KEY: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
+
+    # Shoot the docs' screenshots into the release PR release-please has just
+    # opened or updated (release-screenshots.yaml), so the reviewer sees them
+    # before approving and the release publishes them. A run that cut a release
+    # merged that PR, so there is nothing to shoot into.
+    screenshots:
+        needs: release
+        if: ${{ !needs.release.outputs.release_created }}
+        uses: ./.github/workflows/release-screenshots.yaml # zizmor: ignore[self-repository] -- actionlint 1.7.12 (also in lint) rejects the $/ form
+        # the App token does the writing; the job token reads the checkout and
+        # looks the release PR up
+        permissions:
+            contents: read
+            pull-requests: read
+        secrets:
+            FF_MERGE_PRIVATE_KEY: ${{ secrets.FF_MERGE_PRIVATE_KEY }}

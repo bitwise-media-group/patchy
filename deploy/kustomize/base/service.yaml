@@ -6,6 +6,9 @@
 #   * patchy-integration-controller:8080: the machine-facing entry point
 #     (the provider webhook receivers, e.g. POST /github/webhooks).
 #     Put an Ingress / Gateway in front of it in your environment overlay.
+#     Port :9792 is the in-cluster repository-access endpoint. Only the
+#     status server may reach it (a NetworkPolicy and a TokenReview-checked
+#     projected token). Do not route it through the Ingress / Gateway.
 #   * patchy-source-controller:9790: the artifact server. Agent pods fetch
 #     SHA-pinned repository tarballs (and workspace bundles) from it. It is
 #     in-cluster only, and the NetworkPolicies restrict it to the
@@ -42,6 +45,10 @@ spec:
         - name: http
           port: 8080
           targetPort: http
+          protocol: TCP
+        - name: internal
+          port: 9792
+          targetPort: internal
           protocol: TCP
 ---
 apiVersion: v1

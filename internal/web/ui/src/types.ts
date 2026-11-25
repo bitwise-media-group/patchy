@@ -625,3 +625,85 @@ export interface ConfigDataset {
   integrations: IntegrationConfig[];
   enhancers: EnhancerConfig[];
 }
+
+// ---- Repositories page (internal/web/repositories.go) ----
+
+// RepositoriesPayload is GET /api/repositories: the tracked repositories'
+// finding counts, rollups and backfill state.
+export interface RepositoriesPayload {
+  generatedAt: string;
+  repositories: RepositorySummary[];
+  // Whether the caller holds the backfill grant.
+  canBackfill: boolean;
+  // Whether the integration-controller's access check is configured.
+  accessCheck: boolean;
+}
+
+export interface RepositorySummary {
+  name: string;
+  findings: number;
+  phases?: Partial<Record<Phase, number>>;
+  rollup?: { findings: number; lastProcessed?: string };
+  backfill?: RepositoryBackfill;
+}
+
+// RepositoryBackfill is the backfill request covering a repository. The
+// run counts cover the whole request, not this repository alone.
+export interface RepositoryBackfill {
+  integration: string;
+  requestedBy?: string;
+  requestedAt?: string;
+  pending?: boolean;
+  lastRunAt?: string;
+  listed?: number;
+  ingested?: number;
+  error?: string;
+}
+
+// AccessStatus mirrors internal/repoaccess.Status.
+export type AccessStatus = "ok" | "not_installed" | "forbidden" | "not_found" | "no_analysis" | "error";
+
+export interface AccessCheck {
+  status: AccessStatus;
+  detail?: string;
+}
+
+export interface IntegrationAccess {
+  name: string;
+  alerts: { codeScanning?: AccessCheck; secretScanning?: AccessCheck };
+}
+
+// ForgeStatus mirrors internal/repoaccess.ForgeStatus.
+export type ForgeStatus = "ok" | "missing" | "ambiguous" | "no_write" | "error";
+
+export interface ForgeAccess {
+  name?: string;
+  status: ForgeStatus;
+  contents?: "none" | "read" | "write" | "unknown";
+  detail?: string;
+}
+
+// RepositoryAccess is one repository's verdict from GET
+// /api/repositories/access.
+export interface RepositoryAccess {
+  name: string;
+  // "known": patchy has seen the repository, so it was not probed.
+  skipped?: "known";
+  integrations?: IntegrationAccess[];
+  forge?: ForgeAccess;
+  // The integration a backfill would be stamped on; absent when none can
+  // read the alerts.
+  backfillIntegration?: string;
+}
+
+export interface RepositoryAccessPayload {
+  available: boolean;
+  error?: string;
+  repositories: RepositoryAccess[];
+}
+
+// RepositoryBackfillResult answers POST /api/repositories/backfill.
+export interface RepositoryBackfillResult {
+  integration: string;
+  outcome: "requested" | "merged" | "covered";
+}

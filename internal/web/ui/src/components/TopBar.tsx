@@ -9,7 +9,7 @@ import type { AdminVerb, DatasetHeader } from "../types";
 import type { DataMode } from "../api";
 import { readProvider, signOut } from "../auth";
 import { PERSONAS, type Persona } from "../mock/personas";
-import { hrefForConfig, hrefForList, hrefForMetrics, type Route } from "../router";
+import { hrefForConfig, hrefForList, hrefForMetrics, hrefForRepositories, type Route } from "../router";
 import { Icon } from "./icons";
 import { PatchMark } from "./PatchMark";
 import { ThemeToggle, type ThemeMode } from "./ThemeToggle";
@@ -21,7 +21,7 @@ function PersonaSwitcher({ persona, onChange }: { persona: Persona; onChange: (p
       role="group"
       aria-label="Preview as persona"
     >
-      <span class="text-[12.5px] text-muted">Preview as</span>
+      <span class="text-[12.5px] whitespace-nowrap text-muted">Preview as</span>
       {PERSONAS.map((p) => (
         <button
           key={p.id}
@@ -42,7 +42,7 @@ function PersonaSwitcher({ persona, onChange }: { persona: Persona; onChange: (p
 // Flat text links; the current view carries a 2px accent rule that sits on
 // the header's bottom border, so the bar reads as one surface.
 const NAV_LINK =
-  "relative inline-flex items-center px-3 text-[14px] font-semibold no-underline transition-colors hover:text-fg " +
+  "relative inline-flex items-center px-3 text-[14px] font-semibold whitespace-nowrap no-underline transition-colors hover:text-fg " +
   "after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-t-full after:content-['']";
 
 const MENU_ITEM =
@@ -217,7 +217,8 @@ export function TopBar({
   }, [menuOpen]);
 
   const views: { href: string; label: string; active: boolean }[] = [
-    { href: hrefForList(), label: "Findings", active: route.view !== "metrics" && route.view !== "config" },
+    { href: hrefForList(), label: "Findings", active: route.view === "list" || route.view === "detail" },
+    { href: hrefForRepositories(), label: "My repositories", active: route.view === "repositories" },
     { href: hrefForMetrics(), label: "Metrics", active: route.view === "metrics" },
     ...(configView ? [{ href: hrefForConfig(), label: "Configuration", active: route.view === "config" }] : []),
   ];
@@ -248,7 +249,7 @@ export function TopBar({
             </a>
           ))}
         </nav>
-        <div class="flex items-center gap-3 text-[12.5px] text-muted max-lg:hidden">
+        <div class="flex items-center gap-3 text-[12.5px] whitespace-nowrap text-muted max-xl:hidden">
           <ModeBadge mode={mode} />
           {dataset?.namespace ? (
             <span title="Kubernetes namespace">

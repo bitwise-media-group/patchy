@@ -27,7 +27,9 @@
 # Ingests scanner webhooks into Findings (create/fold/duplicate-merge; it is
 # the only controller that deletes duplicate Findings). Projects Findings to
 # tracking issues (reads the children's reports). Applies human signals
-# (approve/close/PR-merge) to Finding spec + status.
+# (approve/close/PR-merge) to Finding spec + status. Answers the status
+# server's repository-access check (reads Forges; the TokenReview grant is a
+# ClusterRole at the end of this file).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -52,6 +54,11 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations]
       verbs: [get, list, watch, deletecollection]
+    # Read-only: the repository-access check reports whether a Forge covers
+    # a repository and can push to it.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [forges]
+      verbs: [get, list, watch]
     # the demo reset (Integration spec.reset) wipes every pipeline resource
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [repositories, findingrollups]
@@ -666,4 +673,38 @@ roleRef:
 subjects:
     - kind: ServiceAccount
       name: patchy-egress-broker
+      namespace: patchy
+---
+# ---- integration-controller: TokenReview ------------------------------------
+# TokenReview is cluster-scoped and create-only, so a namespaced Role cannot
+# grant it. The integration-controller uses it on its in-cluster
+# repository-access endpoint (:9792) to check the status server's projected
+# ServiceAccount token. Review-only: it can ask "whose token is this?" and
+# nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-integration-controller-authn
+    labels:
+        app.kubernetes.io/name: integration-controller
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [authentication.k8s.io]
+      resources: [tokenreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: patchy-integration-controller-authn
+    labels:
+        app.kubernetes.io/name: integration-controller
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: patchy-integration-controller-authn
+subjects:
+    - kind: ServiceAccount
+      name: patchy-integration-controller
       namespace: patchy

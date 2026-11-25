@@ -65,6 +65,14 @@ metadata:
     "PATCHY_AGENT_NAMESPACE" .Values.agent.namespace
     "PATCHY_LOG_LEVEL" .Values.config.logLevel
 }}
+{{- /*
+The "My repositories" access check calls the integration-controller's
+internal endpoint. The binary's default URL assumes the kustomize Service
+name (patchy-integration-controller in namespace patchy), so the chart sets
+the release's own. The token file matches the projected volume below.
+*/}}
+{{- $_ := set $data "PATCHY_INTEGRATION_CONTROLLER_URL" (printf "http://%s-integration-controller.%s.svc.cluster.local:9792" (include "patchy.fullname" .) .Release.Namespace) }}
+{{- $_ := set $data "PATCHY_INTEGRATION_CONTROLLER_TOKEN_FILE" "/var/run/secrets/patchy/integration-controller/token" }}
 {{- include "patchy.archiveData" (dict "root" . "data" $data "role" "status-server") }}
 {{- range $k, $v := .Values.config.extra }}
 {{- $_ := set $data $k $v }}
@@ -395,6 +403,9 @@ spec:
                         readOnly: true
                       - name: tmp
                         mountPath: /tmp
+                      - name: integration-controller-token
+                        mountPath: /var/run/secrets/patchy/integration-controller
+                        readOnly: true
             {{- with $vals.nodeSelector }}
             nodeSelector:
                 {{- toYaml . | nindent 16 }}
@@ -416,6 +427,18 @@ spec:
                       optional: true
                 - name: tmp
                   emptyDir: {}
+                # The "My repositories" access check: a projected token bound
+                # to the integration-controller's audience, presented to its
+                # internal endpoint (:9792). It identifies this server there
+                # and works nowhere else. The kubelet rotates it, and the
+                # server reads it again on every call.
+                - name: integration-controller-token
+                  projected:
+                      sources:
+                          - serviceAccountToken:
+                                audience: patchy-integration-controller
+                                expirationSeconds: 3600
+                                path: token
 ---
 apiVersion: v1
 kind: Service
@@ -445,8 +468,9 @@ spec:
 # Ingress: 8080 from anywhere, plus 8081 probes. The ingress or gateway in
 # front can live in any namespace. Session authentication provides the
 # access control; with auth unconfigured the server serves no data. Egress: DNS, the
-# Kubernetes API server (cache watches + access reviews), and TCP 443 out
-# (the OIDC issuer, an OTLP collector).
+# Kubernetes API server (cache watches + access reviews), TCP 443 out (the
+# OIDC issuer, an OTLP collector), and the integration-controller's
+# repository-access endpoint (9792) for the "My repositories" page.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -480,6 +504,13 @@ spec:
                 port: 443
               - protocol: TCP
                 port: 6443
+        - to:
+              - podSelector:
+                    matchLabels:
+                        {{- include "patchy.selectorLabels" (dict "root" . "name" "integration-controller") | nindent 24 }}
+          ports:
+              - protocol: TCP
+                port: 9792
         {{- include "patchy.archiveEgress" . | nindent 8 }}
 {{- end }}
 {{- if $vals.ingress.enabled }}

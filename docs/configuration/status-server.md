@@ -19,21 +19,24 @@ status-server serve --namespace patchy --auth-config /etc/patchy/auth/config.yam
 Every data route needs an authorised identity. With **no** auth config at all, the server runs _unconfigured_. It serves
 only the page, which explains that sign-in is not configured. Auth mode `none` opens everything.
 
-| Route                                                             | Needs                                 | Serves                                                                                                                                                             |
-| ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/findings`                                               | `get` on `findings`                   | The findings list, one page at a time (query below)                                                                                                                |
-| `GET /api/findings/suggest`                                       | `get` on `findings`                   | The findings filter's type-ahead: the search count for a term and the matching repositories                                                                        |
-| `GET /api/findings/{name}`                                        | `get` on `findings`                   | One finding in full: description, alerts, enrichments, the phase log and the run reports                                                                           |
-| `GET /api/findings/{name}/runs/{kind}/{attempt}/transcript`       | `get` on `findings`                   | An agent conversation as Server-Sent Events (`kind` is `investigation` or `remediation`)                                                                           |
-| `GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}` | `get` on `findings`                   | A presigned URL (`{url, expiresAt}`) for one [archived](../deployment/archival.md) object: `transcript`, `report`, `patch` or `manifest`. Each one is audit-logged |
-| `POST /api/findings/{name}/actions/{verb}`                        | the verb on `findings`                | One of the five [human actions](../concepts/lifecycle.md#human-actions)                                                                                            |
-| `GET /api/rollups`                                                | `get` on `findingrollups`             | The metrics summary: total, model and harness rollups, the top 10 repositories                                                                                     |
-| `GET /api/rollups/repositories`                                   | `get` on `findingrollups`             | Repository rollups, one page at a time (query below)                                                                                                               |
-| `GET /api/config`                                                 | `get` on `findings`                   | The configuration view: Integrations, Forges and their health                                                                                                      |
-| `POST /api/integrations/{name}/actions/backfill`                  | `backfill` on `integrations`          | Writes `spec.backfill` on that Integration                                                                                                                         |
-| `POST /api/admin/{verb}`                                          | `replay` or `reset` on `integrations` | The namespace-wide demo tools: writes `spec.replay` or `spec.reset`                                                                                                |
-| `GET /events`                                                     | any read grant                        | The SSE refetch signal; it carries no content                                                                                                                      |
-| `/oauth2/…`, `/logout`                                            | none                                  | Sign-in and sign-out (mode `oidc`)                                                                                                                                 |
+| Route                                                             | Needs                                 | Serves                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/findings`                                               | `get` on `findings`                   | The findings list, one page at a time (query below)                                                                                                                      |
+| `GET /api/findings/suggest`                                       | `get` on `findings`                   | The findings filter's type-ahead: the search count for a term and the matching repositories                                                                              |
+| `GET /api/findings/{name}`                                        | `get` on `findings`                   | One finding in full: description, alerts, enrichments, the phase log and the run reports                                                                                 |
+| `GET /api/findings/{name}/runs/{kind}/{attempt}/transcript`       | `get` on `findings`                   | An agent conversation as Server-Sent Events (`kind` is `investigation` or `remediation`)                                                                                 |
+| `GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}` | `get` on `findings`                   | A presigned URL (`{url, expiresAt}`) for one [archived](../deployment/archival.md) object: `transcript`, `report`, `patch` or `manifest`. Each one is audit-logged       |
+| `POST /api/findings/{name}/actions/{verb}`                        | the verb on `findings`                | One of the five [human actions](../concepts/lifecycle.md#human-actions)                                                                                                  |
+| `GET /api/rollups`                                                | `get` on `findingrollups`             | The metrics summary: total, model and harness rollups, the top 10 repositories                                                                                           |
+| `GET /api/rollups/repositories`                                   | `get` on `findingrollups`             | Repository rollups, one page at a time (query below)                                                                                                                     |
+| `GET /api/config`                                                 | `get` on `findings`                   | The configuration view: Integrations, Forges and their health                                                                                                            |
+| `GET /api/repositories`                                           | `get` on `findings`                   | The [repositories view](../operate/status-page.md#my-repositories): finding counts by phase and rollup presence for each `repo` (repeatable, at most 50)                 |
+| `GET /api/repositories/access`                                    | `get` on `findings`                   | Whether an Integration can read each `repo`'s alerts and a Forge can push to it (at most 20). Only never-seen repositories are checked; the rest report `skipped: known` |
+| `POST /api/repositories/backfill`                                 | `backfill` on `integrations`          | `{"repository":"owner/name"}`: a one-repository backfill on the first Integration that can read it. `409` when the repository already has findings or a rollup           |
+| `POST /api/integrations/{name}/actions/backfill`                  | `backfill` on `integrations`          | Writes `spec.backfill` on that Integration                                                                                                                               |
+| `POST /api/admin/{verb}`                                          | `replay` or `reset` on `integrations` | The namespace-wide demo tools: writes `spec.replay` or `spec.reset`                                                                                                      |
+| `GET /events`                                                     | any read grant                        | The SSE refetch signal; it carries no content                                                                                                                            |
+| `/oauth2/…`, `/logout`                                            | none                                  | Sign-in and sign-out (mode `oidc`)                                                                                                                                       |
 
 The findings list never ships whole, because a backlog can run to millions. `GET /api/findings` answers one page of the
 filtered list, most severe first (then by phase, newest first, then name), with `matched` (how many match across every
@@ -85,10 +88,20 @@ served. See [Agent conversations](../operate/status-page.md#agent-conversations)
 
 The [shared flags](index.md#shared-flags) (`--listen-addr` is the page's own address), plus:
 
-| Flag                | Env                      | Default         | Purpose                                                                              |
-| ------------------- | ------------------------ | --------------- | ------------------------------------------------------------------------------------ |
-| `--agent-namespace` | `PATCHY_AGENT_NAMESPACE` | `patchy-agents` | Namespace the agent Jobs run in; live conversations are followed from their pod logs |
-| `--auth-config`     | `PATCHY_AUTH_CONFIG`     | none            | Mounted authentication config; absent means the server serves nothing (see below)    |
+| Flag                                  | Env                                        | Default                                                              | Purpose                                                                                                                  |
+| ------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `--agent-namespace`                   | `PATCHY_AGENT_NAMESPACE`                   | `patchy-agents`                                                      | Namespace the agent Jobs run in; live conversations are followed from their pod logs                                     |
+| `--auth-config`                       | `PATCHY_AUTH_CONFIG`                       | none                                                                 | Mounted authentication config; absent means the server serves nothing (see below)                                        |
+| `--integration-controller-url`        | `PATCHY_INTEGRATION_CONTROLLER_URL`        | `http://patchy-integration-controller.patchy.svc.cluster.local:9792` | The integration-controller's internal endpoint for the repository-access check; empty turns the check off                |
+| `--integration-controller-token-file` | `PATCHY_INTEGRATION_CONTROLLER_TOKEN_FILE` | `/var/run/secrets/patchy/integration-controller/token`               | Projected ServiceAccount token (audience `patchy-integration-controller`) sent with each check; read again on every call |
+
+The [repositories view](../operate/status-page.md#my-repositories) asks the integration-controller whether patchy can
+read a never-seen repository's alerts. The server calls `POST /internal/v1/repository-access` on the integration
+controller's [internal listener](integration-controller.md#the-repository-access-endpoint), and proves who it is with a
+projected ServiceAccount token. Mount one with audience `patchy-integration-controller` at the token file's path; the
+kustomize base and the Helm chart both do. The kubelet rotates the token, which is why the server reads the file again
+on every call. With `--integration-controller-url` empty the page says the access check is unavailable, and offers no
+one-repository backfill.
 
 To play archived runs back, give the server the same `--archive-provider`, `--archive-bucket`, `--archive-prefix`,
 `--archive-region` and `--archive-endpoint` (`PATCHY_ARCHIVE_*`) as the controllers, plus `--archive-presign-ttl`
@@ -153,13 +166,13 @@ proxy in front of the server. If you cannot trust your proxy to strip those head
 Per-user grants are ordinary Kubernetes RBAC, resolved server-side with `SubjectAccessReview`s for the signed-in user.
 Users need no kubeconfig and never talk to the API server.
 
-| Grant                                                                          | Gates                                    |
-| ------------------------------------------------------------------------------ | ---------------------------------------- |
-| native `get` on `findings`                                                     | Viewing findings and the configuration   |
-| native `get` on `findingrollups`                                               | The metrics view                         |
-| custom verbs `approve`, `retry`, `expedite`, `suspend`, `resume` on `findings` | The action buttons, one verb per button  |
-| custom verb `backfill` on `integrations`                                       | The configuration view's backfill button |
-| custom verbs `replay`, `reset` on `integrations`                               | The user menu's demo tools               |
+| Grant                                                                          | Gates                                                                                  |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| native `get` on `findings`                                                     | Viewing findings and the configuration                                                 |
+| native `get` on `findingrollups`                                               | The metrics view                                                                       |
+| custom verbs `approve`, `retry`, `expedite`, `suspend`, `resume` on `findings` | The action buttons, one verb per button                                                |
+| custom verb `backfill` on `integrations`                                       | The backfill buttons (configuration view, and one repository on the repositories view) |
+| custom verbs `replay`, `reset` on `integrations`                               | The user menu's demo tools                                                             |
 
 Grants are namespace-scoped and stamped into the payload as each finding's `userActions`. The client intersects them
 with the finding's own state machine, and every `POST` is re-checked server-side. See

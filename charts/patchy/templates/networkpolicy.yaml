@@ -39,7 +39,9 @@
 # no pod selector can match){{ if eq $c.name "integration-controller" }}, plus 8080 for the provider webhook
 # receivers. The ingress controller in front may live in any namespace, and
 # the per-Integration HMAC signature check is the authentication. Tighten the
-# from: to your ingress namespace if you want L3 on top of the HMAC{{ end }}{{ if eq $c.name "source-controller" }}, plus
+# from: to your ingress namespace if you want L3 on top of the HMAC.
+# With the status server enabled, 9792 (the repository-access endpoint) is
+# open to the status server's pods only{{ end }}{{ if eq $c.name "source-controller" }}, plus
 # 9790 (the artifact server) from the agent namespace only{{ end }}.
 #
 # Egress: DNS, then TCP 443/6443 for the Kubernetes API server (every
@@ -73,6 +75,17 @@ spec:
               {{- end }}
               - protocol: TCP
                 port: 8081
+        {{- if and (eq $c.name "integration-controller") $.Values.statusServer.enabled }}
+        # The repository-access endpoint: only the status server calls it,
+        # and the endpoint checks its projected token with a TokenReview.
+        - from:
+              - podSelector:
+                    matchLabels:
+                        {{- include "patchy.selectorLabels" (dict "root" $ "name" "status-server") | nindent 24 }}
+          ports:
+              - protocol: TCP
+                port: 9792
+        {{- end }}
         {{- if eq $c.name "source-controller" }}
         - from:
               - namespaceSelector:

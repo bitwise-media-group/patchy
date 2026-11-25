@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/google/go-github/v93/github"
@@ -366,4 +368,96 @@ func (e *PATSecretAlertEnumerator) Enumerate(
 	ctx context.Context, repos []string, yield func(Repo, *SecretAlert) bool,
 ) (complete bool, err error) {
 	return patWalk(ctx, e.Client, e.MaxAlerts, repos, secretScanningLists, yield)
+}
+
+// AlertKind names one alert family a repository's access is probed for.
+type AlertKind string
+
+// Alert families.
+const (
+	AlertKindCodeScanning   AlertKind = "code-scanning"
+	AlertKindSecretScanning AlertKind = "secret-scanning"
+)
+
+// AccessStatus classifies whether a credential can read a repository's
+// alerts.
+type AccessStatus string
+
+// Access statuses. NotInstalled is the App installation lookup's 404;
+// ProbeAlerts itself never returns it, but ClassifyAccess does for that
+// lookup's error.
+const (
+	// AccessOK: the listing answered, so a backfill can read the alerts.
+	AccessOK AccessStatus = "ok"
+	// AccessNotInstalled: the GitHub App is not installed on the repository.
+	AccessNotInstalled AccessStatus = "not_installed"
+	// AccessForbidden: the credential lacks security_events (or the
+	// secret-scanning permission), or GitHub Advanced Security is off.
+	AccessForbidden AccessStatus = "forbidden"
+	// AccessNotFound: the repository is invisible to the credential, or the
+	// alert family is disabled on it.
+	AccessNotFound AccessStatus = "not_found"
+	// AccessNoAnalysis: code scanning has never analysed the repository, so
+	// there are no alerts to read yet.
+	AccessNoAnalysis AccessStatus = "no_analysis"
+	// AccessError: anything else (rate limits, outages); worth retrying.
+	AccessError AccessStatus = "error"
+)
+
+// ProbeAlerts asks for one open alert of the given family on repo, to learn
+// whether the client can read that family's alerts at all. It costs one API
+// request and never returns an error: the outcome is the status, with
+// GitHub's own message as the detail.
+func (c *Client) ProbeAlerts(ctx context.Context, repo Repo, kind AlertKind) (AccessStatus, string) {
+	var err error
+	switch kind {
+	case AlertKindCodeScanning:
+		opts := &github.AlertListOptions{State: "open", ListOptions: github.ListOptions{PerPage: 1}}
+		_, _, err = c.gh.CodeScanning.ListAlertsForRepo(ctx, repo.Owner, repo.Name, opts)
+	case AlertKindSecretScanning:
+		base := fmt.Sprintf("repos/%s/%s/secret-scanning/alerts", url.PathEscape(repo.Owner), url.PathEscape(repo.Name))
+		var alerts []*secretAlertJSON
+		_, err = c.getJSON(ctx, base+"?state=open&per_page=1&"+hideSecret, &alerts)
+	default:
+		return AccessError, fmt.Sprintf("unknown alert kind %q", kind)
+	}
+	return ClassifyAccess(err)
+}
+
+// ClassifyAccess maps a GitHub API error onto an AccessStatus and a
+// caller-safe detail. A nil error is AccessOK. A 404 from the App's
+// installation lookup (GET /repos/{o}/{r}/installation) is AccessNotInstalled;
+// any other 404 is AccessNotFound, or AccessNoAnalysis when code scanning
+// says it has no analysis.
+func ClassifyAccess(err error) (AccessStatus, string) {
+	if err == nil {
+		return AccessOK, ""
+	}
+	var rle *github.RateLimitError
+	var abuse *github.AbuseRateLimitError
+	if errors.As(err, &rle) || errors.As(err, &abuse) {
+		return AccessError, "GitHub API rate limit exceeded"
+	}
+	var ger *github.ErrorResponse
+	if !errors.As(err, &ger) || ger.Response == nil {
+		return AccessError, err.Error()
+	}
+	msg := ger.Message
+	switch ger.Response.StatusCode {
+	case http.StatusNotFound:
+		if ger.Response.Request != nil && strings.HasSuffix(ger.Response.Request.URL.Path, "/installation") {
+			return AccessNotInstalled, msg
+		}
+		if strings.Contains(strings.ToLower(msg), "no analysis found") {
+			return AccessNoAnalysis, msg
+		}
+		return AccessNotFound, msg
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return AccessForbidden, msg
+	default:
+		if msg == "" {
+			msg = ger.Response.Status
+		}
+		return AccessError, msg
+	}
 }

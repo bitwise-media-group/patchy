@@ -57,6 +57,27 @@ The **evaluation controller** is optional. It runs remote skill evaluations that
 To run without it, remove the Deployment and that ConfigMap key. In the Helm chart the feature is off behind
 `evaluationController.enabled: false`.
 
+The **status server** calls one in-cluster endpoint: the integration-controller's repository-access check, which the
+status page's "My repositories" view uses to ask whether patchy can read a repository's alerts. The wiring is:
+
+- **Port 9792.** `PATCHY_INTERNAL_ADDR: ":9792"` starts a second listener on the integration-controller, separate from
+  the internet-facing webhook port. The `patchy-integration-controller` Service carries it as the `internal` port. Do
+  not route it through your Ingress or Gateway.
+- **A projected token.** The status server mounts a ServiceAccount token with audience `patchy-integration-controller`
+  (one hour, rotated by the kubelet) at `/var/run/secrets/patchy/integration-controller/token`, and sends it on each
+  call. It proves the caller is the status server and works nowhere else.
+- **A TokenReview grant.** The integration-controller checks that token with a TokenReview, so it gets the
+  `patchy-integration-controller-authn` ClusterRole (`tokenreviews: create`, nothing else). It accepts only the
+  `patchy-status-server` ServiceAccount in its own namespace (`PATCHY_STATUS_SERVER_SERVICE_ACCOUNT`). Its Role also
+  reads `forges`, to report whether a Forge can push to the repository.
+- **NetworkPolicy.** `patchy-controllers` allows TCP 9792 in from pods labelled `app.kubernetes.io/name: status-server`
+  only, and `patchy-status-server` allows TCP 9792 out to the integration-controller pods.
+
+Without the status server, remove `PATCHY_INTERNAL_ADDR` and the listener never starts. To keep the status server but
+turn the check off, set `PATCHY_INTEGRATION_CONTROLLER_URL: ""`; the page then says the access check is unavailable. The
+Helm chart wires all of this only while `statusServer.enabled` is true, and builds the URL from the release's own
+Service name and namespace.
+
 The custom resources in `patchy` **are** the state machine: `Finding`, `Repository`, `Investigation`, `Remediation`,
 `FindingRollup`, plus the `Integration`/`Forge` configuration kinds. etcd is the only state store. The CRDs render first
 in the base (`base/crds/`, controller-gen output).

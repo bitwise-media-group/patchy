@@ -17,6 +17,9 @@ import type {
   FindingsPage,
   FindingsQuery,
   OfflineDataset,
+  RepositoriesPayload,
+  RepositoryAccessPayload,
+  RepositoryBackfillResult,
   RepositoryPage,
   RepositoryQuery,
   ArchiveObject,
@@ -30,6 +33,7 @@ import { availableActions, retryTarget } from "./actions";
 import { mockConfig } from "./mock/config";
 import { mockArchiveURL, mockDataset, mockTranscript } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
+import { mockRepositories, mockRepositoryAccess, mockRepositoryBackfill } from "./mock/repositories";
 
 // AuthRequiredError: the server wants a signed-in user (HTTP 401).
 export class AuthRequiredError extends Error {
@@ -306,6 +310,78 @@ export async function postBackfill(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(repositories.length ? { repositories } : {}),
   });
+}
+
+// ---- repositories page ---------------------------------------------------
+
+function repoParams(names: string[]): string {
+  const params = new URLSearchParams();
+  for (const n of names) params.append("repo", n);
+  return params.toString();
+}
+
+// fetchRepositories loads the tracked repositories' finding counts, rollups
+// and backfill state (GET /api/repositories, at most 50 names).
+export async function fetchRepositories(
+  names: string[],
+  persona: Persona = DEFAULT_PERSONA,
+  signal?: AbortSignal,
+): Promise<RepositoriesPayload> {
+  const mode = dataMode();
+  if (mode !== "live") {
+    const data = offlineDataset();
+    const canBackfill = mode === "demo" && persona.integrationActions.includes("backfill");
+    const out = mockRepositories(data.findings, data.rollups ?? [], names, canBackfill);
+    return mode === "snapshot" ? { ...out, accessCheck: false } : out;
+  }
+  return request<RepositoriesPayload>(`/api/repositories?${repoParams(names)}`, { signal });
+}
+
+// fetchRepositoryAccess asks whether patchy can read each never-seen
+// repository's alerts (GET /api/repositories/access, at most 20 names).
+// Repositories patchy has seen come back skipped.
+export async function fetchRepositoryAccess(names: string[], signal?: AbortSignal): Promise<RepositoryAccessPayload> {
+  const mode = dataMode();
+  if (mode === "snapshot") return { available: false, repositories: [] };
+  if (mode === "demo") {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const data = offlineDataset();
+    return mockRepositoryAccess(data.findings, data.rollups ?? [], names);
+  }
+  return request<RepositoryAccessPayload>(`/api/repositories/access?${repoParams(names)}`, { signal });
+}
+
+// postRepositoryBackfill requests a backfill of one never-seen repository;
+// the server picks the integration that can read its alerts.
+export async function postRepositoryBackfill(
+  repository: string,
+  persona: Persona = DEFAULT_PERSONA,
+): Promise<RepositoryBackfillResult> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    if (!persona.integrationActions.includes("backfill")) {
+      throw new ForbiddenError(
+        `Permission denied. User "${persona.label}" may not backfill integrations in this namespace.`,
+      );
+    }
+    const data = offlineDataset();
+    return mockRepositoryBackfill(data.findings, data.rollups ?? [], repository, persona.label);
+  }
+  const res = await fetch("/api/repositories/backfill", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repository }),
+  });
+  if (res.status === 401) throw new AuthRequiredError();
+  if (!res.ok) {
+    // 403, 409 and 503 carry a sentence meant for the person who clicked.
+    const text = (await res.text()).trim();
+    if (res.status === 403) throw new ForbiddenError(text || "Permission denied.");
+    throw new Error(text || `/api/repositories/backfill: HTTP ${res.status}`);
+  }
+  return (await res.json()) as RepositoryBackfillResult;
 }
 
 // subscribeConfig opens the SSE stream for config-changed signals. It is a

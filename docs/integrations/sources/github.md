@@ -240,6 +240,23 @@ How the backfill behaves:
   findings fall back to the rule description. A backfilled secret alert carries only its first detected location, where
   a webhook-driven ingest fetches them all. Everything else (accumulation, labels, tracking issues) behaves the same.
 
+### Backfilling one repository
+
+A maintainer can also backfill a single repository from the status page's
+[repositories view](../../operate/status-page.md#my-repositories). It is offered only for a repository patchy has never
+seen, with no findings and no rollup, and only after a check shows that one of your github Integrations can read its
+alerts. A repository that already has findings is kept up to date by webhooks, so the button never appears for it, and
+the server refuses the request.
+
+It writes the same `spec.backfill` request, with the repository as the only filter entry, on the first Integration (by
+name) that can read it. If a request is already waiting on that Integration, the repository is added to its list (at
+most 50 entries). If the waiting request has an empty filter, it already covers the repository and nothing changes. It
+needs the same `backfill` verb on `integrations`.
+
+The entry is matched like every other filter entry: as a prefix. So backfilling `acme/shop` also walks `acme/shop-api`
+and any other repository whose name starts with `shop`. Ingestion is idempotent, so a sibling that already has findings
+gains no duplicates, but its alerts are listed again.
+
 ## GitHub Enterprise Server
 
 Point the resource at your instance. Everything else stays the same. The

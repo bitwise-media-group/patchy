@@ -38,6 +38,17 @@ goes for :8080 (integration) and :9790 (source).
 {{- $_ := set $data "PATCHY_LISTEN_ADDR" ":8080" }}
 {{- $_ := set $data "PATCHY_ACCUMULATION_WINDOW" $own.accumulationWindow }}
 {{- $_ := set $data "PATCHY_PROJECTION_CONCURRENCY" $own.projectionConcurrency }}
+{{- if $.Values.statusServer.enabled }}
+{{/*
+The in-cluster repository-access endpoint the status server's "My
+repositories" page calls (a NetworkPolicy limits it to that one client). It
+accepts only the status server's projected token, so the chart passes the
+status server's computed ServiceAccount name. Without the status server, the
+listener never starts.
+*/}}
+{{- $_ := set $data "PATCHY_INTERNAL_ADDR" ":9792" }}
+{{- $_ := set $data "PATCHY_STATUS_SERVER_SERVICE_ACCOUNT" (include "patchy.serviceAccountName" (dict "root" $ "name" "status-server" "vals" $.Values.statusServer)) }}
+{{- end }}
 {{- else if eq $c.name "context-controller" }}
 {{- $_ := set $data "PATCHY_ENHANCE_CONCURRENCY" $own.enhanceConcurrency }}
 {{- $_ := set $data "PATCHY_ENHANCE_MAX_OUTBOUND" $own.enhanceMaxOutbound }}

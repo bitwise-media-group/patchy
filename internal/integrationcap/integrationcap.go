@@ -89,3 +89,19 @@ func GenericEnhanceEnabled(i *v1alpha1.Integration) bool {
 		i.Spec.Generic != nil && i.Spec.Generic.Enhance != nil &&
 		i.Spec.Generic.Enhance.Enabled
 }
+
+// BackfillSupported reports whether a backfill request could do anything on
+// the Integration: the github provider with code-scanning or secret-scanning
+// ingestion enabled, the same gate the integration-controller's lister
+// applies. It ignores spec.suspend, so callers that act on the answer check
+// that separately. The status server's configuration view and repositories
+// page, and the integration-controller's repository-access check, all decide
+// with it.
+func BackfillSupported(i *v1alpha1.Integration) bool {
+	if i.Spec.Provider != v1alpha1.IntegrationProviderGitHub || i.Spec.GitHub == nil {
+		return false
+	}
+	gh := i.Spec.GitHub
+	return (gh.CodeScanningAlerts != nil && gh.CodeScanningAlerts.Enabled) ||
+		(gh.SecretScanningAlerts != nil && gh.SecretScanningAlerts.Enabled)
+}

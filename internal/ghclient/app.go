@@ -31,7 +31,19 @@ type App struct {
 	mu            sync.Mutex
 	installations map[Repo]int64    // repo → installation ID
 	clients       map[int64]*Client // installation ID → cached client
+	perms         map[int64]grant   // installation ID → contents permission
 }
+
+// grant is an installation's contents permission as last read. Unlike the
+// installation ID it can change (an owner approves or revokes a permission),
+// so it is re-read once it is older than permsTTL.
+type grant struct {
+	contents string
+	at       time.Time
+}
+
+// permsTTL bounds how stale a cached installation permission may be.
+const permsTTL = 5 * time.Minute
 
 // NewApp builds an App from cfg, parsing and validating the private key.
 func NewApp(cfg AppConfig) (*App, error) {
@@ -59,6 +71,7 @@ func NewApp(cfg AppConfig) (*App, error) {
 		baseURL:       cfg.BaseURL,
 		installations: make(map[Repo]int64),
 		clients:       make(map[int64]*Client),
+		perms:         make(map[int64]grant),
 	}, nil
 }
 
@@ -190,13 +203,41 @@ func (a *App) installationID(ctx context.Context, repo Repo) (int64, error) {
 	if ok {
 		return id, nil
 	}
+	return a.lookupInstallation(ctx, repo)
+}
+
+// lookupInstallation asks GitHub for the installation covering repo and
+// caches both its ID and its contents permission.
+func (a *App) lookupInstallation(ctx context.Context, repo Repo) (int64, error) {
 	inst, _, err := a.gh.Apps.GetRepositoryInstallation(ctx, repo.Owner, repo.Name)
 	if err != nil {
 		return 0, fmt.Errorf("ghclient: resolve installation for %s: %w", repo, err)
 	}
-	id = inst.GetID()
+	id := inst.GetID()
 	a.mu.Lock()
 	a.installations[repo] = id
+	a.perms[id] = grant{contents: inst.GetPermissions().GetContents(), at: time.Now()}
 	a.mu.Unlock()
 	return id, nil
+}
+
+// InstallationPermissions reports the contents permission ("read", "write",
+// or "" for none) of the installation covering repo. It shares the
+// installation cache, re-reading the permission when it is older than a few
+// minutes. A repository the App is not installed on is a 404 error
+// (IsNotFound).
+func (a *App) InstallationPermissions(ctx context.Context, repo Repo) (contents string, err error) {
+	a.mu.Lock()
+	id, ok := a.installations[repo]
+	g, fresh := a.perms[id]
+	a.mu.Unlock()
+	if ok && fresh && time.Since(g.at) < permsTTL {
+		return g.contents, nil
+	}
+	if id, err = a.lookupInstallation(ctx, repo); err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.perms[id].contents, nil
 }

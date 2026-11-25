@@ -37,8 +37,12 @@ Every Deployment runs as a singleton (`replicas: 1`). The controllers use `Recre
 Lease as protection during rollouts; the status server and egress broker use `RollingUpdate`. They mount their
 service-account tokens. [`templates/rbac.yaml`](templates/rbac.yaml) lists, verb by verb, what each identity may do.
 Services exist only for what something dials: the integration-controller's :8080 (the webhook), the source-controller's
-:9790 (the artifact endpoint), and the status server, egress broker and evaluation controller on :8080. Every other port
-is a kubelet-probed :8081.
+:9790 (the artifact endpoint), and the status server, egress broker and evaluation controller on :8080. With the status
+server enabled, the integration-controller's Service also carries :9792, the in-cluster repository-access endpoint
+behind the status page's "My repositories" view. Only the status server may call it: a NetworkPolicy limits the sender,
+and the endpoint checks the status server's projected token (audience `patchy-integration-controller`) with a
+TokenReview, which is why the integration-controller then gets a TokenReview ClusterRole. Every other port is a
+kubelet-probed :8081.
 
 The CRDs render as templates gated by `crds.install`. They live in `templates/crds/` instead of the chart's install-only
 `crds/` directory, so `helm upgrade` keeps them current. When `crds.keep` is true, the chart stamps

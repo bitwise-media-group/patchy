@@ -202,6 +202,9 @@ integrationController:
     # kubelet probes arrive from the node IP (no pod selector can match it)
     # and your ingress controller may run in any namespace. The
     # per-Integration HMAC signature check provides the authentication.
+    # With the status server enabled, ingress also allows 9792 (the
+    # repository-access endpoint behind the "My repositories" page) from the
+    # status server's pods only.
     # extraEgress appends NetworkPolicy egress rules as written. Use it, for
     # example, for a generic Integration's resolver endpoint on a port other
     # than 443. Endpoints on 443 need nothing.
@@ -564,6 +567,11 @@ statusServer:
         port: 8080
         nodePort: null
         annotations: {}
+    # The status server's L3/L4 NetworkPolicy: 8080 and probes in; DNS, TLS,
+    # the Kubernetes API, and the integration-controller's repository-access
+    # endpoint (9792) out. The status server reaches that endpoint with a
+    # projected ServiceAccount token (audience patchy-integration-controller)
+    # that the chart always mounts; there is no knob for the port.
     networkPolicy:
         create: true
 

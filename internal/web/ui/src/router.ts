@@ -11,6 +11,7 @@
 //                         aggregate of every repository matching key).
 //                         #/rollups/… is the old name and still resolves.
 //   #/config              configuration, optional /{section}
+//   #/repositories        the repositories this browser tracks
 
 import { useEffect, useState } from "preact/hooks";
 import type { RollupSlice, SliceKind } from "./rollups";
@@ -23,7 +24,8 @@ export type Route =
   | { view: "list"; query: string }
   | { view: "detail"; name: string; tab: TabId }
   | { view: "metrics"; slice: RollupSlice | null }
-  | { view: "config"; section: ConfigSection };
+  | { view: "config"; section: ConfigSection }
+  | { view: "repositories" };
 
 const TABS: TabId[] = ["overview", "alerts", "timeline", "investigation", "remediation"];
 const SLICE_KINDS: SliceKind[] = ["repository", "model", "harness", "match"];
@@ -53,6 +55,7 @@ export function parseRoute(hash: string): Route {
       : "integrations";
     return { view: "config", section };
   }
+  if (parts[0] === "repositories") return { view: "repositories" };
   return { view: "list", query: q < 0 ? "" : raw.slice(q + 1) };
 }
 
@@ -80,6 +83,10 @@ export function hrefForMetrics(slice?: RollupSlice | null): string {
 
 export function hrefForConfig(section?: ConfigSection): string {
   return section && section !== "integrations" ? `#/config/${section}` : "#/config";
+}
+
+export function hrefForRepositories(): string {
+  return "#/repositories";
 }
 
 export function navigate(href: string): void {

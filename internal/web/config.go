@@ -23,6 +23,7 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/integrationcap"
+	"github.com/bitwise-media-group/patchy/internal/web/auth"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
@@ -263,18 +264,9 @@ func wireBackfill(integ *v1alpha1.Integration) *BackfillStatus {
 	return out
 }
 
-// backfillSupported reports whether a backfill request could do anything on
-// this Integration: the github provider with code-scanning or
-// secret-scanning ingestion enabled, the same gate the
-// integration-controller's lister applies.
-func backfillSupported(integ *v1alpha1.Integration) bool {
-	if integ.Spec.Provider != v1alpha1.IntegrationProviderGitHub || integ.Spec.GitHub == nil {
-		return false
-	}
-	gh := integ.Spec.GitHub
-	return (gh.CodeScanningAlerts != nil && gh.CodeScanningAlerts.Enabled) ||
-		(gh.SecretScanningAlerts != nil && gh.SecretScanningAlerts.Enabled)
-}
+// backfillSupported is integrationcap.BackfillSupported, shared with the
+// integration-controller's repository-access check.
+var backfillSupported = integrationcap.BackfillSupported
 
 // capabilities names the Integration's enabled capabilities for display.
 func capabilities(integ *v1alpha1.Integration) []string {
@@ -398,25 +390,8 @@ const (
 // on its next reconcile (the status server holds no forge credential).
 func (s *Server) handleBackfill(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	id, err := s.auth.Identify(w, r)
-	if err != nil {
-		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))
-		http.Error(w, "authentication failed", http.StatusInternalServerError)
-		return
-	}
-	if id == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	grants, err := s.granter.Grants(r.Context(), *id)
-	if err != nil {
-		s.log.LogAttrs(r.Context(), slog.LevelError, "grants failed", slog.Any("error", err))
-		http.Error(w, "authorization failed", http.StatusInternalServerError)
-		return
-	}
-	if !grants.AllowsIntegration(authz.VerbBackfill) {
-		http.Error(w, fmt.Sprintf("Permission denied. User %q may not backfill integrations in namespace %q.",
-			id.Display(), s.namespace), http.StatusForbidden)
+	id, ok := s.authorizeBackfill(w, r)
+	if !ok {
 		return
 	}
 
@@ -430,9 +405,64 @@ func (s *Server) handleBackfill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err := s.stampBackfill(r.Context(), name, func(cur *v1alpha1.Integration) error {
+		cur.Spec.Backfill = &v1alpha1.BackfillRequest{
+			By:           id.Username,
+			At:           metav1.NewTime(s.now()),
+			Repositories: body.Repositories,
+		}
+		return nil
+	})
+	if err != nil {
+		s.writeBackfillError(w, r, name, err)
+		return
+	}
+	s.log.LogAttrs(r.Context(), slog.LevelInfo, "backfill requested",
+		slog.String("integration", name), slog.String("user", id.Username),
+		slog.Int("repositories", len(body.Repositories)))
+	writeJSON(w, map[string]any{})
+}
+
+// authorizeBackfill identifies the caller and checks the backfill grant,
+// writing the failure response itself. ok is false when the request has
+// already been answered.
+func (s *Server) authorizeBackfill(w http.ResponseWriter, r *http.Request) (*auth.Identity, bool) {
+	id, err := s.auth.Identify(w, r)
+	if err != nil {
+		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))
+		http.Error(w, "authentication failed", http.StatusInternalServerError)
+		return nil, false
+	}
+	if id == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil, false
+	}
+	grants, err := s.granter.Grants(r.Context(), *id)
+	if err != nil {
+		s.log.LogAttrs(r.Context(), slog.LevelError, "grants failed", slog.Any("error", err))
+		http.Error(w, "authorization failed", http.StatusInternalServerError)
+		return nil, false
+	}
+	if !grants.AllowsIntegration(authz.VerbBackfill) {
+		http.Error(w, fmt.Sprintf("Permission denied. User %q may not backfill integrations in namespace %q.",
+			id.Display(), s.namespace), http.StatusForbidden)
+		return nil, false
+	}
+	return id, true
+}
+
+// errBackfillUnchanged tells stampBackfill that apply found nothing to
+// write: the request already covers what was asked.
+var errBackfillUnchanged = errors.New("backfill request unchanged")
+
+// stampBackfill applies one change to the named Integration's spec.backfill
+// under conflict retry, after the checks every backfill path shares: the
+// Integration exists, is not suspended, and supports backfill. apply returns
+// errBackfillUnchanged to skip the write, or a *statusError to answer with.
+func (s *Server) stampBackfill(ctx context.Context, name string, apply func(*v1alpha1.Integration) error) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var cur v1alpha1.Integration
-		if err := s.client.Get(r.Context(), client.ObjectKey{Namespace: s.namespace, Name: name}, &cur); err != nil {
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: s.namespace, Name: name}, &cur); err != nil {
 			return err
 		}
 		if cur.Spec.Suspend {
@@ -442,32 +472,31 @@ func (s *Server) handleBackfill(w http.ResponseWriter, r *http.Request) {
 			return &statusError{code: http.StatusConflict,
 				msg: fmt.Sprintf("Integration %q does not support backfill.", name)}
 		}
-		cur.Spec.Backfill = &v1alpha1.BackfillRequest{
-			By:           id.Username,
-			At:           metav1.NewTime(s.now()),
-			Repositories: body.Repositories,
+		if err := apply(&cur); err != nil {
+			return err
 		}
-		return s.client.Update(r.Context(), &cur)
+		return s.client.Update(ctx, &cur)
 	})
-	if err != nil {
-		var se *statusError
-		if errors.As(err, &se) {
-			http.Error(w, se.msg, se.code)
-			return
-		}
-		if apierrors.IsNotFound(err) {
-			http.Error(w, "integration not found", http.StatusNotFound)
-			return
-		}
-		s.log.LogAttrs(r.Context(), slog.LevelError, "backfill request failed",
-			slog.String("integration", name), slog.Any("error", err))
-		http.Error(w, "action failed", http.StatusInternalServerError)
+	if errors.Is(err, errBackfillUnchanged) {
+		return nil
+	}
+	return err
+}
+
+// writeBackfillError answers a failed stampBackfill.
+func (s *Server) writeBackfillError(w http.ResponseWriter, r *http.Request, name string, err error) {
+	var se *statusError
+	if errors.As(err, &se) {
+		http.Error(w, se.msg, se.code)
 		return
 	}
-	s.log.LogAttrs(r.Context(), slog.LevelInfo, "backfill requested",
-		slog.String("integration", name), slog.String("user", id.Username),
-		slog.Int("repositories", len(body.Repositories)))
-	writeJSON(w, map[string]any{})
+	if apierrors.IsNotFound(err) {
+		http.Error(w, "integration not found", http.StatusNotFound)
+		return
+	}
+	s.log.LogAttrs(r.Context(), slog.LevelError, "backfill request failed",
+		slog.String("integration", name), slog.Any("error", err))
+	http.Error(w, "action failed", http.StatusInternalServerError)
 }
 
 // validateBackfillRepos mirrors the CRD limits on the repository filter;

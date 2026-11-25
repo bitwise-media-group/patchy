@@ -17,8 +17,8 @@ writes the same custom resources, so the page and the CLI always show the same s
 
 The bar across every view holds, left to right:
 
-- the patchy mark and the view links (**Findings**, **Metrics**, and **Configuration** for users who may see it), the
-  current view underlined;
+- the patchy mark and the view links (**Findings**, **My repositories**, **Metrics**, and **Configuration** for users
+  who may see it), the current view underlined;
 - the data mode: **Live** with a pulsing dot while the SSE stream is connected, **Snapshot** when it is not, or **Demo
   data** when the page runs on its built-in mock data;
 - the Kubernetes namespace the page is showing;
@@ -73,6 +73,63 @@ routes. The investigation and remediation tabs each end in a **Conversation** se
 
 ![A finding awaiting approval, with the action bar](../assets/images/status-finding-detail.jpg#only-dark)
 ![A finding awaiting approval, with the action bar](../assets/images/status-finding-detail-light.jpg#only-light)
+
+### My repositories
+
+The repositories view (`#/repositories`) is for maintainers who care about a handful of repositories, not the whole
+estate. You keep a list of repositories, and each row shows where that repository's findings stand.
+
+**The list lives in your browser.** Add a repository by its exact `owner/name`; the field suggests names as you type.
+The list is saved in this browser's local storage, not on the server, so it does not follow you to another browser or
+machine, and nobody else sees it. To move it, or to share a starting list with your team, use **Export** to download it
+as JSON and **Import** to load it in another browser. Clearing the site's data clears the list.
+
+**Each row counts the repository's findings by where they are:**
+
+| Column            | Phases                                |
+| ----------------- | ------------------------------------- |
+| Open              | `Opened`, `Enhanced`, `Investigating` |
+| Awaiting approval | `AwaitingApproval`                    |
+| In progress       | `Queued`, `Remediating`               |
+| In review         | `InReview`                            |
+| Remediated        | `Remediated`                          |
+| Failed            | `Failed`                              |
+| Closed            | `Dismissed`, `HandedOff`              |
+
+Every count is a link to the findings list, filtered to that repository and those phases, so **In progress** for
+`acme/shop` opens `#/?phase=Queued&phase=Remediating&repo=acme%2Fshop`. The counts cover the findings that exist now.
+Completed findings expire after the [finding TTL](../configuration/remediation-controller.md), so for the all-time
+figures the row links to the repository's [metrics](#metrics) slice whenever it has a `FindingRollup`.
+
+**A repository patchy has never seen gets an access check.** When a repository has no findings and no rollup, the page
+asks the integration-controller whether any GitHub Integration can read its alerts. The check tries each github
+Integration that is not suspended and has code or secret scanning turned on. When none can read the repository, the row
+shows why, for example:
+
+- the GitHub App is not installed on the repository;
+- the credential is missing the `security_events: read` permission;
+- GitHub Advanced Security (code scanning) is off for the repository.
+
+When an Integration can read it, the repository may simply have no open alerts, or its alerts may predate the App's
+webhook. To find out, the row offers a one-repository **Backfill**. It asks you to confirm with a second click. It then
+requests the [manual backfill](../integrations/sources/github.md#the-manual-backfill) for that one repository on the
+first Integration, by name, that can read it. If a backfill request is already waiting on that Integration, the
+repository joins its list instead of starting a new one, and a waiting request for everything already covers it. The
+button needs the same `backfill` verb on `integrations` as the configuration view's trigger. Without it, the row says
+**Ask an operator to backfill**.
+
+Backfill is **never offered for a repository that already has findings or a rollup**. Patchy already knows about those
+repositories, and webhooks keep them up to date, so a backfill would only spend GitHub API requests. The server refuses
+such a request too.
+
+The access check is cached for five minutes for each Integration and repository (30 seconds after a temporary error), so
+reloading the page does not call GitHub again. When an operator has turned the check off (an empty
+`--integration-controller-url` on the status server), the page says the access check is unavailable.
+
+**A separate warning covers pull requests.** The same check looks for the [Forge](../integrations/forges/github.md) that
+covers the repository. When no Forge covers it, or its GitHub App lacks `contents: write`, the row warns that patchy
+cannot push remediation pull requests there. This does not block a backfill: patchy can still triage the findings, and a
+person fixes them.
 
 ### Metrics
 
@@ -165,11 +222,13 @@ The action bar renders only the verbs the signed-in user is granted _and_ the fi
 | **Suspend**  | any non-terminal phase            | `spec.suspend: true`                                           |
 | **Resume**   | a suspended finding               | `spec.suspend: false`                                          |
 
-One action works on Integrations instead of findings. It is the configuration view's backfill trigger:
+One action works on Integrations instead of findings. It is the backfill, from the configuration view or for one
+repository from the [repositories view](#my-repositories):
 
-| Action       | Available when                                       | What the server writes             |
-| ------------ | ---------------------------------------------------- | ---------------------------------- |
-| **Backfill** | a github Integration with code scanning, unsuspended | `spec.backfill` on the Integration |
+| Action       | Available when                                                                                        | What the server writes                                      |
+| ------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Backfill** | a github Integration with code scanning, unsuspended                                                  | `spec.backfill` on the Integration                          |
+| **Backfill** | (one repository) the repository has no findings and no rollup, and an Integration can read its alerts | the repository added to `spec.backfill` on that Integration |
 
 The status server never moves a phase. It writes the spec field, and the controller that owns the edge makes the
 transition, the same way it does for a `/approve` issue comment or `patchy approve`. What each action then does to the
@@ -197,11 +256,11 @@ Access has two tiers:
 2. **Every view requires sign-in + RBAC.** Metrics need `get` on `findingrollups`, because repository names and
    per-repository spend should not be visible to anyone who can reach the page. A signed-in user sees findings only if
    RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` / `retry` /
-   `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The configuration view has its own gate:
-   native `get` on `integrations`. Its backfill trigger has its own verb (`backfill` on
-   `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent conversations are finding content, so they
-   use the same `get findings` gate. The change-notification stream (`/events`) carries no content, only the fact that
-   something changed. It still needs any one of the read grants:
+   `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The repositories view uses the same
+   `get findings` gate. The configuration view has its own gate: native `get` on `integrations`. Its backfill trigger
+   has its own verb (`backfill` on `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent
+   conversations are finding content, so they use the same `get findings` gate. The change-notification stream
+   (`/events`) carries no content, only the fact that something changed. It still needs any one of the read grants:
 
 ```yaml
 rules:

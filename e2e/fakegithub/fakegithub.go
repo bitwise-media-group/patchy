@@ -68,9 +68,13 @@ type Server struct {
 	alerts []seededAlert
 	// secrets is the secret-scanning surface (secrets.go).
 	secrets secretState
-	pulls   map[int]*pull
-	git     gitData
-	next    int
+	// forbidden are the "owner/repo" whose alert listings answer 403, as
+	// GitHub does when the credential lacks security_events or Advanced
+	// Security is off.
+	forbidden map[string]bool
+	pulls     map[int]*pull
+	git       gitData
+	next      int
 	// Now stamps created_at; tests override it to age issues instantly.
 	Now func() time.Time
 }
@@ -80,6 +84,7 @@ func newState() (*Server, *http.ServeMux) {
 		issues:    make(map[int]*Issue),
 		comments:  make(map[int][]comment),
 		dismissed: make(map[int]string),
+		forbidden: make(map[string]bool),
 		secrets:   secretState{resolved: make(map[int]string)},
 		pulls:     make(map[int]*pull),
 		git:       newGitData(),
@@ -287,7 +292,33 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, keep func(se
 	writeJSON(w, out)
 }
 
+// ForbidAlerts makes every alert listing of owner/repo answer 403, so the
+// credential reads as lacking access to it.
+func (s *Server) ForbidAlerts(owner, repo string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.forbidden[owner+"/"+repo] = true
+}
+
+// alertsForbidden answers 403 for a forbidden repository, reporting whether
+// it did.
+func (s *Server) alertsForbidden(w http.ResponseWriter, r *http.Request) bool {
+	s.mu.Lock()
+	denied := s.forbidden[r.PathValue("owner")+"/"+r.PathValue("repo")]
+	s.mu.Unlock()
+	if !denied {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"message":"Resource not accessible by integration"}`))
+	return true
+}
+
 func (s *Server) listRepoAlerts(w http.ResponseWriter, r *http.Request) {
+	if s.alertsForbidden(w, r) {
+		return
+	}
 	owner, repo := r.PathValue("owner"), r.PathValue("repo")
 	s.listAlerts(w, r, func(a seededAlert) bool {
 		return a.owner == owner && a.repo == repo

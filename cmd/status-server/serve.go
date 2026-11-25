@@ -21,6 +21,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/repoaccess"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
 	"github.com/bitwise-media-group/patchy/internal/version"
 	"github.com/bitwise-media-group/patchy/internal/web"
@@ -45,6 +46,12 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	archive.RegisterFlags(f)
 	f.Duration("archive-presign-ttl", web.DefaultPresignTTL,
 		"how long a presigned archive URL handed to the browser stays valid")
+	f.String("integration-controller-url", "http://patchy-integration-controller.patchy.svc.cluster.local:9792",
+		"internal URL of the integration-controller's repository-access endpoint, which tells the repositories "+
+			"page whether patchy can read a repository's alerts (empty disables the check)")
+	f.String("integration-controller-token-file", "/var/run/secrets/patchy/integration-controller/token",
+		"projected ServiceAccount token (audience "+repoaccess.Audience+") sent to the integration-controller; "+
+			"read again on every call")
 	return cmd
 }
 
@@ -169,6 +176,17 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	if store != nil {
 		defer func() { _ = store.Close() }()
 		srv = srv.WithArchive(store, ttl)
+	}
+
+	// The repositories page asks the integration-controller, which holds the
+	// forge credentials, whether a repository's alerts are readable; this
+	// process stays credential-free.
+	if url := opts.String("integration-controller-url"); url != "" {
+		srv = srv.WithRepositoryAccess(&repoaccess.Client{
+			URL:       url,
+			TokenFile: opts.String("integration-controller-token-file"),
+		})
+		log.LogAttrs(ctx, slog.LevelInfo, "repository access check enabled", slog.String("url", url))
 	}
 
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {

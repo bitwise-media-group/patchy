@@ -12,7 +12,11 @@ its own ConfigMap, ServiceAccount and NetworkPolicy. The components are:
   by default).
 
 Services exist for the components that other components call: integration-controller (`:8080`, the webhook),
-source-controller (`:9790`, the artifact endpoint), status-server, egress-broker and evaluation-controller.
+source-controller (`:9790`, the artifact endpoint), status-server, egress-broker and evaluation-controller. With the
+status server on, the integration-controller's Service also carries `:9792`, the in-cluster
+[repository-access endpoint](../configuration/integration-controller.md#the-repository-access-endpoint) that only the
+status server may call. The chart then also grants the integration-controller `create` on `tokenreviews`, and mounts a
+projected token in the status server to call it with.
 
 The companion `patchy-config` chart (`charts/patchy-config`) renders the `Integration`/`Forge` custom resources. It is a
 separate chart because Helm validates every manifest against the API server before applying anything. So the CRs cannot
@@ -119,8 +123,8 @@ shared key under `<controller>.config` to override it for that controller alone.
 | `config.priorityAgingCap`      | `25`    | Maximum aging boost                                                                     |
 | `config.extra`                 | `{}`    | Verbatim `PATCHY_*` keys for every controller; `<controller>.config.extra` wins over it |
 
-The listen (`:8080`), health (`:8081`), and artifact (`:9790`) addresses are not values. The chart hardcodes them
-everywhere they appear (env, container ports, probes, Services, NetworkPolicies).
+The listen (`:8080`), health (`:8081`), artifact (`:9790`) and repository-access (`:9792`) addresses are not values. The
+chart hardcodes them everywhere they appear (env, container ports, probes, Services, NetworkPolicies).
 
 ### Per-controller blocks
 

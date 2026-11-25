@@ -44,6 +44,10 @@ signals (approve/close/PR-merge) to Finding spec + status.
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [investigations, remediations]
   verbs: [get, list, watch, deletecollection]
+{{- /* read-only: the repository-access check reports Forge coverage */}}
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [forges]
+  verbs: [get, list, watch]
 {{- /* the demo reset (Integration spec.reset) wipes every pipeline resource */}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [repositories, findingrollups]
@@ -230,6 +234,48 @@ subjects:
     - kind: ServiceAccount
       name: {{ include "patchy.serviceAccountName" (dict "root" $ "name" $c.name "vals" $c.vals) }}
       namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- if .Values.statusServer.enabled }}
+---
+# ---- integration-controller: TokenReview ------------------------------------
+# TokenReview is cluster-scoped, so the one grant needs a ClusterRole. The
+# integration-controller uses it on its in-cluster repository-access endpoint
+# (:9792) to check the status server's projected ServiceAccount token.
+# Review-only: it may ask "whose token is this?" and nothing else. Rendered
+# only with the status server, its one caller.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: {{ include "patchy.fullname" . }}-integration-controller-authn
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "integration-controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+rules:
+    - apiGroups: [authentication.k8s.io]
+      resources: [tokenreviews]
+      verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: {{ include "patchy.fullname" . }}-integration-controller-authn
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" "integration-controller") | nindent 8 }}
+    {{- with include "patchy.annotations" (dict "root" .) }}
+    annotations:
+        {{- . | nindent 8 }}
+    {{- end }}
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: {{ include "patchy.fullname" . }}-integration-controller-authn
+subjects:
+    - kind: ServiceAccount
+      name: {{ include "patchy.serviceAccountName" (dict "root" . "name" "integration-controller" "vals" .Values.integrationController) }}
+      namespace: {{ .Release.Namespace }}
 {{- end }}
 ---
 # ---- agent namespace: the two job controllers -------------------------------

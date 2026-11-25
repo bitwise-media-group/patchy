@@ -13,6 +13,9 @@ screenshots:
   # A shared link: severities plus additive repository terms, from the URL.
   - name: filter-link
     hash: "#/?severity=critical&severity=high&repoPrefix=mobile&repoContains=ledger"
+  # My repositories: the tracked-repository list with counts by phase.
+  - name: repositories
+    hash: "#/repositories"
 ---
 
 <!--
@@ -22,10 +25,10 @@ screenshots:
   page into <version>.md and starts it again (hack/whats-new-freeze.sh; AGENTS.md, "What's new").
 -->
 
-This release brings **GitHub secret scanning** into the pipeline, and rebuilds the **status page's findings list** for
-backlogs that run to millions. The full list of changes is in the
-[release notes](https://github.com/bitwise-media-group/patchy/releases) and the
-[changelog](https://github.com/bitwise-media-group/patchy/blob/main/CHANGELOG.md).
+This release brings **GitHub secret scanning** into the pipeline, rebuilds the **status page's findings list** for
+backlogs that run to millions, and gives maintainers **My repositories**, a view of just the repositories they look
+after. The full list of changes is in the [release notes](https://github.com/bitwise-media-group/patchy/releases) and
+the [changelog](https://github.com/bitwise-media-group/patchy/blob/main/CHANGELOG.md).
 
 ## Leaked secrets, triaged without ever seeing them
 
@@ -103,6 +106,32 @@ Going back to the list from a finding keeps your filter too.
 ![A shared link opens with its filter applied](../assets/images/whats-new/0.15.0/filter-link.jpg#only-dark)
 ![A shared link opens with its filter applied](../assets/images/whats-new/0.15.0/filter-link-light.jpg#only-light)
 
+## My repositories
+
+Most people do not look after the whole estate. They look after a few repositories. The new **My repositories** view
+puts those in one place, so a maintainer can see at a glance what patchy is doing for them.
+
+- **Your list, in your browser.** Add repositories by name, with suggestions as you type. The list stays in your
+  browser, so there is nothing to set up and nobody else's view changes. Export it as JSON to move it or to share a
+  starting list with your team, and import it anywhere.
+- **Every finding, by where it stands.** Each row counts the repository's findings as open, awaiting approval, in
+  progress, in review, remediated, failed or closed. Every count opens the findings list filtered to that repository and
+  those phases, and the row links to the repository's all-time metrics.
+- **Find out why a repository is quiet.** For a repository patchy has never seen, the page asks whether patchy can read
+  its alerts at all. If it cannot, it says why: the GitHub App is not installed, the credential lacks
+  `security_events: read`, or Advanced Security is off. It also warns when no Forge could push a fix there.
+- **Backfill one repository.** When patchy can read the alerts but has none yet, people with the `backfill` grant can
+  pull in that one repository's open alerts with two clicks. Everyone else is told to ask an operator. The button only
+  appears for repositories patchy has never seen, and the server refuses the rest, so the page cannot be used to re-walk
+  repositories that webhooks already keep up to date.
+
+The access check runs in the integration-controller, which already holds the Integrations' GitHub credentials, on a new
+in-cluster port that only the status server can reach. Its answers are cached for five minutes. Read more in
+[The status page](../operate/status-page.md#my-repositories).
+
+![My repositories, with finding counts by phase](../assets/images/whats-new/0.15.0/repositories.jpg#only-dark)
+![My repositories, with finding counts by phase](../assets/images/whats-new/0.15.0/repositories-light.jpg#only-light)
+
 ## A bigger demo
 
 The [demo](../demo.md) now holds 611 findings across 211 repositories, so infinite scroll, the counts and the repository
@@ -114,3 +143,8 @@ filters can be tried without a cluster.
   page of findings with `matched` and `nextCursor` instead of every finding. Follow `nextCursor` for the rest. The
   parameters are in the [status-server reference](../configuration/status-server.md).
 - **`GET /api/rollups` no longer has a `findings` field.** It was always empty.
+- **The integration-controller listens on a new in-cluster port, 9792.** The kustomize base and the Helm chart wire it
+  up for you: the Service port, a TokenReview grant for the integration-controller, a projected token in the status
+  server, and the NetworkPolicy rules between the two. If you deploy from your own manifests, add the same pieces; see
+  [Deploying](https://github.com/bitwise-media-group/patchy/blob/main/deploy/README.md). Without them the access check
+  fails, and the rest of the repositories view still works.

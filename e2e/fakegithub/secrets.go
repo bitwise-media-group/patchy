@@ -161,6 +161,9 @@ func (s *Server) listSecretAlerts(w http.ResponseWriter, r *http.Request, keep f
 }
 
 func (s *Server) listRepoSecretAlerts(w http.ResponseWriter, r *http.Request) {
+	if s.alertsForbidden(w, r) {
+		return
+	}
 	owner, repo := r.PathValue("owner"), r.PathValue("repo")
 	s.listSecretAlerts(w, r, func(a seededAlert) bool { return a.owner == owner && a.repo == repo }, false)
 }

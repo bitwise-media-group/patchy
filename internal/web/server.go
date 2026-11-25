@@ -22,8 +22,8 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
 )
 
-// maxBodyBytes caps POST bodies. Only backfill takes a payload (at most 50
-// short repository entries), so anything near this size is noise.
+// maxBodyBytes caps POST bodies. Only the backfills take a payload (at most
+// 50 short repository entries), so anything near this size is noise.
 const maxBodyBytes = 1 << 20
 
 // Granter resolves what an identity may do; internal/web/authz provides the
@@ -61,6 +61,9 @@ type Server struct {
 	// findings mirrors the cached findings for the findings queries; it
 	// fills once StartWatch runs.
 	findings *findingStore
+	// access asks the integration-controller whether a repository's alerts
+	// are readable; nil when unconfigured.
+	access accessChecker
 }
 
 // NewServer builds the backend over the manager's cached client. log may be
@@ -109,6 +112,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/{verb}", s.handleAdmin)
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("POST /api/integrations/{name}/actions/backfill", s.handleBackfill)
+	mux.HandleFunc("GET /api/repositories", s.handleTrackedRepositories)
+	mux.HandleFunc("GET /api/repositories/access", s.handleRepositoryAccess)
+	mux.HandleFunc("POST /api/repositories/backfill", s.handleRepositoryBackfill)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/transcript", s.handleTranscript)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}", s.handleArchive)
 	mux.HandleFunc("GET /events", s.handleEvents)

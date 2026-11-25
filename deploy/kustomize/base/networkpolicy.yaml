@@ -47,6 +47,10 @@
 #         namespace if you want L3 on top of the HMAC.
 #   8081  kubelet probes (every controller).
 #   9790  the artifact server: agent pods only (plus kubelet).
+#   9791  source-controller's internal blob endpoint: evaluation-controller
+#         only.
+#   9792  integration-controller's repository-access endpoint: the status
+#         server only.
 #
 # Egress: DNS, the Kubernetes API server (every controller is a CR
 # controller now), and TCP 443 out. That covers GitHub for integration/
@@ -101,6 +105,18 @@ spec:
           ports:
               - protocol: TCP
                 port: 9791
+        # The repository-access endpoint (integration-controller :9792).
+        # Only the status server calls it, for the "My repositories" page.
+        # Only integration-controller listens on the port, so the rule only
+        # needs to limit the sender. The endpoint also checks the caller's
+        # projected token with a TokenReview.
+        - from:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: status-server
+          ports:
+              - protocol: TCP
+                port: 9792
     egress:
         # DNS.
         - to:
@@ -165,8 +181,9 @@ spec:
 # top.
 #
 # Egress: DNS, the Kubernetes API server (cache watches + access reviews),
-# and TCP 443 out (the OIDC issuer for discovery/code exchange, an OTLP
-# collector).
+# TCP 443 out (the OIDC issuer for discovery/code exchange, an OTLP
+# collector), and the integration-controller's repository-access endpoint
+# (:9792) for the "My repositories" page.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -202,6 +219,14 @@ spec:
                 port: 443
               - protocol: TCP
                 port: 6443
+        # The integration-controller's repository-access endpoint.
+        - to:
+              - podSelector:
+                    matchLabels:
+                        app.kubernetes.io/name: integration-controller
+          ports:
+              - protocol: TCP
+                port: 9792
 ---
 # ---- patchy namespace: the egress credential broker -------------------------
 # Selected separately (component: broker): the reverse proxy all claude model

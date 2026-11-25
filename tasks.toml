@@ -97,7 +97,8 @@ run = "./hack/envtest.sh"
 # status-server binary via -tags withui (hack/build.sh). dist/ is git-ignored
 # (a built bundle); sources/outputs rerun bun only when the UI sources change.
 # The UI is bun end to end on the shared toolchain's bun (the repo pins no
-# node): `bun check` type-checks, and build.ts bundles it through Bun.build
+# node): `bun test` runs the unit tests (src/*.test.ts), `bun check`
+# type-checks, and build.ts bundles it through Bun.build
 # (compile + browser target, with the Tailwind plugin) into one inlined
 # dist/index.html.
 [ui]
@@ -115,6 +116,7 @@ sources = [
 outputs = ["internal/web/ui/dist/index.html"]
 run = [
   "bun install --cwd internal/web/ui --frozen-lockfile --ignore-scripts",
+  "bun run --cwd internal/web/ui test",
   "bun run --cwd internal/web/ui build",
 ]
 

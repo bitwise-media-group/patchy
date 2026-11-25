@@ -6,17 +6,23 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/bitwise-media-group/patchy/internal/cli"
 	"github.com/bitwise-media-group/patchy/internal/controller/integration"
+	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/kube"
+	"github.com/bitwise-media-group/patchy/internal/repoaccess"
 	"github.com/bitwise-media-group/patchy/internal/telemetry"
+	"github.com/bitwise-media-group/patchy/internal/tokenauth"
 	"github.com/bitwise-media-group/patchy/internal/version"
 	"github.com/bitwise-media-group/patchy/internal/webhook"
 )
@@ -39,7 +45,41 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 		"OIDC issuer the Pub/Sub push route verifies tokens against "+
 			"(default: Google, the only correct value in production; overridable for e2e)")
 	_ = f.MarkHidden("google-oidc-issuer")
+	f.String("internal-addr", "",
+		"listen address of the in-cluster repository-access endpoint the status server calls (empty disables it)")
+	f.String("status-server-service-account", "patchy-status-server",
+		"ServiceAccount (in --namespace) whose projected token the repository-access endpoint accepts")
 	return cmd
+}
+
+// internalServer builds the in-cluster listener for the repository-access
+// endpoint, or nil when --internal-addr is empty. It is kept off the
+// internet-facing webhook listener: only the status server calls it, with a
+// projected ServiceAccount token reviewed by the API server.
+func internalServer(
+	opts *cli.Options, namespace string, access *integration.RepositoryAccess,
+) (*http.Server, error) {
+	addr := opts.String("internal-addr")
+	if addr == "" {
+		return nil, nil
+	}
+	restCfg, err := kube.RestConfig(opts.String("kubeconfig"))
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes config: %w", err)
+	}
+	cs, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes clientset: %w", err)
+	}
+	access.Auth = tokenauth.New(cs, tokenauth.Config{
+		Audience: repoaccess.Audience,
+		Subjects: []string{tokenauth.ServiceAccount(namespace, opts.String("status-server-service-account"))},
+	})
+	return &http.Server{
+		Addr:              addr,
+		Handler:           access.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}, nil
 }
 
 func serve(ctx context.Context, opts *cli.Options) error {
@@ -119,6 +159,18 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 
+	access := &integration.RepositoryAccess{
+		Reader:    mgr.GetClient(),
+		Creds:     creds,
+		Forges:    forge.NewStore(mgr.GetAPIReader()),
+		Namespace: namespace,
+		Log:       log,
+	}
+	internal, err := internalServer(opts, namespace, access)
+	if err != nil {
+		return err
+	}
+
 	log.LogAttrs(ctx, slog.LevelInfo, "integration-controller starting",
 		slog.String("addr", opts.ListenAddr),
 		slog.String("namespace", namespace),
@@ -127,6 +179,21 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return mgr.Start(ctx) })
 	g.Go(func() error { return srv.Run(ctx) })
+	if internal != nil {
+		log.LogAttrs(ctx, slog.LevelInfo, "repository-access endpoint listening", slog.String("addr", internal.Addr))
+		g.Go(func() error {
+			if err := internal.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		})
+		g.Go(func() error {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			return internal.Shutdown(shutdownCtx)
+		})
+	}
 	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}

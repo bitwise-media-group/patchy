@@ -25,6 +25,7 @@ import { FindingsTable } from "./components/FindingsTable";
 import { FindingsOverview } from "./components/FindingsOverview";
 import { FindingsFilter } from "./components/FindingsFilter";
 import { MetricsView } from "./components/MetricsView";
+import { RepositoriesView } from "./components/RepositoriesView";
 import { Toasts, type ToastItem } from "./components/Toast";
 import { TopBar } from "./components/TopBar";
 import { useBodyThemeMode } from "./components/ThemeToggle";
@@ -268,6 +269,12 @@ export function App() {
     [load, persona, pushToast],
   );
 
+  // The repositories page reports a lost session or a missing grant the
+  // way every other view does.
+  const onRepositoriesAuthError = useCallback((e: AuthRequiredError | ForbiddenError) => {
+    setFindingsBlocked(e instanceof AuthRequiredError ? "unauthenticated" : e.message);
+  }, []);
+
   const simulate403 = useCallback(() => {
     pushToast(
       `Permission denied. User "${persona.label}" does not have access to this action (simulated).`,
@@ -357,6 +364,15 @@ export function App() {
         canBackfill={integrationActions.includes("backfill")}
         backfillBusy={backfillBusy}
         onBackfill={(name, repos) => void onBackfill(name, repos)}
+      />
+    );
+  } else if (route.view === "repositories") {
+    body = (
+      <RepositoriesView
+        persona={persona}
+        demo={mode === "demo"}
+        onToast={pushToast}
+        onAuthError={onRepositoriesAuthError}
       />
     );
   } else if (route.view === "detail") {

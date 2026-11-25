@@ -6,7 +6,9 @@
 #   * <fullname>-integration-controller:8080: the single internet-facing
 #     entry point (the provider webhook receivers, e.g. POST
 #     /github/webhooks). `webhook.ingress` or `webhook.httpRoute` sits in
-#     front of it.
+#     front of it. With the status server enabled it also carries 9792, the
+#     in-cluster repository-access endpoint (status server only; never
+#     routed through the ingress).
 #   * <fullname>-source-controller:9790: the artifact server. Agent pods
 #     fetch SHA-pinned repository tarballs from it (in-cluster only; the
 #     NetworkPolicies restrict it to the agent namespace).
@@ -43,6 +45,15 @@ spec:
           {{- with $svc.nodePort }}
           nodePort: {{ . }}
           {{- end }}
+        {{- if and (eq $c.name "integration-controller") $.Values.statusServer.enabled }}
+        # The repository-access endpoint. Only the status server calls it (a
+        # NetworkPolicy and a TokenReview-checked projected token enforce
+        # this).
+        - name: internal
+          port: 9792
+          targetPort: internal
+          protocol: TCP
+        {{- end }}
         {{- if and (eq $c.name "source-controller") $.Values.evaluationController.enabled }}
         # The internal workspace-blob endpoint. Only the evaluation
         # controller calls it (a NetworkPolicy enforces this).

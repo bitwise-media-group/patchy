@@ -104,6 +104,9 @@ spec:
                         readOnly: true
                       - name: tmp
                         mountPath: /tmp
+                      - name: integration-controller-token
+                        mountPath: /var/run/secrets/patchy/integration-controller
+                        readOnly: true
             volumes:
                 # Auth configuration (see secrets.example.yaml). Optional:
                 # when absent, the server serves no data.
@@ -115,3 +118,16 @@ spec:
                 # the HTTP stack want a writable /tmp.
                 - name: tmp
                   emptyDir: {}
+                # The "My repositories" access check: a projected token bound
+                # to the integration-controller's audience, presented to its
+                # internal endpoint (:9792). It identifies this server there
+                # and works nowhere else. The kubelet rotates it; the server
+                # reads it again on every call
+                # (PATCHY_INTEGRATION_CONTROLLER_TOKEN_FILE).
+                - name: integration-controller-token
+                  projected:
+                      sources:
+                          - serviceAccountToken:
+                                audience: patchy-integration-controller
+                                expirationSeconds: 3600
+                                path: token

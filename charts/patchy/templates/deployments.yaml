@@ -5,7 +5,8 @@
 # only in image, resources, config, and ports:
 #
 #   * the integration-controller also serves the provider webhook receivers
-#     on 8080;
+#     on 8080, and (with the status server enabled) the in-cluster
+#     repository-access endpoint on 9792;
 #   * the source-controller also serves the artifact tarballs on 9790
 #     (backed by a /data emptyDir);
 #   * every controller serves healthz/readyz on 8081.
@@ -90,6 +91,11 @@ spec:
                       - name: http
                         containerPort: 8080
                         protocol: TCP
+                      {{- if $.Values.statusServer.enabled }}
+                      - name: internal
+                        containerPort: 9792
+                        protocol: TCP
+                      {{- end }}
                       {{- else if eq $c.name "source-controller" }}
                       - name: artifact
                         containerPort: 9790

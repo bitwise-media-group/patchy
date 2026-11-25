@@ -142,3 +142,32 @@ func (s *Store) secret(ctx context.Context, f *v1alpha1.Forge) (*corev1.Secret, 
 	}
 	return &secret, nil
 }
+
+// ContentsPermission reports the contents permission the resolved Forge's
+// credential holds on the repository: "write", "read" or "none" for a GitHub
+// App installation (none when the App is not installed on it), and
+// "unknown" for a PAT, whose scopes patchy cannot see.
+func (s *Store) ContentsPermission(ctx context.Context, res *Resolved) (string, error) {
+	secret, err := s.secret(ctx, res.Forge)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := ghsecret.Token(secret); ok {
+		return "unknown", nil
+	}
+	app, err := s.apps.FromSecret(secret, res.Forge.Spec.BaseURL, proxyURL(res.Forge))
+	if err != nil {
+		return "", err
+	}
+	contents, err := app.InstallationPermissions(ctx, res.Repo)
+	if ghclient.IsNotFound(err) {
+		return "none", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if contents == "" {
+		return "none", nil
+	}
+	return contents, nil
+}

@@ -37,6 +37,24 @@ data:
     # Findings projected to tracking issues in parallel; conservative because
     # every projection may spend GitHub API requests.
     PATCHY_PROJECTION_CONCURRENCY: "2"
+    # The in-cluster repository-access endpoint (POST
+    # /internal/v1/repository-access) the status server's "My repositories"
+    # page calls. It is a second listener, kept off the internet-facing
+    # webhook port, and a NetworkPolicy opens it to the status server only.
+    # It accepts only a projected token (audience patchy-integration-controller)
+    # of the ServiceAccount named by PATCHY_STATUS_SERVER_SERVICE_ACCOUNT
+    # (default patchy-status-server), checked with a TokenReview. Unset
+    # disables it, so remove this key when the status server is not deployed.
+    PATCHY_INTERNAL_ADDR: ":9792"
+
+    # ---- status-server ------------------------------------------------------
+    # The repository-access check on the "My repositories" page calls the
+    # integration-controller's internal endpoint above.
+    # PATCHY_INTEGRATION_CONTROLLER_URL defaults to
+    # http://patchy-integration-controller.patchy.svc.cluster.local:9792, so it
+    # only needs setting when the Service name differs; set it to "" to turn
+    # the check off. PATCHY_INTEGRATION_CONTROLLER_TOKEN_FILE defaults to the
+    # projected token mounted in deployment-status-server.yaml.
 
     # ---- source-controller --------------------------------------------------
     # The artifact server: SHA-pinned repository tarballs the agent pods fetch

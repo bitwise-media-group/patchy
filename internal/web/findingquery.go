@@ -285,6 +285,38 @@ func repoOf(f *v1alpha1.Finding) string {
 	return ""
 }
 
+// repoPhaseCount is one repository's findings, in all and by phase.
+type repoPhaseCount struct {
+	total  int
+	phases map[string]int
+}
+
+// countByRepoPhase counts the findings of each of repos by phase, in one
+// pass. A repository with no findings is absent from the result.
+func countByRepoPhase(items []*v1alpha1.Finding, repos []string) map[string]*repoPhaseCount {
+	want := make(map[string]struct{}, len(repos))
+	for _, r := range repos {
+		want[r] = struct{}{}
+	}
+	out := map[string]*repoPhaseCount{}
+	for _, f := range items {
+		repo := repoOf(f)
+		if _, ok := want[repo]; !ok {
+			continue
+		}
+		c := out[repo]
+		if c == nil {
+			c = &repoPhaseCount{phases: map[string]int{}}
+			out[repo] = c
+		}
+		c.total++
+		if f.Status.Phase != "" {
+			c.phases[string(f.Status.Phase)]++
+		}
+	}
+	return out
+}
+
 // matchesSearch is the text search: a case-insensitive substring of the
 // name, title, rule, repository, any advisory, or any owner.
 func matchesSearch(f *v1alpha1.Finding, needle string) bool {

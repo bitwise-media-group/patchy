@@ -1,7 +1,9 @@
-// Demo dataset: one finding per lifecycle phase, plus rollups for every
-// scope. Content is illustrative; the shapes and vocabulary come from the
-// patchy api/v1alpha1 types. Timestamps are fixed ISO strings so the demo is
-// deterministic; relative times are computed at render.
+// Demo dataset: one hand-written finding per lifecycle phase (with reports
+// and transcripts), a generated backlog behind them (backlog.ts) so the list
+// runs to several pages, plus rollups for every scope. Content is
+// illustrative; the shapes and vocabulary come from the patchy api/v1alpha1
+// types. Timestamps are fixed ISO strings (or derived from a fixed "now") so
+// the demo is deterministic; relative times are computed at render.
 
 import type {
   ArchiveObject,
@@ -11,6 +13,7 @@ import type {
   Rollup,
   TranscriptTurn,
 } from "../types";
+import { backlog } from "./backlog";
 import { withScale } from "./scale";
 
 const findings: Finding[] = [
@@ -980,7 +983,7 @@ export function mockDataset(): OfflineDataset {
       generatedAt: "2026-07-21T08:45:00Z",
       namespace: "patchy",
       version: "v0.7.2",
-      findings,
+      findings: [...findings, ...backlog(findings)],
       rollups: withScale(rollups),
     }),
   ) as OfflineDataset;

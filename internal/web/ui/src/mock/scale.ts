@@ -10,7 +10,7 @@ import type { MonthlyBucket, Rollup, StageAggregate } from "../types";
 export const TAIL_REPOSITORIES = 11_000;
 
 // mulberry32: a tiny seeded PRNG, so the tail is the same on every load.
-function prng(seed: number): () => number {
+export function prng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -35,7 +35,7 @@ const VARIANTS = [
   "-core", "-lite", "-batch", "-stream", "-admin", "-ops", "-sandbox", "-poc", "-tools", "-config",
 ];
 
-function tailNames(rand: () => number, n: number, taken: Set<string>): string[] {
+export function tailNames(rand: () => number, n: number, taken: Set<string>): string[] {
   const all: string[] = [];
   for (const d of DOMAINS) for (const k of KINDS) for (const v of VARIANTS) all.push(`${d}-${k}${v}`);
   // Fisher–Yates with the seeded PRNG.

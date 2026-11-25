@@ -16,3 +16,12 @@ coverage/
 
 # node modules
 node_modules/
+
+# docs screenshots: the release-PR workflow (release-screenshots.yaml) shoots
+# and commits them, through the API, so new ones are never added from a dev
+# checkout. Local runs of `mise run ui-screenshots` write to the preview
+# folder instead. Already-tracked images are not covered by an ignore: leave
+# their local changes uncommitted.
+/docs/assets/images/status-*.jpg
+/docs/assets/images/whats-new/
+/internal/web/ui/screenshots/

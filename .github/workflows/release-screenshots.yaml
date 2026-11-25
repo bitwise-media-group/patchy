@@ -1,0 +1,176 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# Shoot the docs' screenshots into the release-please PR, so every release
+# publishes current images and the reviewer sees them in the PR's diff before
+# approving. internal/web/ui/screenshot.ts drives headless Chrome over the
+# status page's demo mode: the docs' standing screenshots, plus the shots the
+# current What's new page declares in its front matter (under the version the
+# release PR has just stamped it with). The demo's clock is pinned, so an
+# unchanged screen gives the same image and nothing is committed.
+#
+# Screenshots are never committed from a dev checkout (.gitignore; a local
+# run writes to a preview folder). This is the one writer: it commits the
+# changed images through the GraphQL createCommitOnBranch mutation as the
+# "FF Merge" App, so GitHub signs the commit and, unlike a GITHUB_TOKEN push,
+# the new head runs CI. The API takes the files as given, ignored or not.
+#
+# The images are tracked in Git LFS (.gitattributes), which the API knows
+# nothing about: it stores whatever bytes it is sent. So the job stages the
+# images (LFS's clean filter turns each into a pointer and keeps the object
+# under .git/lfs), uploads the objects with `git lfs push`, and only then
+# commits the pointers, so the commit never names an object the server lacks.
+#
+# release-please rewrites its branch on every push to main, dropping this
+# commit, so the job runs again on each update of the PR (synchronize) and
+# skips the push it made itself. main's ruleset dismisses approvals on push,
+# so approve the release PR once the screenshot commit has landed.
+name: Release Screenshots
+
+on:
+    pull_request:
+        branches: [main]
+        types: [opened, reopened, synchronize]
+
+permissions: {}
+
+# a newer push to the release branch supersedes a run still shooting
+concurrency:
+    group: release-screenshots-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
+jobs:
+    shoot:
+        # only release-please's PR, from this repository (a fork's branch of
+        # the same name would get no secrets anyway)
+        if: >-
+            github.head_ref == 'release-please--branches--main' &&
+            github.event.pull_request.head.repo.full_name == github.repository
+        runs-on: ubuntu-latest
+        # the App token does the writing; the job token only reads the checkout
+        permissions:
+            contents: read
+        steps:
+            - name: Checkout the release PR
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: ${{ github.event.pull_request.head.sha }}
+                  persist-credentials: false # the commit goes through the API, not git push
+                  submodules: true # the shared toolchain at .mise/ pins bun
+                  # the current images, so an unchanged one compares equal
+                  # (and the LFS filters are set up for the staging below)
+                  lfs: true
+
+            # GitHub's runner images ship git-lfs; fail clearly if one ever
+            # does not, rather than commit raw JPEGs past .gitattributes.
+            - name: Check Git LFS
+              run: |
+                  git lfs version
+                  git lfs install --local
+
+            # Our own commit triggers this workflow again; there is nothing new
+            # to shoot on it.
+            - name: Skip the screenshot commit itself
+              id: guard
+              run: |
+                  if [ "$(git log -1 --format=%s)" = "docs: refresh screenshots for the release" ]; then
+                      echo "skip=true" >>"$GITHUB_OUTPUT"
+                  fi
+
+            - name: Setup mise
+              if: ${{ !steps.guard.outputs.skip }}
+              uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+              with:
+                  version: v2026.11.7
+                  # only bun: the screenshot script needs nothing else
+                  install_args: aqua:oven-sh/bun
+
+            # ubuntu-latest ships Google Chrome, which screenshot.ts finds on PATH.
+            - name: Shoot the screenshots
+              if: ${{ !steps.guard.outputs.skip }}
+              working-directory: internal/web/ui
+              run: |
+                  bun install --frozen-lockfile --ignore-scripts
+                  bun screenshot.ts --out ../../../docs/assets/images
+
+            - name: Collect the changed images
+              id: images
+              if: ${{ !steps.guard.outputs.skip }}
+              run: |
+                  # tracked images that changed, and new ones, ignored (by
+                  # design, .gitignore) or not
+                  { git ls-files --modified -- docs/assets/images
+                    git ls-files --others --exclude-standard -- docs/assets/images
+                    git ls-files --others --ignored --exclude-standard -- docs/assets/images
+                  } | sort -u >"$RUNNER_TEMP/images.txt"
+                  cat "$RUNNER_TEMP/images.txt"
+                  if [ -s "$RUNNER_TEMP/images.txt" ]; then
+                      echo "changed=true" >>"$GITHUB_OUTPUT"
+                  fi
+
+            - name: Mint a GitHub App installation token
+              id: app-token
+              if: steps.images.outputs.changed
+              uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+              with:
+                  client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
+                  private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
+                  # commit to the release branch
+                  permission-contents: write
+
+            - name: Commit the images to the release PR
+              if: steps.images.outputs.changed
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  BRANCH: ${{ github.head_ref }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+              run: |
+                  set -euo pipefail
+                  # release-please may have rewritten the branch while we shot;
+                  # its push started a newer run, which shoots that head instead.
+                  current=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" --jq .object.sha)
+                  if [ "$current" != "$HEAD_SHA" ]; then
+                      echo "the release branch moved to ${current}; leaving it to the newer run"
+                      exit 0
+                  fi
+
+                  # Stage the images: LFS's clean filter turns each into a
+                  # pointer in the index, keeping the object under .git/lfs.
+                  tr '\n' '\0' <"$RUNNER_TEMP/images.txt" | xargs -0 git add -f --
+
+                  # Upload the LFS objects before committing their pointers.
+                  while IFS= read -r path; do
+                      git show ":$path" | sed -n 's/^oid sha256://p'
+                  done <"$RUNNER_TEMP/images.txt" >"$RUNNER_TEMP/oids.txt"
+                  if [ -s "$RUNNER_TEMP/oids.txt" ]; then
+                      auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+                      echo "::add-mask::${auth}"
+                      xargs git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+                          lfs push --object-id origin <"$RUNNER_TEMP/oids.txt"
+                  fi
+
+                  # Commit what is staged: the pointer for each LFS image.
+                  additions='[]'
+                  while IFS= read -r path; do
+                      contents=$(git show ":$path" | base64 | tr -d '\n')
+                      additions=$(jq -c --arg path "$path" --arg contents "$contents" \
+                          '. + [{path: $path, contents: $contents}]' <<<"$additions")
+                  done <"$RUNNER_TEMP/images.txt"
+
+                  jq -n \
+                      --arg repo "$GITHUB_REPOSITORY" \
+                      --arg branch "$BRANCH" \
+                      --arg head "$HEAD_SHA" \
+                      --arg headline "docs: refresh screenshots for the release" \
+                      --arg body "Shot by .github/workflows/release-screenshots.yaml (internal/web/ui/screenshot.ts) from the demo." \
+                      --argjson additions "$additions" \
+                      '{
+                        query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+                        variables: { input: {
+                          branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                          expectedHeadOid: $head,
+                          message: { headline: $headline, body: $body },
+                          fileChanges: { additions: $additions }
+                        } }
+                      }' | gh api graphql --input - >/dev/null
+                  echo "committed $(wc -l <"$RUNNER_TEMP/images.txt" | tr -d ' ') images to ${BRANCH}"

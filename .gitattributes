@@ -1,0 +1,7 @@
+# The docs' screenshots live in Git LFS: the release PR's workflow
+# (.github/workflows/release-screenshots.yaml) re-shoots them every release,
+# and LFS keeps each generation's JPEGs out of the history every clone pulls.
+# The release workflow's docs job checks out with LFS, so the site publishes
+# the images, not their pointer files.
+docs/assets/images/status-*.jpg filter=lfs diff=lfs merge=lfs -text
+docs/assets/images/whats-new/** filter=lfs diff=lfs merge=lfs -text

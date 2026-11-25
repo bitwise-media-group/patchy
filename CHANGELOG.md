@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.15.0](https://github.com/bitwise-media-group/patchy/compare/v0.14.1...v0.15.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **web:** GET /api/findings returns one page (findings, matched, nextCursor, and facets on the first page) instead of every finding; follow nextCursor for the rest. GET /api/rollups no longer carries an empty findings array.
+
+### Features
+
+* **agentrun:** scrub located secrets from transcripts and reports ([3696c91](https://github.com/bitwise-media-group/patchy/commit/3696c91fcd8e614b73dce1d548c499fa50d04d6d))
+* **api:** add finding category, location columns and dismiss reason ([adc0e3c](https://github.com/bitwise-media-group/patchy/commit/adc0e3c68f5fea21f784bbbfa6d5a397793042de))
+* **ghas:** add secret scanning source ([d29393c](https://github.com/bitwise-media-group/patchy/commit/d29393cdf2ac394e2c102297c8bc932afcd29161))
+* **ghclient:** add secret scanning alert client ([b96d8c6](https://github.com/bitwise-media-group/patchy/commit/b96d8c6b6689c4cea709974e516dbc96a8a1d3b1))
+* **integration:** ingest, resolve, backfill and reset secret scanning alerts ([8d558c0](https://github.com/bitwise-media-group/patchy/commit/8d558c030e0d2395b42a40642e72f4cea40cfa01))
+* **investigation:** route secret findings and add secret prompts ([bac87e9](https://github.com/bitwise-media-group/patchy/commit/bac87e93729614bba33dc6ed3e8a67bac3890c28))
+* **web:** add the My repositories page ([e39712c](https://github.com/bitwise-media-group/patchy/commit/e39712cc1ea9e10c613c80642878175ba2f3b635))
+* **web:** filter and page the findings list server-side ([de75dd2](https://github.com/bitwise-media-group/patchy/commit/de75dd226144f25b064ee34a5290501366a2714c))
+* **web:** grow the demo findings into a paged backlog ([a257e8e](https://github.com/bitwise-media-group/patchy/commit/a257e8e72e87cb48c8af841a4cf1bc41a07cf621))
+
+
+### Bug Fixes
+
+* **deps:** update actions/create-github-app-token action to v3.4.0 ([#717](https://github.com/bitwise-media-group/patchy/issues/717)) ([af99e9a](https://github.com/bitwise-media-group/patchy/commit/af99e9aefeb36153c2b3caeb61681a9d3e03fe8c))
+* **deps:** update dependency jdx/mise to v2026.11.12 ([#716](https://github.com/bitwise-media-group/patchy/issues/716)) ([6de7ab8](https://github.com/bitwise-media-group/patchy/commit/6de7ab8b3337e765650ee777de8184020ec36c8b))
+* **deps:** update jdx/mise-action action to v5.3.0 ([#718](https://github.com/bitwise-media-group/patchy/issues/718)) ([3d4a572](https://github.com/bitwise-media-group/patchy/commit/3d4a5725223baf6d58f481ac93bca4eb0c9449a0))
+* **ghclient:** treat a repository's 404 alert listing as empty in backfill ([56134c5](https://github.com/bitwise-media-group/patchy/commit/56134c5dd4d8e15f5e590602212e75777638a2a6))
+* **integration:** do not open a successor for an alert a live finding tracks ([a3653e8](https://github.com/bitwise-media-group/patchy/commit/a3653e8f8fc04c94d6b6cecc8c1fb5231b775f6f))
+* **integration:** read the server before one-shot tracking side effects ([65a4d4a](https://github.com/bitwise-media-group/patchy/commit/65a4d4a1cd6c4283b06951ebc74fbd30199ce327))
+* **web:** make the status page easier to read ([6ce9ae1](https://github.com/bitwise-media-group/patchy/commit/6ce9ae18ebb9cdf7a51deeb01ffb0a87ac27650b))
+* **web:** share one confirm button and one set of surfaces ([397792f](https://github.com/bitwise-media-group/patchy/commit/397792f7d250b3ca200cb0e0ea20ec177582536f))
+
 ## [0.14.1](https://github.com/bitwise-media-group/patchy/compare/v0.14.0...v0.14.1) (2026-11-23)
 
 

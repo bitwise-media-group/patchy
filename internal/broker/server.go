@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/bitwise-media-group/patchy/internal/tokenauth"
 )
 
 // Server is the broker engine: authenticated, audited reverse proxies for the
 // configured upstream routes.
 type Server struct {
 	cfg    Config
-	auth   *authenticator
+	auth   *tokenauth.Authenticator
 	routes map[string]*route
 	log    *slog.Logger
 }
@@ -60,7 +62,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) handle(rt *route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		id, err := s.auth.authenticate(r)
+		id, err := s.auth.Authenticate(r, TokenHeader)
 		if err != nil {
 			writeAPIError(w, http.StatusUnauthorized, "authentication_error", err.Error())
 			audit(s.log, r, "", rt.name, http.StatusUnauthorized, 0, time.Since(start))
@@ -70,13 +72,13 @@ func (s *Server) handle(rt *route) http.Handler {
 			ok, err := bufferBody(r, s.cfg.MaxRequestBytes)
 			if err != nil {
 				writeAPIError(w, http.StatusBadRequest, "invalid_request_error", "egress broker: read request body")
-				audit(s.log, r, id.pod, rt.name, http.StatusBadRequest, 0, time.Since(start))
+				audit(s.log, r, id.Pod, rt.name, http.StatusBadRequest, 0, time.Since(start))
 				return
 			}
 			if !ok {
 				writeAPIError(w, http.StatusRequestEntityTooLarge, "invalid_request_error",
 					fmt.Sprintf("egress broker: request body exceeds %d bytes", s.cfg.MaxRequestBytes))
-				audit(s.log, r, id.pod, rt.name, http.StatusRequestEntityTooLarge, 0, time.Since(start))
+				audit(s.log, r, id.Pod, rt.name, http.StatusRequestEntityTooLarge, 0, time.Since(start))
 				return
 			}
 		}
@@ -85,7 +87,7 @@ func (s *Server) handle(rt *route) http.Handler {
 		sw := newSSEWriter(aw, s.cfg.PingInterval)
 		defer sw.stop()
 		rt.proxy.ServeHTTP(sw, r)
-		audit(s.log, r, id.pod, rt.name, aw.status, aw.bytes, time.Since(start))
+		audit(s.log, r, id.Pod, rt.name, aw.status, aw.bytes, time.Since(start))
 	})
 }
 

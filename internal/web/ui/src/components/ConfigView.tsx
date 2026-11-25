@@ -16,6 +16,7 @@ import type { ConfigDataset, EnhancerConfig, ForgeConfig, IntegrationConfig } fr
 import { formatAgo, formatCount, formatDate } from "../format";
 import { hrefForConfig, type ConfigSection } from "../router";
 import { Icon } from "./icons";
+import { BackfillButton } from "./BackfillButton";
 
 // ---- vocabulary -------------------------------------------------------------
 
@@ -259,7 +260,7 @@ function Callout({ tone, children }: { tone: "red" | "amber"; children: Componen
   );
 }
 
-const CARD = "rounded-[10px] border border-line bg-surface scroll-mt-24 outline-none";
+const CARD = "ps-card scroll-mt-24 outline-none";
 
 function CardHead({ provider, name, subtitle, h }: { provider: string; name: string; subtitle: string; h: Health }) {
   return (
@@ -289,7 +290,6 @@ function BackfillTrigger({
   onBackfill: (repos: string[]) => void;
 }) {
   const [filter, setFilter] = useState("");
-  const [confirming, setConfirming] = useState(false);
   const repos = filter
     .split(/[\s,]+/)
     .map((s) => s.trim())
@@ -317,38 +317,19 @@ function BackfillTrigger({
           spellcheck={false}
           onInput={(e) => {
             setFilter((e.target as HTMLInputElement).value);
-            setConfirming(false);
           }}
         />
-        <button
-          type="button"
-          class={`ps-action ${confirming ? "is-confirming" : "ps-action--primary"}`}
-          disabled={busy || pending}
-          onClick={() => {
-            if (confirming) {
-              setConfirming(false);
-              onBackfill(repos);
-            } else {
-              setConfirming(true);
-            }
-          }}
-        >
-          <Icon name="rotateCcw" size={14} />
-          {busy
-            ? "Requesting…"
-            : pending
-              ? "Backfill pending"
-              : confirming
-                ? repos.length
-                  ? `Confirm: backfill ${repos.length} prefix${repos.length > 1 ? "es" : ""}`
-                  : "Confirm: backfill everything"
-                : "Backfill"}
-        </button>
-        {confirming ? (
-          <button type="button" class="ps-action" onClick={() => setConfirming(false)}>
-            Cancel
-          </button>
-        ) : null}
+        <BackfillButton
+          busy={busy}
+          pending={pending}
+          resetKey={filter}
+          confirmLabel={
+            repos.length
+              ? `Confirm: backfill ${repos.length} prefix${repos.length > 1 ? "es" : ""}`
+              : "Confirm: backfill everything"
+          }
+          onConfirm={() => onBackfill(repos)}
+        />
       </div>
     </div>
   );
@@ -605,7 +586,7 @@ function Overview({ config }: { config: ConfigDataset }) {
   }
 
   return (
-    <section class="rounded-[10px] border border-line bg-surface" aria-labelledby="config-summary">
+    <section class="ps-card" aria-labelledby="config-summary">
       <div class="flex items-start gap-3 px-6 pt-5.5">
         <span
           class={`mt-2 size-2.5 flex-none rounded-full ${issues.length ? "bg-red" : waiting || total === 0 ? "bg-faint" : "bg-turf"}`}
@@ -742,7 +723,7 @@ export function ConfigView({
     <div class="flex flex-col gap-9">
       <div class="flex flex-col gap-5">
         <header>
-          <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">Configuration</h1>
+          <h1 class="ps-title">Configuration</h1>
           <p class="mt-1 mb-0 max-w-[80ch] text-[14px] text-muted">
             How patchy connects to your scanners and code
             {config.namespace ? (

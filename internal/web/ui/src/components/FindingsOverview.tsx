@@ -8,7 +8,7 @@
 import type { ComponentChildren } from "preact";
 import type { FindingFacets, Phase } from "../types";
 import { PHASE_ORDER } from "../types";
-import { PHASE_TITLES, formatCount } from "../format";
+import { PHASE_TITLES, formatCount, plural } from "../format";
 
 const CLOSED: Phase[] = ["Failed", "Dismissed", "HandedOff"];
 
@@ -18,9 +18,6 @@ const CLOSED_TONE: Record<string, string> = {
   HandedOff: "bg-amber",
 };
 
-function plural(n: number, one: string, many: string) {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
-}
 
 export function FindingsOverview({
   facets,
@@ -45,7 +42,7 @@ export function FindingsOverview({
   const clause = (n: number, text: string, phase: Phase) => (
     <button
       type="button"
-      class="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-amber underline decoration-2 underline-offset-4 hover:decoration-[3px]"
+      class="ps-clause"
       onClick={() => onOnly(phase)}
     >
       {formatCount(n)} {text}
@@ -58,7 +55,7 @@ export function FindingsOverview({
 
   return (
     <section aria-labelledby="findings-headline">
-      <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">Findings</h1>
+      <h1 class="ps-title">Findings</h1>
       {total === 0 ? (
         <p id="findings-headline" class="mt-2 mb-0 max-w-[60ch] text-[15px] text-muted">
           No findings yet. They appear here when a scanner reports an alert to one of your integrations.
@@ -90,7 +87,7 @@ export function FindingsOverview({
         </>
       )}
 
-      <div class="mt-5 rounded-[10px] border border-line bg-surface p-2">
+      <div class="mt-5 ps-card p-2">
         <ol class="m-0 grid list-none grid-cols-8 gap-1 p-0 max-lg:grid-cols-4" aria-label="Phases, in order. Select one to filter the list.">
           {PHASE_ORDER.map((phase) => {
             const n = count(phase);

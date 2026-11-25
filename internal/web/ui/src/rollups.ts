@@ -108,6 +108,13 @@ export function carriesFindings(slice: RollupSlice | null): boolean {
   return slice === null || slice.kind === "repository" || slice.kind === "match";
 }
 
+// ownerName is a repository key's owner ("org/repo" → "org"), empty when
+// the key has none.
+export function ownerName(key: string): string {
+  const slash = key.lastIndexOf("/");
+  return slash >= 0 ? key.slice(0, slash) : "";
+}
+
 // shortName is a repository key without its owner ("org/repo" → "repo").
 export function shortName(key: string): string {
   const slash = key.lastIndexOf("/");

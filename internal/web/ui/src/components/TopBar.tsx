@@ -46,7 +46,7 @@ const NAV_LINK =
   "after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-t-full after:content-['']";
 
 const MENU_ITEM =
-  "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[13.5px] text-fg hover:bg-surface-2 disabled:cursor-default disabled:opacity-50";
+  "ps-menu-item";
 
 // AccountActions: the namespace-wide demo tools (replay and reset, rendered
 // only when the server granted the verb) and sign-out. Reset arms on the
@@ -144,7 +144,7 @@ function UserMenu({
         <Icon name="chevronDown" size={12} class={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
-        <div class="absolute right-0 z-40 mt-1.5 flex min-w-[220px] flex-col gap-px rounded-[10px] border border-line bg-surface p-1 shadow-strong" role="menu">
+        <div class="ps-menu min-w-[220px]" role="menu">
           <AccountActions adminActions={adminActions} adminBusy={adminBusy} onAdmin={onAdmin} onDone={() => setOpen(false)} menu />
         </div>
       ) : null}

@@ -28,7 +28,7 @@ import { OutcomeStrip, phaseOutcomes } from "./OutcomeStrip";
 const PAGE = 10;
 const MORE = 25;
 
-const SECTION = "overflow-hidden rounded-[10px] border border-line bg-surface";
+const SECTION = "overflow-hidden ps-card";
 
 function SortHeader({
   by,

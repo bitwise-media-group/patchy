@@ -358,6 +358,41 @@
   .ps-action.is-confirming {
     @apply border-amber bg-amber text-onaccent shadow-none;
   }
+  /* A text-weight action beside a bordered one: Cancel, Import, Export. */
+  .ps-action--quiet {
+    @apply border-transparent bg-transparent text-muted shadow-none;
+  }
+  .ps-action--quiet:hover:not(:disabled) {
+    @apply border-transparent bg-surface-2 text-fg;
+  }
+
+  /* ---- surfaces: one radius, one border, so panels read as one family ---- */
+  .ps-card {
+    @apply rounded-[10px] border border-line bg-surface;
+  }
+  /* An inset record inside a page: the timeline, a transcript, a report. */
+  .ps-well {
+    @apply rounded-[10px] border border-line bg-code p-4;
+  }
+  /* The centred message a whole view gives way to (sign-in, not found). */
+  .ps-notice {
+    @apply mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card;
+  }
+  .ps-menu {
+    @apply absolute top-[calc(100%+6px)] right-0 z-40 flex min-w-[210px] flex-col gap-px rounded-[10px] border border-line-2 bg-surface p-1 shadow-strong;
+  }
+  .ps-menu-item {
+    @apply flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[13.5px] text-fg no-underline hover:bg-surface-2 disabled:cursor-default disabled:opacity-50;
+  }
+
+  /* ---- page type ---- */
+  .ps-title {
+    @apply m-0 text-[28px] leading-tight font-bold tracking-[-0.015em];
+  }
+  /* A clause of a headline sentence that needs a person; it filters to them. */
+  .ps-clause {
+    @apply cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-amber underline decoration-2 underline-offset-4 hover:decoration-[3px];
+  }
 
   /* ---- metrics: outcome strip ----
    * One proportional bar for how findings (or runs) ended. 2px surface gaps

@@ -141,7 +141,7 @@ export function FindingsTable({
   return (
     <section
       ref={section}
-      class={`mt-4 overflow-hidden rounded-[10px] border border-line bg-surface transition-opacity ${list.switching ? "opacity-60" : ""}`}
+      class={`mt-4 overflow-hidden ps-card transition-opacity ${list.switching ? "opacity-60" : ""}`}
       aria-labelledby="findings-count"
       aria-busy={list.switching || list.loadingMore}
     >

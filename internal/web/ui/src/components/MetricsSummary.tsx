@@ -34,7 +34,7 @@ import {
 import { OutcomeStrip, phaseOutcomes, runOutcomeList } from "./OutcomeStrip";
 import { TrendBars } from "./TrendBars";
 
-const CARD = "rounded-[10px] border border-line bg-surface px-5 py-4.5";
+const CARD = "ps-card px-5 py-4.5";
 
 const VERDICT_TONES: Record<string, string> = { remediate: "bg-turf", ignore: "bg-soil", manual: "bg-amber" };
 const VERDICT_LABELS: Record<string, string> = {
@@ -184,7 +184,7 @@ export function StageCard({ name, blurb, stage }: { name: string; blurb: string;
 function Figures({ items }: { items: [string, string, string?][] }) {
   return (
     <dl
-      class="m-0 grid grid-cols-5 overflow-hidden rounded-[10px] border border-line bg-surface max-lg:grid-cols-2 max-lg:[&>.ps-stat]:odd:border-l-0 max-lg:[&>.ps-stat:nth-child(n+3)]:border-t max-lg:[&>.ps-stat:nth-child(n+3)]:border-t-line"
+      class="m-0 grid grid-cols-5 overflow-hidden ps-card max-lg:grid-cols-2 max-lg:[&>.ps-stat]:odd:border-l-0 max-lg:[&>.ps-stat:nth-child(n+3)]:border-t max-lg:[&>.ps-stat:nth-child(n+3)]:border-t-line"
     >
       {items.map(([label, value, note]) => (
         <div class="ps-stat flex flex-col-reverse justify-end" key={label}>

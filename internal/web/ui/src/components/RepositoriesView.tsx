@@ -21,6 +21,7 @@ import {
 } from "../api";
 import type { Persona } from "../mock/personas";
 import { DEMO_TRACKED } from "../mock/repositories";
+import { shortName } from "../rollups";
 import {
   PHASE_GROUPS,
   accessProblems,
@@ -50,11 +51,12 @@ import {
   type KeyValueStore,
 } from "../trackedRepos";
 import type { Phase, RepositoriesPayload, RepositoryBackfill, RepositoryAccess, RepositoryAccessPayload, RepositorySummary } from "../types";
-import { formatAgo, formatCount } from "../format";
+import { formatAgo, formatCount, plural } from "../format";
 import { rank } from "../typeahead";
 import { FilterBox, Highlight, type FilterGroup, type FilterOption } from "./FilterBox";
 import { Icon } from "./icons";
 import { Pill } from "./Pills";
+import { BackfillButton } from "./BackfillButton";
 
 const SUGGESTIONS = 6;
 const DEBOUNCE_MS = 150;
@@ -108,9 +110,6 @@ function ago(iso: string): string {
   return Date.now() - new Date(iso).getTime() < 60_000 ? "just now" : formatAgo(iso);
 }
 
-function plural(n: number, one: string, many: string) {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
-}
 
 export function RepositoriesView({
   persona,
@@ -276,7 +275,7 @@ export function RepositoriesView({
         </p>
       ) : null}
 
-      <section class="rounded-[10px] border border-line bg-surface" aria-label="Tracked repositories">
+      <section class="ps-card" aria-label="Tracked repositories">
         {tracked.repos.length === 0 ? (
           <div class="px-6 py-12 text-center">
             <p class="m-0 text-[15px] font-semibold text-fg">No repositories yet</p>
@@ -348,8 +347,7 @@ export function RepositoriesView({
   );
 }
 
-const QUIET_BUTTON =
-  "inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2.5 text-[13px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
+const QUIET_BUTTON = "ps-action ps-action--quiet";
 
 // Headline answers the page's question in one sentence, the way the
 // findings page opens: how much of your work is in the pipeline, and what
@@ -372,7 +370,7 @@ function Headline({
 
   const clause = (n: number, text: string, phases: Phase[]) => (
     <a
-      class="text-amber underline decoration-2 underline-offset-4 hover:decoration-[3px]"
+      class="ps-clause"
       href={findingsHrefFor(names, phases)}
     >
       {formatCount(n)} {text}
@@ -384,7 +382,7 @@ function Headline({
 
   return (
     <section aria-labelledby="repositories-headline">
-      <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">My repositories</h1>
+      <h1 class="ps-title">My repositories</h1>
       {names.length === 0 || !summary ? (
         <p id="repositories-headline" class="mt-2 mb-0 max-w-[60ch] text-[15px] text-muted">
           {names.length === 0
@@ -505,7 +503,7 @@ function RepositoryRow({
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const short = name.slice(name.indexOf("/") + 1);
+  const short = shortName(name);
   const findings = summary?.findings ?? 0;
   const details = access && !access.skipped ? detailLines(name, access) : [];
   const detailsId = `why-${name.replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -666,7 +664,6 @@ function QuietStatus({
   // the short notes it expands.
   why: ComponentChildren;
 }) {
-  const [confirming, setConfirming] = useState(false);
 
   if (summary?.rollup) {
     return (
@@ -737,29 +734,7 @@ function QuietStatus({
       {why}
       <span class="ml-auto flex items-center gap-1.5">
         {canBackfill ? (
-          <>
-            {confirming ? (
-              <button type="button" class={QUIET_BUTTON} onClick={() => setConfirming(false)}>
-                Cancel
-              </button>
-            ) : null}
-            <button
-              type="button"
-              class={`ps-action min-h-8 px-3 text-[13px] ${confirming ? "is-confirming" : ""}`}
-              disabled={busy}
-              onClick={() => {
-                if (confirming) {
-                  setConfirming(false);
-                  onBackfill();
-                } else {
-                  setConfirming(true);
-                }
-              }}
-            >
-              <Icon name="rotateCcw" size={14} />
-              {busy ? "Requesting…" : confirming ? "Confirm backfill" : bf ? "Backfill again" : "Backfill"}
-            </button>
-          </>
+          <BackfillButton label={bf ? "Backfill again" : "Backfill"} busy={busy} onConfirm={onBackfill} />
         ) : (
           <span class="text-[13px] text-faint">Ask an operator to backfill it.</span>
         )}

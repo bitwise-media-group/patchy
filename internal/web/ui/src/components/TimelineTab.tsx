@@ -78,7 +78,7 @@ export function TimelineTab({ finding }: { finding: Finding }) {
   return (
     <div class="pt-5 pb-2">
       {list.length === 0 ? <p class="text-faint">No history recorded yet.</p> : null}
-      <div class="rounded-[11px] border border-line bg-code p-4">
+      <div class="ps-well">
         {list.map((e) => (
           <div class={`ps-timeline__item ps-timeline__item--${e.tone}`} key={e.key}>
             <span class="ps-timeline__marker">

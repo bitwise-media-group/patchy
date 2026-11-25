@@ -3,6 +3,7 @@ import type { Finding } from "../types";
 import { DASH, formatDate } from "../format";
 import { Icon } from "./icons";
 import { PullRequestCard } from "./PullRequest";
+import { ownerName, shortName } from "../rollups";
 
 // Card is one section of the sidebar's single panel: the panel holds the
 // border, each section only a divider, so the facts read as one record
@@ -19,12 +20,12 @@ function Card({ title, children }: { title: string; children: ComponentChildren 
 // RepoName sets "owner/name" as the owner on a quiet line above the name,
 // so a long name never breaks mid-word in the narrow sidebar.
 function RepoName({ name }: { name: string }) {
-  const slash = name.lastIndexOf("/");
-  if (slash < 0) return <span>{name}</span>;
+  const owner = ownerName(name);
+  if (!owner) return <span>{name}</span>;
   return (
     <span class="min-w-0">
-      <span class="block text-[12px] font-normal text-muted">{name.slice(0, slash)}</span>
-      <span class="block [overflow-wrap:anywhere]">{name.slice(slash + 1)}</span>
+      <span class="block text-[12px] font-normal text-muted">{owner}</span>
+      <span class="block [overflow-wrap:anywhere]">{shortName(name)}</span>
     </span>
   );
 }
@@ -35,7 +36,7 @@ export function SidebarMeta({ finding }: { finding: Finding }) {
 
   return (
     <aside
-      class="mt-5 flex flex-col self-start overflow-hidden rounded-[11px] border border-line bg-surface max-lg:mt-1"
+      class="mt-5 flex flex-col self-start overflow-hidden ps-card max-lg:mt-1"
       aria-label="Finding metadata"
     >
       {finding.pullRequest ? (

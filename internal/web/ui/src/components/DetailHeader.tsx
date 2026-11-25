@@ -9,7 +9,7 @@ export const ICON_BTN =
   "inline-grid size-8 cursor-pointer place-items-center rounded-lg border border-line-2 bg-surface text-muted no-underline hover:text-fg";
 
 const MENU_ITEM =
-  "flex cursor-pointer items-center justify-between gap-2.5 rounded-[7px] border-0 bg-transparent px-2.5 py-2 text-left text-[12.5px] text-fg no-underline hover:bg-surface-2";
+  "ps-menu-item justify-between";
 
 function KebabMenu({ finding, demo, onSimulate403 }: { finding: Finding; demo: boolean; onSimulate403: () => void }) {
   const [open, setOpen] = useState(false);
@@ -65,7 +65,7 @@ function KebabMenu({ finding, demo, onSimulate403 }: { finding: Finding; demo: b
       </button>
       {open ? (
         <div
-          class="absolute top-[calc(100%+6px)] right-0 z-40 flex min-w-[210px] flex-col rounded-[10px] border border-line-2 bg-surface p-1 shadow-strong"
+          class="ps-menu"
           role="menu"
         >
           {item("Copy link", undefined, copyLink)}

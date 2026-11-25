@@ -71,7 +71,7 @@ export function RemediationTab({ finding }: { finding: Finding }) {
       <section class="mt-6">
         <h2 class="ps-heading mb-3">Report</h2>
         {rem?.report ? (
-          <div class="rounded-[11px] border border-line bg-code p-4">
+          <div class="ps-well">
             <Markdown source={rem.report} />
           </div>
         ) : (

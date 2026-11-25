@@ -7,7 +7,7 @@ export function AlertsTab({ finding }: { finding: Finding }) {
     <div class="pt-5 pb-2">
       {alerts.length === 0 ? <p class="text-faint">No alerts recorded on this finding.</p> : null}
       {alerts.map((alert) => (
-        <article class="mb-3.5 rounded-[11px] border border-line bg-surface px-4 py-3" key={alert.id}>
+        <article class="mb-3.5 ps-card px-4 py-3" key={alert.id}>
           <header>
             {alert.url ? (
               <a href={alert.url} target="_blank" rel="noreferrer" class="ps-mono-tag">

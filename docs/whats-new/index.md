@@ -141,6 +141,10 @@ owner, and a finding's facts sit in one panel instead of six boxes. Its token an
 has been accounted, rather than showing dashes before then. On the metrics page, the models and harnesses tables no
 longer cut off their spend column.
 
+Every action that changes something now asks the same way. Backfill, approve, retry, expedite, suspend and resume all
+turn amber on the first click and say what the second click will do. **Cancel** appears beside the button rather than
+under your cursor, so the click that confirms lands where the first one did.
+
 ## A bigger demo
 
 The [demo](../demo.md) now holds 611 findings across 211 repositories, so infinite scroll, the counts and the repository

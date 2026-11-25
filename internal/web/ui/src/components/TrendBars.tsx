@@ -35,7 +35,7 @@ export function TrendBars({ monthly }: { monthly: Record<string, MonthlyBucket> 
   const name = MEASURES.find(([m]) => m === measure)![1];
 
   return (
-    <section class="rounded-[10px] border border-line bg-surface px-5 py-4.5" aria-labelledby="metrics-trend">
+    <section class="ps-card px-5 py-4.5" aria-labelledby="metrics-trend">
       <header class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="metrics-trend" class="ps-heading">

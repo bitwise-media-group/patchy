@@ -152,7 +152,7 @@ function TranscriptStream({
       <div
         ref={scroller}
         onScroll={onScroll}
-        class="max-h-[32rem] overflow-y-auto rounded-[11px] border border-line bg-code p-4"
+        class="max-h-[32rem] overflow-y-auto ps-well"
       >
         <ol class="flex flex-col gap-3">
           {turns.map((turn) => (

@@ -81,7 +81,7 @@ export function OverviewTab({ finding }: { finding: Finding }) {
       <section class="mt-6">
         <h2 class="ps-heading mb-3">Analysis</h2>
         {inv ? (
-          <div class="divide-y divide-line overflow-hidden rounded-[11px] border border-line">
+          <div class="divide-y divide-line overflow-hidden rounded-[10px] border border-line">
             <AnalysisRow
               title="Exploitability"
               rating={inv.exploitability}

@@ -158,6 +158,11 @@ export function formatMonth(key: string): string {
   return d.toLocaleString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" });
 }
 
+// plural counts a noun: "1 finding", "2,000 findings".
+export function plural(n: number, one: string, many: string): string {
+  return `${formatCount(n)} ${n === 1 ? one : many}`;
+}
+
 export function formatCount(n?: number): string {
   if (n === undefined) return DASH;
   return n.toLocaleString();

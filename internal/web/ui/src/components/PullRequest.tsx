@@ -9,7 +9,7 @@ import { Icon } from "./icons";
 export function PullRequestCard({ pr }: { pr: PullRequestStatus }) {
   return (
     <a
-      class="inline-flex items-center gap-3 rounded-[11px] border border-line-2 bg-surface px-4 py-3 text-fg no-underline hover:border-turf"
+      class="inline-flex items-center gap-3 rounded-[10px] border border-line-2 bg-surface px-4 py-3 text-fg no-underline hover:border-turf"
       href={pr.url}
       target="_blank"
       rel="noreferrer"

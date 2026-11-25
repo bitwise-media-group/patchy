@@ -5,6 +5,7 @@
 import type { AccessCheck, ForgeAccess, Phase, RepositoryAccess, RepositorySummary } from "./types";
 import { queryParams } from "./filters";
 import { hrefForList, hrefForMetrics } from "./router";
+import { ownerName } from "./rollups";
 
 // GroupTone follows the status pills' grammar: seedling is in flight, amber
 // needs a person, green is done, red failed; soil is new and faint closed.
@@ -53,7 +54,7 @@ export function findingsHrefFor(repos: string[], phases: Phase[] = []): string {
 export function ownerGroups(names: string[]): { owner: string; repos: string[] }[] {
   const out: { owner: string; repos: string[] }[] = [];
   for (const name of names) {
-    const owner = name.slice(0, name.indexOf("/"));
+    const owner = ownerName(name);
     let g = out.find((x) => x.owner === owner);
     if (!g) out.push((g = { owner, repos: [] }));
     g.repos.push(name);

@@ -298,7 +298,7 @@ export function App() {
 
 
   const panel = (title: string, detail: string, actions?: ComponentChildren) => (
-    <div class="mx-auto my-20 max-w-[460px] rounded-[10px] border border-line-2 bg-surface p-7 text-center shadow-card">
+    <div class="ps-notice">
       <h1 class="mx-0 mt-0 mb-2 text-[19px] tracking-tight">{title}</h1>
       <p class="mx-0 mt-0 mb-4.5 text-muted">{detail}</p>
       {authError ? <p class="mx-0 mt-0 mb-4.5 text-[13px] text-red">{authError}</p> : null}

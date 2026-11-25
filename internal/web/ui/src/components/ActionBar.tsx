@@ -1,11 +1,12 @@
 // User actions on a finding. The bar renders nothing when the server granted
 // no verbs (userActions empty/absent), so read-only users never see disabled
-// buttons. Each button asks for a second click to confirm.
+// buttons. Each is a ConfirmButton; only one is armed at a time.
 
 import { useEffect, useState } from "preact/hooks";
 import type { ActionVerb, Finding } from "../types";
 import { visibleActions } from "../actions";
-import { Icon, type IconName } from "./icons";
+import { type IconName } from "./icons";
+import { ConfirmButton } from "./ConfirmButton";
 
 const VERB_META: Record<ActionVerb, { label: string; icon: IconName; primary: boolean }> = {
   approve: { label: "Approve", icon: "check", primary: true },
@@ -42,37 +43,20 @@ export function ActionBar({
         const meta = VERB_META[verb];
         const label =
           verb === "approve" && finding.phase === "HandedOff" ? "Approve & revive" : meta.label;
-        const isBusy = busy === verb;
-        const isConfirming = confirming === verb;
         return (
-          <button
+          <ConfirmButton
             key={verb}
-            type="button"
-            class={`ps-action ${meta.primary ? "ps-action--primary" : ""} ${isConfirming ? "is-confirming" : ""}`}
-            disabled={busy !== null}
-            onClick={() => {
-              if (isConfirming) {
-                setConfirming(null);
-                onAction(verb);
-              } else {
-                setConfirming(verb);
-              }
-            }}
-          >
-            <Icon name={meta.icon} size={14} />
-            {isBusy ? "Working…" : isConfirming ? `Confirm ${label.toLowerCase()}?` : label}
-          </button>
+            label={label}
+            icon={meta.icon}
+            primary={meta.primary}
+            busy={busy === verb}
+            disabled={busy !== null && busy !== verb}
+            armed={confirming === verb}
+            onArmedChange={(armed) => setConfirming(armed ? verb : null)}
+            onConfirm={() => onAction(verb)}
+          />
         );
       })}
-      {confirming ? (
-        <button
-          type="button"
-          class="cursor-pointer border-0 bg-transparent font-mono text-[12px] text-muted underline"
-          onClick={() => setConfirming(null)}
-        >
-          cancel
-        </button>
-      ) : null}
     </div>
   );
 }

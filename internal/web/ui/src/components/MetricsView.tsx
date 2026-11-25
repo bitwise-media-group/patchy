@@ -148,7 +148,7 @@ export function MetricsView({ slice }: { slice: RollupSlice | null }) {
     <div>
       <header class="mb-5 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div>
-          <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.015em]">Metrics</h1>
+          <h1 class="ps-title">Metrics</h1>
           <p class="mt-1 mb-0 text-[14px] text-muted">
             {epoch?.firstProcessed ? (
               <>

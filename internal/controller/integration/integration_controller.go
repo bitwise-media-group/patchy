@@ -16,7 +16,6 @@ import (
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
-	"github.com/bitwise-media-group/patchy/pkg/source"
 )
 
 // defaultRevalidate paces credential revalidation when spec.interval is
@@ -41,13 +40,6 @@ type IntegrationReconciler struct {
 	// ClientFor overrides forge-client construction in tests; nil means
 	// Creds.Client.
 	ClientFor func(ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo) (resetClient, error)
-	// Ingest folds backfilled alerts into Findings; required when
-	// spec.backfill is to be consumed.
-	Ingest *Ingestor
-	// ListerFor overrides backfill-lister construction in tests; nil means
-	// the ghas lister built from the Integration's credential. ok=false
-	// reports a provider with no listing capability.
-	ListerFor func(ctx context.Context, integ *v1alpha1.Integration) (lister source.Lister, ok bool, err error)
 }
 
 // Reconcile implements the Integration control loop.
@@ -74,6 +66,7 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			slog.String("integration", integ.Name), slog.Any("error", err))
 	}
 	meta.SetStatusCondition(&integ.Status.Conditions, cond)
+	r.userAuthorizationCondition(ctx, &integ, cond.Status == metav1.ConditionTrue)
 	integ.Status.WebhookPath = webhookPath(&integ)
 	integ.Status.ObservedGeneration = integ.Generation
 	// The demo reset runs regardless of the Ready condition (the parts
@@ -103,14 +96,6 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				st.ReplayedAt = prev.ReplayedAt
 			}
 			integ.Status.Redelivery = st
-		}
-		if req := pendingBackfill(&integ); req != nil {
-			st, ran := r.runBackfill(ctx, &integ, req, r.now())
-			st.AttemptedAt = &req.At
-			if ran {
-				st.BackfilledAt = &req.At
-			}
-			integ.Status.Backfill = st
 		}
 	}
 	if err := r.Status().Update(ctx, &integ); err != nil {
@@ -157,4 +142,36 @@ func (r *IntegrationReconciler) now() time.Time {
 		return time.Now()
 	}
 	return r.Now()
+}
+
+// userAuthorizationCondition maintains UserAuthorizationReady on a github
+// Integration that opts into the "Connect GitHub" link, and removes it from
+// one that does not. credentialOK is the Ready verdict: an invalid
+// credential cannot back the link either.
+func (r *IntegrationReconciler) userAuthorizationCondition(
+	ctx context.Context, integ *v1alpha1.Integration, credentialOK bool,
+) {
+	if integ.Spec.GitHub == nil || integ.Spec.GitHub.UserAuthorization == nil {
+		meta.RemoveStatusCondition(&integ.Status.Conditions, v1alpha1.ConditionUserAuthorizationReady)
+		return
+	}
+	cond := metav1.Condition{
+		Type:               v1alpha1.ConditionUserAuthorizationReady,
+		Status:             metav1.ConditionTrue,
+		Reason:             "Configured",
+		ObservedGeneration: integ.Generation,
+	}
+	switch {
+	case !credentialOK:
+		cond.Status, cond.Reason = metav1.ConditionFalse, "CredentialInvalid"
+		cond.Message = "the Integration's credential is not Ready"
+	default:
+		reason, msg, err := r.Creds.CheckUserAuthorization(ctx, integ)
+		if err != nil {
+			cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, reason, err.Error()
+		} else {
+			cond.Reason, cond.Message = reason, msg
+		}
+	}
+	meta.SetStatusCondition(&integ.Status.Conditions, cond)
 }

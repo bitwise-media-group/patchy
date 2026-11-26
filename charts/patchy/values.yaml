@@ -165,6 +165,9 @@ integrationController:
         projectionConcurrency: 2
         # Extra PATCHY_* keys for this controller only (full variable name ->
         # value); wins over `config.extra` and anything the chart derives.
+        # For example PATCHY_BACKFILL_REQUEST_TTL (default 168h: how long a
+        # finished or undecided BackfillRequest is kept; it must outlast the
+        # status server's PATCHY_REPOSITORY_BACKFILL_COOLDOWN).
         extra: {}
     # Size controller memory to the finding backlog. Every controller holds
     # the namespace's Findings in an informer cache (~1-2KiB per lean
@@ -493,6 +496,11 @@ evaluationController:
 #   - `get` on findingrollups to view metrics
 #   - the custom verbs approve/retry/expedite/suspend/resume for the action
 #     buttons (rbac.userRoles renders example roles)
+#   - backfill on integrations to run backfills and decide requests; anyone
+#     who can view findings may request one for an operator to decide
+#   - the scoped maintainer verbs (approve-maintained, expedite-maintained
+#     on findings, backfill-maintained on integrations), honoured only on
+#     repositories the user maintains on GitHub, after "Connect GitHub"
 #
 # With no auth config the server serves nothing. Auth mode none opens
 # everything (dev only).
@@ -508,7 +516,11 @@ statusServer:
     # own ConfigMaps.
     liveTranscripts: true
     config:
-        # Extra PATCHY_* keys for the status server only.
+        # Extra PATCHY_* keys for the status server only, e.g.
+        # PATCHY_REPOSITORY_BACKFILL_COOLDOWN (default 24h: how long after a
+        # repository's backfill ran that the repositories page refuses
+        # another; keep it below the integration-controller's
+        # PATCHY_BACKFILL_REQUEST_TTL, default 168h).
         extra: {}
     # Authentication configuration, mounted at /etc/patchy/auth/config.yaml.
     # With NEITHER field set the server serves nothing: no findings, no
@@ -527,6 +539,14 @@ statusServer:
         #         issuerURL: https://sso.example.com
         #         clientID: patchy-status
         #         clientSecret: "..."
+        #
+        # "Connect GitHub" seals its cookies with a key derived from the
+        # oidc clientSecret. Modes anonymous and none have none, so linking
+        # stays off there unless linkKeyFile names a file of at least 32
+        # random bytes. Every key of the auth Secret is mounted under
+        # /etc/patchy/auth, so put it in an existingSecret beside config.yaml
+        # (a key named linkKey) and set
+        #     linkKeyFile: /etc/patchy/auth/linkKey
     # The status page's external hostname, e.g. patchy-status.example.com.
     # Required when either exposure option below is enabled. Use a hostname
     # separate from webhook.host. The webhook edge authenticates HMAC-signed
@@ -543,7 +563,7 @@ statusServer:
         parentRefs: []
     rbac:
         # Render the example user-facing ClusterRoles (viewer / approver /
-        # operator). You provide the bindings. See
+        # operator / admin / maintainer). You provide the bindings. See
         # deploy/kustomize/base/rbac.users.example.yaml.
         userRoles: false
     resources:

@@ -111,8 +111,9 @@ func applyPolicy(t *testing.T, admin client.Client) {
 		}
 		objs = append(objs, u)
 	}
-	if len(objs) != 4 {
-		t.Fatalf("expected the findings and integrations policy+binding pairs in %s, decoded %d documents",
+	if len(objs) != 6 {
+		t.Fatalf("expected the findings, integrations and backfill-request policy+binding pairs in %s, "+
+			"decoded %d documents",
 			policyRelPath, len(objs))
 	}
 	for _, u := range objs {

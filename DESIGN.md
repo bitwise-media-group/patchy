@@ -77,8 +77,8 @@ Go, one module, separate binaries per concern (not monolithic), all hosted in Ku
 logging, tracing, and metrics; structured logging via `log/slog`.
 
 **The source of truth is the Kubernetes API.** The `patchy.bitwisemedia.uk/v1alpha1` custom resources —
-`Integration`, `Forge`, `Finding`, `Repository`, `Investigation`, `Remediation`, `FindingRollup` — carry all
-pipeline state; etcd is the only state store. GitHub issues are a one-way, human-facing projection: labels and
+`Integration`, `Forge`, `Finding`, `Repository`, `Investigation`, `Remediation`, `FindingRollup`, and the
+`BackfillRequest` a person files to ingest alerts that predate webhook coverage — carry all pipeline state; etcd is the only state store. GitHub issues are a one-way, human-facing projection: labels and
 comments are rendered from the Finding, and human actions (issue close, `/approve` comments, PR merge) flow back
 in as webhook signals, never by re-parsing issue state.
 
@@ -99,7 +99,9 @@ across the estate.
   per-integration HMAC) and ingests
   scanner alerts into Findings through the `pkg/source` handler seam (accumulation, duplicate merge). Outbound: projects Findings to tracking issues
   (body, labels, enrichment and report comments) and applies human signals (close, `/approve`, PR merge/close)
-  back onto Findings.
+  back onto Findings. Walks `BackfillRequest`s one at a time (a requested one only after an operator approves it),
+  and answers the status server's GitHub-user calls for the optional "Connect GitHub" link, since it alone holds
+  the GitHub App's credentials.
 - **source-controller** — `Forge` + `Repository` reconcilers. Validates forge credentials, resolves
   each Repository to its covering Forge, pins the head SHA exactly once, downloads the forge's tarball archive at
   that SHA (pure HTTP; controllers carry no git binary), and serves it from an artifact endpoint agents fetch

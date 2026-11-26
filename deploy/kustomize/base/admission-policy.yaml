@@ -186,7 +186,7 @@ spec:
                 kubernetes.io/metadata.name: patchy
 ---
 # Field-level authorization for the request stamps on Integrations: the
-# backfill, replay and reset triggers each need their own custom verb on
+# replay and reset triggers each need their own custom verb on
 # integrations.patchy.bitwisemedia.uk, so `update` on integrations (the
 # operator's configuration grant) does not quietly include the ability to
 # fire pipeline actions.
@@ -194,7 +194,7 @@ spec:
 # This policy differs from the findings policy above in two intended ways:
 #   * No frozen-fields rule. IntegrationSpec is operator configuration
 #     (provider blocks, secretRef, interval, suspend), and plain `update`
-#     must keep working for the GitOps flow. Only the three request fields
+#     must keep working for the GitOps flow. Only the two request fields
 #     need a verb.
 #   * Clearing a request field needs no verb. A GitOps apply that prunes a
 #     stamped spec.replay must not be denied, and cancelling a pending
@@ -245,15 +245,6 @@ spec:
           expression: "oldObject"
     validations:
         - expression: >-
-              !has(object.spec.backfill)
-              || (variables.old != null && variables.old.spec.?backfill == object.spec.?backfill)
-              || variables.auth.check('backfill').allowed()
-          messageExpression: >-
-              "setting spec.backfill on integration " + object.metadata.name +
-              " requires the 'backfill' verb on integrations.patchy.bitwisemedia.uk"
-          reason: Forbidden
-
-        - expression: >-
               !has(object.spec.replay)
               || (variables.old != null && variables.old.spec.?replay == object.spec.?replay)
               || variables.auth.check('replay').allowed()
@@ -279,6 +270,108 @@ metadata:
         app.kubernetes.io/part-of: patchy
 spec:
     policyName: patchy-integration-actions
+    validationActions: [Deny]
+    matchResources:
+        namespaceSelector:
+            matchLabels:
+                kubernetes.io/metadata.name: patchy
+---
+# Authorization for BackfillRequests. A request that runs at once needs the
+# backfill verb on integrations. A request filed with spec.via "requested"
+# needs no verb: it waits in AwaitingApproval until an operator holding the
+# backfill verb sets spec.decision. A "maintained" request can come only from
+# the status server, which checked the requester's GitHub role first.
+# spec.requestedBy must name the creating user, so the audit trail holds.
+# The CRD's own CEL rules keep the request immutable and the decision
+# one-time.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+    name: patchy-backfill-requests
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    # Fail closed: a policy that cannot compile or evaluate must not become an
+    # open door.
+    failurePolicy: Fail
+    matchConstraints:
+        resourceRules:
+            - apiGroups: [patchy.bitwisemedia.uk]
+              apiVersions: [v1alpha1]
+              operations: [CREATE, UPDATE]
+              resources: [backfillrequests]
+    matchConditions:
+        # The status server runs its own SubjectAccessReviews (and, for a
+        # maintained request, the GitHub role check) and records the
+        # signed-in user it acted for, so it is exempt like the controllers.
+        - name: not-a-patchy-controller
+          expression: >-
+              !(request.userInfo.username in [
+                'system:serviceaccount:patchy:patchy-integration-controller',
+                'system:serviceaccount:patchy:patchy-source-controller',
+                'system:serviceaccount:patchy:patchy-context-controller',
+                'system:serviceaccount:patchy:patchy-investigation-controller',
+                'system:serviceaccount:patchy:patchy-remediation-controller',
+                'system:serviceaccount:patchy:patchy-status-server'
+              ])
+    variables:
+        # The backfill verb lives on integrations, like every
+        # integration-scoped verb, so one grant covers the status page, the
+        # CLI and direct writes alike.
+        - name: auth
+          expression: >-
+              authorizer.group('patchy.bitwisemedia.uk').resource('integrations')
+                .namespace(request.namespace)
+        - name: via
+          expression: "object.spec.?via.orValue('backfill')"
+        - name: old
+          expression: "oldObject"
+    validations:
+        # The audit field names the real requester.
+        - expression: >-
+              request.operation != 'CREATE' || object.spec.requestedBy == request.userInfo.username
+          messageExpression: >-
+              "spec.requestedBy must be your own username (" + request.userInfo.username + ")"
+          reason: Forbidden
+
+        # A maintained request rests on a GitHub role check only the status
+        # server can make.
+        - expression: >-
+              request.operation != 'CREATE' || variables.via != 'maintained'
+          message: >-
+              only the status server can create a maintained backfill request
+          reason: Forbidden
+
+        # Filing a request that runs at once needs the backfill verb; a
+        # requested one waits for an operator, so anyone allowed to create
+        # it may file it.
+        - expression: >-
+              request.operation != 'CREATE' || variables.via == 'requested'
+              || variables.auth.check('backfill').allowed()
+          messageExpression: >-
+              "creating a backfill request on integration " + object.spec.integrationRef.name +
+              " requires the 'backfill' verb on integrations.patchy.bitwisemedia.uk; " +
+              "set spec.via to 'requested' to ask an operator instead"
+          reason: Forbidden
+
+        # Deciding a requested backfill is an operator's call.
+        - expression: >-
+              !has(object.spec.decision)
+              || (variables.old != null && variables.old.spec.?decision == object.spec.?decision)
+              || variables.auth.check('backfill').allowed()
+          messageExpression: >-
+              "deciding backfill request " + object.metadata.name +
+              " requires the 'backfill' verb on integrations.patchy.bitwisemedia.uk"
+          reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+    name: patchy-backfill-requests
+    labels:
+        app.kubernetes.io/part-of: patchy
+spec:
+    policyName: patchy-backfill-requests
     validationActions: [Deny]
     matchResources:
         namespaceSelector:

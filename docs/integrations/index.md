@@ -56,7 +56,7 @@ A suspended **Integration** is skipped everywhere:
 
 - The receiver stops matching deliveries against its secret, so its provider's webhooks are rejected.
 - Its enhancer is skipped in the chain.
-- Its reconcile loop (credential checks, the redelivery sweep, backfill) stops.
+- Its reconcile loop (credential checks, the redelivery sweep) stops, and its backfill requests wait until it resumes.
 - It no longer offers a tracking projection.
 
 A suspended **Forge** stops being validated and drops out of repository resolution. Findings it would have covered wait

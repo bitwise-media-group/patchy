@@ -23,8 +23,8 @@ const (
 	// ExitNotFound reports that a named resource does not exist.
 	ExitNotFound = 3
 	// ExitDenied reports that RBAC refused the action, or that the finding's
-	// current phase has no use for it. Both mean nothing was done, which is
-	// what a script needs to know.
+	// current phase (or the backfill request's state) has no use for it. Both
+	// mean nothing was done, which is what a script needs to know.
 	ExitDenied = 4
 )
 
@@ -49,7 +49,8 @@ func exitCode(err error) int {
 		return ExitNotFound
 	case apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err),
 		errors.Is(err, action.ErrUnavailable),
-		errors.Is(err, errDenied):
+		errors.Is(err, errDenied),
+		errors.Is(err, errNotDecidable):
 		return ExitDenied
 	default:
 		return ExitError

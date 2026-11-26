@@ -86,6 +86,22 @@ export function formatAgo(iso?: string, now = Date.now()): string {
   return `${Math.round(d / 30)}mo ago`;
 }
 
+// formatIn renders a compact time to come ("in 3h", "in 12d"); a time
+// already past reads "now".
+export function formatIn(iso?: string, now = Date.now()): string {
+  if (!iso) return DASH;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return DASH;
+  const s = Math.round((t - now) / 1000);
+  if (s <= 0) return "now";
+  if (s < 60) return `in ${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `in ${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `in ${h}h`;
+  return `in ${Math.round(h / 24)}d`;
+}
+
 // formatConfidence renders the CRD's decimal string ("0.93") as "93%".
 export function formatConfidence(confidence?: string): string {
   if (confidence === undefined || confidence === "") return DASH;

@@ -74,6 +74,19 @@ The `Forge` or `Integration` that references this Secret may name a forward prox
 ([egress proxy](../integrations/forges/github.md#egress-proxy)). If so, the same Secret also holds the optional keys
 `proxyUsername` and `proxyPassword`. The proxy credentials never go in the proxy URL itself.
 
+## Optional: let users connect GitHub
+
+The status page can let each user link their own GitHub account through this App, so maintainers can import the
+repositories they look after and act on them with the scoped maintainer grants. Sign-in stays with your SSO provider. To
+allow it, under **Identifying and authorizing users** on the App's settings page:
+
+- add the callback URL `https://<status-host>/oauth2/github/<integration>/callback` (`<integration>` is the name of the
+  github `Integration`; GitHub allows up to 10 callback URLs);
+- leave **Expire user authorization tokens** on;
+- generate a **client secret**. It goes in the same Secret, under `clientSecret`.
+
+The App's **Client ID** goes on the Integration. See [Connect GitHub](../integrations/sources/github.md#connect-github).
+
 ## Install the App
 
 Finally, choose **Install App** on your organization and select the repositories patchy should watch (the ones with code

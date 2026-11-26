@@ -34,6 +34,9 @@ const (
 	KeyPrivateKey = "privateKey"
 	// KeyWebhookSecret is the receiver HMAC secret.
 	KeyWebhookSecret = "webhookSecret"
+	// KeyClientSecret is the GitHub App's OAuth client secret, needed only
+	// by an Integration with spec.github.userAuthorization.
+	KeyClientSecret = "clientSecret"
 	// KeyProxyUsername is the forward proxy's basic-auth username.
 	KeyProxyUsername = "proxyUsername"
 	// KeyProxyPassword is the forward proxy's basic-auth password.

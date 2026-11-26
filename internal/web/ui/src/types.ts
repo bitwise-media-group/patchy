@@ -57,6 +57,20 @@ export type AdminVerb = "replay" | "reset";
 // DatasetUser.integrationActions.
 export type IntegrationVerb = "backfill" | "replay" | "reset";
 
+// MaintainedVerb is a scoped maintainer verb (internal/action
+// MaintainedVerbs): the base verb, allowed only on repositories the user's
+// linked GitHub identity administers or maintains.
+export type MaintainedVerb = "backfill-maintained" | "approve-maintained" | "expedite-maintained";
+
+// GitHubLink mirrors internal/web.GitHubLink: one github Integration the
+// user may link a GitHub account through, and whether they have.
+export interface GitHubLink {
+  integration: string;
+  host: string;
+  login?: string;
+  connected: boolean;
+}
+
 export interface Location {
   path: string;
   startLine?: number;
@@ -413,6 +427,12 @@ export interface DatasetUser {
   // Granted integration-scoped verbs the configuration view's triggers
   // check; absent means none.
   integrationActions?: IntegrationVerb[];
+  // Granted scoped maintainer verbs; absent means none. The user menu hints
+  // "Connect GitHub" when these are held with no link.
+  maintainedActions?: MaintainedVerb[];
+  // The Integrations the user may link GitHub through; absent when linking
+  // is off.
+  github?: GitHubLink[];
 }
 
 // Dataset is the payload behind GET /api/rollups: the metrics summary, plus
@@ -573,9 +593,12 @@ export interface RedeliveryStatus {
   error?: string;
 }
 
-// BackfillStatus mirrors an Integration's status.backfill plus the pending
-// spec.backfill echo the trigger renders.
+// BackfillStatus is the Integration's latest BackfillRequest (requests
+// still awaiting an operator are skipped), as the trigger renders it.
 export interface BackfillStatus {
+  // The BackfillRequest's name, and its phase.
+  request?: string;
+  phase?: BackfillPhase;
   lastRunAt?: string;
   listed?: number;
   ingested?: number;
@@ -583,7 +606,8 @@ export interface BackfillStatus {
   error?: string;
   requestedBy?: string;
   requestedAt?: string;
-  // A request the controller has not consumed yet.
+  // A request the controller has not attempted yet (a failed attempt clears
+  // it, so the trigger re-enables for a corrected request).
   pending?: boolean;
 }
 
@@ -633,8 +657,19 @@ export interface ConfigDataset {
 export interface RepositoriesPayload {
   generatedAt: string;
   repositories: RepositorySummary[];
-  // Whether the caller holds the backfill grant.
+  // Whether the caller holds the backfill grant: the backfill runs at once.
   canBackfill: boolean;
+  // Whether the caller holds backfill-maintained (and GitHub linking is
+  // on): with a connected GitHub account, the backfill runs at once on
+  // repositories they administer or maintain.
+  canBackfillMaintained?: boolean;
+  // Whether the caller may file a request an operator decides.
+  canRequestBackfill: boolean;
+  // How long after a repository's backfill completed another is refused.
+  cooldownSeconds: number;
+  // The Integrations the caller may link GitHub through; absent when
+  // linking is off.
+  github?: GitHubLink[];
   // Whether the integration-controller's access check is configured.
   accessCheck: boolean;
 }
@@ -645,15 +680,32 @@ export interface RepositorySummary {
   phases?: Partial<Record<Phase, number>>;
   rollup?: { findings: number; lastProcessed?: string };
   backfill?: RepositoryBackfill;
+  // When the cooldown lets the repository be backfilled again (RFC 3339);
+  // absent when it may be now.
+  backfillAvailableAt?: string;
 }
 
-// RepositoryBackfill is the backfill request covering a repository. The
-// run counts cover the whole request, not this repository alone.
+// BackfillPhase mirrors v1alpha1.BackfillRequestPhase.
+export type BackfillPhase = "AwaitingApproval" | "Pending" | "Complete" | "Failed" | "Denied";
+
+// BackfillVia is how a request was authorized: the backfill grant, a
+// maintainer's GitHub role, or an operator's decision on a request.
+export type BackfillVia = "backfill" | "maintained" | "requested";
+
+// RepositoryBackfill is the backfill request that best describes a
+// repository: an open one over a finished one, then the newest. The run
+// counts cover the whole request, not this repository alone.
 export interface RepositoryBackfill {
+  request?: string;
   integration: string;
   requestedBy?: string;
   requestedAt?: string;
+  phase?: BackfillPhase;
+  via?: BackfillVia;
+  // An open request: not walked yet, or waiting for an operator.
   pending?: boolean;
+  // An operator's note on a decided request.
+  decisionReason?: string;
   lastRunAt?: string;
   listed?: number;
   ingested?: number;
@@ -702,8 +754,70 @@ export interface RepositoryAccessPayload {
   repositories: RepositoryAccess[];
 }
 
+// BackfillOutcome is what a one-repository backfill POST did: a new
+// request that runs at once, a new request an operator decides, or an open
+// request that already covers the repository.
+export type BackfillOutcome = "requested" | "awaiting-approval" | "covered";
+
 // RepositoryBackfillResult answers POST /api/repositories/backfill.
 export interface RepositoryBackfillResult {
   integration: string;
-  outcome: "requested" | "merged" | "covered";
+  // The BackfillRequest created, or the open one covering the repository.
+  request?: string;
+  outcome: BackfillOutcome;
+}
+
+// ---- Backfill requests (internal/web/backfillrequests.go) ----
+
+// BackfillDecision is an operator's verdict on a requested backfill.
+export interface BackfillDecision {
+  verdict: "Approved" | "Denied";
+  by: string;
+  at: string;
+  reason?: string;
+}
+
+// BackfillRequest mirrors internal/web.BackfillRequestWire.
+export interface BackfillRequest {
+  name: string;
+  integration: string;
+  requestedBy: string;
+  requestedAt?: string;
+  // Absent: everything the Integration can see.
+  repositories?: string[];
+  via: BackfillVia;
+  githubLogin?: string;
+  phase?: BackfillPhase;
+  attempts?: number;
+  lastRunAt?: string;
+  completedAt?: string;
+  listed?: number;
+  ingested?: number;
+  truncated?: boolean;
+  error?: string;
+  decision?: BackfillDecision;
+}
+
+// BackfillRequestsPayload is GET /api/backfill-requests: every request,
+// newest first, and whether the caller may approve or deny.
+export interface BackfillRequestsPayload {
+  generatedAt: string;
+  requests: BackfillRequest[];
+  canDecide: boolean;
+}
+
+// ---- GitHub link (internal/web/github.go) ----
+
+// GitHubRepository is one repository the user administers or maintains.
+export interface GitHubRepository {
+  name: string; // "owner/name"
+  role: string; // "admin" | "maintain"
+}
+
+// GitHubRepositoriesPayload is GET /api/github/repositories?integration=.
+export interface GitHubRepositoriesPayload {
+  integration: string;
+  login: string;
+  repositories: GitHubRepository[];
+  truncated?: boolean;
 }

@@ -59,11 +59,15 @@ var AdminVerbs = action.AdminVerbs
 // the UI receives them.
 var IntegrationVerbs = action.IntegrationVerbs
 
+// MaintainedVerbs lists the scoped maintainer verbs and the base verb each
+// stands in for.
+var MaintainedVerbs = action.MaintainedVerbs
+
 // group is the API group carrying the custom verbs.
 const group = "patchy.bitwisemedia.uk"
 
 // defaultTTL bounds how stale a cached grant may be. It is short so a
-// revoked approver loses the buttons within seconds; the eleven SARs per
+// revoked approver loses the buttons within seconds; the fourteen SARs per
 // identity per window (see Reviewer.Grants) are cheap.
 const defaultTTL = 20 * time.Second
 
@@ -90,6 +94,17 @@ type Grants struct {
 	// Integration), kept separate so the user menu and the adminActions
 	// wire field stay stable.
 	Admin []string
+	// Maintained are the granted scoped maintainer verbs
+	// (backfill-maintained, approve-maintained, expedite-maintained), in
+	// MaintainedVerbs order.
+	Maintained []string
+}
+
+// AllowsMaintained reports whether the scoped verb standing in for base
+// (backfill, approve or expedite) is granted.
+func (g Grants) AllowsMaintained(base string) bool {
+	m, ok := action.MaintainedFor(base)
+	return ok && slices.Contains(g.Maintained, m.Verb)
 }
 
 // Allows reports whether the per-finding verb is granted.
@@ -119,7 +134,16 @@ func (Full) Grants(context.Context, auth.Identity) (Grants, error) {
 		Verbs:       append([]string(nil), ActionVerbs...),
 		Integration: append([]string(nil), IntegrationVerbs...),
 		Admin:       append([]string(nil), AdminVerbs...),
+		Maintained:  maintainedVerbNames(),
 	}, nil
+}
+
+func maintainedVerbNames() []string {
+	out := make([]string, 0, len(MaintainedVerbs))
+	for _, m := range MaintainedVerbs {
+		out = append(out, m.Verb)
+	}
+	return out
 }
 
 // Reviewer resolves grants through SubjectAccessReviews, cached briefly per
@@ -156,8 +180,8 @@ func NewReviewer(c client.Client, namespace string, ttl time.Duration) *Reviewer
 
 // Grants resolves the identity's grants: native get on findings for View,
 // on findingrollups for Metrics and on integrations for Config, then one
-// review per custom verb on its own resource (11 SARs per identity per TTL
-// window).
+// review per custom verb on its own resource, the scoped maintainer verbs
+// included (14 SARs per identity per TTL window).
 func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error) {
 	key := cacheKey(id)
 	r.mu.Lock()
@@ -202,6 +226,16 @@ func (r *Reviewer) Grants(ctx context.Context, id auth.Identity) (Grants, error)
 			if slices.Contains(AdminVerbs, verb) {
 				g.Admin = append(g.Admin, verb)
 			}
+		}
+	}
+
+	for _, m := range MaintainedVerbs {
+		allowed, err := r.review(ctx, id, m.Resource, m.Verb)
+		if err != nil {
+			return Grants{}, err
+		}
+		if allowed {
+			g.Maintained = append(g.Maintained, m.Verb)
 		}
 	}
 

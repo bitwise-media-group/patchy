@@ -36,6 +36,11 @@ const (
 	// the run reached the long-term archive. Set only when archival is
 	// configured (reasons: Archived, ArchiveFailed).
 	ConditionArchived = "Archived"
+	// ConditionUserAuthorizationReady reports, on a github Integration with
+	// spec.github.userAuthorization, whether the "Connect GitHub" link can
+	// work: an App credential with its OAuth client secret, and (where the
+	// App can be asked) a client ID that matches the App.
+	ConditionUserAuthorizationReady = "UserAuthorizationReady"
 	// ConditionUnitsCreated marks an Evaluation whose child EvaluationUnits
 	// all exist.
 	ConditionUnitsCreated = "UnitsCreated"

@@ -25,7 +25,7 @@
 # spec:
 #     provider: github
 #     secretRef:
-#         name: patchy-github        # keys: appID+privateKey (or token) + webhookSecret
+#         name: patchy-github        # keys: appID+privateKey (or token) + webhookSecret (+ clientSecret)
 #     interval: 10m                  # credential revalidation
 #     github:
 #         # baseURL: https://ghes.example.com/api/v3   # GHES only
@@ -36,6 +36,8 @@
 #             enabled: true          # scanner ingestion + alert dismissal
 #         # secretScanningAlerts:      # leaked credentials; never carries the
 #         #     enabled: true          # value; cleanup PRs only after /approve
+#         # userAuthorization:         # the status page's "Connect GitHub" link;
+#         #     clientID: Iv23liEXAMPLE  # the App's client ID; clientSecret key in the Secret
 #
 # ---------------------------------------------------------------------------
 # 2. Forge: repository access for clone (source-controller, read) and
@@ -57,3 +59,23 @@
 #     # orgs: [acme]                 # optional org allowlist
 #     # repositories: ["^acme/payments-.*$"]           # optional regexes
 #     interval: 10m
+#
+# ---------------------------------------------------------------------------
+# 3. BackfillRequest: one bounded walk of an Integration's open alerts,
+#    ingesting the ones that predate webhook coverage. Not configuration:
+#    people file these (the status page, or `patchy backfill`), the
+#    integration-controller walks them one at a time and deletes finished
+#    ones after --backfill-request-ttl (default 168h). Shown here for the
+#    shape only; do not keep them in an overlay.
+#
+# apiVersion: patchy.bitwisemedia.uk/v1alpha1
+# kind: BackfillRequest
+# metadata:
+#     generateName: backfill-
+#     namespace: patchy
+# spec:
+#     integrationRef:
+#         name: github
+#     requestedBy: dev@example.com   # must be your own username (admission policy)
+#     repositories: ["acme/"]        # optional: "owner/" prefixes or exact owner/name
+#     # via: requested               # no backfill verb: wait for an operator's spec.decision

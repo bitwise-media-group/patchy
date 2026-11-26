@@ -19,6 +19,7 @@ import (
 
 	"github.com/bitwise-media-group/patchy/internal/archive"
 	"github.com/bitwise-media-group/patchy/internal/cli"
+	"github.com/bitwise-media-group/patchy/internal/ghuser"
 	"github.com/bitwise-media-group/patchy/internal/jobs"
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/internal/repoaccess"
@@ -27,6 +28,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/web"
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
+	"github.com/bitwise-media-group/patchy/internal/web/ghlink"
 )
 
 func newServeCmd(opts *cli.Options) *cobra.Command {
@@ -49,6 +51,9 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 	f.String("integration-controller-url", "http://patchy-integration-controller.patchy.svc.cluster.local:9792",
 		"internal URL of the integration-controller's repository-access endpoint, which tells the repositories "+
 			"page whether patchy can read a repository's alerts (empty disables the check)")
+	f.Duration("repository-backfill-cooldown", web.DefaultBackfillCooldown,
+		"how long after a repository's backfill ran that the repositories page refuses another for it "+
+			"(the integration-controller's --backfill-request-ttl must outlast it)")
 	f.String("integration-controller-token-file", "/var/run/secrets/patchy/integration-controller/token",
 		"projected ServiceAccount token (audience "+repoaccess.Audience+") sent to the integration-controller; "+
 			"read again on every call")
@@ -181,12 +186,9 @@ func serve(ctx context.Context, opts *cli.Options) error {
 	// The repositories page asks the integration-controller, which holds the
 	// forge credentials, whether a repository's alerts are readable; this
 	// process stays credential-free.
-	if url := opts.String("integration-controller-url"); url != "" {
-		srv = srv.WithRepositoryAccess(&repoaccess.Client{
-			URL:       url,
-			TokenFile: opts.String("integration-controller-token-file"),
-		})
-		log.LogAttrs(ctx, slog.LevelInfo, "repository access check enabled", slog.String("url", url))
+	srv = srv.WithBackfillCooldown(opts.Duration("repository-backfill-cooldown"))
+	if srv, err = withIntegrationController(ctx, opts, srv, authCfg, authn, log); err != nil {
+		return err
 	}
 
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
@@ -229,4 +231,41 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		return err
 	}
 	return nil
+}
+
+// withIntegrationController wires the integration-controller's internal
+// endpoints: the repository-access check, and the optional "Connect GitHub"
+// link. That process holds the forge credentials, so this one stays
+// credential-free. Every GitHub call goes through it. The link cookies are
+// sealed with a key from the auth config; without one (mode anonymous or
+// none and no linkKeyFile) linking stays off.
+func withIntegrationController(
+	ctx context.Context, opts *cli.Options, srv *web.Server, authCfg *auth.Config, authn auth.Authenticator,
+	log *slog.Logger,
+) (*web.Server, error) {
+	url := opts.String("integration-controller-url")
+	if url == "" {
+		return srv, nil
+	}
+	tokenFile := opts.String("integration-controller-token-file")
+	srv = srv.WithRepositoryAccess(&repoaccess.Client{URL: url, TokenFile: tokenFile})
+	log.LogAttrs(ctx, slog.LevelInfo, "repository access check enabled", slog.String("url", url))
+
+	linkKey, err := auth.LinkKey(authCfg)
+	if err != nil || linkKey == nil {
+		return srv, err
+	}
+	users := &ghuser.Client{URL: url, TokenFile: tokenFile}
+	links := ghlink.New(ghlink.Config{
+		Key:      linkKey,
+		Secure:   !authCfg.Insecure,
+		MaxAge:   authCfg.SessionDuration.Duration,
+		BaseURL:  func(r *http.Request) string { return auth.BaseURL(authCfg, r) },
+		Lookup:   srv.LookupConnectable,
+		Identify: authn.Identify,
+		Users:    users,
+		Log:      log,
+	})
+	log.LogAttrs(ctx, slog.LevelInfo, "github account linking enabled")
+	return srv.WithGitHub(users, links), nil
 }

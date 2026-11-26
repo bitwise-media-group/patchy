@@ -15,6 +15,7 @@ patchy describe <resource> <name> [flags]
 ```
   patchy describe finding my-finding
   patchy describe investigation my-finding-inv-1
+  patchy describe backfillrequest backfill-x7k2p
 ```
 
 ### Options

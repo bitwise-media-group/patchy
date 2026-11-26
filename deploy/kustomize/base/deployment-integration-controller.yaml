@@ -56,7 +56,8 @@ spec:
                       - name: http
                         containerPort: 8080
                         protocol: TCP
-                      # The repository-access endpoint (PATCHY_INTERNAL_ADDR).
+                      # The repository-access and GitHub-user endpoints
+                      # (PATCHY_INTERNAL_ADDR).
                       # In-cluster only: the status server is its one caller.
                       - name: internal
                         containerPort: 9792

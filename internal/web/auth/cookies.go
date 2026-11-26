@@ -147,3 +147,16 @@ func readJSONCookie(r *http.Request, name string, v any) bool {
 	}
 	return json.Unmarshal(raw, v) == nil
 }
+
+// ClearCookie expires one cookie with the hardened attributes.
+func ClearCookie(w http.ResponseWriter, name string, secure bool) { clearCookie(w, name, secure) }
+
+// SetJSONCookie writes an SPA-visible base64url JSON cookie. It must never
+// carry a secret.
+func SetJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Duration, secure bool) error {
+	return setJSONCookie(w, name, v, maxAge, secure)
+}
+
+// SafePath guards a post-flow redirect against open redirects: only
+// same-origin absolute paths survive.
+func SafePath(p string) string { return safePath(p) }

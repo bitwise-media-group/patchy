@@ -179,6 +179,15 @@ func (a *RepositoryAccess) Check(ctx context.Context, repos []string) ([]repoacc
 	return out, nil
 }
 
+// IntegrationAccess probes one Integration's alert access to one
+// repository, through the shared cache.
+func (a *RepositoryAccess) IntegrationAccess(
+	ctx context.Context, integ *v1alpha1.Integration, repo ghclient.Repo,
+) repoaccess.IntegrationAccess {
+	a.once.Do(func() { a.cache = newAccessCache(accessCacheSize) })
+	return a.integrationAccess(ctx, integ, repo)
+}
+
 // eligibleForAccess is the Integration filter: github, not suspended, and
 // ingesting an alert family a backfill could list.
 func eligibleForAccess(i *v1alpha1.Integration) bool {

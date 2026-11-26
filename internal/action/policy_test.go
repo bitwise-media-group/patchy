@@ -92,14 +92,13 @@ func TestAdmissionPolicyCoversEveryFindingSpecField(t *testing.T) {
 // integrationVerbGatedFields maps each request field of IntegrationSpec to
 // the custom verb that gates it in the integrations admission policy.
 var integrationVerbGatedFields = map[string]string{
-	"backfill": "backfill",
-	"replay":   "replay",
-	"reset":    "reset",
+	"replay": "replay",
+	"reset":  "reset",
 }
 
 // TestIntegrationPolicyCoversEveryRequestField mirrors the findings check
 // for the integrations policy: every request-shaped field of
-// IntegrationSpec (an *ActionRequest or *BackfillRequest) must be gated by
+// IntegrationSpec (an *ActionRequest) must be gated by
 // its own verb in both policy renderings. Unlike findings there is no
 // frozen-fields rule (IntegrationSpec is operator configuration), so only
 // the request fields are asserted.
@@ -119,7 +118,7 @@ func TestIntegrationPolicyCoversEveryRequestField(t *testing.T) {
 				continue
 			}
 			elem := ft.Elem().Name()
-			if elem != "ActionRequest" && elem != "BackfillRequest" {
+			if elem != "ActionRequest" {
 				continue
 			}
 			name := jsonName(field.Tag.Get("json"))
@@ -175,6 +174,35 @@ func TestAdmissionPolicyExemptsEveryController(t *testing.T) {
 		if !strings.Contains(policy, subject) {
 			t.Errorf("service account %s is not exempt from the admission policy; if it writes "+
 				"Finding spec it will be denied, and if it does not, say so here", name)
+		}
+	}
+}
+
+// TestBackfillRequestPolicyRules pins the BackfillRequest policy's rules in
+// both renderings: the requester is the creator, only the status server
+// files maintained requests, a request that runs at once needs the backfill
+// verb, and so does a decision.
+func TestBackfillRequestPolicyRules(t *testing.T) {
+	for rendering, path := range policyFiles {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s policy: %v", rendering, err)
+		}
+		policy := string(raw)
+		for _, want := range []string{
+			"resources: [backfillrequests]",
+			"object.spec.requestedBy == request.userInfo.username",
+			"variables.via != 'maintained'",
+			"variables.via == 'requested'",
+			"variables.old.spec.?decision == object.spec.?decision",
+			"check('backfill')",
+		} {
+			if !strings.Contains(policy, want) {
+				t.Errorf("%s backfill request policy is missing %q", path, want)
+			}
+		}
+		if strings.Contains(policy, "spec.backfill") {
+			t.Errorf("%s still gates the removed spec.backfill", path)
 		}
 	}
 }

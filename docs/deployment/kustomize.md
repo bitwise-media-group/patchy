@@ -82,6 +82,14 @@ For everyone except the patchy controllers, it enforces these rules:
 The policy does not match `findings/status` on purpose, so controller status writes and phase transitions are not
 affected.
 
+Two more policies in the same file cover the other human writes. `patchy-integration-actions` ties `spec.replay` and
+`spec.reset` on Integrations to the `replay` and `reset` verbs. `patchy-backfill-requests` covers
+[BackfillRequests](../integrations/sources/github.md#who-may-run-one): creating one that runs at once needs `backfill`
+on `integrations`, one with `spec.via: requested` needs no verb and waits for an operator, `spec.requestedBy` must be
+the creating user, a `maintained` request can only come from the status server, and only a `backfill` holder may set
+`spec.decision`. The status page's scoped maintainer verbs (`approve-maintained`, `expedite-maintained`,
+`backfill-maintained`) appear in no policy: only the status page honours them, so they never authorize a direct write.
+
 !!! warning "Requires Kubernetes 1.30+"
 
     `ValidatingAdmissionPolicy` reached GA in 1.30. On an older cluster this resource will not apply, and enforcement
@@ -91,7 +99,11 @@ affected.
 `base/rbac.users.example.yaml` is documentation, not an applied resource. Copy the role ladder into your overlay and
 bind it to your own users or SSO groups. Roles above viewer grant `update` on findings. That grant lets the CLI write at
 all, and the admission policy makes it safe. The roles leave out `create` and `delete` on purpose. Otherwise someone
-could delete a finding and recreate it with an approval already set.
+could delete a finding and recreate it with an approval already set. The one `create` the roles carry is on
+`backfillrequests`: the admin role's runs a backfill (with `update` to decide other people's), and the lower roles' can
+only file a request for an operator, because the policy holds it to `spec.via: requested`. The `patchy-maintainer` role
+grants the scoped maintainer verbs to a broad SSO group, such as a dex group of every engineer; see
+[the status page](../operate/status-page.md#access-model).
 
 ## The overlays
 

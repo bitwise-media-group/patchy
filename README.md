@@ -26,7 +26,7 @@ Completed findings expire on a TTL, and `FindingRollup` resources keep the all-t
 | `remediation-controller`    | Queue admission, priority-ordered remediation Jobs, changeset push + pull requests, rollup statistics and the finding TTL                  |
 | `agent-runner`              | In-pod coding-agent runtime: investigate or remediate with `claude -p` or `codex exec`                                                     |
 | `egress-broker`             | The proxy every agent model request goes through: holds the model credential, so agent pods hold none                                      |
-| `status-server`             | The human-facing status page: findings and metrics, OIDC sign-in, the RBAC-gated actions                                                   |
+| `status-server`             | The human-facing status page: findings and metrics, OIDC sign-in, the RBAC-gated actions and backfill requests                             |
 | `evaluation-controller`     | Optional: runs evolve skill evaluations remotely on the same sandboxed agent Jobs                                                          |
 | `patchy` / `kubectl-patchy` | The workstation CLI: list, review and act on findings with your own kubeconfig, never through a controller                                 |
 

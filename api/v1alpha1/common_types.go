@@ -87,6 +87,7 @@ type ProxyConfig struct {
 type LocalObjectReference struct {
 	// Name of the referent.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	Name string `json:"name"`
 }
 

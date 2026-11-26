@@ -1,6 +1,6 @@
 ## patchy approve
 
-Approve a finding, releasing a hold or reviving a handed-off finding
+Approve a finding, or a backfill request awaiting an operator
 
 ### Synopsis
 
@@ -14,8 +14,15 @@ Your RBAC decides whether the write is allowed. The CLI checks the 'approve'
 verb before writing, and the cluster's admission policy enforces it for every
 client.
 
+approve also decides a backfill request filed with `patchy backfill --request`:
+`patchy approve backfillrequest <name>` lets it run, and `patchy deny
+backfillrequest <name>` refuses it. A decision is final, and only a request
+waiting for an operator takes one. Deciding needs the 'backfill' verb on
+integrations rather than 'approve' on findings. An explicit --note becomes the
+decision's reason; -l is not supported for backfill requests.
+
 ```
-patchy approve finding <name...> [flags]
+patchy approve (finding|backfillrequest) <name...> [flags]
 ```
 
 ### Examples
@@ -24,6 +31,8 @@ patchy approve finding <name...> [flags]
   patchy approve finding my-finding
   patchy approve finding -l patchy.bitwisemedia.uk/severity=critical
   patchy approve finding my-finding --dry-run
+  patchy approve backfillrequest backfill-x7k2p
+  patchy approve bfr backfill-x7k2p --note "scoped to acme/shop, go ahead"
 ```
 
 ### Options

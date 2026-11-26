@@ -23,12 +23,13 @@ integration-controller serve --namespace patchy --accumulation-window 1h
 
 The [shared flags](index.md#shared-flags), plus:
 
-| Flag                              | Env                                    | Default                | Purpose                                                                                                                     |
-| --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `--accumulation-window`           | `PATCHY_ACCUMULATION_WINDOW`           | `1h`                   | How long alerts of one finding family accumulate into a single Finding                                                      |
-| `--projection-concurrency`        | `PATCHY_PROJECTION_CONCURRENCY`        | `2`                    | Findings projected to tracking issues in parallel (each projection may spend GitHub requests)                               |
-| `--internal-addr`                 | `PATCHY_INTERNAL_ADDR`                 | none (off)             | Listen address of the in-cluster [repository-access endpoint](#the-repository-access-endpoint); the deployments use `:9792` |
-| `--status-server-service-account` | `PATCHY_STATUS_SERVER_SERVICE_ACCOUNT` | `patchy-status-server` | The one ServiceAccount, in `--namespace`, whose token the repository-access endpoint accepts                                |
+| Flag                              | Env                                    | Default                | Purpose                                                                                                                                                                                 |
+| --------------------------------- | -------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--accumulation-window`           | `PATCHY_ACCUMULATION_WINDOW`           | `1h`                   | How long alerts of one finding family accumulate into a single Finding                                                                                                                  |
+| `--projection-concurrency`        | `PATCHY_PROJECTION_CONCURRENCY`        | `2`                    | Findings projected to tracking issues in parallel (each projection may spend GitHub requests)                                                                                           |
+| `--internal-addr`                 | `PATCHY_INTERNAL_ADDR`                 | none (off)             | Listen address of the in-cluster [repository-access](#the-repository-access-endpoint) and [GitHub-user](#the-github-user-endpoints) endpoints; the deployments use `:9792`              |
+| `--status-server-service-account` | `PATCHY_STATUS_SERVER_SERVICE_ACCOUNT` | `patchy-status-server` | The one ServiceAccount, in `--namespace`, whose token the internal endpoints accept                                                                                                     |
+| `--backfill-request-ttl`          | `PATCHY_BACKFILL_REQUEST_TTL`          | `168h`                 | How long a finished or undecided [BackfillRequest](../integrations/sources/github.md#the-manual-backfill) is kept. It must outlast the status server's `--repository-backfill-cooldown` |
 
 ## The webhook receiver
 
@@ -90,6 +91,23 @@ It also finds the `Forge` that covers the repository. For an App credential it r
 permission, so the page can warn when patchy could not push a remediation branch. A PAT reports `unknown`. This needs
 read access to `forges`.
 
+## The GitHub-user endpoints
+
+The status page's optional [Connect GitHub](../integrations/sources/github.md#connect-github) link needs the GitHub
+App's client secret, which only this controller reads. So every call behind the link comes here, on the same internal
+listener, with the same caller token and the same NetworkPolicy as the repository-access endpoint:
+
+| Route                                                | Does                                                                                               |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `POST /internal/v1/github-user/exchange`             | Exchanges the authorization code (with its PKCE verifier) for the user's token pair                |
+| `POST /internal/v1/github-user/refresh`              | Refreshes an expired access token with the single-use refresh token                                |
+| `POST /internal/v1/github-user/repositories`         | Lists the repositories the user is admin or maintain on, across the App installations they can see |
+| `POST /internal/v1/github-user/authorize-repository` | Reports the user's role on one repository, together with the Integration's alert access to it      |
+
+They act only through a github Integration that sets `spec.github.userAuthorization` and is not suspended, and through
+that Integration's base URL and proxy. User tokens travel in request and response bodies only; the controller never logs
+or stores them.
+
 ## Behavior
 
 - **Ingestion**: scanner deliveries go through the matching [`pkg/source` handler](../extending.md), which normalizes
@@ -104,4 +122,13 @@ read access to `forges`.
   comments (recorded on `spec.approval`), and `pull_request` webhooks on `patchy/<finding>` branches. A merged pull
   request moves the finding `InReview → Remediated`. A pull request closed without merging moves it `→ Failed`.
 - **Credential revalidation**: an Integration reconciler validates each Integration's referenced Secret on its
-  `spec.interval` and maintains its `Ready` condition.
+  `spec.interval` and maintains its `Ready` condition. On a github Integration with `spec.github.userAuthorization` it
+  also maintains `UserAuthorizationReady`: an App credential, a `clientSecret` in the Secret, and a client ID that
+  matches the App's own.
+- **Backfill**: a BackfillRequest reconciler walks each
+  [BackfillRequest](../integrations/sources/github.md#the-manual-backfill) through its Integration's credential, one at
+  a time, so walks never overlap. It is the single writer of the request's status. A request filed with
+  `spec.via: requested` waits in `AwaitingApproval` for an operator's `spec.decision`. A request whose Integration is
+  suspended or not `Ready` is held without spending an attempt; a failing walk retries up to five times, backing off
+  from one minute to 30. Finished and undecided requests are deleted after `--backfill-request-ttl`. It needs `get`,
+  `list`, `watch` and `delete` on `backfillrequests` and `update` on `backfillrequests/status`.

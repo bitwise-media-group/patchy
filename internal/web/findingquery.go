@@ -581,6 +581,15 @@ func rankRepositories(repos map[string]int, needle string, limit int) ([]Reposit
 func (s *Server) queryFindings(
 	ctx context.Context, fq findingQuery, verbs []string, user *User,
 ) (*FindingsPage, error) {
+	return s.queryFindingsFor(ctx, fq, func(*v1alpha1.Finding) []string { return verbs }, user)
+}
+
+// queryFindingsFor is queryFindings with the user's verbs resolved per
+// finding: the namespace grants apply uniformly, but the scoped maintainer
+// verbs depend on each finding's repository.
+func (s *Server) queryFindingsFor(
+	ctx context.Context, fq findingQuery, verbsFor func(*v1alpha1.Finding) []string, user *User,
+) (*FindingsPage, error) {
 	items, err := s.listFindings(ctx)
 	if err != nil {
 		return nil, err
@@ -625,7 +634,7 @@ func (s *Server) queryFindings(
 	}
 	page.Findings = make([]FindingSummary, 0, len(rows))
 	for _, r := range rows {
-		page.Findings = append(page.Findings, projectFindingSummary(items[r.index], verbs))
+		page.Findings = append(page.Findings, projectFindingSummary(items[r.index], verbsFor(items[r.index])))
 	}
 	if facets != nil {
 		page.Facets = facets.finish()
@@ -682,7 +691,8 @@ func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	page, err := s.queryFindings(r.Context(), fq, v.grants.Verbs, newUser(v))
+	user, live := s.userWithLinks(r, v)
+	page, err := s.queryFindingsFor(r.Context(), fq, s.verbsFor(r.Context(), v, live), user)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "query findings", slog.Any("error", err))
 		http.Error(w, "failed to load findings", http.StatusInternalServerError)

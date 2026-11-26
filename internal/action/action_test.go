@@ -440,3 +440,32 @@ func TestAvailableAgreesWithApply(t *testing.T) {
 		}
 	}
 }
+
+func TestMaintainedVerbs(t *testing.T) {
+	want := map[string]struct{ base, resource string }{
+		VerbBackfillMaintained: {VerbBackfill, ResourceIntegrations},
+		VerbApproveMaintained:  {VerbApprove, ResourceFindings},
+		VerbExpediteMaintained: {VerbExpedite, ResourceFindings},
+	}
+	if len(MaintainedVerbs) != len(want) {
+		t.Fatalf("MaintainedVerbs = %v, want %d entries", MaintainedVerbs, len(want))
+	}
+	for _, m := range MaintainedVerbs {
+		w, ok := want[m.Verb]
+		if !ok || m.Base != w.base || m.Resource != w.resource {
+			t.Errorf("MaintainedVerbs entry %+v, want base %q on %q", m, w.base, w.resource)
+		}
+		if got, ok := MaintainedFor(m.Base); !ok || got.Verb != m.Verb {
+			t.Errorf("MaintainedFor(%q) = %+v, %v", m.Base, got, ok)
+		}
+		// The base verb is a real action verb: the state machine runs it.
+		if m.Resource == ResourceFindings && !slices.Contains(ActionVerbs, m.Base) {
+			t.Errorf("%s stands in for %q, which is not an action verb", m.Verb, m.Base)
+		}
+	}
+	for _, v := range []string{VerbRetry, VerbSuspend, VerbResume, VerbReplay, VerbReset} {
+		if _, ok := MaintainedFor(v); ok {
+			t.Errorf("MaintainedFor(%q) found a scoped verb", v)
+		}
+	}
+}

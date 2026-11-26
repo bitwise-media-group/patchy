@@ -84,6 +84,15 @@ The list is saved in this browser's local storage, not on the server, so it does
 machine, and nobody else sees it. To move it, or to share a starting list with your team, use **Export** to download it
 as JSON and **Import** to load it in another browser. Clearing the site's data clears the list.
 
+**Connect GitHub to fill it for you.** Where an operator has turned on
+[Connect GitHub](../integrations/sources/github.md#connect-github) for a github Integration, the view offers **Connect
+GitHub**. It sends you to GitHub to authorize the Integration's GitHub App, then back to this page, with your GitHub
+login shown beside the button. You stay signed in to patchy as before: GitHub is a linked account, not a second sign-in.
+Once connected, you can import the repositories you maintain: those where you are admin or maintain and the App is
+installed. Pick the ones you want and they join your list, marked as imported from GitHub, and the page can tell you
+later when you no longer maintain one. **Disconnect** drops the link. A link lasts no longer than your session, and when
+GitHub stops accepting it the page offers to reconnect.
+
 **Each row counts the repository's findings by where they are:**
 
 | Column            | Phases                                |
@@ -111,16 +120,31 @@ shows why, for example:
 - GitHub Advanced Security (code scanning) is off for the repository.
 
 When an Integration can read it, the repository may simply have no open alerts, or its alerts may predate the App's
-webhook. To find out, the row offers a one-repository **Backfill**. It asks you to confirm with a second click. It then
-requests the [manual backfill](../integrations/sources/github.md#the-manual-backfill) for that one repository on the
-first Integration, by name, that can read it. If a backfill request is already waiting on that Integration, the
-repository joins its list instead of starting a new one, and a waiting request for everything already covers it. The
-button needs the same `backfill` verb on `integrations` as the configuration view's trigger. Without it, the row says
-**Ask an operator to backfill**.
+webhook. To find out, the row offers a one-repository **Backfill**. It asks you to confirm with a second click, then
+files a [backfill request](../integrations/sources/github.md#the-manual-backfill) for that one repository on the first
+Integration, by name, that can read it. What happens next depends on your grants:
 
-Backfill is **never offered for a repository that already has findings or a rollup**. Patchy already knows about those
-repositories, and webhooks keep them up to date, so a backfill would only spend GitHub API requests. The server refuses
-such a request too.
+- **With `backfill` on `integrations`**, it runs at once.
+- **With `backfill-maintained`** and a connected GitHub account, it runs at once on a repository you are admin or
+  maintain on. GitHub is asked for your role when you press the button, not just when the page loads.
+- **Otherwise** the button reads **Request backfill**, and anyone who can view findings may press it. The request waits
+  for an operator, and the row says so until one decides. If an operator denies it, the row shows their reason.
+
+The row then follows the request: waiting, running, and finally how many alerts the walk listed and ingested. A
+repository with an open request gets no second one.
+
+**A repository can be backfilled again.** Repositories patchy already knows can be backfilled too, which catches alerts
+webhooks missed. After a backfill of a repository completes, the row offers **Backfill again** once the cooldown has
+passed (24 hours by default, `--repository-backfill-cooldown` on the status server) and shows when that will be. The
+limits are the same on every path, so the page cannot become a way to hammer the GitHub API: one open request per
+repository, one walk per cooldown, and at most 10 requests per person waiting for an operator.
+
+**Operators decide requests on the same page.** People who hold `backfill` see a **Backfill requests** panel listing
+every request, newest first: who asked, for which repository and Integration, how it was authorized, and where it
+stands. Requests waiting for a decision carry **Approve** and **Deny**, with an optional reason the requester sees. A
+decision is made once. The same queue is available from a terminal with `patchy get backfillrequests`,
+`patchy approve backfillrequest <name>` and `patchy deny backfillrequest <name> --reason "..."`. Undecided requests
+expire after the integration-controller's `--backfill-request-ttl` (a week by default).
 
 The access check is cached for five minutes for each Integration and repository (30 seconds after a temporary error), so
 reloading the page does not call GitHub again. When an operator has turned the check off (an empty
@@ -153,7 +177,7 @@ namespace's configured Integrations, Forges, and derived context enhancers, with
 - credential Secret names (names only, never contents)
 - readiness
 - the failed-delivery sweep's last outcome
-- the [manual backfill](../integrations/sources/github.md#the-manual-backfill) trigger with its last run's report
+- the [manual backfill](../integrations/sources/github.md#the-manual-backfill) trigger with its latest request's report
 
 The nav link appears only for users granted `get` on `integrations`. The page is read-only apart from the backfill
 trigger. You manage the resources themselves in the cluster.
@@ -225,10 +249,15 @@ The action bar renders only the verbs the signed-in user is granted _and_ the fi
 One action works on Integrations instead of findings. It is the backfill, from the configuration view or for one
 repository from the [repositories view](#my-repositories):
 
-| Action       | Available when                                                                                        | What the server writes                                      |
-| ------------ | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| **Backfill** | a github Integration with code scanning, unsuspended                                                  | `spec.backfill` on the Integration                          |
-| **Backfill** | (one repository) the repository has no findings and no rollup, and an Integration can read its alerts | the repository added to `spec.backfill` on that Integration |
+| Action                         | Available when                                                                             | What the server writes                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **Backfill**                   | a github Integration with code or secret scanning, unsuspended                             | a new `BackfillRequest` on the Integration                                 |
+| **Backfill** (one repository)  | an Integration can read its alerts, no open request covers it, and its cooldown has passed | a new `BackfillRequest` naming the repository, run at once or as a request |
+| **Approve** / **Deny** request | a requested backfill no one has decided yet                                                | the request's `spec.decision`                                              |
+
+With `approve-maintained` or `expedite-maintained` instead of the namespace-wide verb, **Approve** and **Expedite** show
+on findings in repositories your connected GitHub account maintains, and GitHub is asked for your role again when you
+press them.
 
 The status server never moves a phase. It writes the spec field, and the controller that owns the edge makes the
 transition, the same way it does for a `/approve` issue comment or `patchy approve`. What each action then does to the
@@ -257,10 +286,13 @@ Access has two tiers:
    per-repository spend should not be visible to anyone who can reach the page. A signed-in user sees findings only if
    RBAC grants `get` on `findings`, and each action button only with the matching custom verb (`approve` / `retry` /
    `expedite` / `suspend` / `resume` on `findings.patchy.bitwisemedia.uk`). The repositories view uses the same
-   `get findings` gate. The configuration view has its own gate: native `get` on `integrations`. Its backfill trigger
-   has its own verb (`backfill` on `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Agent
-   conversations are finding content, so they use the same `get findings` gate. The change-notification stream
-   (`/events`) carries no content, only the fact that something changed. It still needs any one of the read grants:
+   `get findings` gate, and anyone who passes it may request a backfill there. The configuration view has its own gate:
+   native `get` on `integrations`. Running a backfill at once, and deciding other people's requests, has its own verb
+   (`backfill` on `integrations.patchy.bitwisemedia.uk`, beside `replay` and `reset`). Three scoped verbs,
+   `approve-maintained`, `expedite-maintained` (on findings) and `backfill-maintained` (on integrations), grant the same
+   buttons only on repositories the user maintains on GitHub, after Connect GitHub. Agent conversations are finding
+   content, so they use the same `get findings` gate. The change-notification stream (`/events`) carries no content,
+   only the fact that something changed. It still needs any one of the read grants:
 
 ```yaml
 rules:
@@ -276,6 +308,34 @@ Bind roles like this to the values of the OIDC `username`/`groups` claims, using
 grant applies to every finding in that namespace. Ready-made viewer / approver / operator / admin tiers ship in
 `deploy/kustomize/base/rbac.users.example.yaml`, and the helm chart renders them with
 `statusServer.rbac.userRoles=true`.
+
+A `patchy-maintainer` tier ships beside them. It suits a broad group, such as every engineer signing in through dex,
+because the maintainer verbs scope themselves to each person's repositories:
+
+```yaml
+rules:
+  - apiGroups: [patchy.bitwisemedia.uk]
+    resources: [findings, findingrollups]
+    verbs: [get]
+  - apiGroups: [patchy.bitwisemedia.uk]
+    resources: [findings]
+    verbs: [approve-maintained, expedite-maintained]
+  - apiGroups: [patchy.bitwisemedia.uk]
+    resources: [integrations]
+    verbs: [backfill-maintained]
+  - apiGroups: [patchy.bitwisemedia.uk]
+    resources: [backfillrequests]
+    verbs: [get, list, watch]
+```
+
+The maintainer verbs work on the status page only. The CLI and the admission policy do not honour them, because only the
+status page can present the GitHub link; a direct API write still needs the namespace-wide verb.
+
+!!! note "Why not sign in with GitHub through dex?"
+
+    Dex issues its own tokens and never passes the upstream GitHub token on, so a dex sign-in cannot act as the user on
+    GitHub. Sign-in stays on dex, whose groups drive RBAC, and GitHub is a linked account that only narrows the
+    maintainer verbs. See [Connect GitHub](../integrations/sources/github.md#connect-github).
 
 ## Exposing the page
 

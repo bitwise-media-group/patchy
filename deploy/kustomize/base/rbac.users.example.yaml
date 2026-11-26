@@ -37,11 +37,30 @@
 #                          minimum age, queue position).
 #   * the configuration view: native `get` on integrations shows the
 #                          Forges/Integrations/enhancers configuration page.
-#   * the backfill trigger: the CUSTOM verb backfill on
-#                          integrations.patchy.bitwisemedia.uk stamps
-#                          spec.backfill. That starts a one-shot list-alerts
+#   * backfill:           the CUSTOM verb backfill on
+#                          integrations.patchy.bitwisemedia.uk runs a
+#                          BackfillRequest at once (a one-shot list-alerts
 #                          walk that ingests alerts predating webhook
-#                          coverage.
+#                          coverage), and decides (approves or denies) the
+#                          requests other people file. From the CLI it also
+#                          needs native create/get/list/watch on
+#                          backfillrequests, plus update to decide.
+#   * requesting a backfill: anyone who can view findings may file a request
+#                          on the status page (the server files it). From
+#                          the CLI (`patchy backfill --request`) it needs
+#                          native create on backfillrequests; the admission
+#                          policy holds such a request to spec.via
+#                          "requested", so it waits for an operator.
+#   * the maintainer verbs: the CUSTOM verbs backfill-maintained (on
+#                          integrations), approve-maintained and
+#                          expedite-maintained (on findings) stand in for
+#                          backfill, approve and expedite, but only on
+#                          repositories where the user's linked GitHub
+#                          identity ("Connect GitHub" on the status page) is
+#                          admin or maintain. GitHub is asked live on every
+#                          action. ONLY the status page honours them: the
+#                          CLI and the admission policy do not, so a direct
+#                          API write still needs the base verb.
 #   * the user menu's demo tooling: the CUSTOM verbs replay / reset on
 #                          integrations.patchy.bitwisemedia.uk. replay asks
 #                          the integration-controller to redeliver the
@@ -56,6 +75,12 @@
 # findings must move those verbs to an integrations rule (with the native
 # update/patch to write the stamp), as patchy-findings-admin below does.
 #
+# MIGRATION (pre-1.0 breaking change): Integration spec.backfill is gone.
+# Backfill is its own kind, BackfillRequest. The backfill verb on
+# integrations still decides who may run one, but a CLI or direct-API user
+# now writes a BackfillRequest instead of the Integration, so add the
+# backfillrequests rule patchy-findings-admin carries below.
+#
 # Metrics (rollup statistics) need native get on findingrollups, on the
 # status page and through the API server alike (`patchy get rollups` also
 # needs list). Every role below already carries both.
@@ -66,6 +91,9 @@
 # Grants apply per namespace, equally to every finding in it.
 ---
 # Read-only: sees the findings board and detail, never an action button.
+# The backfillrequests rule is optional: it lets the CLI file a backfill
+# request for an operator to decide (`patchy backfill --request`) and follow
+# it. The status page's request button needs no such grant.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -76,6 +104,9 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings, findingrollups]
       verbs: [get, list]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
 # Viewer + the approve button (AwaitingApproval holds and HandedOff revival).
 apiVersion: rbac.authorization.k8s.io/v1
@@ -93,6 +124,10 @@ rules:
       # update is the native verb the API server checks. The admission policy
       # limits it to spec.approval for this role.
       verbs: [update, patch, approve]
+    # Optional, as for the viewer: file a backfill request from the CLI.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
 # Viewer + every action: approve, retry, expedite, suspend, resume.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -108,10 +143,15 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
       verbs: [update, patch, approve, retry, expedite, suspend, resume]
+    # Optional, as for the viewer: file a backfill request from the CLI.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
-# Operator + the configuration view, the backfill trigger, and the user
-# menu's demo tooling: replay the webhook delivery log, reset (delete) all
-# pipeline state. Grant replay/reset sparingly, in demo/dev environments.
+# Operator + the configuration view, backfill (running and deciding
+# requests), and the user menu's demo tooling: replay the webhook delivery
+# log, reset (delete) all pipeline state. Grant replay/reset sparingly, in
+# demo/dev environments.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -131,6 +171,38 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, update, patch, backfill, replay, reset]
+    # The CLI's backfill paths: create files a request (`patchy backfill`),
+    # update records a decision (`patchy approve|deny backfillrequest`), and
+    # get/list/watch follow them. The admission policy checks the backfill
+    # verb above for every write.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list, watch, update]
+---
+# A repository maintainer: viewer, plus backfill, approve and expedite on
+# the repositories they maintain on GitHub. The scoped verbs act only after
+# the user links their GitHub account on the status page, and only where
+# GitHub reports them as admin or maintain, checked live on every action.
+# Status page only: no update on findings, so no direct API write.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: patchy-maintainer
+    labels:
+        app.kubernetes.io/part-of: patchy
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings, findingrollups]
+      verbs: [get]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [approve-maintained, expedite-maintained]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [backfill-maintained]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [get, list, watch]
 ---
 # Example bindings: an SSO group of operators, one individual approver.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -164,6 +236,25 @@ subjects:
     - kind: User
       apiGroup: rbac.authorization.k8s.io
       name: dev@example.com # a `username` claim value
+---
+# Every engineer signing in through dex: sign-in stays on dex, whose groups
+# drive this binding, and GitHub is a linked account that scopes the
+# maintainer verbs to the repositories each person maintains.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: patchy-maintainers
+    namespace: patchy
+    labels:
+        app.kubernetes.io/part-of: patchy
+roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: patchy-maintainer
+subjects:
+    - kind: Group
+      apiGroup: rbac.authorization.k8s.io
+      name: acme:engineering # a dex `groups` claim value (GitHub connector: org:team)
 ---
 # Remote-evaluation submitters (the evolve CLI): create submits an
 # evaluation and uploads workspaces, get reads snapshots and streams the SSE

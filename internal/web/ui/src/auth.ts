@@ -6,6 +6,8 @@
 //                         JSON). Absent means sign-in is not configured.
 //   patchy-auth-error:    human-readable sign-in failure, shown once.
 //   patchy-auth-logout:   marker set by sign-out; suppresses autoLogin.
+//   patchy-github-error:  human-readable "Connect GitHub" failure, shown
+//                         once (internal/web/ghlink).
 
 export interface AuthProvider {
   provider: string;
@@ -16,6 +18,7 @@ export interface AuthProvider {
 const PROVIDER_COOKIE = "patchy-auth-provider";
 const ERROR_COOKIE = "patchy-auth-error";
 const LOGOUT_COOKIE = "patchy-auth-logout";
+const GITHUB_ERROR_COOKIE = "patchy-github-error";
 
 function readCookie(name: string): string | null {
   for (const part of document.cookie.split(";")) {
@@ -50,6 +53,13 @@ export function readProvider(): AuthProvider | null {
 export function readAuthError(): string | null {
   const msg = readJSONCookie<string>(ERROR_COOKIE);
   if (msg) deleteCookie(ERROR_COOKIE);
+  return typeof msg === "string" && msg ? msg : null;
+}
+
+// readGitHubError returns and clears the last failed GitHub connection.
+export function readGitHubError(): string | null {
+  const msg = readJSONCookie<string>(GITHUB_ERROR_COOKIE);
+  if (readCookie(GITHUB_ERROR_COOKIE) !== null) deleteCookie(GITHUB_ERROR_COOKIE);
   return typeof msg === "string" && msg ? msg : null;
 }
 

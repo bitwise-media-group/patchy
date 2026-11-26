@@ -155,15 +155,40 @@ GitHub never retries a failed delivery on its own. Enable `spec.github.redeliver
 sweeps the App's delivery log every reconcile interval, redelivering anything that missed. This needs App credentials,
 because a PAT cannot see the delivery log. The status page's user menu adds a full replay on demand (`spec.replay`, RBAC
 verb `replay`). Some alerts predate webhook coverage entirely, so the delivery log has nothing to replay. The manual
-backfill reaches those (`spec.backfill`, verb `backfill`). It is a bounded list-alerts walk that you start from the
-status page's configuration view or with `patchy backfill`.
+backfill reaches those. It is a bounded list-alerts walk, filed as a `BackfillRequest` object from the status page or
+with `patchy backfill`. The integration-controller walks the requests one at a time and deletes finished ones after
+`--backfill-request-ttl` (default `168h`).
 
 The integration-scoped actions are custom RBAC verbs on `integrations.patchy.bitwisemedia.uk`: `backfill`, `replay`, and
-`reset`. The `patchy-integration-actions` admission policy enforces them field by field, in the same way
-`patchy-finding-actions` enforces the finding verbs (`base/admission-policy.yaml`). **Migration note (pre-1.0 breaking
-change):** `replay` and `reset` used to be verbs on `findings`. They moved to `integrations`, which is the resource they
-stamp and the one the admission policy's authorizer checks. Role bindings that grant them on findings must move those
-verbs to an `integrations` rule. `base/rbac.users.example.yaml` shows the shape.
+`reset`. The `patchy-integration-actions` admission policy enforces `replay` and `reset` field by field, in the same way
+`patchy-finding-actions` enforces the finding verbs (`base/admission-policy.yaml`). The `patchy-backfill-requests`
+policy does the same for BackfillRequests: a request that runs at once needs `backfill`, a request with
+`spec.via: requested` needs no verb and waits for an operator, `spec.requestedBy` must be the creating user, and only an
+operator with `backfill` may set `spec.decision`. The status server's scoped maintainer verbs (`backfill-maintained`,
+`approve-maintained`, `expedite-maintained`) are honoured by the status page alone, so no policy mentions them.
+
+**Migration notes (pre-1.0 breaking changes):**
+
+- `replay` and `reset` used to be verbs on `findings`. They moved to `integrations`, which is the resource they stamp
+  and the one the admission policy's authorizer checks. Role bindings that grant them on findings must move those verbs
+  to an `integrations` rule.
+- `Integration.spec.backfill` and `status.backfill` are gone. Apply the new `BackfillRequest` CRD and admission policy
+  with the release (the base lists both). Users who backfill from the CLI need native `create`, `get`, `list` and
+  `watch` on `backfillrequests` beside the `backfill` verb, plus `update` to approve or deny requests. Viewers may get
+  `create` alone, so `patchy backfill --request` works.
+
+`base/rbac.users.example.yaml` shows the shape of every grant, including a `patchy-maintainer` role bound to a dex
+group.
+
+### Connect GitHub (optional)
+
+A github Integration can let status-page users link their own GitHub account through its GitHub App, so the page lists
+the repositories they maintain and the maintainer verbs act on those. Set `spec.github.userAuthorization.clientID` to
+the App's client ID, add the App's OAuth client secret to the Integration's credential Secret under `clientSecret`,
+register `https://<status-host>/oauth2/github/<integration>/callback` as a callback URL on the App, and turn on **Expire
+user authorization tokens**. The status server needs nothing new in mode `oidc`. In modes `anonymous` and `none`, set
+`linkKeyFile` in its auth config (see `base/secrets.example.yaml` #3). See
+[the GitHub source docs](../docs/integrations/sources/github.md#connect-github) for the details.
 
 Webhooks do **not** drive pipeline progress. The gates ("accumulation closed", "older than an hour", "a free remediation
 slot") are conditions that no event can announce. The controllers' watch-driven reconcile loops move the pipeline

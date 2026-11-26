@@ -22,7 +22,11 @@ Many binaries, one module. "Not monolithic" means separate binaries and deployme
   secrets). It turns scanner alerts into Findings (accumulation, duplicate merge) and projects Findings out as tracking
   issues. For non-github sources, trackingRef falls back to the namespace's Integration that has issues enabled. It
   applies human signals (issue close, `/approve`, PR merge) back onto Findings, and POSTs dismissal verdicts to generic
-  integrations' resolver endpoints.
+  integrations' resolver endpoints. It hosts the `BackfillRequest` reconciler (walks requests one at a time, the single
+  writer of their status, deletes finished and undecided ones after `--backfill-request-ttl`). On its internal listener
+  (`:9792`, the status server's projected token only) it serves the repository-access check and the GitHub-user
+  endpoints behind "Connect GitHub" (code exchange, refresh, maintained-repository list, live role check); it alone
+  reads the App's `clientSecret`.
 - `cmd/source-controller`: the `Forge` and `Repository` reconcilers. It validates forge credentials, pins each
   Repository's head SHA once, downloads the tarball at that SHA (plain HTTP, no git binary), and serves it from the
   artifact endpoint (`:9790`). Agent pods fetch from there without a credential.
@@ -74,17 +78,27 @@ Many binaries, one module. "Not monolithic" means separate binaries and deployme
   - the embedded SPA and a JSON view of Findings and FindingRollups, plus an SSE signal to refetch;
   - OIDC sign-in;
   - the approve, retry, expedite, suspend and resume actions, each gated by an access review;
-  - the user-menu demo tools (replay sets Integration `spec.replay`; reset sets Integration `spec.reset`).
+  - the user-menu demo tools (replay sets Integration `spec.replay`; reset sets Integration `spec.reset`);
+  - backfills: it creates `BackfillRequest`s (at once on `backfill`, at once on `backfill-maintained` for a repository
+    the linked GitHub identity maintains, or as a request any viewer may file), with one open request per repository,
+    a per-repository cooldown (`--repository-backfill-cooldown`) and 10 waiting requests per user; operators approve or
+    deny on the same page (`spec.decision`);
+  - the optional "Connect GitHub" link (`/oauth2/github/<integration>/…`, `internal/web/ghlink`), and the scoped
+    maintainer verbs `approve-maintained`, `expedite-maintained` and `backfill-maintained`, which only it honours
+    (live GitHub role check on every POST; the CLI and the admission policy ignore them).
 
   Every data route needs an authorised identity (metrics: `get` on findingrollups; findings: `get` on findings). Only
   auth mode none opens them, and with no auth config the server serves nothing. It writes SPEC only (`spec.approval`,
-  `spec.retry`, `spec.expedite`, `spec.suspend`, and Integration `spec.replay`, `spec.reset` and `spec.backfill`). It
-  never writes status or a phase.
+  `spec.retry`, `spec.expedite`, `spec.suspend`, and Integration `spec.replay` and `spec.reset`), plus new
+  `BackfillRequest`s and their one-time `spec.decision`. It never writes status or a phase, and never calls GitHub:
+  every GitHub call goes through the integration-controller.
 
 - `cmd/patchy`: the workstation CLI, and the only binary that is not deployed. It runs `patchy <verb> <noun>` with the
   caller's own kubeconfig, not through any controller: get, describe, review, browse and can-i, plus the five action
-  verbs. Like status-server, it writes SPEC only. For direct API writes, the custom verbs are enforced by the
-  ValidatingAdmissionPolicy in `deploy/kustomize/base/admission-policy.yaml`. The CLI's own SelfSubjectAccessReview is
+  verbs. Like status-server, it writes SPEC only, plus the `BackfillRequest`s it files and decides (`patchy backfill`,
+  `patchy approve|deny backfillrequest`). For direct API writes, the custom verbs are enforced by the
+  ValidatingAdmissionPolicies in `deploy/kustomize/base/admission-policy.yaml` (`patchy-backfill-requests` covers
+  BackfillRequests). The CLI's own SelfSubjectAccessReview is
   only there to give a clearer error early.
 
   It also carries three command groups that need no cluster: `dev` (the generic-integration test harness), `mirror`
@@ -161,7 +175,8 @@ completions/        GENERATED shell completions. They are committed so the Homeb
 ## Packages (`internal/`)
 
 - `controller/`: one engine per controller binary; the binaries are thin wiring over these.
-  - `controller/integration`: receiver, ingest, projection and human signals.
+  - `controller/integration`: receiver, ingest, projection, human signals, the BackfillRequest walker and the
+    internal repository-access and GitHub-user handlers.
   - `controller/source`: the Forge and Repository reconcilers.
   - `controller/context`: the enhancer chain.
   - `controller/investigation`: the gate and the analysis scheduler.
@@ -184,16 +199,22 @@ completions/        GENERATED shell completions. They are committed so the Homeb
 - `action`: the human-action vocabulary (the custom verbs) and the state-machine checks behind each one. `Apply`
   changes spec, and `Available` reports what a finding currently allows. It lives here so the status server and the
   CLI cannot drift apart; `web/authz` re-exports the verb constants. It decides whether an action makes sense, never
-  whether the caller may take it.
-- `web` (with `web/auth` and `web/authz`): the status-server backend.
+  whether the caller may take it. `MaintainedVerbs` maps each scoped maintainer verb onto the base verb it stands
+  in for.
+- `web` (with `web/auth`, `web/authz` and `web/ghlink`): the status-server backend.
   - Wire types that mirror the SPA's `ui/src/types.ts`. Keep the two in step.
   - The action handlers, the SSE broker and the cache-informer watcher.
   - The embedded UI (`internal/web/ui`, Preact on bun). `build.ts` bundles one inlined `index.html` with Bun.build,
     embedded behind the `withui` tag. `mise run ui` builds it, `mise run ui-dev` serves it with hot reload against a
     running status server, and a bare `go build` compiles a stub.
-  - `auth` is who you are: OIDC, none, anonymous or unconfigured, plus cookie sessions, with no k8s imports. `authz` is
-    what you may do: SubjectAccessReviews for the custom verbs (approve, retry, expedite, suspend, resume) and native
-    get.
+  - `auth` is who you are: OIDC, none, anonymous or unconfigured, plus cookie sessions, with no k8s imports. It also
+    derives the GitHub link-cookie key (`LinkKey`: from the OIDC client secret, or `linkKeyFile` in modes anonymous and
+    none). `authz` is what you may do: SubjectAccessReviews for the custom verbs (approve, retry, expedite, suspend,
+    resume, backfill, replay, reset, and the scoped `*-maintained` verbs) and native get, 14 per identity.
+  - `ghlink` is the optional "Connect GitHub" link: the GitHub App user-to-server OAuth flow (PKCE) on
+    `/oauth2/github/<integration>/{authorize,callback,disconnect}`, one sealed `HttpOnly` cookie per Integration bound
+    to the patchy username, and lazy single-flight token refresh. Every GitHub call goes through `ghuser`. Sign-in
+    stays on the configured provider (dex issues its own tokens and never passes the GitHub token through).
 - `ghas`, `enhancers`: the built-in `pkg/source` and `pkg/enhance` implementations.
 - `generic`: the generic integration's behaviour over the `pkg/generic` wire contract. It holds the validating source
   handler (the source id is the Integration's NAME, so many integrations can coexist) and the HMAC-signing outbound
@@ -243,6 +264,11 @@ completions/        GENERATED shell completions. They are committed so the Homeb
 
   `evalresults` is the results ConfigMap store for each unit (a sibling of `transcriptstore`).
 
+- `ghuser`: the wire contract of the integration-controller's internal GitHub-user endpoints
+  (`/internal/v1/github-user/{exchange,refresh,repositories,authorize-repository}`) and the client the status server
+  calls them with. Stdlib-only (plus `repoaccess`), so the status server never links the GitHub client. User tokens
+  travel in bodies only and are never logged or stored by the controller. The handlers are
+  `controller/integration/ghuser.go`.
 - `ghpush`: replays the agent's changeset through the GitHub Git Data API (blob, tree, commit, ref). It is the only
   place a write credential is used. There is no git binary anywhere on the controller side.
 - `mirror`: the engine behind `patchy mirror`. Only the CLI uses it; no controller does. It mirrors vendored upstream
@@ -374,5 +400,7 @@ Every phase edge has exactly one writer component. The flow is
 - `spec.expedite` skips accumulation and the minimum age, and moves the finding to the front of both schedulers'
   queues.
 
-Accumulation is a condition (`AccumulationComplete`), not a phase. See DESIGN.md for the full flow, and
+Accumulation is a condition (`AccumulationComplete`), not a phase. `BackfillRequest` phases (`AwaitingApproval`,
+`Pending`, `Complete`, `Failed`, `Denied`) are a local enum with the integration-controller as their only writer, like
+the evaluation kinds, and never part of the Finding transition table. See DESIGN.md for the full flow, and
 [docs/concepts/lifecycle.md](docs/concepts/lifecycle.md) for the transition table with its writers.

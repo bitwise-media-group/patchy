@@ -95,6 +95,16 @@ var Kinds = []Kind{
 		NewList:  func() client.ObjectList { return &v1alpha1.IntegrationList{} },
 	},
 	{
+		// A backfill request is the one kind a person files rather than a
+		// controller: a one-shot walk of an integration's open alerts.
+		Singular: "backfillrequest",
+		Plural:   "backfillrequests",
+		Title:    "Backfill requests",
+		Aliases:  []string{"bfr"},
+		New:      func() client.Object { return &v1alpha1.BackfillRequest{} },
+		NewList:  func() client.ObjectList { return &v1alpha1.BackfillRequestList{} },
+	},
+	{
 		Singular: "forge",
 		Plural:   "forges",
 		Title:    "Forges",

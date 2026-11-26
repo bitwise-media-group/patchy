@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -186,19 +187,47 @@ func TestTrackedRepositoriesValidation(t *testing.T) {
 }
 
 func TestTrackedRepositoriesBackfillState(t *testing.T) {
-	at := metav1.NewTime(testClock.Add(-time.Hour))
 	done := metav1.NewTime(testClock.Add(-time.Hour))
-	pendingList := scanningIntegration("a-pending", func(i *v1alpha1.Integration) {
-		i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "op", At: at, Repositories: []string{"acme/shop"}}
-	})
-	finished := scanningIntegration("b-finished", func(i *v1alpha1.Integration) {
-		i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "op", At: at, Repositories: []string{"acme/", "x/y"}}
-		i.Status.Backfill = &v1alpha1.BackfillStatus{
-			BackfilledAt: &done, AttemptedAt: &done, LastRunAt: &done, Listed: 12, Ingested: 11,
-		}
-	})
-	s := repoServer(t, authz.Grants{View: true, Integration: []string{authz.VerbBackfill}}, nil, pendingList, finished)
-	code, body := doRequest(t, s, http.MethodGet, "/api/repositories?"+repoParams("acme/shop", "acme/api", "x/z"), "")
+	old := metav1.NewTime(testClock.Add(-48 * time.Hour))
+	objs := []client.Object{
+		// acme/shop: an open request beats a newer finished one.
+		testBackfillRequest("shop-open", -2*time.Hour, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{"acme/shop"}
+			b.Spec.Via = v1alpha1.BackfillViaRequested
+		}),
+		testBackfillRequest("shop-done", -time.Hour, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{"acme/shop"}
+			b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, CompletedAt: &done, Attempts: 1}
+		}),
+		// acme/api: an owner prefix covers it, finished an hour ago: inside
+		// the cooldown.
+		testBackfillRequest("acme-prefix", -90*time.Minute, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{"acme/", "x/y"}
+			b.Status = v1alpha1.BackfillRequestStatus{
+				Phase: v1alpha1.BackfillComplete, CompletedAt: &done, LastAttemptAt: &done, Attempts: 1, Listed: 12, Ingested: 11,
+			}
+		}),
+		// x/old: finished two days ago: outside the cooldown.
+		testBackfillRequest("x-old", -49*time.Hour, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{"x/old"}
+			b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, CompletedAt: &old, Attempts: 1}
+		}),
+		// x/denied: an operator said no.
+		testBackfillRequest("x-denied", -time.Hour, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{"x/denied"}
+			b.Spec.Via = v1alpha1.BackfillViaRequested
+			b.Spec.Decision = &v1alpha1.BackfillDecision{Verdict: v1alpha1.BackfillDeniedVerdict, By: "ops", At: done,
+				Reason: "already scanned"}
+			b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillDenied, CompletedAt: &done}
+		}),
+		// A finished whole-scope walk says nothing about x/z.
+		testBackfillRequest("whole", -time.Hour, func(b *v1alpha1.BackfillRequest) {
+			b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, CompletedAt: &done}
+		}),
+	}
+	s := repoServer(t, authz.Grants{View: true, Integration: []string{authz.VerbBackfill}}, nil, objs...)
+	code, body := doRequest(t, s, http.MethodGet, "/api/repositories?"+
+		repoParams("acme/shop", "acme/api", "x/old", "x/denied", "x/z"), "")
 	if code != http.StatusOK {
 		t.Fatalf("status = %d: %s", code, body)
 	}
@@ -206,20 +235,35 @@ func TestTrackedRepositoriesBackfillState(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatal(err)
 	}
-	if !out.CanBackfill {
-		t.Error("canBackfill = false with the backfill grant")
+	if !out.CanBackfill || !out.CanRequestBackfill || out.CanBackfillMaintained ||
+		out.CooldownSeconds != int64(DefaultBackfillCooldown.Seconds()) {
+		t.Errorf("payload flags = %+v", out)
 	}
-	shop, api, xz := out.Repositories[0].Backfill, out.Repositories[1].Backfill, out.Repositories[2].Backfill
-	// A pending request beats a finished one.
-	if shop == nil || shop.Integration != "a-pending" || !shop.Pending {
-		t.Errorf("acme/shop backfill = %+v, want pending on a-pending", shop)
+	checkBackfillRows(t, out.Repositories, done.Add(DefaultBackfillCooldown).UTC().Format(time.RFC3339))
+}
+
+// checkBackfillRows asserts TestTrackedRepositoriesBackfillState's rows.
+func checkBackfillRows(t *testing.T, r []RepositorySummary, wantAvail string) {
+	t.Helper()
+	if b := r[0].Backfill; b == nil || b.Request != "shop-open" || !b.Pending || b.Phase != "AwaitingApproval" ||
+		b.Via != "requested" {
+		t.Errorf("acme/shop backfill = %+v, want the open request awaiting approval", b)
 	}
-	// An owner prefix covers the repository.
-	if api == nil || api.Integration != "b-finished" || api.Pending || api.Listed != 12 {
-		t.Errorf("acme/api backfill = %+v, want finished on b-finished", api)
+	if b := r[1].Backfill; b == nil || b.Request != "acme-prefix" || b.Pending || b.Listed != 12 {
+		t.Errorf("acme/api backfill = %+v, want the finished prefix walk", b)
 	}
-	if xz != nil {
-		t.Errorf("x/z backfill = %+v, want none", xz)
+	if r[1].BackfillAvailableAt != wantAvail || r[0].BackfillAvailableAt != wantAvail {
+		t.Errorf("availableAt = %q / %q, want %q (inside the cooldown)", r[0].BackfillAvailableAt,
+			r[1].BackfillAvailableAt, wantAvail)
+	}
+	if r[2].BackfillAvailableAt != "" || r[2].Backfill == nil {
+		t.Errorf("x/old = %+v, want backfillable again", r[2])
+	}
+	if b := r[3].Backfill; b == nil || b.Phase != "Denied" || b.DecisionReason != "already scanned" {
+		t.Errorf("x/denied backfill = %+v, want the denial and its reason", b)
+	}
+	if r[4].Backfill != nil || r[4].BackfillAvailableAt != "" {
+		t.Errorf("x/z = %+v, want nothing", r[4])
 	}
 }
 
@@ -287,11 +331,15 @@ func TestRepositoryAccessUnavailable(t *testing.T) {
 }
 
 func TestRepositoryBackfill(t *testing.T) {
-	at := metav1.NewTime(testClock.Add(-time.Minute))
-	full := make([]string, maxBackfillRepos)
-	for i := range full {
-		full[i] = "acme/r" + strings.Repeat("x", i+1)
+	recent := metav1.NewTime(testClock.Add(-time.Hour))
+	stale := metav1.NewTime(testClock.Add(-25 * time.Hour))
+	finished := func(name, repo string, at metav1.Time) *v1alpha1.BackfillRequest {
+		return testBackfillRequest(name, at.Sub(testClock), func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Repositories = []string{repo}
+			b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, CompletedAt: &at, Attempts: 1}
+		})
 	}
+	viewer := authz.Grants{View: true}
 	cases := []struct {
 		name        string
 		grants      authz.Grants
@@ -299,63 +347,57 @@ func TestRepositoryBackfill(t *testing.T) {
 		objs        []client.Object
 		want        int
 		wantOutcome string
-		wantRepos   []string
-		wantBy      string
+		wantVia     v1alpha1.BackfillVia
+		wantCreated bool
 	}{
 		{
-			name: "new request", grants: allGrants(), body: `{"repository":"acme/new"}`,
+			name: "granted: runs at once", grants: allGrants(), body: `{"repository":"acme/new"}`,
 			objs: []client.Object{scanningIntegration("gh")},
-			want: http.StatusOK, wantOutcome: "requested", wantRepos: []string{"acme/new"}, wantBy: "op@acme.test",
+			want: http.StatusOK, wantOutcome: outcomeRequested, wantCreated: true,
 		},
 		{
-			name: "replaces a finished request", grants: allGrants(), body: `{"repository":"acme/new"}`,
-			objs: []client.Object{scanningIntegration("gh", func(i *v1alpha1.Integration) {
-				i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "old", At: at, Repositories: []string{"x/"}}
-				i.Status.Backfill = &v1alpha1.BackfillStatus{BackfilledAt: &at}
-			})},
-			want: http.StatusOK, wantOutcome: "requested", wantRepos: []string{"acme/new"}, wantBy: "op@acme.test",
+			// Patchy has seen it, and that no longer matters: only the
+			// cooldown does.
+			name: "a known repository can be backfilled again", grants: allGrants(), body: `{"repository":"acme/shop"}`,
+			objs: []client.Object{scanningIntegration("gh"), repoFinding("f1", "acme/shop", v1alpha1.PhaseRemediated),
+				finished("old", "acme/shop", stale)},
+			want: http.StatusOK, wantOutcome: outcomeRequested, wantCreated: true,
 		},
 		{
-			name: "merges into a pending list", grants: allGrants(), body: `{"repository":"acme/new"}`,
-			objs: []client.Object{scanningIntegration("gh", func(i *v1alpha1.Integration) {
-				i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "other", At: at, Repositories: []string{"x/y"}}
-			})},
-			want: http.StatusOK, wantOutcome: "merged", wantRepos: []string{"x/y", "acme/new"}, wantBy: "other",
+			name: "inside the cooldown", grants: allGrants(), body: `{"repository":"acme/shop"}`,
+			objs: []client.Object{scanningIntegration("gh"), finished("recent", "acme/shop", recent)},
+			want: http.StatusTooManyRequests,
 		},
 		{
-			name: "covered by a pending full scope", grants: allGrants(), body: `{"repository":"acme/new"}`,
-			objs: []client.Object{scanningIntegration("gh", func(i *v1alpha1.Integration) {
-				i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "other", At: at}
-			})},
-			want: http.StatusOK, wantOutcome: "covered", wantBy: "other",
+			name: "inside the cooldown through a prefix walk", grants: allGrants(), body: `{"repository":"acme/shop"}`,
+			objs: []client.Object{scanningIntegration("gh"), finished("recent", "acme/", recent)},
+			want: http.StatusTooManyRequests,
 		},
 		{
-			name: "covered by a pending prefix", grants: allGrants(), body: `{"repository":"acme/new"}`,
-			objs: []client.Object{scanningIntegration("gh", func(i *v1alpha1.Integration) {
-				i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "other", At: at, Repositories: []string{"acme/"}}
-			})},
-			want: http.StatusOK, wantOutcome: "covered", wantRepos: []string{"acme/"}, wantBy: "other",
+			name: "covered by an open request", grants: allGrants(), body: `{"repository":"acme/new"}`,
+			objs: []client.Object{scanningIntegration("gh"), testBackfillRequest("open", -time.Minute,
+				func(b *v1alpha1.BackfillRequest) { b.Spec.Repositories = []string{"acme/"} })},
+			want: http.StatusOK, wantOutcome: outcomeCovered,
 		},
 		{
-			name: "pending list full", grants: allGrants(), body: `{"repository":"acme/new"}`,
-			objs: []client.Object{scanningIntegration("gh", func(i *v1alpha1.Integration) {
-				i.Spec.Backfill = &v1alpha1.BackfillRequest{By: "other", At: at, Repositories: full}
-			})},
-			want: http.StatusConflict,
+			name: "covered by an open whole-scope request", grants: viewer, body: `{"repository":"acme/new","request":true}`,
+			objs: []client.Object{scanningIntegration("gh"), testBackfillRequest("open", -time.Minute)},
+			want: http.StatusOK, wantOutcome: outcomeCovered,
 		},
 		{
-			name: "no grant", grants: authz.Grants{View: true}, body: `{"repository":"acme/new"}`,
+			name: "no grant: told to request", grants: viewer, body: `{"repository":"acme/new"}`,
 			objs: []client.Object{scanningIntegration("gh")}, want: http.StatusForbidden,
 		},
 		{
-			name: "repository has findings", grants: allGrants(), body: `{"repository":"acme/shop"}`,
-			objs: []client.Object{scanningIntegration("gh"), repoFinding("f1", "acme/shop", v1alpha1.PhaseRemediated)},
-			want: http.StatusConflict,
+			name: "viewer files a request", grants: viewer, body: `{"repository":"acme/new","request":true}`,
+			objs: []client.Object{scanningIntegration("gh")},
+			want: http.StatusOK, wantOutcome: outcomeAwaitingApproval, wantVia: v1alpha1.BackfillViaRequested,
+			wantCreated: true,
 		},
 		{
-			name: "repository has a rollup", grants: allGrants(), body: `{"repository":"acme/old"}`,
-			objs: []client.Object{scanningIntegration("gh"), testRollup(v1alpha1.ScopeRepository, "acme/old", "r")},
-			want: http.StatusConflict,
+			name: "a request needs the view grant", grants: authz.Grants{Metrics: true},
+			body: `{"repository":"acme/new","request":true}`,
+			objs: []client.Object{scanningIntegration("gh")}, want: http.StatusForbidden,
 		},
 		{
 			name: "no integration can read it", grants: allGrants(), body: `{"repository":"acme/locked"}`,
@@ -377,14 +419,16 @@ func TestRepositoryBackfill(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			access := &fakeAccess{readable: map[string]string{"acme/new": "gh", "acme/shop": "gh", "acme/old": "gh"}}
+			access := &fakeAccess{readable: map[string]string{"acme/new": "gh", "acme/shop": "gh"}}
 			s := repoServer(t, tc.grants, access, tc.objs...)
+			before := countRequests(t, s)
 			code, body := doRequest(t, s, http.MethodPost, "/api/repositories/backfill", tc.body)
 			if code != tc.want {
 				t.Fatalf("status = %d (%s), want %d", code, body, tc.want)
 			}
-			if code == http.StatusConflict && strings.Contains(tc.name, "has") && len(access.asked) > 0 {
-				t.Fatalf("a known repository reached the access check: %v", access.asked)
+			created := countRequests(t, s) - before
+			if created != map[bool]int{true: 1}[tc.wantCreated] {
+				t.Fatalf("requests created = %d, want created %v", created, tc.wantCreated)
 			}
 			if tc.want != http.StatusOK {
 				return
@@ -393,27 +437,130 @@ func TestRepositoryBackfill(t *testing.T) {
 			if err := json.Unmarshal([]byte(body), &res); err != nil {
 				t.Fatal(err)
 			}
-			if res.Integration != "gh" || res.Outcome != tc.wantOutcome {
+			if res.Integration != "gh" || res.Outcome != tc.wantOutcome || res.Request == "" {
 				t.Fatalf("result = %+v, want gh/%s", res, tc.wantOutcome)
 			}
-			var integ v1alpha1.Integration
-			if err := mustClient(s).Get(t.Context(), types.NamespacedName{Namespace: "patchy", Name: "gh"}, &integ); err != nil {
+			if !tc.wantCreated {
+				return
+			}
+			var bfr v1alpha1.BackfillRequest
+			key := types.NamespacedName{Namespace: "patchy", Name: res.Request}
+			if err := mustClient(s).Get(t.Context(), key, &bfr); err != nil {
 				t.Fatal(err)
 			}
-			req := integ.Spec.Backfill
-			if req == nil || !slices.Equal(req.Repositories, tc.wantRepos) || req.By != tc.wantBy {
-				t.Fatalf("spec.backfill = %+v, want repositories %v by %s", req, tc.wantRepos, tc.wantBy)
-			}
-			// A write moves the request time on, so the merged list is
-			// pending again even if a walk of the old list is in flight.
-			wantAt := testClock
-			if tc.wantOutcome == "covered" {
-				wantAt = at.Time
-			}
-			if !req.At.Time.Equal(wantAt) {
-				t.Fatalf("spec.backfill.at = %v, want %v", req.At.Time, wantAt)
+			if bfr.Spec.RequestedBy != "op@acme.test" || bfr.Spec.Via != tc.wantVia || len(bfr.Spec.Repositories) != 1 {
+				t.Fatalf("request spec = %+v", bfr.Spec)
 			}
 		})
+	}
+}
+
+func TestRepositoryBackfillOpenRequestCap(t *testing.T) {
+	objs := make([]client.Object, 0, 1+maxOpenRequestsPerUser)
+	objs = append(objs, scanningIntegration("gh"))
+	for i := range maxOpenRequestsPerUser {
+		objs = append(objs, testBackfillRequest(fmt.Sprintf("open-%d", i), -time.Minute, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.RequestedBy = "op@acme.test"
+			b.Spec.Via = v1alpha1.BackfillViaRequested
+			b.Spec.Repositories = []string{fmt.Sprintf("other/r%d", i)}
+		}))
+	}
+	s := repoServer(t, authz.Grants{View: true}, &fakeAccess{readable: map[string]string{"acme/new": "gh"}}, objs...)
+	code, body := doRequest(t, s, http.MethodPost, "/api/repositories/backfill",
+		`{"repository":"acme/new","request":true}`)
+	if code != http.StatusTooManyRequests || !strings.Contains(body, "waiting") {
+		t.Fatalf("status = %d (%s), want 429 at the open-request cap", code, body)
+	}
+}
+
+func countRequests(t *testing.T, s *Server) int {
+	t.Helper()
+	var list v1alpha1.BackfillRequestList
+	if err := mustClient(s).List(t.Context(), &list); err != nil {
+		t.Fatal(err)
+	}
+	return len(list.Items)
+}
+
+func TestBackfillDecision(t *testing.T) {
+	requested := func(name string, mutate ...func(*v1alpha1.BackfillRequest)) *v1alpha1.BackfillRequest {
+		return testBackfillRequest(name, -time.Minute, append([]func(*v1alpha1.BackfillRequest){
+			func(b *v1alpha1.BackfillRequest) {
+				b.Spec.Via = v1alpha1.BackfillViaRequested
+				b.Spec.Repositories = []string{"acme/shop"}
+			}}, mutate...)...)
+	}
+	decided := func(b *v1alpha1.BackfillRequest) {
+		b.Spec.Decision = &v1alpha1.BackfillDecision{Verdict: v1alpha1.BackfillApproved, By: "ops",
+			At: metav1.NewTime(testClock)}
+	}
+	cases := []struct {
+		name, path, body string
+		grants           authz.Grants
+		obj              *v1alpha1.BackfillRequest
+		want             int
+		wantVerdict      v1alpha1.BackfillVerdict
+	}{
+		{"approve", "/api/backfill-requests/r/approve", "", allGrants(), requested("r"), http.StatusOK,
+			v1alpha1.BackfillApproved},
+		{"deny with a reason", "/api/backfill-requests/r/deny", `{"reason":"scanned last week"}`, allGrants(),
+			requested("r"), http.StatusOK, v1alpha1.BackfillDeniedVerdict},
+		{"no backfill grant", "/api/backfill-requests/r/approve", "", authz.Grants{View: true}, requested("r"),
+			http.StatusForbidden, ""},
+		{"already decided", "/api/backfill-requests/r/deny", "", allGrants(), requested("r", decided),
+			http.StatusConflict, v1alpha1.BackfillApproved},
+		{"needs no decision", "/api/backfill-requests/r/approve", "", allGrants(), testBackfillRequest("r", 0),
+			http.StatusConflict, ""},
+		{"unknown verdict", "/api/backfill-requests/r/maybe", "", allGrants(), requested("r"), http.StatusNotFound, ""},
+		{"unknown request", "/api/backfill-requests/nope/approve", "", allGrants(), requested("r"), http.StatusNotFound, ""},
+		{"reason too long", "/api/backfill-requests/r/deny", `{"reason":"` + strings.Repeat("x", 501) + `"}`, allGrants(),
+			requested("r"), http.StatusBadRequest, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := repoServer(t, tc.grants, nil, tc.obj)
+			code, body := doRequest(t, s, http.MethodPost, tc.path, tc.body)
+			if code != tc.want {
+				t.Fatalf("status = %d (%s), want %d", code, body, tc.want)
+			}
+			var got v1alpha1.BackfillRequest
+			if err := mustClient(s).Get(t.Context(), types.NamespacedName{Namespace: "patchy", Name: "r"}, &got); err != nil {
+				t.Fatal(err)
+			}
+			switch d := got.Spec.Decision; {
+			case tc.wantVerdict == "" && d != nil:
+				t.Errorf("decision = %+v, want none", d)
+			case tc.wantVerdict != "" && (d == nil || d.Verdict != tc.wantVerdict):
+				t.Errorf("decision = %+v, want %s", d, tc.wantVerdict)
+			case tc.want == http.StatusOK && d.By != "op@acme.test":
+				t.Errorf("decision by %q, want the caller", d.By)
+			}
+		})
+	}
+}
+
+func TestBackfillRequestsList(t *testing.T) {
+	s := repoServer(t, authz.Grants{View: true}, nil,
+		testBackfillRequest("older", -time.Hour),
+		testBackfillRequest("newer", -time.Minute, func(b *v1alpha1.BackfillRequest) {
+			b.Spec.Via = v1alpha1.BackfillViaMaintained
+			b.Spec.GitHub = &v1alpha1.BackfillGitHubIdentity{Login: "octocat", Role: "maintain"}
+		}))
+	code, body := doRequest(t, s, http.MethodGet, "/api/backfill-requests", "")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var out BackfillRequestsPayload
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.CanDecide || len(out.Requests) != 2 || out.Requests[0].Name != "newer" ||
+		out.Requests[0].GitHubLogin != "octocat" || out.Requests[0].Via != "maintained" || out.Requests[1].Via != "backfill" {
+		t.Errorf("payload = %+v", out)
+	}
+	if code, _ := doRequest(t, repoServer(t, authz.Grants{Metrics: true}, nil), http.MethodGet,
+		"/api/backfill-requests", ""); code != http.StatusForbidden {
+		t.Errorf("without view: status = %d, want 403", code)
 	}
 }
 
@@ -443,6 +590,19 @@ func TestBackfillCovers(t *testing.T) {
 		owner, name, _ := strings.Cut(tc.repo, "/")
 		if walk := ghclient.RepoMatches(tc.filter, ghclient.Repo{Owner: owner, Name: name}); walk != got {
 			t.Errorf("backfillCovers(%v, %s) = %v, but the controller's walk says %v", tc.filter, tc.repo, got, walk)
+		}
+	}
+}
+
+func TestAgo(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		20 * time.Second:  "less than a minute",
+		25 * time.Minute:  "25m",
+		3 * time.Hour:     "3h",
+		185 * time.Minute: "3h 5m",
+	} {
+		if got := ago(testClock.Add(-d), testClock); got != want {
+			t.Errorf("ago(%v) = %q, want %q", d, got, want)
 		}
 	}
 }

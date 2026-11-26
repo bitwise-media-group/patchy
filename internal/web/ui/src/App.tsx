@@ -13,7 +13,7 @@ import {
   subscribe,
   subscribeConfig,
 } from "./api";
-import { consumeLogoutMarker, readAuthError, readProvider, signInURL, signOut } from "./auth";
+import { consumeLogoutMarker, readAuthError, readGitHubError, readProvider, signInURL, signOut } from "./auth";
 import type { ActionVerb, AdminVerb, ConfigDataset, DatasetHeader, Finding, FindingsPage, Phase } from "./types";
 import { emptySelection, isFiltered, selectionFromSearch, selectionSearch, type Selection } from "./filters";
 import { useFindingsList } from "./findingsList";
@@ -64,6 +64,13 @@ export function App() {
     setToasts((t) => [...t, { id, message, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), TOAST_DISMISS_MS);
   }, []);
+
+  // A failed "Connect GitHub" round trip comes back with its reason in a
+  // cookie: show it once.
+  useEffect(() => {
+    const msg = readGitHubError();
+    if (msg) pushToast(msg, "red");
+  }, [pushToast]);
 
   const onPage = useCallback(({ generatedAt, namespace, version, user }: FindingsPage) => {
     setDataset({ generatedAt, namespace, version, user });

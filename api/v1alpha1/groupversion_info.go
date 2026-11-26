@@ -29,6 +29,7 @@ var (
 // addKnownTypes registers every kind in the group with the scheme.
 func addKnownTypes(s *runtime.Scheme) error {
 	s.AddKnownTypes(GroupVersion,
+		&BackfillRequest{}, &BackfillRequestList{},
 		&Evaluation{}, &EvaluationList{},
 		&EvaluationUnit{}, &EvaluationUnitList{},
 		&Finding{}, &FindingList{},

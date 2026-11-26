@@ -17,11 +17,13 @@ import (
 
 func newDescribeCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "describe <resource> <name>",
-		Short:   "Show the full detail of one resource",
-		Long:    "Show everything known about one resource: state, timeline, and what can be done to it.",
-		Example: "  patchy describe finding my-finding\n  patchy describe investigation my-finding-inv-1",
-		Args:    cobra.ExactArgs(2),
+		Use:   "describe <resource> <name>",
+		Short: "Show the full detail of one resource",
+		Long:  "Show everything known about one resource: state, timeline, and what can be done to it.",
+		Example: "  patchy describe finding my-finding\n" +
+			"  patchy describe investigation my-finding-inv-1\n" +
+			"  patchy describe backfillrequest backfill-x7k2p",
+		Args: cobra.ExactArgs(2),
 
 		ValidArgsFunction: nounCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -72,6 +74,8 @@ func runDescribe(ctx context.Context, opts *Options, noun, name string) error {
 		render.InvestigationDetail(d, typed, now())
 	case *v1alpha1.Remediation:
 		render.RemediationDetail(d, typed, now())
+	case *v1alpha1.BackfillRequest:
+		render.BackfillRequestDetail(d, typed, now())
 	default:
 		// Every other kind is configuration, not state: its spec is the
 		// interesting part and YAML shows it better than a bespoke view.

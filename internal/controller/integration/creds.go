@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -16,6 +17,7 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/forge"
 	"github.com/bitwise-media-group/patchy/internal/ghclient"
 	"github.com/bitwise-media-group/patchy/internal/ghsecret"
+	"github.com/bitwise-media-group/patchy/internal/ghuser"
 	"github.com/bitwise-media-group/patchy/internal/integrationcap"
 	"github.com/bitwise-media-group/patchy/internal/wiz"
 )
@@ -113,6 +115,79 @@ func (c *Creds) App(ctx context.Context, integ *v1alpha1.Integration) (app *ghcl
 		return nil, false, err
 	}
 	return app, true, nil
+}
+
+// UserOAuth returns the OAuth settings for the Integration's user
+// authorization: the App's client ID and secret, the web root, and the
+// proxy. It fails for an Integration that has not opted in, for a PAT
+// credential, and for a Secret without the client secret.
+func (c *Creds) UserOAuth(ctx context.Context, integ *v1alpha1.Integration) (*ghclient.OAuthApp, error) {
+	if integ.Spec.GitHub == nil || integ.Spec.GitHub.UserAuthorization == nil {
+		return nil, fmt.Errorf("integration %s does not enable spec.github.userAuthorization", integ.Name)
+	}
+	secret, err := c.secret(ctx, integ)
+	if err != nil {
+		return nil, err
+	}
+	if _, isPAT := ghsecret.Token(secret); isPAT {
+		return nil, fmt.Errorf("integration %s uses a personal access token; "+
+			"user authorization needs a GitHub App credential", integ.Name)
+	}
+	cs := strings.TrimSpace(string(secret.Data[ghsecret.KeyClientSecret]))
+	if cs == "" {
+		return nil, fmt.Errorf("secret %s/%s missing key %s", secret.Namespace, secret.Name, ghsecret.KeyClientSecret)
+	}
+	purl, err := ghsecret.ProxyURL(secret, githubProxyURL(integ))
+	if err != nil {
+		return nil, err
+	}
+	return &ghclient.OAuthApp{
+		ClientID:     integ.Spec.GitHub.UserAuthorization.ClientID,
+		ClientSecret: cs,
+		WebURL:       ghuser.WebURL(githubBaseURL(integ)),
+		ProxyURL:     purl,
+	}, nil
+}
+
+// UserClient returns an API client acting as a GitHub user, with the
+// Integration's base URL and proxy.
+func (c *Creds) UserClient(ctx context.Context, integ *v1alpha1.Integration, token string) (*ghclient.Client, error) {
+	secret, err := c.secret(ctx, integ)
+	if err != nil {
+		return nil, err
+	}
+	purl, err := ghsecret.ProxyURL(secret, githubProxyURL(integ))
+	if err != nil {
+		return nil, err
+	}
+	return ghclient.NewToken(token, githubBaseURL(integ), ghclient.WithProxy(purl))
+}
+
+// CheckUserAuthorization validates the user-authorization settings for the
+// UserAuthorizationReady condition: the OAuth settings resolve, and the
+// configured client ID matches the App's own (GET /app). A GET /app that
+// fails is not a verdict, so the condition stays True with a note.
+func (c *Creds) CheckUserAuthorization(
+	ctx context.Context, integ *v1alpha1.Integration,
+) (reason, msg string, err error) {
+	oauth, err := c.UserOAuth(ctx, integ)
+	if err != nil {
+		return "Misconfigured", "", err
+	}
+	app, ok, err := c.App(ctx, integ)
+	if err != nil || !ok {
+		return "Misconfigured", "", fmt.Errorf("github app credential: %v", err)
+	}
+	got, err := app.AppClientID(ctx)
+	if err != nil {
+		_, detail := ghclient.ClassifyAccess(err)
+		return "ClientIDUnverified", "client ID not checked against the App: " + detail, nil
+	}
+	if got != "" && got != oauth.ClientID {
+		return "ClientIDMismatch", "", fmt.Errorf(
+			"spec.github.userAuthorization.clientID %q does not match the App's client ID %q", oauth.ClientID, got)
+	}
+	return "Configured", "", nil
 }
 
 // WizWebhookToken returns the shared bearer token the Integration's inbound

@@ -9,6 +9,7 @@
 import type {
   ActionVerb,
   AdminVerb,
+  BackfillRequestsPayload,
   ConfigDataset,
   Dataset,
   DatasetHeader,
@@ -16,6 +17,7 @@ import type {
   FindingSuggestions,
   FindingsPage,
   FindingsQuery,
+  GitHubRepositoriesPayload,
   OfflineDataset,
   RepositoriesPayload,
   RepositoryAccessPayload,
@@ -33,7 +35,18 @@ import { availableActions, retryTarget } from "./actions";
 import { mockConfig } from "./mock/config";
 import { mockArchiveURL, mockDataset, mockTranscript } from "./mock/findings";
 import { DEFAULT_PERSONA, type Persona } from "./mock/personas";
-import { mockRepositories, mockRepositoryAccess, mockRepositoryBackfill } from "./mock/repositories";
+import {
+  MockStatusError,
+  mockBackfillDecision,
+  mockBackfillRequests,
+  mockGitHubLink,
+  mockGitHubRepositories,
+  mockRepositories,
+  mockRepositoryAccess,
+  mockRepositoryBackfill,
+  mockUserActions,
+} from "./mock/repositories";
+import { githubConnectHref } from "./repositories";
 
 // AuthRequiredError: the server wants a signed-in user (HTTP 401).
 export class AuthRequiredError extends Error {
@@ -75,6 +88,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+// requestWithMessage is request for the routes whose error bodies are
+// sentences for the person who clicked (403, 409, 429, 502, 503): 401
+// still means the session is gone, and a 403 stays a ForbiddenError so a
+// caller can tell it apart, but its text is the toast.
+async function requestWithMessage<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  if (res.status === 401) throw new AuthRequiredError();
+  if (!res.ok) {
+    const text = (await res.text()).trim();
+    if (res.status === 403) throw new ForbiddenError(text || "Permission denied.");
+    throw new Error(text || `${path.split("?")[0]}: HTTP ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  const body = await res.text();
+  return (body ? JSON.parse(body) : undefined) as T;
+}
+
+// fromMock turns a demo answer's status error into the error the live
+// response would raise.
+function fromMock(e: unknown): never {
+  if (e instanceof MockStatusError && e.status === 403) throw new ForbiddenError(e.message);
+  throw e;
+}
+
+// demoDelay simulates a round-trip so busy states are visible.
+function demoDelay(ms = 350): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ---- demo state ----------------------------------------------------------
 
 let demoData: OfflineDataset | null = null;
@@ -87,14 +129,14 @@ function demoDataset(): OfflineDataset {
 // demoPostAction applies the verb's legal transition to the mock dataset,
 // mirroring what the controllers would do.
 function demoPostAction(name: string, verb: ActionVerb, persona: Persona): void {
-  if (!persona.grants.includes(verb)) {
+  const data = demoDataset();
+  const f = data.findings.find((x) => x.name === name);
+  if (!f) throw new Error(`finding ${name} not found`);
+  if (!mockUserActions(f, persona).includes(verb)) {
     throw new ForbiddenError(
       `Permission denied. User "${persona.label}" may not ${verb} findings in this namespace.`,
     );
   }
-  const data = demoDataset();
-  const f = data.findings.find((x) => x.name === name);
-  if (!f) throw new Error(`finding ${name} not found`);
   if (!availableActions(f).includes(verb)) {
     throw new ForbiddenError(`Action ${verb} is not available for this finding.`);
   }
@@ -151,7 +193,7 @@ export async function fetchFindings(
   if (mode !== "live") {
     const page = queryFindingsLocal(offlineDataset().findings, q);
     const findings =
-      mode === "demo" ? page.findings.map((f: Finding) => ({ ...f, userActions: [...persona.grants] })) : page.findings;
+      mode === "demo" ? page.findings.map((f: Finding) => ({ ...f, userActions: mockUserActions(f, persona) })) : page.findings;
     return { ...offlineHeader(), ...page, findings };
   }
   return request<FindingsPage>(`/api/findings?${queryParams(q)}`, { signal });
@@ -177,7 +219,7 @@ export async function fetchFinding(
   if (mode !== "live") {
     const f = offlineDataset().findings.find((x) => x.name === name);
     if (!f) return null;
-    return mode === "demo" ? { ...f, userActions: [...persona.grants] } : f;
+    return mode === "demo" ? { ...f, userActions: mockUserActions(f, persona) } : f;
   }
   const res = await fetch(`/api/findings/${encodeURIComponent(name)}`);
   if (res.status === 404) return null;
@@ -270,6 +312,7 @@ export async function fetchConfig(): Promise<ConfigDataset> {
 
 // postBackfill requests a list-alerts backfill on one integration; the
 // optional repositories entries are "owner/" prefixes or exact "owner/name".
+// The server answers with the BackfillRequest it created ({request}).
 export async function postBackfill(
   name: string,
   repositories: string[],
@@ -287,15 +330,13 @@ export async function postBackfill(
     const integ = demoConfigDataset().integrations.find((i) => i.name === name);
     if (!integ) throw new Error(`integration ${name} not found`);
     const now = new Date().toISOString();
-    integ.backfill = {
-      ...(integ.backfill ?? {}),
-      requestedBy: persona.label,
-      requestedAt: now,
-      pending: true,
-    };
+    const request = `backfill-demo-${integ.name}-${Date.now().toString(36)}`;
+    integ.backfill = { request, phase: "Pending", requestedBy: persona.label, requestedAt: now, pending: true };
     // The demo "controller" consumes the request shortly after.
     setTimeout(() => {
       integ.backfill = {
+        request,
+        phase: "Complete",
         lastRunAt: new Date().toISOString(),
         listed: 37,
         ingested: 37,
@@ -321,7 +362,8 @@ function repoParams(names: string[]): string {
 }
 
 // fetchRepositories loads the tracked repositories' finding counts, rollups
-// and backfill state (GET /api/repositories, at most 50 names).
+// and backfill state, plus the caller's backfill grants and GitHub links
+// (GET /api/repositories, at most 50 names).
 export async function fetchRepositories(
   names: string[],
   persona: Persona = DEFAULT_PERSONA,
@@ -330,9 +372,8 @@ export async function fetchRepositories(
   const mode = dataMode();
   if (mode !== "live") {
     const data = offlineDataset();
-    const canBackfill = mode === "demo" && persona.integrationActions.includes("backfill");
-    const out = mockRepositories(data.findings, data.rollups ?? [], names, canBackfill);
-    return mode === "snapshot" ? { ...out, accessCheck: false } : out;
+    const out = mockRepositories(data.findings, data.rollups ?? [], names, mode === "demo" ? persona : null);
+    return mode === "snapshot" ? { ...out, accessCheck: false, github: undefined } : out;
   }
   return request<RepositoriesPayload>(`/api/repositories?${repoParams(names)}`, { signal });
 }
@@ -344,44 +385,139 @@ export async function fetchRepositoryAccess(names: string[], signal?: AbortSigna
   const mode = dataMode();
   if (mode === "snapshot") return { available: false, repositories: [] };
   if (mode === "demo") {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await demoDelay(250);
     const data = offlineDataset();
     return mockRepositoryAccess(data.findings, data.rollups ?? [], names);
   }
   return request<RepositoryAccessPayload>(`/api/repositories/access?${repoParams(names)}`, { signal });
 }
 
-// postRepositoryBackfill requests a backfill of one never-seen repository;
-// the server picks the integration that can read its alerts.
+// postRepositoryBackfill backfills one repository: at once on the caller's
+// grant, or, with request, as a request an operator decides. The server
+// picks the integration that can read its alerts. A 403 (no grant, a
+// maintainer role too low, GitHub not connected) is a ForbiddenError and a
+// 429 (the cooldown, or too many open requests) an Error, both carrying
+// the server's sentence.
 export async function postRepositoryBackfill(
   repository: string,
+  request: boolean,
   persona: Persona = DEFAULT_PERSONA,
 ): Promise<RepositoryBackfillResult> {
   const mode = dataMode();
   if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
   if (mode === "demo") {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    if (!persona.integrationActions.includes("backfill")) {
-      throw new ForbiddenError(
-        `Permission denied. User "${persona.label}" may not backfill integrations in this namespace.`,
-      );
-    }
+    await demoDelay();
     const data = offlineDataset();
-    return mockRepositoryBackfill(data.findings, data.rollups ?? [], repository, persona.label);
+    try {
+      return mockRepositoryBackfill(data.findings, data.rollups ?? [], repository, request, persona);
+    } catch (e) {
+      fromMock(e);
+    }
   }
-  const res = await fetch("/api/repositories/backfill", {
+  return requestWithMessage<RepositoryBackfillResult>("/api/repositories/backfill", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repository }),
+    body: JSON.stringify(request ? { repository, request: true } : { repository }),
   });
-  if (res.status === 401) throw new AuthRequiredError();
-  if (!res.ok) {
-    // 403, 409 and 503 carry a sentence meant for the person who clicked.
-    const text = (await res.text()).trim();
-    if (res.status === 403) throw new ForbiddenError(text || "Permission denied.");
-    throw new Error(text || `/api/repositories/backfill: HTTP ${res.status}`);
+}
+
+// ---- backfill requests ---------------------------------------------------
+
+// fetchBackfillRequests lists every BackfillRequest, newest first, and
+// whether the caller may decide them (GET /api/backfill-requests).
+export async function fetchBackfillRequests(
+  persona: Persona = DEFAULT_PERSONA,
+  signal?: AbortSignal,
+): Promise<BackfillRequestsPayload> {
+  const mode = dataMode();
+  if (mode === "snapshot") return { generatedAt: new Date().toISOString(), requests: [], canDecide: false };
+  if (mode === "demo") return mockBackfillRequests(persona.integrationActions.includes("backfill"));
+  return request<BackfillRequestsPayload>("/api/backfill-requests", { signal });
+}
+
+// postBackfillDecision approves or denies a requested backfill, with an
+// optional reason (at most 500 characters).
+export async function postBackfillDecision(
+  name: string,
+  verdict: "approve" | "deny",
+  reason = "",
+  persona: Persona = DEFAULT_PERSONA,
+): Promise<void> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await demoDelay();
+    if (!persona.integrationActions.includes("backfill")) {
+      throw new ForbiddenError(
+        `Permission denied. User "${persona.label}" may not decide backfill requests in this namespace.`,
+      );
+    }
+    try {
+      mockBackfillDecision(name, verdict, reason, persona.label);
+    } catch (e) {
+      fromMock(e);
+    }
+    return;
   }
-  return (await res.json()) as RepositoryBackfillResult;
+  await requestWithMessage<unknown>(`/api/backfill-requests/${encodeURIComponent(name)}/${verdict}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+}
+
+// ---- GitHub link -----------------------------------------------------------
+
+// fetchGitHubRepositories lists the repositories the caller administers or
+// maintains through one Integration's App. Every failure is an Error
+// carrying the server's sentence: not connected (409), the connection
+// expired (403, "Reconnect GitHub"), or linking off (404). None of them
+// means the page is off limits, so none is a ForbiddenError.
+export async function fetchGitHubRepositories(
+  integration: string,
+  signal?: AbortSignal,
+): Promise<GitHubRepositoriesPayload> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new Error("Snapshot is read-only.");
+  if (mode === "demo") {
+    await demoDelay(300);
+    return mockGitHubRepositories(integration);
+  }
+  try {
+    return await requestWithMessage<GitHubRepositoriesPayload>(
+      `/api/github/repositories?integration=${encodeURIComponent(integration)}`,
+      { signal },
+    );
+  } catch (e) {
+    if (e instanceof ForbiddenError) throw new Error(e.message);
+    throw e;
+  }
+}
+
+// connectGitHub starts linking a GitHub account through one Integration:
+// a full-page navigation through GitHub that returns to back (a path and
+// hash). Demo mode connects on the spot.
+export async function connectGitHub(integration: string, back: string): Promise<void> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await demoDelay();
+    mockGitHubLink(integration, true);
+    return;
+  }
+  location.href = githubConnectHref(integration, back);
+}
+
+// disconnectGitHub drops the link to one Integration's GitHub account.
+export async function disconnectGitHub(integration: string): Promise<void> {
+  const mode = dataMode();
+  if (mode === "snapshot") throw new ForbiddenError("Snapshot is read-only.");
+  if (mode === "demo") {
+    await demoDelay();
+    mockGitHubLink(integration, false);
+    return;
+  }
+  await requestWithMessage<void>(`/oauth2/github/${encodeURIComponent(integration)}/disconnect`, { method: "POST" });
 }
 
 // subscribeConfig opens the SSE stream for config-changed signals. It is a

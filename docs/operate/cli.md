@@ -73,15 +73,16 @@ Verbs and nouns combine freely. Every verb accepts any noun it makes sense for, 
 on every noun. Nouns take the same short names the CRDs declare, so `patchy get fnd` and `kubectl get fnd` always mean
 the same thing.
 
-| Noun            | Also accepts                                |
-| --------------- | ------------------------------------------- |
-| `finding`       | `findings`, `fnd`                           |
-| `investigation` | `investigations`, `inv`                     |
-| `remediation`   | `remediations`, `rem`                       |
-| `findingrollup` | `findingrollups`, `fr`, `rollup`, `rollups` |
-| `repository`    | `repositories`, `repo`, `repos`             |
-| `integration`   | `integrations`                              |
-| `forge`         | `forges`                                    |
+| Noun              | Also accepts                                |
+| ----------------- | ------------------------------------------- |
+| `finding`         | `findings`, `fnd`                           |
+| `investigation`   | `investigations`, `inv`                     |
+| `remediation`     | `remediations`, `rem`                       |
+| `findingrollup`   | `findingrollups`, `fr`, `rollup`, `rollups` |
+| `repository`      | `repositories`, `repo`, `repos`             |
+| `integration`     | `integrations`                              |
+| `backfillrequest` | `backfillrequests`, `bfr`                   |
+| `forge`           | `forges`                                    |
 
 `get` accepts one more noun: `all`, which means every kind in the table above. No other verb accepts it, because there
 is nothing sensible to describe, review or approve as a group. It is close to `kubectl get patchy` (every CRD declares
@@ -232,9 +233,54 @@ patchy backfill gh --repo acme/                         # one owner
 patchy backfill gh --repo acme/shop --repo acme/billing # exact repositories (required with a PAT)
 ```
 
-Like every action, it writes spec only (`spec.backfill`). The integration-controller runs the walk on its next reconcile
-and reports on `status.backfill`. Watch for `truncated`: it means the page budget ran out, and you need a narrower
-`--repo` prefix to reach the rest.
+Each run files one `BackfillRequest` (named `backfill-<random>`, labelled with its integration) and prints its name. The
+integration-controller walks requests one at a time and records the outcome on the request itself. The CLI refuses a
+suspended integration up front.
+
+```text
+$ patchy backfill gh --repo acme/
+Backfill request backfill-x7k2p created on integration gh.
+Watch it with:
+  patchy get backfillrequests backfill-x7k2p
+  kubectl get backfillrequests backfill-x7k2p
+```
+
+`patchy describe backfillrequest <name>` shows the phase (`Pending`, then `Complete` or `Failed`), the listed and
+ingested counts, and the last error. Watch for `truncated`: it means the page budget ran out, and you need a request
+with a narrower `--repo` prefix to reach the rest. Finished requests expire on a TTL.
+
+### Asking for a backfill
+
+A request that runs at once needs the `backfill` verb on integrations. Without it, pass `--request`. The request then
+waits in `AwaitingApproval` until an operator decides it, and filing one needs only `create` on backfillrequests:
+
+```text
+$ patchy backfill gh --repo acme/shop --request
+Backfill request backfill-m2bns filed on integration gh. It waits in AwaitingApproval
+until an operator approves it:
+  patchy approve backfillrequest backfill-m2bns
+Watch it with:
+  patchy get backfillrequests backfill-m2bns
+  kubectl get backfillrequests backfill-m2bns
+```
+
+Leaving out `--request` without the verb fails before anything is written, and the error suggests `--request`.
+
+### Deciding a request
+
+An operator holding the `backfill` verb on integrations approves or denies a waiting request. The decision lands on the
+request's `spec.decision` with your identity and the time, and it is final:
+
+```sh
+patchy get backfillrequests                                     # what is waiting (phase AwaitingApproval)
+patchy describe bfr backfill-m2bns                              # who asked, for which repositories
+patchy approve backfillrequest backfill-m2bns [--note "go ahead"]
+patchy deny    backfillrequest backfill-m2bns --reason "too broad; ask for acme/shop"
+```
+
+`--note` on approve and `--reason` on deny are shown to the requester. Repeating the same verdict succeeds and changes
+nothing. Contradicting an earlier decision, or deciding a request that was not filed with `--request`, fails with exit
+code 4. Both verbs accept several names, and `--dry-run` reports without writing.
 
 ## Configuration
 
@@ -300,7 +346,8 @@ config enables (`osv-scanner`, `grype`, `kubescape`). `build` also needs `docker
 
 Each action is a **custom RBAC verb**, granted separately, so holding `approve` does not grant `suspend`. The
 per-finding verbs (`approve`, `retry`, `expedite`, `suspend`, `resume`) are on `findings.patchy.bitwisemedia.uk`. The
-integration-scoped ones (`backfill`, `replay`, `reset`) are on `integrations.patchy.bitwisemedia.uk`. To see yours:
+integration-scoped ones (`backfill`, `replay`, `reset`) are on `integrations.patchy.bitwisemedia.uk`. Deciding a
+backfill request uses `backfill` too. To see yours:
 
 ```sh
 patchy can-i                # the full matrix, findings and integrations
@@ -315,8 +362,10 @@ Two things check those verbs, but only one of them enforces them:
   bypass it by not using the CLI.
 - A **`ValidatingAdmissionPolicy`** in the cluster binds each spec field to its verb. It runs inside the API server's
   admission chain, so it applies the same way to `patchy`, `kubectl edit`, `kubectl patch`, server-side apply and raw
-  `curl`. This is the actual enforcement. There are two policies. One covers findings. The other covers integrations: it
-  gates `spec.backfill`/`spec.replay`/`spec.reset` and leaves the rest of the operator's configuration free to update.
+  `curl`. This is the actual enforcement. There are three policies. One covers findings. One covers integrations: it
+  gates `spec.replay`/`spec.reset` and leaves the rest of the operator's configuration free to update. The third covers
+  backfill requests: `spec.requestedBy` must be your own username, a request that runs at once needs `backfill`, and so
+  does setting `spec.decision`.
 
 The policy is needed because Kubernetes RBAC has no notion of a field: `update` on findings allows changes to every
 field of the object. Without the policy, letting a developer suspend a finding would also let them rewrite its severity
@@ -333,13 +382,13 @@ The policy lists the spec fields it protects. So a contributor who adds a field 
 
 ## Exit codes
 
-| Code | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| `0`  | success                                                                   |
-| `1`  | runtime failure (unreachable cluster, bad response)                       |
-| `2`  | usage error                                                               |
-| `3`  | the named resource does not exist                                         |
-| `4`  | RBAC refused, or the action is unavailable in the finding's current phase |
+| Code | Meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| `0`  | success                                                                    |
+| `1`  | runtime failure (unreachable cluster, bad response)                        |
+| `2`  | usage error                                                                |
+| `3`  | the named resource does not exist                                          |
+| `4`  | RBAC refused, or the action is unavailable in the resource's current state |
 
 ## A triage session
 

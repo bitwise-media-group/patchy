@@ -46,7 +46,11 @@ the full object.
 
 `admissionPolicy.enabled` (default `true`) renders a `ValidatingAdmissionPolicy`. It binds each human-writable spec
 field to its own verb, inside the API server's admission chain. So the rule holds for the CLI, `kubectl edit`,
-`kubectl patch`, server-side apply and raw `curl` alike.
+`kubectl patch`, server-side apply and raw `curl` alike. The same switch renders the policies for Integration
+`spec.replay` and `spec.reset`, and for [BackfillRequests](../integrations/sources/github.md#who-may-run-one): running
+one at once needs `backfill` on `integrations`, a request with `spec.via: requested` waits for an operator, and only a
+`backfill` holder may decide it. The status page's scoped maintainer verbs appear in no policy, because only the status
+page honours them.
 
 ```yaml
 admissionPolicy:
@@ -205,7 +209,7 @@ it doesn't cover.
 | `statusServer.auth.{existingSecret,config}`               | none    | The authentication config; with neither set the server serves nothing                  |
 | `statusServer.liveTranscripts`                            | `true`  | Stream running agents' conversations (grants pod and log reads in the agent namespace) |
 | `statusServer.host`, `.ingress.*`, `.httpRoute.*`         | off     | Expose the page on its own hostname, separate from `webhook.host`                      |
-| `statusServer.rbac.userRoles`                             | `false` | Render the example viewer, approver and operator ClusterRoles                          |
+| `statusServer.rbac.userRoles`                             | `false` | Render the example viewer, approver, operator, admin and maintainer ClusterRoles       |
 | `evaluationController.enabled`                            | `false` | Run the optional [evaluation-controller](../configuration/evaluation-controller.md)    |
 | `evaluationController.auth.{existingSecret,config}`       | none    | The API's OIDC config; **required** when enabled                                       |
 | `evaluationController.runners.{claude,codex}`             | claude  | Which evolve-runner images evaluation units run on                                     |

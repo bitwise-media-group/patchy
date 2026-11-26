@@ -2,17 +2,27 @@
 // as its findings' position on patchy's pipeline (every count opens the
 // findings list filtered to it). A repository with nothing in the pipeline
 // gets one sentence instead: its history, or, when patchy has never seen it,
-// whether patchy can read its alerts, with a one-repository backfill. The
-// list lives in localStorage (trackedRepos.ts); the server never learns it
-// beyond the names a request carries.
+// whether patchy can read its alerts. Any row can be backfilled once per
+// cooldown window: at once on the backfill grant (or, for a maintainer with
+// a connected GitHub account, on repositories they maintain), or as a
+// request an operator decides on this same page. The list lives in
+// localStorage (trackedRepos.ts); the server never learns it beyond the
+// names a request carries. A connected GitHub account can fill it: the
+// import picker lists what the account maintains, and a refresh drops the
+// imported entries it no longer does.
 
 import type { ComponentChildren } from "preact";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   AuthRequiredError,
   ForbiddenError,
+  connectGitHub,
+  disconnectGitHub,
+  fetchBackfillRequests,
+  fetchGitHubRepositories,
   fetchRepositories,
   fetchRepositoryAccess,
+  postBackfillDecision,
   postRepositoryBackfill,
   queryRepositories,
   subscribe,
@@ -21,19 +31,29 @@ import {
 } from "../api";
 import type { Persona } from "../mock/personas";
 import { DEMO_TRACKED } from "../mock/repositories";
-import { shortName } from "../rollups";
+import { ownerName, shortName } from "../rollups";
 import {
   PHASE_GROUPS,
   accessProblems,
   accessReason,
+  anyConnected,
+  backfillAvailable,
+  backfillMode,
+  backfillOpen,
+  backfillOutcomeMessage,
+  backfillState,
+  filterImportable,
+  githubProfileHref,
   findingsHref,
   findingsHrefFor,
   forgeBadge,
   forgeProblem,
+  githubConnectHref,
   groupCount,
   metricsHref,
   neverSeen,
   ownerGroups,
+  type BackfillMode,
   type GroupTone,
   type PhaseGroup,
 } from "../repositories";
@@ -43,15 +63,34 @@ import {
   add,
   defaultStore,
   exportJSON,
+  importGitHub,
   importJSON,
   normalizeRepoName,
+  refreshGitHub,
   remove,
+  room,
   save,
+  tracks,
   useTrackedRepos,
   type KeyValueStore,
+  type TrackedRepo,
 } from "../trackedRepos";
-import type { Phase, RepositoriesPayload, RepositoryBackfill, RepositoryAccess, RepositoryAccessPayload, RepositorySummary } from "../types";
-import { formatAgo, formatCount, plural } from "../format";
+import type {
+  BackfillRequest,
+  BackfillRequestsPayload,
+  GitHubLink,
+  GitHubRepositoriesPayload,
+  GitHubRepository,
+  Phase,
+  RepositoriesPayload,
+  RepositoryBackfill,
+  RepositoryAccess,
+  RepositoryAccessPayload,
+  RepositorySummary,
+} from "../types";
+import { formatAgo, formatCount, formatIn, plural } from "../format";
+import { hrefForRepositories } from "../router";
+import { ConfirmButton } from "./ConfirmButton";
 import { rank } from "../typeahead";
 import { FilterBox, Highlight, type FilterGroup, type FilterOption } from "./FilterBox";
 import { Icon } from "./icons";
@@ -111,6 +150,41 @@ function ago(iso: string): string {
 }
 
 
+// RowBackfill is what a row's backfill control needs: what the caller may
+// do, whether the cooldown allows it now, and the handler.
+interface RowBackfill {
+  mode: BackfillMode;
+  available: boolean;
+  availableAt?: string;
+  busy: boolean;
+  onBackfill: (request: boolean) => void;
+}
+
+// GitHubFetch is one Integration's answer to the import picker or a refresh.
+type GitHubFetch = { integration: string; ok: true; payload: GitHubRepositoriesPayload } | { integration: string; ok: false; error: string };
+
+async function fetchAllGitHub(links: GitHubLink[], signal?: AbortSignal): Promise<GitHubFetch[]> {
+  return Promise.all(
+    links
+      .filter((l) => l.connected)
+      .map((l) =>
+        fetchGitHubRepositories(l.integration, signal).then(
+          (payload): GitHubFetch => ({ integration: l.integration, ok: true, payload }),
+          (e: unknown): GitHubFetch => ({
+            integration: l.integration,
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        ),
+      ),
+  );
+}
+
+// githubBack is where a GitHub connection returns to: this page.
+function githubBack(): string {
+  return location.pathname + location.search + hrefForRepositories();
+}
+
 export function RepositoriesView({
   persona,
   demo,
@@ -142,12 +216,33 @@ export function RepositoriesView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namesKey, persona, onAuthError]);
   useEffect(() => void load(), [load]);
+
+  // The decision queue is for holders of the backfill grant only (the same
+  // grant the server's canDecide reports), so nobody else fetches it. Their
+  // own requests show on their rows.
+  const canDecide = !!summary?.canBackfill;
+  const [requests, setRequests] = useState<BackfillRequestsPayload | null>(null);
+  const loadRequests = useCallback(async () => {
+    if (!canDecide) {
+      setRequests(null);
+      return;
+    }
+    try {
+      setRequests(await fetchBackfillRequests(persona));
+    } catch (e) {
+      if (e instanceof AuthRequiredError) onAuthError(e);
+      // Anything else leaves the panel as it was; the rows still work.
+    }
+  }, [canDecide, persona, onAuthError]);
+  useEffect(() => void loadRequests(), [loadRequests]);
+
+  const refreshAll = useCallback(() => Promise.all([load(), loadRequests()]), [load, loadRequests]);
   // Counts move as findings move: refetch on the findings-changed signal.
-  const loadRef = useRef(load);
-  loadRef.current = load;
+  const loadRef = useRef(refreshAll);
+  loadRef.current = refreshAll;
   useEffect(() => subscribe(() => void loadRef.current()), []);
-  // A backfill's progress lives on its Integration, not on any finding: a
-  // walk that ingests nothing changes no finding, so listen for that too.
+  // A backfill's progress lives on its BackfillRequest, not on any finding:
+  // a walk that ingests nothing changes no finding, so listen for that too.
   useEffect(() => subscribeConfig(() => void loadRef.current()), []);
 
   const byName = useMemo(() => {
@@ -195,31 +290,128 @@ export function RepositoriesView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unseenKey, summary?.accessCheck, checkAccess, onAuthError]);
 
+  // refused holds the rows whose maintained backfill the server turned
+  // down (the GitHub role is too low): they offer a request instead.
+  const [refused, setRefused] = useState<Set<string>>(new Set());
+  useEffect(() => setRefused(new Set()), [persona]);
   const [busy, setBusy] = useState<string | null>(null);
   const onBackfill = useCallback(
-    async (repo: string) => {
+    async (repo: string, request: boolean) => {
       setBusy(repo);
       try {
-        const res = await postRepositoryBackfill(repo, persona);
-        onToast(
-          res.outcome === "covered"
-            ? `A backfill already waiting on ${res.integration} covers ${repo}.`
-            : `Backfill of ${repo} requested on ${res.integration}. Its open alerts arrive as findings shortly.`,
-          "green",
-        );
-        await load();
+        const res = await postRepositoryBackfill(repo, request, persona);
+        onToast(backfillOutcomeMessage(repo, res), "green");
+        await refreshAll();
         // Demo mode has no change stream, and its stand-in controller
         // finishes the request a moment later: look once more then.
         if (demo) setTimeout(() => void loadRef.current(), 2000);
       } catch (e) {
-        if (e instanceof AuthRequiredError) onAuthError(e);
-        else onToast(e instanceof Error ? e.message : String(e), "red");
+        if (e instanceof AuthRequiredError) {
+          onAuthError(e);
+          return;
+        }
+        // 403 and 429 bodies are sentences for the person who clicked.
+        onToast(e instanceof Error ? e.message : String(e), "red");
+        if (e instanceof ForbiddenError && !request && !summary?.canBackfill && summary?.canRequestBackfill) {
+          setRefused((s) => new Set(s).add(repo));
+        }
       } finally {
         setBusy(null);
       }
     },
-    [demo, load, onAuthError, onToast, persona],
+    [demo, refreshAll, onAuthError, onToast, persona, summary?.canBackfill, summary?.canRequestBackfill],
   );
+
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const onDecide = useCallback(
+    async (req: BackfillRequest, verdict: "approve" | "deny", reason: string) => {
+      setDeciding(req.name);
+      const what = req.repositories?.length ? req.repositories.join(", ") : `everything on ${req.integration}`;
+      try {
+        await postBackfillDecision(req.name, verdict, reason, persona);
+        onToast(
+          verdict === "approve"
+            ? `Approved the backfill of ${what}. It runs on ${req.integration} shortly.`
+            : `Denied the backfill of ${what}.`,
+          "green",
+        );
+        await refreshAll();
+        if (demo && verdict === "approve") setTimeout(() => void loadRef.current(), 2000);
+      } catch (e) {
+        if (e instanceof AuthRequiredError) onAuthError(e);
+        else onToast(e instanceof Error ? e.message : String(e), "red");
+      } finally {
+        setDeciding(null);
+      }
+    },
+    [demo, refreshAll, onAuthError, onToast, persona],
+  );
+
+  // ---- GitHub ----
+  const links = summary?.github ?? [];
+  const [ghBusy, setGhBusy] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  useEffect(() => {
+    if (!anyConnected(summary?.github)) setImportOpen(false);
+  }, [summary?.github]);
+  const onConnect = useCallback(
+    async (integration: string, connect: boolean) => {
+      setGhBusy(integration);
+      try {
+        if (connect) await connectGitHub(integration, githubBack());
+        else await disconnectGitHub(integration);
+        if (!connect || demo) await load();
+        if (!connect) onToast(`Disconnected GitHub from ${integration}.`, "green");
+      } catch (e) {
+        if (e instanceof AuthRequiredError) onAuthError(e);
+        else onToast(e instanceof Error ? e.message : String(e), "red");
+      } finally {
+        setGhBusy(null);
+      }
+    },
+    [demo, load, onAuthError, onToast],
+  );
+  const onImportPicked = useCallback(
+    (picked: string[]) => {
+      const res = importGitHub(tracked.repos, picked);
+      tracked.update(res.repos);
+      onToast(
+        `Added ${plural(res.added, "repository", "repositories")} from GitHub` +
+          (res.skipped ? `. Skipped ${res.skipped}: already listed, or past the limit of ${MAX_TRACKED}.` : "."),
+        res.added ? "green" : "red",
+      );
+    },
+    [tracked, onToast],
+  );
+  const onRefreshGitHub = useCallback(async () => {
+    setGhBusy("refresh");
+    try {
+      const results = await fetchAllGitHub(links);
+      const failed = results.find((r): r is Extract<GitHubFetch, { ok: false }> => !r.ok);
+      if (failed) {
+        onToast(`Could not refresh from GitHub. ${failed.integration}: ${failed.error}`, "red");
+        return;
+      }
+      const lists = results.flatMap((r) => (r.ok ? [r.payload] : []));
+      if (lists.some((l) => l.truncated)) {
+        onToast("GitHub's list of your repositories was cut short, so the refresh removed nothing.", "red");
+        return;
+      }
+      const res = refreshGitHub(
+        tracked.repos,
+        lists.flatMap((l) => l.repositories.map((r) => r.name)),
+      );
+      if (res.removed.length) tracked.update(res.repos);
+      onToast(
+        res.removed.length
+          ? `Removed ${plural(res.removed.length, "repository", "repositories")} you no longer maintain: ${res.removed.join(", ")}.`
+          : "Every repository you imported from GitHub is one you still maintain.",
+        "green",
+      );
+    } finally {
+      setGhBusy(null);
+    }
+  }, [links, tracked, onToast]);
 
   const addRepo = (input: string) => {
     const res = add(tracked.repos, input);
@@ -258,11 +450,44 @@ export function RepositoriesView({
     return a && !a.skipped && !a.backfillIntegration;
   }).length;
 
+  const rowBackfill = (name: string): RowBackfill => {
+    const s = byName.get(name);
+    return {
+      mode: backfillMode(summary, refused.has(name)),
+      available: backfillAvailable(s),
+      availableAt: s?.backfillAvailableAt,
+      busy: busy === name,
+      onBackfill: (request) => void onBackfill(name, request),
+    };
+  };
+
   return (
     <div class="flex flex-col gap-5">
       <Headline names={names} summary={summary} unreadable={unreadable} />
 
-      <AddRepository tracked={names} onAdd={addRepo} full={tracked.repos.length >= MAX_TRACKED} />
+      <div class="flex flex-col gap-3">
+        <AddRepository tracked={names} onAdd={addRepo} full={tracked.repos.length >= MAX_TRACKED} />
+        {links.length ? (
+          <GitHubBar
+            links={links}
+            canBackfillMaintained={!!summary?.canBackfillMaintained}
+            busy={ghBusy}
+            importOpen={importOpen}
+            onConnect={(i) => void onConnect(i, true)}
+            onDisconnect={(i) => void onConnect(i, false)}
+            onToggleImport={() => setImportOpen((o) => !o)}
+            onRefresh={() => void onRefreshGitHub()}
+          />
+        ) : null}
+        {importOpen && anyConnected(links) ? (
+          <GitHubImport
+            links={links}
+            tracked={tracked.repos}
+            onAdd={onImportPicked}
+            onClose={() => setImportOpen(false)}
+          />
+        ) : null}
+      </div>
 
       {(accessState && !accessState.available && unseen.length > 0) || accessState?.error || loadError ? (
         <p class="m-0 flex items-start gap-2 text-[13.5px] text-muted">
@@ -280,7 +505,8 @@ export function RepositoriesView({
           <div class="px-6 py-12 text-center">
             <p class="m-0 text-[15px] font-semibold text-fg">No repositories yet</p>
             <p class="mx-auto mt-1.5 mb-0 max-w-[52ch] text-[13.5px] text-muted">
-              Add the repositories you look after to see where their findings stand, or import a list you exported
+              Add the repositories you look after to see where their findings stand
+              {anyConnected(links) ? ", import the ones you maintain from GitHub," : ""} or import a list you exported
               from another browser.
             </p>
           </div>
@@ -301,9 +527,7 @@ export function RepositoriesView({
                       accessPending={
                         !!summary?.accessCheck && neverSeen(byName.get(name)) && !access.has(name) && !accessState
                       }
-                      canBackfill={!!summary?.canBackfill}
-                      busy={busy === name}
-                      onBackfill={() => void onBackfill(name)}
+                      backfill={rowBackfill(name)}
                       onRemove={() => tracked.update(remove(tracked.repos, name))}
                     />
                   ))}
@@ -343,6 +567,14 @@ export function RepositoriesView({
           />
         </div>
       </footer>
+
+      {requests?.canDecide ? (
+        <BackfillRequests
+          requests={requests.requests}
+          busy={deciding}
+          onDecide={(req, verdict, reason) => void onDecide(req, verdict, reason)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -487,9 +719,7 @@ function RepositoryRow({
   loaded,
   access,
   accessPending,
-  canBackfill,
-  busy,
-  onBackfill,
+  backfill,
   onRemove,
 }: {
   name: string;
@@ -497,16 +727,23 @@ function RepositoryRow({
   loaded: boolean;
   access?: RepositoryAccess;
   accessPending: boolean;
-  canBackfill: boolean;
-  busy: boolean;
-  onBackfill: () => void;
+  backfill: RowBackfill;
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [showBackfill, setShowBackfill] = useState(false);
   const short = shortName(name);
   const findings = summary?.findings ?? 0;
   const details = access && !access.skipped ? detailLines(name, access) : [];
-  const detailsId = `why-${name.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  const slug = name.replace(/[^A-Za-z0-9_-]/g, "-");
+  const detailsId = `why-${slug}`;
+  const backfillId = `backfill-${slug}`;
+  const bf = summary?.backfill;
+  const state = bf ? backfillState(bf, ago) : null;
+  // A row on the track has no room for the backfill inline: its name
+  // carries a toggle (the request's state, when there is one) that opens
+  // the control under the row.
+  const toggle = findings > 0 && (backfill.mode !== "none" || (state && state.phase !== "Complete"));
 
   return (
     <li class={`${ROW_GRID} group px-5 py-2 hover:bg-[color-mix(in_oklab,var(--patchy-green)_4%,var(--patchy-surface))] max-md:py-3`}>
@@ -519,10 +756,27 @@ function RepositoryRow({
           >
             {short}
           </a>
-          {summary?.rollup && findings > 0 ? (
-            <a class="text-[12.5px] text-muted no-underline hover:text-fg hover:underline" href={metricsHref(name)}>
-              {plural(summary.rollup.findings, "finding", "findings")} all-time
-            </a>
+          {(summary?.rollup && findings > 0) || toggle ? (
+            <span class="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
+              {summary?.rollup && findings > 0 ? (
+                <a class="text-muted no-underline hover:text-fg hover:underline" href={metricsHref(name)}>
+                  {plural(summary.rollup.findings, "finding", "findings")} all-time
+                </a>
+              ) : null}
+              {toggle ? (
+                <button
+                  type="button"
+                  class={`cursor-pointer border-0 bg-transparent p-0 text-[12.5px] underline decoration-line-3 underline-offset-4 hover:text-fg hover:decoration-current ${
+                    state && state.phase !== "Complete" ? STATE_TEXT[state.tone] : "text-muted"
+                  }`}
+                  aria-expanded={showBackfill}
+                  aria-controls={backfillId}
+                  onClick={() => setShowBackfill((o) => !o)}
+                >
+                  {state && state.phase !== "Complete" ? state.label : "Backfill"}
+                </button>
+              ) : null}
+            </span>
           ) : null}
         </div>
         <RemoveButton name={name} onRemove={onRemove} class="md:hidden" />
@@ -552,9 +806,7 @@ function RepositoryRow({
             summary={summary}
             access={access}
             accessPending={accessPending}
-            canBackfill={canBackfill}
-            busy={busy}
-            onBackfill={onBackfill}
+            backfill={backfill}
             why={
               details.length ? (
                 <button
@@ -586,9 +838,37 @@ function RepositoryRow({
           ))}
         </ul>
       ) : null}
+
+      {toggle && showBackfill ? (
+        <div
+          id={backfillId}
+          class="mt-1 mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-surface-2 px-4 py-3 text-[13px] text-muted md:col-span-8 md:col-start-2 max-md:mt-2"
+        >
+          {state ? (
+            <>
+              {state.phase !== "Complete" ? <Pill tone={state.tone}>{state.label}</Pill> : null}
+              <span class="max-w-[72ch]">{state.text}</span>
+            </>
+          ) : (
+            <span class="max-w-[72ch]">Lists the repository's open alerts again and ingests any patchy missed.</span>
+          )}
+          <span class="ml-auto flex items-center gap-1.5">
+            <BackfillAction bf={bf} backfill={backfill} />
+          </span>
+        </div>
+      ) : null}
     </li>
   );
 }
+
+// STATE_TEXT tints the toggle naming an unfinished or refused request.
+const STATE_TEXT: Record<"amber" | "seedling" | "green" | "red" | "soil", string> = {
+  amber: "text-amber",
+  seedling: "text-seedling",
+  green: "text-ink",
+  red: "text-red",
+  soil: "text-soil",
+};
 
 // detailLines are the full explanations behind a row's short status.
 function detailLines(name: string, access: RepositoryAccess): string[] {
@@ -633,88 +913,119 @@ function RemoveButton({ name, onRemove, class: extra }: { name: string; onRemove
   );
 }
 
-// backfilledSentence reports a finished backfill that found nothing: the
-// repository had no open alerts when it was walked.
-function backfilledSentence(bf: RepositoryBackfill): string {
-  const when = bf.lastRunAt ? ` ${ago(bf.lastRunAt)}` : "";
-  return `Backfilled on ${bf.integration}${when}. It had no open alerts.`;
+// BackfillAction is a row's backfill control: nothing while a request is
+// open (its state says so), the button the caller's grants allow, held
+// disabled until the cooldown passes.
+function BackfillAction({ bf, backfill }: { bf?: RepositoryBackfill; backfill: RowBackfill }) {
+  if (backfillOpen(bf)) return null;
+  if (backfill.mode === "none") return <span class="text-[13px] text-faint">Ask an operator to backfill it.</span>;
+  const again = !!bf;
+  const wait = !backfill.available ? (
+    <span class="text-[13px] text-faint" title={backfill.availableAt}>
+      available {formatIn(backfill.availableAt)}
+    </span>
+  ) : null;
+  if (backfill.mode === "request") {
+    return (
+      <>
+        {/* A row with history already has its sentence; the hint would
+            only push the button onto a line of its own. */}
+        {wait ?? (again ? null : <span class="text-[13px] text-faint">An operator will review it.</span>)}
+        <ConfirmButton
+          icon="rotateCcw"
+          label={again ? "Request again" : "Request backfill"}
+          confirmLabel="Confirm request"
+          busyLabel="Requesting…"
+          busy={backfill.busy}
+          disabled={!backfill.available}
+          onConfirm={() => backfill.onBackfill(true)}
+        />
+      </>
+    );
+  }
+  return (
+    <>
+      {wait}
+      <BackfillButton
+        label={again ? "Backfill again" : "Backfill"}
+        busy={backfill.busy}
+        disabled={!backfill.available}
+        onConfirm={() => backfill.onBackfill(false)}
+      />
+    </>
+  );
 }
 
 // QuietStatus is the sentence a repository with no current findings gets
-// in place of the track: its history when patchy has one, otherwise what
-// patchy can do about it.
+// in place of the track: an unfinished or refused request first, then its
+// history when patchy has one, otherwise what patchy can do about it.
 function QuietStatus({
   name,
   summary,
   access,
   accessPending,
-  canBackfill,
-  busy,
-  onBackfill,
+  backfill,
   why,
 }: {
   name: string;
   summary?: RepositorySummary;
   access?: RepositoryAccess;
   accessPending: boolean;
-  canBackfill: boolean;
-  busy: boolean;
-  onBackfill: () => void;
+  backfill: RowBackfill;
   // why is the toggle for the row's full explanation, placed right after
   // the short notes it expands.
   why: ComponentChildren;
 }) {
-
-  if (summary?.rollup) {
-    return (
-      <span class="text-muted">
-        Nothing open now.{" "}
-        <a class="text-muted underline decoration-line-3 underline-offset-4 hover:text-fg" href={metricsHref(name)}>
-          {plural(summary.rollup.findings, "finding", "findings")} all-time
-        </a>
-        {summary.rollup.lastProcessed ? `, the latest ${ago(summary.rollup.lastProcessed)}.` : "."}
-      </span>
-    );
-  }
-
   const bf = summary?.backfill;
-  if (bf?.pending) {
-    return (
-      <>
-        <Pill tone="seedling">Backfill pending</Pill>
-        <span class="text-muted">
-          Requested on {bf.integration}
-          {bf.requestedAt ? ` ${ago(bf.requestedAt)}` : ""}
-          {bf.requestedBy ? ` by ${bf.requestedBy}` : ""}. Its alerts arrive once the controller picks it up.
-        </span>
-      </>
-    );
-  }
-  if (bf?.error) {
-    return (
-      <>
-        <Pill tone="red">Backfill failed</Pill>
-        <span class="min-w-0 truncate text-muted" title={bf.error}>
-          {bf.error}
-        </span>
-      </>
-    );
-  }
-  if (accessPending) return <span class="text-faint">Checking whether patchy can read its alerts…</span>;
-  if (!access || access.skipped) {
-    return <span class="text-muted">{bf ? backfilledSentence(bf) : "No findings yet."}</span>;
-  }
+  const state = bf ? backfillState(bf, ago) : null;
+  const unreadable = !!access && !access.skipped && !access.backfillIntegration;
 
-  const forge = forgeBadge(access.forge);
+  const forge = access && !access.skipped ? forgeBadge(access.forge) : null;
   const forgeNote = forge ? (
-    <span class="inline-flex items-center gap-1.5 text-[13px] text-muted" title={forgeProblem(name, access.forge) ?? ""}>
+    <span class="inline-flex items-center gap-1.5 text-[13px] text-muted" title={forgeProblem(name, access?.forge) ?? ""}>
       <Icon name="alertTriangle" size={13} class="text-amber" />
       {forge}
     </span>
   ) : null;
+  const action = (
+    <span class="ml-auto flex items-center gap-1.5">
+      <BackfillAction bf={bf} backfill={backfill} />
+    </span>
+  );
 
-  if (!access.backfillIntegration) {
-    const reason = accessReason(access);
+  if (state && state.phase !== "Complete") {
+    return (
+      <>
+        <Pill tone={state.tone}>{state.label}</Pill>
+        <span class="min-w-0 text-muted" title={state.phase === "Failed" ? state.text : undefined}>
+          {state.text}
+        </span>
+        {forgeNote}
+        {why}
+        {unreadable ? null : action}
+      </>
+    );
+  }
+
+  if (summary?.rollup) {
+    return (
+      <>
+        <span class="text-muted">
+          Nothing open now.{" "}
+          <a class="text-muted underline decoration-line-3 underline-offset-4 hover:text-fg" href={metricsHref(name)}>
+            {plural(summary.rollup.findings, "finding", "findings")} all-time
+          </a>
+          {summary.rollup.lastProcessed ? `, the latest ${ago(summary.rollup.lastProcessed)}.` : "."}
+        </span>
+        {action}
+      </>
+    );
+  }
+
+  if (accessPending) return <span class="text-faint">Checking whether patchy can read its alerts…</span>;
+
+  if (unreadable) {
+    const reason = accessReason(access!);
     return (
       <>
         <Pill tone="amber">Can't read alerts</Pill>
@@ -728,18 +1039,396 @@ function QuietStatus({
   return (
     <>
       <span class="text-muted">
-        {bf ? backfilledSentence(bf) : `No findings yet. ${access.backfillIntegration} can read its alerts.`}
+        {state
+          ? state.text
+          : access?.backfillIntegration
+            ? `No findings yet. ${access.backfillIntegration} can read its alerts.`
+            : "No findings yet."}
       </span>
       {forgeNote}
       {why}
-      <span class="ml-auto flex items-center gap-1.5">
-        {canBackfill ? (
-          <BackfillButton label={bf ? "Backfill again" : "Backfill"} busy={busy} onConfirm={onBackfill} />
-        ) : (
-          <span class="text-[13px] text-faint">Ask an operator to backfill it.</span>
-        )}
-      </span>
+      {action}
     </>
+  );
+}
+
+// GitHubBar is the GitHub link: each Integration's connect button, or the
+// account connected through it, then the import and refresh of the list.
+function GitHubBar({
+  links,
+  canBackfillMaintained,
+  busy,
+  importOpen,
+  onConnect,
+  onDisconnect,
+  onToggleImport,
+  onRefresh,
+}: {
+  links: GitHubLink[];
+  canBackfillMaintained: boolean;
+  // The Integration being connected or disconnected, or "refresh".
+  busy: string | null;
+  importOpen: boolean;
+  onConnect: (integration: string) => void;
+  onDisconnect: (integration: string) => void;
+  onToggleImport: () => void;
+  onRefresh: () => void;
+}) {
+  const connected = anyConnected(links);
+  const all = links.every((l) => l.connected);
+  return (
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13.5px]" role="group" aria-label="GitHub">
+      <Icon name="github" size={16} class="flex-none text-muted" />
+      {!connected ? (
+        <span class="text-muted">
+          Connect GitHub to import the repositories you maintain
+          {canBackfillMaintained ? " and backfill them yourself" : ""}.
+        </span>
+      ) : null}
+      {links.map((l) =>
+        l.connected ? (
+          <span key={l.integration} class="inline-flex flex-wrap items-center gap-x-1.5">
+            <span class="text-muted">Connected to {l.host} as</span>
+            <a class="font-semibold text-fg no-underline hover:underline" href={githubProfileHref(l)} target="_blank" rel="noreferrer">
+              @{l.login}
+            </a>
+            {links.length > 1 ? <span class="text-faint">({l.integration})</span> : null}
+            <span class="text-faint" aria-hidden="true">
+              ·
+            </span>
+            <button
+              type="button"
+              class="cursor-pointer border-0 bg-transparent p-0 text-[13.5px] text-muted underline decoration-line-3 underline-offset-4 hover:text-fg hover:decoration-current disabled:cursor-default disabled:opacity-60"
+              disabled={busy === l.integration}
+              onClick={() => onDisconnect(l.integration)}
+            >
+              {busy === l.integration ? "Disconnecting…" : "Disconnect"}
+            </button>
+          </span>
+        ) : (
+          <a
+            key={l.integration}
+            class={`ps-action no-underline ${busy === l.integration ? "pointer-events-none opacity-60" : ""}`}
+            href={githubConnectHref(l.integration, githubBack())}
+            onClick={(e) => {
+              e.preventDefault();
+              onConnect(l.integration);
+            }}
+          >
+            {busy === l.integration ? "Connecting…" : `Connect GitHub — ${l.integration} (${l.host})`}
+          </a>
+        ),
+      )}
+      {connected ? (
+        <span class="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            class={QUIET_BUTTON}
+            disabled={busy === "refresh" || !all}
+            title={
+              all
+                ? "Remove the repositories you imported from GitHub and no longer maintain"
+                : "Connect every GitHub account first, so the refresh sees all you maintain"
+            }
+            onClick={onRefresh}
+          >
+            {busy === "refresh" ? "Refreshing…" : "Refresh from GitHub"}
+          </button>
+          <button type="button" class="ps-action" aria-expanded={importOpen} onClick={onToggleImport}>
+            <Icon name="download" size={14} /> Import from GitHub
+          </button>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+// GitHubImport is the import picker: every repository the connected
+// accounts administer or maintain, filterable, each a checkbox; those
+// already on the list are shown ticked and fixed.
+function GitHubImport({
+  links,
+  tracked,
+  onAdd,
+  onClose,
+}: {
+  links: GitHubLink[];
+  tracked: TrackedRepo[];
+  onAdd: (names: string[]) => void;
+  onClose: () => void;
+}) {
+  const [results, setResults] = useState<GitHubFetch[] | null>(null);
+  const [term, setTerm] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const linksKey = links.map((l) => `${l.integration}:${l.connected}`).join(",");
+  useEffect(() => {
+    const ctl = new AbortController();
+    setResults(null);
+    void fetchAllGitHub(links, ctl.signal).then((r) => {
+      if (!ctl.signal.aborted) setResults(r);
+    });
+    return () => ctl.abort();
+    // links is captured through linksKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linksKey]);
+
+  // One list across Integrations, by name, deduplicated.
+  const repos = useMemo(() => {
+    const out = new Map<string, GitHubRepository>();
+    for (const r of results ?? []) {
+      if (!r.ok) continue;
+      for (const repo of r.payload.repositories) {
+        const key = repo.name.toLowerCase();
+        if (!out.has(key)) out.set(key, repo);
+      }
+    }
+    return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [results]);
+  const shown = filterImportable(repos, term);
+  const left = room(tracked) - selected.size;
+  const fresh = shown.filter((r) => !tracks(tracked, r.name));
+  const addAll = fresh.slice(0, room(tracked)).map((r) => r.name);
+  const logins = (results ?? []).flatMap((r) => (r.ok ? [`@${r.payload.login}`] : []));
+  const failures = (results ?? []).filter((r): r is Extract<GitHubFetch, { ok: false }> => !r.ok);
+  const truncated = (results ?? []).some((r) => r.ok && r.payload.truncated);
+
+  const toggle = (name: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  const commit = (names: string[]) => {
+    onAdd(names);
+    setSelected(new Set());
+  };
+
+  return (
+    <section class="ps-card" aria-labelledby="github-import-title">
+      <header class="flex items-start justify-between gap-3 border-b border-line px-5 pt-4 pb-3">
+        <div>
+          <h2 id="github-import-title" class="ps-heading">
+            Import from GitHub
+          </h2>
+          <p class="m-0 mt-0.5 text-[13px] text-muted">
+            {results === null
+              ? "Loading the repositories you maintain…"
+              : `${plural(repos.length, "repository", "repositories")} ${logins.join(" and ") || "you"} ${
+                  logins.length > 1 ? "administer or maintain" : "administers or maintains"
+                }. Your list has room for ${formatCount(room(tracked))} more.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="grid size-8 flex-none cursor-pointer place-items-center rounded-md border-0 bg-transparent text-faint hover:bg-surface-2 hover:text-fg"
+          aria-label="Close the import"
+          onClick={onClose}
+        >
+          <Icon name="x" size={15} />
+        </button>
+      </header>
+
+      {failures.map((f) => (
+        <p key={f.integration} class="m-0 flex items-start gap-2 border-b border-line px-5 py-2.5 text-[13px] text-red">
+          <Icon name="alertTriangle" size={14} class="mt-0.5 flex-none" />
+          <span>
+            {f.integration}: {f.error}
+            {/reconnect/i.test(f.error) ? (
+              <>
+                {" "}
+                <a class="font-semibold text-inherit" href={githubConnectHref(f.integration, githubBack())}>
+                  Reconnect
+                </a>
+              </>
+            ) : null}
+          </span>
+        </p>
+      ))}
+      {truncated ? (
+        <p class="m-0 border-b border-line px-5 py-2.5 text-[13px] text-amber">
+          GitHub's list was cut short, so some repositories you maintain may be missing. Add those by name.
+        </p>
+      ) : null}
+
+      {repos.length ? (
+        <>
+          <div class="px-5 pt-3 pb-2">
+            <input
+              type="search"
+              class="ps-input w-full text-[13.5px]"
+              placeholder="Filter by name"
+              aria-label="Filter the repositories you maintain"
+              value={term}
+              onInput={(e) => setTerm((e.target as HTMLInputElement).value)}
+            />
+          </div>
+          <ul class="m-0 max-h-[22rem] list-none overflow-y-auto p-0 pb-2" aria-label="Repositories you maintain">
+            {shown.map((r) => {
+              const listed = tracks(tracked, r.name);
+              const checked = listed || selected.has(r.name);
+              const full = !checked && left <= 0;
+              return (
+                <li key={r.name}>
+                  <label
+                    class={`flex items-center gap-3 px-5 py-1.5 text-[13.5px] ${
+                      listed || full ? "cursor-default" : "cursor-pointer hover:bg-surface-2"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      class="size-4 flex-none accent-turf"
+                      checked={checked}
+                      disabled={listed || full}
+                      onChange={() => toggle(r.name)}
+                    />
+                    <span class="min-w-0 truncate">
+                      <span class="text-faint">{ownerName(r.name)}/</span>
+                      <span class={listed ? "text-muted" : "font-semibold text-fg"}>{shortName(r.name)}</span>
+                    </span>
+                    <span class="ml-auto flex flex-none items-center gap-2 text-[12.5px] text-faint">
+                      {listed ? "on your list" : null}
+                      <span class="ps-mono-tag">{r.role}</span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+            {shown.length === 0 ? (
+              <li class="px-5 py-3 text-[13px] text-faint">No repository you maintain matches “{term}”.</li>
+            ) : null}
+          </ul>
+        </>
+      ) : results !== null && failures.length === 0 ? (
+        <p class="m-0 px-5 py-4 text-[13.5px] text-muted">
+          GitHub lists no repository you administer or maintain where patchy's App is installed.
+        </p>
+      ) : null}
+
+      <footer class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-5 py-3 text-[13px] text-muted">
+        <span>
+          {room(tracked) === 0
+            ? `Your list is full at ${MAX_TRACKED} repositories. Remove one to add another.`
+            : `${formatCount(selected.size)} selected`}
+        </span>
+        <span class="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            class={QUIET_BUTTON}
+            disabled={addAll.length === 0}
+            title={`Adds every repository shown that is not on your list yet, up to the limit of ${MAX_TRACKED}`}
+            onClick={() => commit(addAll)}
+          >
+            {addAll.length < fresh.length ? `Add the first ${formatCount(addAll.length)}` : `Add all ${formatCount(addAll.length)}`}
+          </button>
+          <button
+            type="button"
+            class="ps-action ps-action--primary"
+            disabled={selected.size === 0}
+            onClick={() => commit([...selected])}
+          >
+            {selected.size ? `Add ${formatCount(selected.size)} selected` : "Add selected"}
+          </button>
+        </span>
+      </footer>
+    </section>
+  );
+}
+
+// BackfillRequests is the operators' queue: every request awaiting a
+// decision, each with Approve and Deny (which takes an optional reason).
+function BackfillRequests({
+  requests,
+  busy,
+  onDecide,
+}: {
+  requests: BackfillRequest[];
+  busy: string | null;
+  onDecide: (req: BackfillRequest, verdict: "approve" | "deny", reason: string) => void;
+}) {
+  const waiting = requests.filter((r) => r.phase === "AwaitingApproval");
+  return (
+    <section class="ps-card" aria-labelledby="backfill-requests-title">
+      <header class="px-5 pt-4 pb-3">
+        <h2 id="backfill-requests-title" class="ps-heading">
+          Backfill requests
+        </h2>
+        <p class="m-0 mt-0.5 text-[13px] text-muted">
+          {waiting.length
+            ? `${plural(waiting.length, "request is", "requests are")} waiting for you to decide. An approved request runs at once; a denied one tells the requester why.`
+            : "Nothing is waiting for a decision."}
+        </p>
+      </header>
+      {waiting.length ? (
+        <ul class="m-0 list-none p-0">
+          {waiting.map((r) => (
+            <BackfillRequestRow key={r.name} request={r} busy={busy === r.name} onDecide={onDecide} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function BackfillRequestRow({
+  request: r,
+  busy,
+  onDecide,
+}: {
+  request: BackfillRequest;
+  busy: boolean;
+  onDecide: (req: BackfillRequest, verdict: "approve" | "deny", reason: string) => void;
+}) {
+  const [armed, setArmed] = useState<"approve" | "deny" | null>(null);
+  const [reason, setReason] = useState("");
+  const what = r.repositories?.length ? r.repositories.join(", ") : `Everything ${r.integration} can see`;
+  return (
+    <li class="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-5 py-3">
+      <div class="min-w-0">
+        <p class="m-0 truncate text-[14px] font-semibold text-fg" title={what}>
+          {what}
+        </p>
+        <p class="m-0 text-[13px] text-muted">
+          Requested by {r.requestedBy || "someone"}
+          {r.requestedAt ? ` ${ago(r.requestedAt)}` : ""} on {r.integration}
+          {r.githubLogin ? ` · GitHub @${r.githubLogin}` : ""}
+        </p>
+      </div>
+      <span class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+        {armed === "deny" ? (
+          <input
+            type="text"
+            class="ps-input w-[min(18rem,60vw)] text-[13px]"
+            placeholder="Reason (optional)"
+            aria-label={`Why the backfill of ${what} is denied`}
+            maxLength={500}
+            value={reason}
+            onInput={(e) => setReason((e.target as HTMLInputElement).value)}
+          />
+        ) : null}
+        <ConfirmButton
+          icon="x"
+          label="Deny"
+          confirmLabel="Confirm deny"
+          busyLabel="Deciding…"
+          busy={busy}
+          armed={armed === "deny"}
+          onArmedChange={(a) => setArmed(a ? "deny" : null)}
+          onConfirm={() => onDecide(r, "deny", reason.trim())}
+        />
+        <ConfirmButton
+          icon="check"
+          label="Approve"
+          confirmLabel="Confirm: run it"
+          busyLabel="Deciding…"
+          primary
+          busy={busy}
+          armed={armed === "approve"}
+          onArmedChange={(a) => setArmed(a ? "approve" : null)}
+          onConfirm={() => onDecide(r, "approve", "")}
+        />
+      </span>
+    </li>
   );
 }
 

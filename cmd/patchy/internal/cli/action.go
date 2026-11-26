@@ -39,6 +39,9 @@ type actionFlags struct {
 	selector string
 	dryRun   bool
 	yes      bool
+	// noteSet records an explicit --note. Approving a backfill request uses it
+	// as the decision's reason, which has no default.
+	noteSet bool
 }
 
 // newActionCmds builds one command per action verb. They differ only in the
@@ -69,8 +72,24 @@ func newActionCmd(opts *Options, verb string) *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: nounCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			f.noteSet = cmd.Flags().Changed("note")
 			return runAction(cmd.Context(), opts, f, verb, args[0], args[1:])
 		},
+	}
+	if verb == action.VerbApprove {
+		// approve also decides backfill requests, which `deny` is the other
+		// half of. The finding form stays the headline.
+		cmd.Use = "approve (finding|backfillrequest) <name...>"
+		cmd.Short = "Approve a finding, or a backfill request awaiting an operator"
+		cmd.Long += "\n\n" +
+			"approve also decides a backfill request filed with `patchy backfill --request`:\n" +
+			"`patchy approve backfillrequest <name>` lets it run, and `patchy deny\n" +
+			"backfillrequest <name>` refuses it. A decision is final, and only a request\n" +
+			"waiting for an operator takes one. Deciding needs the 'backfill' verb on\n" +
+			"integrations rather than 'approve' on findings. An explicit --note becomes the\n" +
+			"decision's reason; -l is not supported for backfill requests."
+		cmd.Example += "\n  patchy approve backfillrequest backfill-x7k2p\n" +
+			"  patchy approve bfr backfill-x7k2p --note \"scoped to acme/shop, go ahead\""
 	}
 
 	fl := cmd.Flags()
@@ -88,7 +107,13 @@ func runAction(ctx context.Context, opts *Options, f *actionFlags, verb, noun st
 	if err != nil {
 		return errUsage(err)
 	}
+	if kind.Singular == "backfillrequest" && verb == action.VerbApprove {
+		return runApproveBackfill(ctx, opts, f, names)
+	}
 	if kind.Singular != "finding" {
+		if verb == action.VerbApprove {
+			return errUsage(fmt.Errorf("approve applies to findings and backfill requests, not %s", kind.Plural))
+		}
 		return errUsage(fmt.Errorf("%s applies to findings, not %s", verb, kind.Plural))
 	}
 	if len(names) == 0 && f.selector == "" {
@@ -135,6 +160,24 @@ func runAction(ctx context.Context, opts *Options, f *actionFlags, verb, noun st
 	}
 
 	return applyToAll(ctx, opts, env, f, verb, user, targets)
+}
+
+// runApproveBackfill routes `approve backfillrequest` onto the decision path
+// that `deny` shares, translating the finding-shaped flags. The approval note
+// has a default meant for findings, so only an explicit --note becomes the
+// decision's reason.
+func runApproveBackfill(ctx context.Context, opts *Options, f *actionFlags, names []string) error {
+	if f.selector != "" {
+		return errUsage(errors.New("-l is not supported for backfill requests; name each one to approve"))
+	}
+	if f.yes {
+		opts.debugf("--yes has no effect on backfill requests")
+	}
+	df := &decisionFlags{dryRun: f.dryRun}
+	if f.noteSet {
+		df.reason = f.note
+	}
+	return runDecision(ctx, opts, df, v1alpha1.BackfillApproved, names)
 }
 
 // actionTargets resolves the findings to act on, by name or by selector.

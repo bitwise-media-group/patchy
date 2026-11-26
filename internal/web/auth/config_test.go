@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,5 +169,43 @@ func TestNewModes(t *testing.T) {
 	// Unknown mode is rejected (validation normally catches it earlier).
 	if _, err := New(t.Context(), &Config{Mode: "basic"}, nil); err == nil {
 		t.Error("New accepted an unknown mode")
+	}
+}
+
+func TestLinkKey(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "link.key")
+	if err := os.WriteFile(keyFile, []byte(strings.Repeat("k", 48)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	short := filepath.Join(dir, "short.key")
+	if err := os.WriteFile(short, []byte("tooshort"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oidc := &Config{Mode: ModeOIDC, OIDC: &OIDCConfig{ClientSecret: "client-secret"}}
+
+	k1, err := LinkKey(oidc)
+	if err != nil || len(k1) != 32 {
+		t.Fatalf("oidc LinkKey = %x, %v", k1, err)
+	}
+	session, _ := sealKey("client-secret", "patchy-status-session")
+	if string(k1) == string(session) {
+		t.Error("the link key equals the session key; they must be separate labels")
+	}
+	// Anonymous and none use linkKeyFile, or have no key at all.
+	if k, err := LinkKey(&Config{Mode: ModeAnonymous, LinkKeyFile: keyFile}); err != nil || len(k) != 32 {
+		t.Errorf("anonymous LinkKey = %x, %v", k, err)
+	}
+	if k, err := LinkKey(&Config{Mode: ModeNone}); err != nil || k != nil {
+		t.Errorf("none without linkKeyFile = %x, %v, want no key", k, err)
+	}
+	if k, err := LinkKey(nil); err != nil || k != nil {
+		t.Errorf("unconfigured LinkKey = %x, %v", k, err)
+	}
+	if _, err := LinkKey(&Config{Mode: ModeNone, LinkKeyFile: short}); err == nil {
+		t.Error("a short linkKeyFile was accepted")
+	}
+	if _, err := LinkKey(&Config{Mode: ModeNone, LinkKeyFile: filepath.Join(dir, "missing")}); err == nil {
+		t.Error("a missing linkKeyFile was accepted")
 	}
 }

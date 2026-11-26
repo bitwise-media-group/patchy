@@ -39,13 +39,19 @@ data:
     PATCHY_PROJECTION_CONCURRENCY: "2"
     # The in-cluster repository-access endpoint (POST
     # /internal/v1/repository-access) the status server's "My repositories"
-    # page calls. It is a second listener, kept off the internet-facing
-    # webhook port, and a NetworkPolicy opens it to the status server only.
+    # page calls, and the GitHub-user endpoints (/internal/v1/github-user/*)
+    # behind its "Connect GitHub" link. It is a second listener, kept off the
+    # internet-facing webhook port, and a NetworkPolicy opens it to the
+    # status server only.
     # It accepts only a projected token (audience patchy-integration-controller)
     # of the ServiceAccount named by PATCHY_STATUS_SERVER_SERVICE_ACCOUNT
     # (default patchy-status-server), checked with a TokenReview. Unset
     # disables it, so remove this key when the status server is not deployed.
     PATCHY_INTERNAL_ADDR: ":9792"
+    # How long a finished (or never-decided) BackfillRequest is kept before
+    # the controller deletes it. It must outlast the status server's
+    # PATCHY_REPOSITORY_BACKFILL_COOLDOWN, which reads the finished ones.
+    # PATCHY_BACKFILL_REQUEST_TTL: 168h
 
     # ---- status-server ------------------------------------------------------
     # The repository-access check on the "My repositories" page calls the
@@ -55,6 +61,9 @@ data:
     # only needs setting when the Service name differs; set it to "" to turn
     # the check off. PATCHY_INTEGRATION_CONTROLLER_TOKEN_FILE defaults to the
     # projected token mounted in deployment-status-server.yaml.
+    # How long after a repository's backfill ran that the repositories page
+    # refuses another for it (keep it below PATCHY_BACKFILL_REQUEST_TTL).
+    # PATCHY_REPOSITORY_BACKFILL_COOLDOWN: 24h
 
     # ---- source-controller --------------------------------------------------
     # The artifact server: SHA-pinned repository tarballs the agent pods fetch

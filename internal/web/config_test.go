@@ -14,7 +14,6 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
@@ -29,9 +28,6 @@ func fullConfigIntegration() *v1alpha1.Integration {
 			Provider:  v1alpha1.IntegrationProviderGitHub,
 			SecretRef: &v1alpha1.LocalSecretReference{Name: "creds"},
 			Interval:  metav1.Duration{Duration: 10 * time.Minute},
-			Backfill: &v1alpha1.BackfillRequest{
-				By: "dev@acme.test", At: metav1.NewTime(testClock), Repositories: []string{"acme/"},
-			},
 			GitHub: &v1alpha1.GitHubIntegration{
 				Issues:             &v1alpha1.GitHubIssues{Enabled: true},
 				CodeScanningAlerts: &v1alpha1.GitHubCodeScanningAlerts{Enabled: true},
@@ -47,12 +43,28 @@ func fullConfigIntegration() *v1alpha1.Integration {
 			Redelivery: &v1alpha1.RedeliveryStatus{
 				LastSweepAt: &at, Scanned: 12, Redelivered: 2, Truncated: true, Error: "one stuck",
 			},
-			Backfill: &v1alpha1.BackfillStatus{
-				LastRunAt: &at, Listed: 40, Ingested: 39, Truncated: true, Error: "one bad",
-				BackfilledAt: &at,
-			},
 		},
 	}
+}
+
+// testBackfillRequest builds a BackfillRequest on gh created at the given
+// offset from testClock.
+func testBackfillRequest(
+	name string, created time.Duration, mutate ...func(*v1alpha1.BackfillRequest),
+) *v1alpha1.BackfillRequest {
+	b := &v1alpha1.BackfillRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: "patchy", CreationTimestamp: metav1.NewTime(testClock.Add(created)),
+		},
+		Spec: v1alpha1.BackfillRequestSpec{
+			IntegrationRef: v1alpha1.LocalObjectReference{Name: "gh"},
+			RequestedBy:    "dev@acme.test",
+		},
+	}
+	for _, m := range mutate {
+		m(b)
+	}
+	return b
 }
 
 func testForge() *v1alpha1.Forge {
@@ -130,7 +142,22 @@ func fetchConfigDataset(t *testing.T) *ConfigDataset {
 			Enhance: &v1alpha1.GenericEnhancer{Enabled: true, URL: "https://wh.acme.test/enhance"},
 		}
 	})
-	s := testServer(t, fullConfigIntegration(), generic, testForge())
+	at := metav1.NewTime(testClock.Add(-time.Hour))
+	// The latest request on gh is the newest one an operator has not left
+	// waiting; an older finished one is superseded.
+	older := testBackfillRequest("backfill-old", -2*time.Hour, func(b *v1alpha1.BackfillRequest) {
+		b.Status = v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, LastAttemptAt: &at, CompletedAt: &at}
+	})
+	latest := testBackfillRequest("backfill-new", 0, func(b *v1alpha1.BackfillRequest) {
+		b.Spec.Repositories = []string{"acme/"}
+		b.Status = v1alpha1.BackfillRequestStatus{
+			Phase: v1alpha1.BackfillPending, LastAttemptAt: nil, Listed: 40, Ingested: 39, Truncated: true, Error: "one bad",
+		}
+	})
+	waiting := testBackfillRequest("backfill-waiting", time.Minute, func(b *v1alpha1.BackfillRequest) {
+		b.Spec.Via = v1alpha1.BackfillViaRequested
+	})
+	s := testServer(t, fullConfigIntegration(), generic, testForge(), older, latest, waiting)
 	s.auth, s.granter = stubAuth{id: operator}, stubGranter{grants: allGrants()}
 
 	res, body := getConfig(t, s)
@@ -171,44 +198,45 @@ func TestHandleConfigProjection(t *testing.T) {
 func TestHandleConfigBackfillBlock(t *testing.T) {
 	ds := fetchConfigDataset(t)
 	bf := ds.Integrations[0].Backfill
-	if bf == nil || bf.Listed != 40 || bf.Ingested != 39 || !bf.Truncated || bf.Error != "one bad" {
-		t.Fatalf("backfill = %+v", bf)
+	if bf == nil || bf.Request != "backfill-new" || bf.Listed != 40 || bf.Ingested != 39 || !bf.Truncated ||
+		bf.Error != "one bad" {
+		t.Fatalf("backfill = %+v, want the newest decided request", bf)
 	}
-	// The status echo predates the request stamp, so the request is pending.
-	if !bf.Pending || bf.RequestedBy != "dev@acme.test" {
-		t.Errorf("backfill pending/requestedBy = %v/%q, want pending by dev@acme.test",
-			bf.Pending, bf.RequestedBy)
+	// Not attempted yet, so the trigger stays disabled.
+	if !bf.Pending || bf.Phase != "Pending" || bf.RequestedBy != "dev@acme.test" {
+		t.Errorf("backfill pending/phase/requestedBy = %v/%s/%q, want pending by dev@acme.test",
+			bf.Pending, bf.Phase, bf.RequestedBy)
 	}
 }
 
 func TestWireBackfillPending(t *testing.T) {
-	req := metav1.NewTime(testClock)
-	older := metav1.NewTime(testClock.Add(-time.Hour))
 	cases := []struct {
 		name    string
-		status  *v1alpha1.BackfillStatus
+		status  v1alpha1.BackfillRequestStatus
 		pending bool
 	}{
-		{"no status yet", nil, true},
-		{"stale echoes only", &v1alpha1.BackfillStatus{BackfilledAt: &older, AttemptedAt: &older}, true},
-		{"succeeded", &v1alpha1.BackfillStatus{BackfilledAt: &req, AttemptedAt: &req}, false},
+		{"not seen yet", v1alpha1.BackfillRequestStatus{}, true},
+		{"held by its integration", v1alpha1.BackfillRequestStatus{
+			Phase: v1alpha1.BackfillPending, Error: "suspended",
+		}, true},
 		// A failed attempt clears pending even though the controller keeps
 		// retrying; the trigger must re-enable for a corrected request.
-		{"attempted and failed", &v1alpha1.BackfillStatus{AttemptedAt: &req, Error: "bad filter"}, false},
-		// A status written before attemptedAt existed still clears on the
-		// backfilledAt echo alone.
-		{"legacy success echo", &v1alpha1.BackfillStatus{BackfilledAt: &req}, false},
+		{"attempted and failed", v1alpha1.BackfillRequestStatus{
+			Phase: v1alpha1.BackfillPending, Attempts: 1, Error: "bad filter",
+		}, false},
+		{"complete", v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillComplete, Attempts: 1}, false},
+		{"failed", v1alpha1.BackfillRequestStatus{Phase: v1alpha1.BackfillFailed, Attempts: 5}, false},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			integ := &v1alpha1.Integration{
-				Spec:   v1alpha1.IntegrationSpec{Backfill: &v1alpha1.BackfillRequest{By: "dev", At: req}},
-				Status: v1alpha1.IntegrationStatus{Backfill: tt.status},
-			}
-			if got := wireBackfill(integ).Pending; got != tt.pending {
+			b := testBackfillRequest("b", 0, func(b *v1alpha1.BackfillRequest) { b.Status = tt.status })
+			if got := wireBackfill(b).Pending; got != tt.pending {
 				t.Errorf("wireBackfill().Pending = %v, want %v", got, tt.pending)
 			}
 		})
+	}
+	if wireBackfill(nil) != nil {
+		t.Error("no request projected a backfill block")
 	}
 }
 
@@ -345,14 +373,17 @@ func TestHandleBackfill(t *testing.T) {
 			if tc.wantStatus != http.StatusOK {
 				return
 			}
-			var integ v1alpha1.Integration
-			key := types.NamespacedName{Namespace: "patchy", Name: "gh"}
-			if err := mustClient(s).Get(t.Context(), key, &integ); err != nil {
-				t.Fatalf("get integration: %v", err)
+			var list v1alpha1.BackfillRequestList
+			if err := mustClient(s).List(t.Context(), &list); err != nil {
+				t.Fatalf("list backfill requests: %v", err)
 			}
-			req := integ.Spec.Backfill
-			if req == nil || req.By != "op@acme.test" || !req.At.Time.Equal(testClock) {
-				t.Fatalf("spec.backfill = %+v, want stamped by op@acme.test", req)
+			if len(list.Items) != 1 {
+				t.Fatalf("backfill requests = %d, want 1", len(list.Items))
+			}
+			req := list.Items[0]
+			if req.Spec.RequestedBy != "op@acme.test" || req.Spec.IntegrationRef.Name != "gh" || req.Spec.Via != "" ||
+				req.Labels[backfillIntegrationLabel] != "gh" || !strings.Contains(body, req.Name) {
+				t.Fatalf("request = %+v (answer %s), want one by op@acme.test on gh", req, body)
 			}
 		})
 	}

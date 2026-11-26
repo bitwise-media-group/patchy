@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -23,56 +23,6 @@ import (
 	"github.com/bitwise-media-group/patchy/internal/kube"
 	"github.com/bitwise-media-group/patchy/pkg/source"
 )
-
-func TestPendingBackfill(t *testing.T) {
-	at := metav1.NewTime(time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC))
-	earlier := metav1.NewTime(at.Add(-time.Hour))
-	tests := []struct {
-		name    string
-		integ   v1alpha1.Integration
-		pending bool
-	}{
-		{"no request", v1alpha1.Integration{}, false},
-		{
-			"unhandled request",
-			v1alpha1.Integration{Spec: v1alpha1.IntegrationSpec{Backfill: &v1alpha1.BackfillRequest{At: at}}},
-			true,
-		},
-		{
-			"handled request",
-			v1alpha1.Integration{
-				Spec:   v1alpha1.IntegrationSpec{Backfill: &v1alpha1.BackfillRequest{At: at}},
-				Status: v1alpha1.IntegrationStatus{Backfill: &v1alpha1.BackfillStatus{BackfilledAt: &at}},
-			},
-			false,
-		},
-		{
-			"newer request supersedes the handled one",
-			v1alpha1.Integration{
-				Spec:   v1alpha1.IntegrationSpec{Backfill: &v1alpha1.BackfillRequest{At: at}},
-				Status: v1alpha1.IntegrationStatus{Backfill: &v1alpha1.BackfillStatus{BackfilledAt: &earlier}},
-			},
-			true,
-		},
-		{
-			"failed run left no echo",
-			v1alpha1.Integration{
-				Spec: v1alpha1.IntegrationSpec{Backfill: &v1alpha1.BackfillRequest{At: at}},
-				Status: v1alpha1.IntegrationStatus{
-					Backfill: &v1alpha1.BackfillStatus{LastRunAt: &at, Error: "boom"},
-				},
-			},
-			true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := pendingBackfill(&tt.integ) != nil; got != tt.pending {
-				t.Errorf("pendingBackfill() != nil = %v, want %v", got, tt.pending)
-			}
-		})
-	}
-}
 
 // fakeLister yields canned findings and records its calls.
 type fakeLister struct {
@@ -99,30 +49,33 @@ func (f *fakeLister) List(
 	return f.complete, nil
 }
 
-// newBackfillReconciler builds a Reconcile-level harness: a PAT-secret
-// Integration (Creds.Validate passes offline), a real Ingestor over the
-// fake client, and the ListerFor hook.
+// newBackfillReconciler builds a Reconcile-level harness: a Ready
+// Integration, a BackfillRequest on it, a real Ingestor over the fake
+// client, and the ListerFor hook.
 func newBackfillReconciler(
-	t *testing.T, integ *v1alpha1.Integration, lister *fakeLister, listerOK bool,
-) (*IntegrationReconciler, client.Client) {
+	t *testing.T, integ *v1alpha1.Integration, bfr *v1alpha1.BackfillRequest, lister *fakeLister, listerOK bool,
+) (*BackfillReconciler, client.Client) {
 	t.Helper()
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "creds", Namespace: "patchy"},
-		Data: map[string][]byte{
-			"token":         []byte("pat-token"),
-			"webhookSecret": []byte("hmac"),
-		},
+	objs := []client.Object{bfr}
+	if integ != nil {
+		if integ.Status.Conditions == nil {
+			integ.Status.Conditions = []metav1.Condition{{
+				Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "CredentialValid",
+				LastTransitionTime: metav1.NewTime(testClock),
+			}}
+		}
+		objs = append(objs, integ)
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(kube.Scheme()).
-		WithObjects(integ, secret).
-		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.Integration{}).
+		WithObjects(objs...).
+		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.Integration{}, &v1alpha1.BackfillRequest{}).
 		WithIndex(&v1alpha1.Finding{}, KeyHashIndex, KeyHashIndexer).
 		Build()
-	r := &IntegrationReconciler{
+	clock := testClock
+	r := &BackfillReconciler{
 		Client: c,
-		Creds:  NewCreds(c),
-		Now:    func() time.Time { return testClock },
+		Now:    func() time.Time { return clock },
 		Ingest: &Ingestor{Client: c, Namespace: "patchy", Window: time.Hour},
 		ListerFor: func(context.Context, *v1alpha1.Integration) (source.Lister, bool, error) {
 			if !listerOK {
@@ -134,166 +87,251 @@ func newBackfillReconciler(
 	return r, c
 }
 
-func backfillIntegration(at metav1.Time, repos ...string) *v1alpha1.Integration {
-	integ := testIntegration()
-	integ.Spec.Backfill = &v1alpha1.BackfillRequest{By: "dev", At: at, Repositories: repos}
-	return integ
+func backfillRequest(repos ...string) *v1alpha1.BackfillRequest {
+	return &v1alpha1.BackfillRequest{
+		ObjectMeta: metav1.ObjectMeta{Name: "backfill-1", Namespace: "patchy",
+			CreationTimestamp: metav1.NewTime(testClock)},
+		Spec: v1alpha1.BackfillRequestSpec{
+			IntegrationRef: v1alpha1.LocalObjectReference{Name: "gh"},
+			RequestedBy:    "dev",
+			Repositories:   repos,
+		},
+	}
 }
 
-func reconcileIntegration(t *testing.T, r *IntegrationReconciler) v1alpha1.Integration {
+func reconcileBackfill(t *testing.T, r *BackfillReconciler) (ctrl.Result, *v1alpha1.BackfillRequest) {
 	t.Helper()
-	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "patchy", Name: "gh"}}
-	if _, err := r.Reconcile(t.Context(), req); err != nil {
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "patchy", Name: "backfill-1"}}
+	res, err := r.Reconcile(t.Context(), req)
+	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	var integ v1alpha1.Integration
-	if err := r.Get(t.Context(), req.NamespacedName, &integ); err != nil {
-		t.Fatalf("Get integration: %v", err)
+	var bfr v1alpha1.BackfillRequest
+	if err := r.Get(t.Context(), req.NamespacedName, &bfr); err != nil {
+		if kerrors.IsNotFound(err) {
+			return res, nil
+		}
+		t.Fatalf("Get request: %v", err)
 	}
-	return integ
+	return res, &bfr
 }
 
 func TestReconcileBackfill(t *testing.T) {
-	at := metav1.NewTime(testClock)
 	lister := &fakeLister{
 		findings: []source.Finding{testSourceFinding(42), testSourceFinding(43)},
 		complete: true,
 	}
-	r, c := newBackfillReconciler(t, backfillIntegration(at, "acme/"), lister, true)
+	r, c := newBackfillReconciler(t, testIntegration(), backfillRequest("acme/"), lister, true)
 
-	integ := reconcileIntegration(t, r)
-	st := integ.Status.Backfill
-	if st == nil {
-		t.Fatal("status.backfill = nil, want a run report")
+	res, bfr := reconcileBackfill(t, r)
+	st := bfr.Status
+	if st.Phase != v1alpha1.BackfillComplete || st.Listed != 2 || st.Ingested != 2 || st.Truncated || st.Error != "" {
+		t.Errorf("status = %+v, want Complete, listed 2 ingested 2, no truncation, no error", st)
 	}
-	if st.Listed != 2 || st.Ingested != 2 || st.Truncated || st.Error != "" {
-		t.Errorf("status.backfill = %+v, want listed 2 ingested 2, no truncation, no error", st)
+	if st.Attempts != 1 || st.CompletedAt == nil || st.LastAttemptAt == nil {
+		t.Errorf("status = %+v, want one attempt and a completion time", st)
 	}
-	if st.BackfilledAt == nil || !st.BackfilledAt.Time.Equal(at.Time) {
-		t.Errorf("backfilledAt = %v, want the request echo %v", st.BackfilledAt, at)
+	if res.RequeueAfter != DefaultBackfillTTL {
+		t.Errorf("requeue = %v, want the TTL", res.RequeueAfter)
 	}
-	if st.AttemptedAt == nil || !st.AttemptedAt.Time.Equal(at.Time) {
-		t.Errorf("attemptedAt = %v, want the request echo %v", st.AttemptedAt, at)
-	}
-	if want := []string{"acme/"}; len(lister.repos) != 1 || lister.repos[0] != want[0] {
+	if want := []string{"acme/"}; !slices.Equal(lister.repos, want) {
 		t.Errorf("lister filter = %v, want %v", lister.repos, want)
 	}
 	// The two alerts share one accumulation family, so they fold into a
 	// single finding with both alerts.
 	items := listFindings(t, c)
 	if len(items) != 1 || len(items[0].Spec.Alerts) != 2 {
-		t.Fatalf("findings = %d (alerts %v), want one finding holding both alerts",
-			len(items), items)
+		t.Fatalf("findings = %d (alerts %v), want one finding holding both alerts", len(items), items)
 	}
 
-	// A handled request is not re-run.
-	reconcileIntegration(t, r)
+	// A finished request is not walked again.
+	reconcileBackfill(t, r)
 	if lister.calls != 1 {
-		t.Errorf("lister called %d times after a handled request, want 1", lister.calls)
+		t.Errorf("lister called %d times after a finished request, want 1", lister.calls)
+	}
+}
+
+func TestReconcileBackfillExpires(t *testing.T) {
+	lister := &fakeLister{complete: true}
+	r, _ := newBackfillReconciler(t, testIntegration(), backfillRequest("acme/shop"), lister, true)
+	reconcileBackfill(t, r)
+
+	r.Now = func() time.Time { return testClock.Add(DefaultBackfillTTL - time.Hour) }
+	if res, bfr := reconcileBackfill(t, r); bfr == nil || res.RequeueAfter != time.Hour {
+		t.Fatalf("before the TTL: request %v, requeue %v, want kept for another hour", bfr, res.RequeueAfter)
+	}
+	r.Now = func() time.Time { return testClock.Add(DefaultBackfillTTL + time.Second) }
+	if _, bfr := reconcileBackfill(t, r); bfr != nil {
+		t.Errorf("past the TTL the request survives: %+v", bfr.Status)
 	}
 }
 
 func TestReconcileBackfillTransientFailure(t *testing.T) {
-	at := metav1.NewTime(testClock)
 	lister := &fakeLister{err: errors.New("api unreachable")}
-	r, _ := newBackfillReconciler(t, backfillIntegration(at), lister, true)
+	r, _ := newBackfillReconciler(t, testIntegration(), backfillRequest(), lister, true)
 
-	integ := reconcileIntegration(t, r)
-	st := integ.Status.Backfill
-	if st == nil || st.Error == "" {
-		t.Fatalf("status.backfill = %+v, want the walk error", st)
+	res, bfr := reconcileBackfill(t, r)
+	st := bfr.Status
+	if st.Phase != v1alpha1.BackfillPending || st.Error == "" || st.Attempts != 1 || st.CompletedAt != nil {
+		t.Fatalf("status = %+v, want Pending with the walk error after one attempt", st)
 	}
-	if st.BackfilledAt != nil {
-		t.Errorf("backfilledAt = %v after a failed walk, want nil (retry stays pending)", st.BackfilledAt)
-	}
-	// The attempt is echoed even on failure, so observers (the status page)
-	// can tell a failed attempt from a request the controller never saw.
-	if st.AttemptedAt == nil || !st.AttemptedAt.Time.Equal(at.Time) {
-		t.Errorf("attemptedAt = %v after a failed walk, want the request echo %v", st.AttemptedAt, at)
+	if res.RequeueAfter != backfillRetryBase {
+		t.Errorf("requeue = %v, want the first backoff %v", res.RequeueAfter, backfillRetryBase)
 	}
 
-	// The failed request stays pending: the next reconcile retries.
+	// The next reconcile retries, and a clean walk completes it.
 	lister.err = nil
 	lister.complete = true
-	integ = reconcileIntegration(t, r)
-	if lister.calls != 2 {
-		t.Errorf("lister called %d times, want a retry after the failure", lister.calls)
+	_, bfr = reconcileBackfill(t, r)
+	if lister.calls != 2 || bfr.Status.Phase != v1alpha1.BackfillComplete || bfr.Status.Error != "" {
+		t.Errorf("after retry: calls %d, status %+v, want a clean completion", lister.calls, bfr.Status)
 	}
-	if st = integ.Status.Backfill; st == nil || st.BackfilledAt == nil || st.Error != "" {
-		t.Errorf("status.backfill after retry = %+v, want a clean echo", st)
+}
+
+func TestReconcileBackfillRetriesRunOut(t *testing.T) {
+	lister := &fakeLister{err: errors.New("bad credentials")}
+	r, _ := newBackfillReconciler(t, testIntegration(), backfillRequest(), lister, true)
+	var bfr *v1alpha1.BackfillRequest
+	for range maxBackfillAttempts {
+		_, bfr = reconcileBackfill(t, r)
+	}
+	if bfr.Status.Phase != v1alpha1.BackfillFailed || bfr.Status.Attempts != maxBackfillAttempts ||
+		bfr.Status.CompletedAt == nil {
+		t.Errorf("status = %+v, want Failed after %d attempts", bfr.Status, maxBackfillAttempts)
+	}
+}
+
+func TestBackfillBackoff(t *testing.T) {
+	for attempts, want := range map[int32]time.Duration{
+		1: time.Minute, 2: 2 * time.Minute, 3: 4 * time.Minute, 6: backfillRetryCap, 20: backfillRetryCap,
+	} {
+		if got := backfillBackoff(attempts); got != want {
+			t.Errorf("backfillBackoff(%d) = %v, want %v", attempts, got, want)
+		}
 	}
 }
 
 func TestReconcileBackfillUnsupportedProvider(t *testing.T) {
-	at := metav1.NewTime(testClock)
-	r, _ := newBackfillReconciler(t, backfillIntegration(at), nil, false)
+	r, _ := newBackfillReconciler(t, testIntegration(), backfillRequest(), nil, false)
 
-	integ := reconcileIntegration(t, r)
-	st := integ.Status.Backfill
-	if st == nil || !strings.Contains(st.Error, "does not support backfill") {
-		t.Fatalf("status.backfill = %+v, want the unsupported-provider error", st)
+	_, bfr := reconcileBackfill(t, r)
+	if bfr.Status.Phase != v1alpha1.BackfillFailed || !strings.Contains(bfr.Status.Error, "does not support backfill") {
+		t.Fatalf("status = %+v, want Failed with the unsupported-provider error", bfr.Status)
 	}
-	// Consumed, not retried: the echo lands despite the error.
-	if st.BackfilledAt == nil || !st.BackfilledAt.Time.Equal(at.Time) {
-		t.Errorf("backfilledAt = %v, want the request echo (consumed once)", st.BackfilledAt)
+}
+
+func TestReconcileBackfillMissingIntegration(t *testing.T) {
+	r, _ := newBackfillReconciler(t, nil, backfillRequest(), &fakeLister{}, true)
+	_, bfr := reconcileBackfill(t, r)
+	if bfr.Status.Phase != v1alpha1.BackfillFailed || !strings.Contains(bfr.Status.Error, "not found") {
+		t.Errorf("status = %+v, want Failed: integration not found", bfr.Status)
 	}
 }
 
 func TestReconcileBackfillTruncated(t *testing.T) {
-	at := metav1.NewTime(testClock)
 	lister := &fakeLister{findings: []source.Finding{testSourceFinding(42)}, complete: false}
-	r, _ := newBackfillReconciler(t, backfillIntegration(at), lister, true)
+	r, _ := newBackfillReconciler(t, testIntegration(), backfillRequest(), lister, true)
 
-	integ := reconcileIntegration(t, r)
-	st := integ.Status.Backfill
-	if st == nil || !st.Truncated {
-		t.Fatalf("status.backfill = %+v, want truncated", st)
-	}
-	if st.BackfilledAt == nil {
-		t.Error("backfilledAt = nil, want the echo: a truncated walk still consumed the request")
+	_, bfr := reconcileBackfill(t, r)
+	if !bfr.Status.Truncated || bfr.Status.Phase != v1alpha1.BackfillComplete {
+		t.Fatalf("status = %+v, want Complete and truncated", bfr.Status)
 	}
 }
 
 // A finding the ingestor rejects is skipped, counted, and surfaced. It
 // must not starve the rest of the walk.
 func TestReconcileBackfillPartialIngestFailure(t *testing.T) {
-	at := metav1.NewTime(testClock)
 	bad := testSourceFinding(41)
 	bad.Repo = source.Repo{} // names neither repository nor cloud resource
 	lister := &fakeLister{findings: []source.Finding{bad, testSourceFinding(42)}, complete: true}
-	r, c := newBackfillReconciler(t, backfillIntegration(at), lister, true)
+	r, c := newBackfillReconciler(t, testIntegration(), backfillRequest(), lister, true)
 
-	integ := reconcileIntegration(t, r)
-	st := integ.Status.Backfill
-	if st == nil || st.Listed != 2 || st.Ingested != 1 || st.Error == "" {
-		t.Fatalf("status.backfill = %+v, want listed 2, ingested 1, the ingest error surfaced", st)
-	}
-	if st.BackfilledAt == nil {
-		t.Error("backfilledAt = nil, want the echo despite one bad alert")
+	_, bfr := reconcileBackfill(t, r)
+	st := bfr.Status
+	if st.Phase != v1alpha1.BackfillComplete || st.Listed != 2 || st.Ingested != 1 || st.Error == "" {
+		t.Fatalf("status = %+v, want Complete, listed 2, ingested 1, the ingest error surfaced", st)
 	}
 	if items := listFindings(t, c); len(items) != 1 {
 		t.Errorf("findings = %d, want the good alert ingested", len(items))
 	}
 }
 
-func TestReconcileBackfillSuspended(t *testing.T) {
-	at := metav1.NewTime(testClock)
-	integ := backfillIntegration(at)
-	integ.Spec.Suspend = true
-	lister := &fakeLister{complete: true}
-	r, _ := newBackfillReconciler(t, integ, lister, true)
-
-	got := reconcileIntegration(t, r)
-	if got.Status.Backfill != nil || lister.calls != 0 {
-		t.Errorf("suspended integration ran a backfill (status %+v, calls %d), want untouched",
-			got.Status.Backfill, lister.calls)
+// A suspended or not-Ready Integration holds the request without spending
+// an attempt.
+func TestReconcileBackfillHeld(t *testing.T) {
+	cases := map[string]func(*v1alpha1.Integration){
+		"suspended": func(i *v1alpha1.Integration) { i.Spec.Suspend = true },
+		"not ready": func(i *v1alpha1.Integration) {
+			i.Status.Conditions = []metav1.Condition{{
+				Type: v1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: "CredentialInvalid",
+				Message: "bad key", LastTransitionTime: metav1.NewTime(testClock),
+			}}
+		},
 	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			integ := testIntegration()
+			mutate(integ)
+			lister := &fakeLister{complete: true}
+			r, _ := newBackfillReconciler(t, integ, backfillRequest(), lister, true)
+			res, bfr := reconcileBackfill(t, r)
+			if lister.calls != 0 || bfr.Status.Attempts != 0 || bfr.Status.Phase != v1alpha1.BackfillPending ||
+				bfr.Status.Error == "" || res.RequeueAfter != backfillWaitRetry {
+				t.Errorf("status %+v, calls %d, requeue %v: want held Pending with a reason",
+					bfr.Status, lister.calls, res.RequeueAfter)
+			}
+		})
+	}
+}
+
+// A requested backfill waits for an operator, runs once approved, and
+// never runs once denied.
+func TestReconcileBackfillApproval(t *testing.T) {
+	requested := func(d *v1alpha1.BackfillDecision) *v1alpha1.BackfillRequest {
+		b := backfillRequest("acme/shop")
+		b.Spec.Via = v1alpha1.BackfillViaRequested
+		b.Spec.Decision = d
+		return b
+	}
+	decision := func(v v1alpha1.BackfillVerdict) *v1alpha1.BackfillDecision {
+		return &v1alpha1.BackfillDecision{Verdict: v, By: "ops", At: metav1.NewTime(testClock), Reason: "no"}
+	}
+	t.Run("undecided waits, then expires", func(t *testing.T) {
+		lister := &fakeLister{complete: true}
+		r, _ := newBackfillReconciler(t, testIntegration(), requested(nil), lister, true)
+		_, bfr := reconcileBackfill(t, r)
+		if bfr.Status.Phase != v1alpha1.BackfillAwaitingApproval || lister.calls != 0 {
+			t.Fatalf("status %+v, calls %d: want AwaitingApproval and no walk", bfr.Status, lister.calls)
+		}
+		r.Now = func() time.Time { return testClock.Add(DefaultBackfillTTL + time.Minute) }
+		if _, bfr := reconcileBackfill(t, r); bfr != nil {
+			t.Errorf("an undecided request outlived the TTL: %+v", bfr.Status)
+		}
+	})
+	t.Run("approved runs", func(t *testing.T) {
+		lister := &fakeLister{complete: true}
+		r, _ := newBackfillReconciler(t, testIntegration(), requested(decision(v1alpha1.BackfillApproved)), lister, true)
+		_, bfr := reconcileBackfill(t, r)
+		if bfr.Status.Phase != v1alpha1.BackfillComplete || lister.calls != 1 {
+			t.Errorf("status %+v, calls %d: want Complete after one walk", bfr.Status, lister.calls)
+		}
+	})
+	t.Run("denied never runs", func(t *testing.T) {
+		lister := &fakeLister{complete: true}
+		r, _ := newBackfillReconciler(t, testIntegration(), requested(decision(v1alpha1.BackfillDeniedVerdict)),
+			lister, true)
+		_, bfr := reconcileBackfill(t, r)
+		if bfr.Status.Phase != v1alpha1.BackfillDenied || bfr.Status.Error != "no" || lister.calls != 0 ||
+			bfr.Status.CompletedAt == nil {
+			t.Errorf("status %+v, calls %d: want Denied with the reason and no walk", bfr.Status, lister.calls)
+		}
+	})
 }
 
 // The default lister construction (no ListerFor): provider and capability
 // gating that runs before any credential is read.
 func TestListerForGating(t *testing.T) {
-	r := &IntegrationReconciler{}
+	r := &BackfillReconciler{}
 
 	gc := &v1alpha1.Integration{Spec: v1alpha1.IntegrationSpec{
 		Provider: v1alpha1.IntegrationProviderGoogleCloud,
@@ -313,7 +351,7 @@ func TestListerForGating(t *testing.T) {
 // enables. The credential read comes after the gate, so a missing Secret
 // proves the gate passed.
 func TestListerForSecretScanningGate(t *testing.T) {
-	r := &IntegrationReconciler{Creds: NewCreds(fake.NewClientBuilder().WithScheme(kube.Scheme()).Build())}
+	r := &BackfillReconciler{Creds: NewCreds(fake.NewClientBuilder().WithScheme(kube.Scheme()).Build())}
 	gh := testIntegration()
 	gh.Spec.GitHub.CodeScanningAlerts = nil
 	gh.Spec.GitHub.SecretScanningAlerts = &v1alpha1.GitHubSecretScanningAlerts{Enabled: true}
@@ -377,5 +415,25 @@ func TestMultiLister(t *testing.T) {
 				t.Errorf("listed %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// An Integration change wakes only the unfinished requests naming it.
+func TestBackfillRequestsForIntegration(t *testing.T) {
+	done := backfillRequest()
+	done.Name = "backfill-done"
+	done.Status.Phase = v1alpha1.BackfillComplete
+	other := backfillRequest()
+	other.Name = "backfill-other"
+	other.Spec.IntegrationRef.Name = "elsewhere"
+	r, c := newBackfillReconciler(t, testIntegration(), backfillRequest(), &fakeLister{}, true)
+	for _, b := range []*v1alpha1.BackfillRequest{done, other} {
+		if err := c.Create(t.Context(), b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := r.requestsFor(t.Context(), testIntegration())
+	if len(got) != 1 || got[0].Name != "backfill-1" {
+		t.Errorf("requestsFor = %v, want only the open request on gh", got)
 	}
 }

@@ -208,21 +208,55 @@ the provider's **open** alerts through the list API: code-scanning alerts, secre
 capabilities the Integration enables. It ingests each alert in the same way a webhook delivery would. This is
 idempotent, so alerts that already have findings fold into them.
 
-Request it by setting `spec.backfill`. You can do this from the status page's configuration view, with
-`patchy backfill <integration>`, or directly. The RBAC verb is `backfill` on `integrations`, and the
-[admission policy](../../deployment/kustomize.md) enforces it for every client. The controller consumes the request once
-and echoes it on `status.backfill.backfilledAt`. It reports the walk (`listed`, `ingested`, `truncated`, `error`) beside
-it.
+Each backfill is its own object, a `BackfillRequest` (short name `bfr`). File one from the status page's configuration
+or repositories view, with `patchy backfill <integration>`, or directly. The integration-controller walks the requests
+one at a time and writes the outcome on the request's status: `phase`, `attempts`, `listed`, `ingested`, `truncated` and
+`error`.
 
 ```yaml
+apiVersion: patchy.bitwisemedia.uk/v1alpha1
+kind: BackfillRequest
+metadata:
+  generateName: backfill-
+  namespace: patchy
 spec:
-  backfill:
-    by: op@example.com
-    at: "2026-08-14T12:00:00Z"
-    repositories: ["acme/", "acme-labs/tool"] # optional; empty = full scope
+  integrationRef:
+    name: github
+  requestedBy: op@example.com # must be your own username
+  repositories: ["acme/", "acme-labs/tool"] # optional; empty = full scope
 ```
 
-How the backfill behaves:
+Follow it with `patchy get backfillrequests` or `kubectl get bfr`. Every spec field is immutable, so a new walk is a new
+request.
+
+### Who may run one
+
+The [admission policy](../../deployment/kustomize.md) `patchy-backfill-requests` checks every client:
+
+- A request that runs at once needs the `backfill` verb on `integrations`. From the CLI or the API it also needs native
+  `create` on `backfillrequests`.
+- A request with `spec.via: requested` needs no verb. It waits in `AwaitingApproval` until an operator holding
+  `backfill` sets `spec.decision` to `Approved` or `Denied` (once, with an optional reason). Operators decide from the
+  status page's **Backfill requests** panel, or with `patchy approve backfillrequest <name>` and
+  `patchy deny backfillrequest <name> --reason "..."`. `patchy backfill --request` files one.
+- `spec.requestedBy` must be the creating user, so the audit trail holds.
+- A `spec.via: maintained` request comes only from the status server, after it has checked the requester's GitHub role
+  on the repository (see [Connect GitHub](#connect-github)).
+
+### Phases
+
+| Phase              | Meaning                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `AwaitingApproval` | A requested backfill waiting for an operator's decision                                                             |
+| `Pending`          | Not walked yet, held (the Integration is suspended or not `Ready`), or the last walk failed and will retry          |
+| `Complete`         | The walk ran. `error` may still name the last alert that would not ingest                                           |
+| `Failed`           | It will never run: the Integration is gone or cannot list alerts, or five walks failed (retries back off 1m to 30m) |
+| `Denied`           | An operator denied it; `error` carries the reason                                                                   |
+
+A held request spends no attempt. Finished requests, and undecided ones, are deleted after the integration-controller's
+`--backfill-request-ttl` (default `168h`), counted from completion or, for an undecided one, from creation.
+
+### How the walk behaves
 
 - **Filter entries are prefixes** of `owner/name`. `acme/` covers an owner, `acme/service-` a name prefix, and
   `acme/shop` one repository (and any name that extends it). Matching is case-insensitive. An empty filter means
@@ -231,9 +265,9 @@ How the backfill behaves:
   accounts, and any account whose filter entries all name repositories, enumerate the installation's repository
   inventory and walk only the matching repositories.
 - **PAT credentials** cannot discover repositories, so every filter entry must be an exact `owner/name`. A bare prefix
-  is reported as an error on `status.backfill.error`.
+  is reported as an error on the request's `status.error`.
 - **The walk is bounded** (about 10K alerts per pass, plus a cap on the repository inventory). A pass that exceeds it
-  sets `status.backfill.truncated`. Request again with a narrower prefix to cover the rest. There is no cursor to resume
+  sets `status.truncated`. File another request with a narrower prefix to cover the rest. There is no cursor to resume
   from.
 - **Only open alerts** are listed. Dismissed and fixed alerts are not backfilled.
 - The list API leaves out the rule-help markdown that a webhook-driven ingest fetches for each alert. So backfilled
@@ -242,20 +276,82 @@ How the backfill behaves:
 
 ### Backfilling one repository
 
-A maintainer can also backfill a single repository from the status page's
-[repositories view](../../operate/status-page.md#my-repositories). It is offered only for a repository patchy has never
-seen, with no findings and no rollup, and only after a check shows that one of your github Integrations can read its
-alerts. A repository that already has findings is kept up to date by webhooks, so the button never appears for it, and
-the server refuses the request.
+The status page's [repositories view](../../operate/status-page.md#my-repositories) offers a backfill of one repository,
+on the first Integration (by name) that can read its alerts. It files a request with that repository as the only filter
+entry, by one of three paths:
 
-It writes the same `spec.backfill` request, with the repository as the only filter entry, on the first Integration (by
-name) that can read it. If a request is already waiting on that Integration, the repository is added to its list (at
-most 50 entries). If the waiting request has an empty filter, it already covers the repository and nothing changes. It
-needs the same `backfill` verb on `integrations`.
+- holders of `backfill` run it at once;
+- holders of `backfill-maintained` with a [linked GitHub account](#connect-github) run it at once on repositories they
+  are admin or maintain on;
+- anyone else who can view findings files a request for an operator to decide.
+
+Every path shares the same limits. A repository with an open request that covers it (one naming it, or a whole-scope
+one) gets no second request. After a walk that named the repository completes, the page refuses another for it until the
+status server's `--repository-backfill-cooldown` (default `24h`) has passed. A user may have at most 10 requests waiting
+for an operator. Repositories patchy already knows can be backfilled again too, once per cooldown: webhooks keep them
+current, so this is for the alerts they missed.
 
 The entry is matched like every other filter entry: as a prefix. So backfilling `acme/shop` also walks `acme/shop-api`
 and any other repository whose name starts with `shop`. Ingestion is idempotent, so a sibling that already has findings
 gains no duplicates, but its alerts are listed again.
+
+## Connect GitHub
+
+Optionally, status-page users can link their own GitHub account through the Integration's GitHub App. With a link, the
+[repositories view](../../operate/status-page.md#my-repositories) can import the repositories they maintain, and the
+scoped maintainer verbs (`backfill-maintained`, `approve-maintained`, `expedite-maintained`) let them act on those
+repositories alone. Sign-in does not change: GitHub is a linked account, not a sign-in method.
+
+It needs App credentials; a PAT cannot do it. To turn it on:
+
+1. On the App's settings page, under **Identifying and authorizing users**:
+   - add the **Callback URL** `https://<status-host>/oauth2/github/<integration>/callback`, where `<integration>` is the
+     Integration's name. GitHub allows up to 10 callback URLs, so one App can serve several status pages or
+     Integrations;
+   - leave **Expire user authorization tokens** on. Patchy then holds an 8-hour access token and refreshes it with the
+     single-use refresh token, instead of holding a token that never expires.
+2. Generate a **client secret** on the same page and add it to the Integration's credential Secret under `clientSecret`.
+3. Set the App's **Client ID** (shown on the same page, for example `Iv23li...`) on the Integration:
+
+```yaml
+spec:
+  provider: github
+  github:
+    userAuthorization:
+      clientID: Iv23liEXAMPLE
+```
+
+The client ID is not secret, so it lives in spec, where the status server reads it to build the authorize redirect. The
+client secret stays in the Secret, which only the integration-controller reads: it exchanges the code, refreshes tokens,
+lists the user's repositories and checks their role, all on its
+[internal endpoints](../../configuration/integration-controller.md#the-github-user-endpoints). The status server keeps
+the user's tokens in a sealed, `HttpOnly` cookie per Integration and never stores them anywhere else. In auth modes
+`anonymous` and `none` it needs `linkKeyFile` to seal that cookie (see
+[the status-server configuration](../../configuration/status-server.md#connect-github)).
+
+The Integration reports a `UserAuthorizationReady` condition:
+
+| Status  | Reason               | Meaning                                                                                      |
+| ------- | -------------------- | -------------------------------------------------------------------------------------------- |
+| `True`  | `Configured`         | The credential is an App, `clientSecret` is present, and the client ID matches the App's own |
+| `True`  | `ClientIDUnverified` | As above, but the App could not be asked for its client ID; the message says why             |
+| `False` | `CredentialInvalid`  | The Integration's credential is not `Ready`                                                  |
+| `False` | `Misconfigured`      | A PAT credential, or no `clientSecret` in the Secret                                         |
+| `False` | `ClientIDMismatch`   | `clientID` is not this App's client ID                                                       |
+
+The page offers **Connect GitHub** only for Integrations whose condition is `True` and that are not suspended.
+
+A GitHub App user token reaches only what both the user and the App can reach. So the import lists, and the maintainer
+verbs act on, only repositories where the App is installed and the user is admin or maintain. The role is checked live
+against GitHub on every maintainer action; the cached list only decides which buttons show.
+
+!!! note "Why not sign in with GitHub through dex?"
+
+    Dex issues its own tokens and never passes the upstream GitHub token through, so a dex sign-in cannot act as the
+    user on GitHub. Sign-in stays on dex, whose groups drive the cluster RBAC, and GitHub is linked beside it. A GitHub
+    App user token is used rather than a GitHub OAuth App because an OAuth App would need the `repo` scope, which reads
+    and writes all of the user's code. The App's user token reaches only repositories where the App is installed, with
+    no more than the App's own permissions.
 
 ## GitHub Enterprise Server
 

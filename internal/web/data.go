@@ -49,6 +49,13 @@ type User struct {
 	// IntegrationActions are the granted integration-scoped verbs
 	// (backfill, replay, reset) the configuration view's triggers check.
 	IntegrationActions []string `json:"integrationActions,omitempty"`
+	// MaintainedActions are the granted scoped maintainer verbs
+	// (backfill-maintained, approve-maintained, expedite-maintained). The
+	// user menu hints "Connect GitHub" when these are held with no link.
+	MaintainedActions []string `json:"maintainedActions,omitempty"`
+	// GitHub lists the Integrations the user may link a GitHub account
+	// through, and whether they have. Absent when linking is off.
+	GitHub []GitHubLink `json:"github,omitempty"`
 }
 
 // FindingSummary is the trimmed per-finding projection the list payload
@@ -470,11 +477,20 @@ func (s *Server) addRollupSummary(ctx context.Context, ds *Dataset) error {
 // from its Investigation/Remediation children. A NotFound from the cache
 // passes through for the handler to map onto 404.
 func (s *Server) buildFindingDetail(ctx context.Context, name string, verbs []string) (*Finding, error) {
+	return s.buildFindingDetailFor(ctx, name, func(*v1alpha1.Finding) []string { return verbs })
+}
+
+// buildFindingDetailFor is buildFindingDetail with the user's verbs resolved
+// for the finding itself (the scoped maintainer verbs depend on its
+// repository).
+func (s *Server) buildFindingDetailFor(
+	ctx context.Context, name string, verbsFor func(*v1alpha1.Finding) []string,
+) (*Finding, error) {
 	var f v1alpha1.Finding
 	if err := s.client.Get(ctx, client.ObjectKey{Namespace: s.namespace, Name: name}, &f); err != nil {
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
-	out := projectFinding(&f, verbs)
+	out := projectFinding(&f, verbsFor(&f))
 	runs := s.loadRunDetails(ctx, name)
 	runs.attach(&f, &out)
 	return &out, nil

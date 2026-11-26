@@ -92,3 +92,17 @@ func randomToken() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
+
+// Seal encrypts v's JSON under key (AES-256-GCM, URL-safe): the sealed-blob
+// format the session and state cookies use, for other cookie owners.
+func Seal(key []byte, v any) (string, error) { return seal(key, v) }
+
+// Unseal decrypts a Seal blob into v; tampering or a rotated key fails.
+func Unseal(key []byte, blob string, v any) error { return unseal(key, blob, v) }
+
+// SealKey derives a 32-byte seal key from secret material under an HKDF
+// label.
+func SealKey(secret, info string) ([]byte, error) { return sealKey(secret, info) }
+
+// RandomToken returns a URL-safe random string (CSRF tokens, PKCE).
+func RandomToken() (string, error) { return randomToken() }

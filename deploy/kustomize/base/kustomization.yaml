@@ -9,6 +9,7 @@ resources:
     # CRDs first, because everything else may reference the kinds they
     # define. The files are controller-gen output (mise run codegen). Never
     # edit them by hand.
+    - crds/patchy.bitwisemedia.uk_backfillrequests.yaml
     - crds/patchy.bitwisemedia.uk_evaluations.yaml
     - crds/patchy.bitwisemedia.uk_evaluationunits.yaml
     - crds/patchy.bitwisemedia.uk_findings.yaml

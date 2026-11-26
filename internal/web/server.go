@@ -17,9 +17,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
+	"github.com/bitwise-media-group/patchy/internal/action"
 	"github.com/bitwise-media-group/patchy/internal/archive"
 	"github.com/bitwise-media-group/patchy/internal/web/auth"
 	"github.com/bitwise-media-group/patchy/internal/web/authz"
+	"github.com/bitwise-media-group/patchy/internal/web/ghlink"
 )
 
 // maxBodyBytes caps POST bodies. Only the backfills take a payload (at most
@@ -64,6 +67,15 @@ type Server struct {
 	// access asks the integration-controller whether a repository's alerts
 	// are readable; nil when unconfigured.
 	access accessChecker
+	// ghUsers and links are the optional GitHub link: the
+	// integration-controller's user endpoints and the link cookies. Both
+	// nil when the feature is off.
+	ghUsers githubUsers
+	links   *ghlink.Linker
+	// maintained caches each linked user's maintained repositories.
+	maintained maintainedCache
+	// cooldown is the one-repository backfill cooldown.
+	cooldown time.Duration
 }
 
 // NewServer builds the backend over the manager's cached client. log may be
@@ -115,10 +127,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/repositories", s.handleTrackedRepositories)
 	mux.HandleFunc("GET /api/repositories/access", s.handleRepositoryAccess)
 	mux.HandleFunc("POST /api/repositories/backfill", s.handleRepositoryBackfill)
+	mux.HandleFunc("GET /api/backfill-requests", s.handleBackfillRequests)
+	mux.HandleFunc("POST /api/backfill-requests/{name}/{verdict}", s.handleBackfillDecision)
+	mux.HandleFunc("GET /api/github/repositories", s.handleGitHubRepositories)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/transcript", s.handleTranscript)
 	mux.HandleFunc("GET /api/findings/{name}/runs/{kind}/{attempt}/archive/{object}", s.handleArchive)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	s.auth.Register(mux)
+	if s.githubEnabled() {
+		s.links.Register(mux)
+	}
 	mux.Handle("/", s.staticHandler())
 	return s.middleware(mux)
 }
@@ -202,7 +220,46 @@ func newUser(v viewer) *User {
 	return &User{
 		Name: v.id.Display(), LoggedIn: v.id.Session, AdminActions: v.grants.Admin,
 		ConfigView: v.grants.Config, IntegrationActions: v.grants.Integration,
+		MaintainedActions: v.grants.Maintained,
 	}
+}
+
+// userWithLinks is newUser plus the caller's GitHub links, and the live
+// links themselves for the maintainer paths.
+func (s *Server) userWithLinks(r *http.Request, v viewer) (*User, []linked) {
+	u := newUser(v)
+	if !s.githubEnabled() {
+		return u, nil
+	}
+	live, view := s.userLinks(r, v.id)
+	u.GitHub = view
+	return u, live
+}
+
+// scopedFindingVerbs are the base verbs (approve, expedite) the caller may
+// use only on maintained repositories: held through the scoped grant and not
+// namespace-wide.
+func scopedFindingVerbs(g authz.Grants) []string {
+	var out []string
+	for _, m := range authz.MaintainedVerbs {
+		if m.Resource == action.ResourceFindings && g.AllowsMaintained(m.Base) && !g.Allows(m.Base) {
+			out = append(out, m.Base)
+		}
+	}
+	return out
+}
+
+// verbsFor builds the per-finding verb resolver for a caller: the
+// namespace grants for every finding, plus the scoped verbs on findings
+// whose repository is in the caller's cached maintained set.
+func (s *Server) verbsFor(ctx context.Context, v viewer, live []linked) func(*v1alpha1.Finding) []string {
+	base := v.grants.Verbs
+	scoped := scopedFindingVerbs(v.grants)
+	if len(scoped) == 0 || len(live) == 0 {
+		return func(*v1alpha1.Finding) []string { return base }
+	}
+	sets := s.maintainedSets(ctx, live)
+	return func(f *v1alpha1.Finding) []string { return findingVerbs(f, base, scoped, live, sets) }
 }
 
 // handleFinding serves the full projection of one finding: description,
@@ -214,7 +271,8 @@ func (s *Server) handleFinding(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.buildFindingDetail(r.Context(), r.PathValue("name"), v.grants.Verbs)
+	_, live := s.userWithLinks(r, v)
+	out, err := s.buildFindingDetailFor(r.Context(), r.PathValue("name"), s.verbsFor(r.Context(), v, live))
 	if apierrors.IsNotFound(err) {
 		// Completed findings expire on a TTL; the client renders "no longer
 		// present" rather than an error.
@@ -238,7 +296,8 @@ func (s *Server) handleRollups(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ds, err := s.buildRollupSummary(r.Context(), newUser(v))
+	user, _ := s.userWithLinks(r, v)
+	ds, err := s.buildRollupSummary(r.Context(), user)
 	if err != nil {
 		s.log.LogAttrs(r.Context(), slog.LevelError, "build rollups", slog.Any("error", err))
 		http.Error(w, "failed to load rollups", http.StatusInternalServerError)

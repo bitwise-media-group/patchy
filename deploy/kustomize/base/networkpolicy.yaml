@@ -49,8 +49,8 @@
 #   9790  the artifact server: agent pods only (plus kubelet).
 #   9791  source-controller's internal blob endpoint: evaluation-controller
 #         only.
-#   9792  integration-controller's repository-access endpoint: the status
-#         server only.
+#   9792  integration-controller's repository-access and GitHub-user
+#         endpoints: the status server only.
 #
 # Egress: DNS, the Kubernetes API server (every controller is a CR
 # controller now), and TCP 443 out. That covers GitHub for integration/
@@ -105,8 +105,9 @@ spec:
           ports:
               - protocol: TCP
                 port: 9791
-        # The repository-access endpoint (integration-controller :9792).
-        # Only the status server calls it, for the "My repositories" page.
+        # The repository-access and GitHub-user endpoints
+        # (integration-controller :9792). Only the status server calls them,
+        # for the "My repositories" page and its "Connect GitHub" link.
         # Only integration-controller listens on the port, so the rule only
         # needs to limit the sender. The endpoint also checks the caller's
         # projected token with a TokenReview.
@@ -182,8 +183,9 @@ spec:
 #
 # Egress: DNS, the Kubernetes API server (cache watches + access reviews),
 # TCP 443 out (the OIDC issuer for discovery/code exchange, an OTLP
-# collector), and the integration-controller's repository-access endpoint
-# (:9792) for the "My repositories" page.
+# collector), and the integration-controller's internal endpoints (:9792)
+# for the "My repositories" page and "Connect GitHub". GitHub itself is never
+# called from here: the integration-controller makes every GitHub call.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -1,8 +1,20 @@
 // The repositories page's pure logic: the phase groups its columns show,
-// the findings-list links each count opens, and the plain-words reading of
-// an access verdict.
+// the findings-list links each count opens, the plain-words reading of an
+// access verdict, and which backfill a row offers.
 
-import type { AccessCheck, ForgeAccess, Phase, RepositoryAccess, RepositorySummary } from "./types";
+import type {
+  AccessCheck,
+  BackfillPhase,
+  DatasetUser,
+  ForgeAccess,
+  GitHubLink,
+  Phase,
+  RepositoriesPayload,
+  RepositoryAccess,
+  RepositoryBackfill,
+  RepositoryBackfillResult,
+  RepositorySummary,
+} from "./types";
 import { queryParams } from "./filters";
 import { hrefForList, hrefForMetrics } from "./router";
 import { ownerName } from "./rollups";
@@ -67,8 +79,7 @@ export function metricsHref(repo: string): string {
 }
 
 // neverSeen reports a repository patchy has no record of: no current
-// finding and no rollup. Only these are probed, and only these may be
-// backfilled from the page.
+// finding and no rollup. Only these are probed for access.
 export function neverSeen(summary: RepositorySummary | undefined): boolean {
   return !!summary && summary.findings === 0 && !summary.rollup;
 }
@@ -174,4 +185,145 @@ export function forgeBadge(forge?: ForgeAccess): string | null {
     default:
       return "Forge check failed";
   }
+}
+
+// ---- backfill --------------------------------------------------------------
+
+// anyConnected reports a GitHub account linked through any Integration.
+export function anyConnected(links?: GitHubLink[]): boolean {
+  return (links ?? []).some((l) => l.connected);
+}
+
+// githubHint reports a user who holds scoped maintainer grants on findings
+// (approve or expedite on repositories they maintain) but has connected no
+// GitHub account, so those grants cannot apply yet: the user menu then
+// points at the repositories page, where the connect button is.
+export function githubHint(user?: DatasetUser): boolean {
+  const scoped = (user?.maintainedActions ?? []).some((v) => v === "approve-maintained" || v === "expedite-maintained");
+  return scoped && !!user?.github?.length && !anyConnected(user.github);
+}
+
+// BackfillMode is what a row's backfill does: run at once ("backfill"), file
+// a request an operator decides ("request"), or nothing the user may do
+// ("none").
+export type BackfillMode = "backfill" | "request" | "none";
+
+// backfillMode reads the caller's grants. The backfill grant runs at once
+// anywhere; backfill-maintained runs at once with a connected GitHub
+// account (the server checks the role per repository). refused marks a row
+// whose maintained backfill the server turned down (the role is too low),
+// which then offers the request instead.
+export function backfillMode(
+  p: Pick<RepositoriesPayload, "canBackfill" | "canBackfillMaintained" | "canRequestBackfill" | "github"> | null,
+  refused = false,
+): BackfillMode {
+  if (!p) return "none";
+  if (p.canBackfill) return "backfill";
+  if (p.canBackfillMaintained && anyConnected(p.github) && !refused) return "backfill";
+  return p.canRequestBackfill ? "request" : "none";
+}
+
+// backfillAvailable reports whether the cooldown lets the repository be
+// backfilled now: backfillAvailableAt absent, unreadable, or past.
+export function backfillAvailable(summary: RepositorySummary | undefined, now = Date.now()): boolean {
+  const at = summary?.backfillAvailableAt;
+  if (!at) return true;
+  const t = new Date(at).getTime();
+  return Number.isNaN(t) || t <= now;
+}
+
+// backfillPhase is a row's request phase. A server that predates phases
+// sends only pending and error, which read as Pending, Failed or Complete.
+export function backfillPhase(bf: RepositoryBackfill): BackfillPhase {
+  if (bf.phase) return bf.phase;
+  if (bf.pending) return "Pending";
+  return bf.error ? "Failed" : "Complete";
+}
+
+// backfillOpen reports a request still to finish: awaiting an operator, or
+// not walked yet.
+export function backfillOpen(bf: RepositoryBackfill | undefined): boolean {
+  if (!bf) return false;
+  const phase = backfillPhase(bf);
+  return phase === "AwaitingApproval" || phase === "Pending";
+}
+
+export interface BackfillState {
+  phase: BackfillPhase;
+  label: string;
+  tone: "amber" | "seedling" | "green" | "red" | "soil";
+  // The sentence beside the pill.
+  text: string;
+}
+
+// backfillState is the pill and sentence a row's latest request reads as.
+// ago renders a past time ("2h ago").
+export function backfillState(bf: RepositoryBackfill, ago: (iso: string) => string): BackfillState {
+  const phase = backfillPhase(bf);
+  const when = bf.requestedAt ? ` ${ago(bf.requestedAt)}` : "";
+  const by = bf.requestedBy ? ` by ${bf.requestedBy}` : "";
+  switch (phase) {
+    case "AwaitingApproval":
+      return {
+        phase,
+        label: "Awaiting approval",
+        tone: "amber",
+        text: `Requested${when}${by}. An operator will review it before it runs.`,
+      };
+    case "Pending":
+      return {
+        phase,
+        label: "Backfill pending",
+        tone: "seedling",
+        text: `Requested on ${bf.integration}${when}${by}. Its alerts arrive once the controller picks it up.`,
+      };
+    case "Failed":
+      return { phase, label: "Backfill failed", tone: "red", text: bf.error || "The backfill failed." };
+    case "Denied":
+      return {
+        phase,
+        label: "Backfill denied",
+        tone: "soil",
+        text: bf.decisionReason ? `An operator said: “${bf.decisionReason}”` : "An operator denied the request.",
+      };
+    default: {
+      const ran = bf.lastRunAt ? ` ${ago(bf.lastRunAt)}` : "";
+      const counts =
+        (bf.ingested ?? 0) > 0
+          ? `listed ${bf.listed ?? 0} open alert${bf.listed === 1 ? "" : "s"}, ingested ${bf.ingested}.`
+          : "it had no open alerts.";
+      return { phase, label: "Backfilled", tone: "green", text: `Backfilled on ${bf.integration}${ran}: ${counts}` };
+    }
+  }
+}
+
+// backfillOutcomeMessage is the toast a successful POST earns.
+export function backfillOutcomeMessage(repo: string, res: RepositoryBackfillResult): string {
+  switch (res.outcome) {
+    case "covered":
+      return `A backfill already open on ${res.integration} covers ${repo}.`;
+    case "awaiting-approval":
+      return `Backfill of ${repo} requested. An operator will review it before it runs.`;
+    default:
+      return `Backfill of ${repo} started on ${res.integration}. Its open alerts arrive as findings shortly.`;
+  }
+}
+
+// githubConnectHref starts linking a GitHub account through one
+// Integration: a full-page navigation, returning to back (a path and hash)
+// afterwards.
+export function githubConnectHref(integration: string, back: string): string {
+  return `/oauth2/github/${encodeURIComponent(integration)}/authorize?originalPath=${encodeURIComponent(back)}`;
+}
+
+// githubProfileHref links a connected login to its profile on the host.
+export function githubProfileHref(link: GitHubLink): string | undefined {
+  return link.login ? `https://${link.host}/${encodeURIComponent(link.login)}` : undefined;
+}
+
+// filterImportable narrows the GitHub picker to names containing term,
+// case-insensitively.
+export function filterImportable<T extends { name: string }>(repos: T[], term: string): T[] {
+  const needle = term.trim().toLowerCase();
+  return needle ? repos.filter((r) => r.name.toLowerCase().includes(needle)) : repos;
 }

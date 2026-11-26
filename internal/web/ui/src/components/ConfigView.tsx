@@ -362,14 +362,26 @@ function Activity({ integration }: { integration: IntegrationConfig }) {
       </li>,
     );
   }
-  if (bf?.lastRunAt) {
+  // A request the controller attempted: its last run, or (failed before
+  // any run) just its error. A Pending one that failed is retried.
+  const failed = bf?.phase === "Failed";
+  const retrying = bf?.phase === "Pending" && !bf.pending && !!bf.error;
+  if (bf?.lastRunAt || (failed && bf?.error)) {
     lines.push(
       <li key="bf">
-        <span class="font-semibold">Last backfill</span>{" "}
+        <span class={`font-semibold ${failed ? "text-red" : ""}`}>{failed ? "Last backfill failed" : "Last backfill"}</span>{" "}
         <span class="text-muted">
-          {formatAgo(bf.lastRunAt)}
-          {bf.requestedBy && !bf.pending ? ` by ${bf.requestedBy}` : ""}: listed {formatCount(bf.listed)} open alert
-          {bf.listed === 1 ? "" : "s"}, ingested {formatCount(bf.ingested)}.
+          {bf.lastRunAt ? formatAgo(bf.lastRunAt) : bf.requestedAt ? `requested ${formatAgo(bf.requestedAt)}` : ""}
+          {bf.requestedBy && !bf.pending ? ` by ${bf.requestedBy}` : ""}
+          {bf.lastRunAt ? (
+            <>
+              : listed {formatCount(bf.listed)} open alert{bf.listed === 1 ? "" : "s"}, ingested{" "}
+              {formatCount(bf.ingested)}.
+            </>
+          ) : (
+            "."
+          )}
+          {retrying ? " The controller will try it again." : ""}
         </span>
         {bf.truncated ? (
           <span class="block text-amber">

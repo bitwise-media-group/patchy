@@ -4,11 +4,15 @@ import {
   STORAGE_KEY,
   add,
   exportJSON,
+  importGitHub,
   importJSON,
   load,
   normalizeRepoName,
+  refreshGitHub,
   remove,
+  room,
   save,
+  tracks,
   type KeyValueStore,
   type TrackedRepo,
 } from "./trackedRepos";
@@ -145,5 +149,79 @@ describe("export and import", () => {
 
   test("throws on text that is not JSON", () => {
     expect(() => importJSON("nope", [], now)).toThrow();
+  });
+});
+
+describe("GitHub import", () => {
+  const manual = (name: string): TrackedRepo => ({ name, addedAt: now.toISOString() });
+  const github = (name: string): TrackedRepo => ({ name, addedAt: now.toISOString(), source: "github" });
+
+  test("adds picked repositories tagged github", () => {
+    const res = importGitHub([manual("acme/shop")], ["acme/api", "acme/web"], now);
+    expect(res.added).toBe(2);
+    expect(res.skipped).toBe(0);
+    expect(res.repos).toEqual([manual("acme/shop"), github("acme/api"), github("acme/web")]);
+  });
+
+  test("leaves an entry already on the list untouched, in any case", () => {
+    const before = [manual("acme/Shop")];
+    const res = importGitHub(before, ["acme/shop"], now);
+    expect(res).toEqual({ repos: before, added: 0, skipped: 1 });
+    expect(res.repos[0].source).toBeUndefined();
+    expect(tracks(before, "ACME/SHOP")).toBe(true);
+  });
+
+  test("stops at the cap and counts the rest as skipped", () => {
+    const start = Array.from({ length: MAX_TRACKED - 2 }, (_, i) => manual(`acme/r${i}`));
+    expect(room(start)).toBe(2);
+    const res = importGitHub(start, ["acme/a", "acme/b", "acme/c", "acme/d"], now);
+    expect(res.added).toBe(2);
+    expect(res.skipped).toBe(2);
+    expect(res.repos).toHaveLength(MAX_TRACKED);
+    expect(room(res.repos)).toBe(0);
+    expect(res.repos.slice(-2).map((r) => r.name)).toEqual(["acme/a", "acme/b"]);
+  });
+
+  test("skips invalid names", () => {
+    const res = importGitHub([], ["acme/ok", "not a repo", "acme/"], now);
+    expect(res.added).toBe(1);
+    expect(res.skipped).toBe(2);
+  });
+
+  test("an imported entry survives storage with its source", () => {
+    const store = new MemoryStore();
+    const { repos } = importGitHub([], ["acme/api"], now);
+    expect(save(repos, store)).toBe(true);
+    expect(load(store)).toEqual([github("acme/api")]);
+  });
+});
+
+describe("GitHub refresh", () => {
+  const manual = (name: string): TrackedRepo => ({ name, addedAt: now.toISOString() });
+  const github = (name: string): TrackedRepo => ({ name, addedAt: now.toISOString(), source: "github" });
+
+  test("removes only github entries no longer maintained", () => {
+    const repos = [manual("acme/kept-manual"), github("acme/still"), github("acme/gone"), manual("acme/also-gone")];
+    const res = refreshGitHub(repos, ["acme/still"]);
+    expect(res.removed).toEqual(["acme/gone"]);
+    expect(res.repos.map((r) => r.name)).toEqual(["acme/kept-manual", "acme/still", "acme/also-gone"]);
+  });
+
+  test("matches names case-insensitively", () => {
+    const res = refreshGitHub([github("Acme/Shop")], ["acme/shop"]);
+    expect(res.removed).toEqual([]);
+  });
+
+  test("nothing to remove keeps the same list", () => {
+    const repos = [github("acme/a"), manual("acme/b")];
+    const res = refreshGitHub(repos, new Set(["acme/a"]));
+    expect(res.repos).toBe(repos);
+    expect(res.removed).toEqual([]);
+  });
+
+  test("an empty maintained list clears every github entry and no manual one", () => {
+    const res = refreshGitHub([github("acme/a"), manual("acme/b"), github("acme/c")], []);
+    expect(res.removed).toEqual(["acme/a", "acme/c"]);
+    expect(res.repos).toEqual([manual("acme/b")]);
   });
 });

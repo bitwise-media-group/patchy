@@ -26,6 +26,8 @@ func TestLookup(t *testing.T) {
 		{"repo", "repository"},
 		{"repositories", "repository"},
 		{"forges", "forge"},
+		{"bfr", "backfillrequest"},
+		{"backfillrequests", "backfillrequest"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {

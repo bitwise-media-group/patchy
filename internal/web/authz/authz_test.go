@@ -54,6 +54,7 @@ func TestReviewerGrants(t *testing.T) {
 		wantVerbs       []string
 		wantIntegration []string
 		wantAdmin       []string
+		wantMaintained  []string
 	}{
 		{
 			name:     "viewer only",
@@ -77,6 +78,7 @@ func TestReviewerGrants(t *testing.T) {
 			wantVerbs:       []string{VerbApprove, VerbRetry, VerbExpedite, VerbSuspend, VerbResume},
 			wantIntegration: []string{VerbBackfill, VerbReplay, VerbReset},
 			wantAdmin:       []string{VerbReplay, VerbReset},
+			wantMaintained:  []string{"backfill-maintained", "approve-maintained", "expedite-maintained"},
 		},
 		{
 			name:        "metrics only",
@@ -110,6 +112,19 @@ func TestReviewerGrants(t *testing.T) {
 			wantConfig:      true,
 			wantIntegration: []string{VerbBackfill},
 		},
+		{
+			// The maintainer role: view, plus the scoped verbs, each on its
+			// own resource. A scoped verb on the wrong resource is inert.
+			name: "maintainer",
+			allow: func(_, resource, verb string) bool {
+				return map[string]bool{
+					"findings/get": true, "findings/approve-maintained": true,
+					"findings/expedite-maintained": true, "integrations/backfill-maintained": true,
+				}[resource+"/"+verb]
+			},
+			wantView:       true,
+			wantMaintained: []string{"backfill-maintained", "approve-maintained", "expedite-maintained"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,16 +138,31 @@ func TestReviewerGrants(t *testing.T) {
 				t.Errorf("View/Metrics/Config = %v/%v/%v, want %v/%v/%v",
 					g.View, g.Metrics, g.Config, tc.wantView, tc.wantMetrics, tc.wantConfig)
 			}
-			if !slices.Equal(g.Verbs, tc.wantVerbs) {
-				t.Errorf("Verbs = %v, want %v", g.Verbs, tc.wantVerbs)
-			}
-			if !slices.Equal(g.Integration, tc.wantIntegration) {
-				t.Errorf("Integration = %v, want %v", g.Integration, tc.wantIntegration)
-			}
-			if !slices.Equal(g.Admin, tc.wantAdmin) {
-				t.Errorf("Admin = %v, want %v", g.Admin, tc.wantAdmin)
-			}
+			checkVerbs(t, "Verbs", g.Verbs, tc.wantVerbs)
+			checkVerbs(t, "Integration", g.Integration, tc.wantIntegration)
+			checkVerbs(t, "Admin", g.Admin, tc.wantAdmin)
+			checkVerbs(t, "Maintained", g.Maintained, tc.wantMaintained)
+			checkAllowsMaintained(t, g, len(tc.wantMaintained) > 0)
 		})
+	}
+}
+
+func checkVerbs(t *testing.T, field string, got, want []string) {
+	t.Helper()
+	if !slices.Equal(got, want) {
+		t.Errorf("%s = %v, want %v", field, got, want)
+	}
+}
+
+func checkAllowsMaintained(t *testing.T, g Grants, want bool) {
+	t.Helper()
+	for _, base := range []string{VerbBackfill, VerbApprove, VerbExpedite} {
+		if got := g.AllowsMaintained(base); got != want {
+			t.Errorf("AllowsMaintained(%s) = %v, want %v", base, got, want)
+		}
+	}
+	if g.AllowsMaintained(VerbRetry) {
+		t.Error("AllowsMaintained(retry) = true; retry has no scoped verb")
 	}
 }
 
@@ -146,24 +176,24 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 11 {
-		t.Fatalf("first resolve made %d reviews, want 11", calls)
+	if calls != 14 {
+		t.Fatalf("first resolve made %d reviews, want 14", calls)
 	}
 
 	// Same identity with reordered groups hits the cache.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "u", Groups: []string{"a", "b"}}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 11 {
-		t.Errorf("cached resolve made %d extra reviews", calls-11)
+	if calls != 14 {
+		t.Errorf("cached resolve made %d extra reviews", calls-14)
 	}
 
 	// A different identity misses.
 	if _, err := r.Grants(t.Context(), auth.Identity{Username: "v"}); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 22 {
-		t.Errorf("distinct identity made %d reviews total, want 22", calls)
+	if calls != 28 {
+		t.Errorf("distinct identity made %d reviews total, want 28", calls)
 	}
 
 	// Expiry re-resolves.
@@ -171,8 +201,8 @@ func TestReviewerCache(t *testing.T) {
 	if _, err := r.Grants(t.Context(), id); err != nil {
 		t.Fatalf("Grants: %v", err)
 	}
-	if calls != 33 {
-		t.Errorf("expired resolve made %d reviews total, want 33", calls)
+	if calls != 42 {
+		t.Errorf("expired resolve made %d reviews total, want 42", calls)
 	}
 }
 

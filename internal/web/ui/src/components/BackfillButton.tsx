@@ -9,6 +9,7 @@ export function BackfillButton({
   confirmLabel = "Confirm backfill",
   busy = false,
   pending = false,
+  disabled = false,
   resetKey,
   onConfirm,
 }: {
@@ -18,6 +19,8 @@ export function BackfillButton({
   busy?: boolean;
   // A request is already waiting for the controller.
   pending?: boolean;
+  // Not allowed yet (the repositories page's cooldown).
+  disabled?: boolean;
   resetKey?: string;
   onConfirm: () => void;
 }) {
@@ -28,7 +31,7 @@ export function BackfillButton({
       confirmLabel={confirmLabel}
       busyLabel="Requesting…"
       busy={busy}
-      disabled={pending}
+      disabled={pending || disabled}
       resetKey={resetKey}
       onConfirm={onConfirm}
     />

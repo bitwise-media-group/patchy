@@ -67,7 +67,7 @@ func (s *Server) StartWatch(ctx context.Context, c cache.Cache) error {
 		return err
 	}
 	config := make(chan struct{}, 1)
-	if err := watch(config, &v1alpha1.Integration{}, &v1alpha1.Forge{}); err != nil {
+	if err := watch(config, &v1alpha1.Integration{}, &v1alpha1.Forge{}, &v1alpha1.BackfillRequest{}); err != nil {
 		return err
 	}
 	go s.debounceLoop(ctx, config, eventConfigChanged)

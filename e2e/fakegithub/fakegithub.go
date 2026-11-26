@@ -3,8 +3,9 @@
 
 // Package fakegithub is an in-memory GitHub REST API good enough to run the
 // patchy controllers against: code- and secret-scanning alerts, issues, labels,
-// comments, search, and the Git Data surface (refs, blobs, trees, commits)
-// the API push uses. It exists so the e2e suite can drive the real binaries
+// comments, search, the Git Data surface (refs, blobs, trees, commits) the
+// API push uses, and one GitHub App with its installation and the
+// user-to-server OAuth flow (users.go). It exists so the e2e suite can drive the real binaries
 // end to end with no network and no credentials.
 package fakegithub
 
@@ -68,6 +69,8 @@ type Server struct {
 	alerts []seededAlert
 	// secrets is the secret-scanning surface (secrets.go).
 	secrets secretState
+	// user is the GitHub App and user-to-server surface (users.go).
+	user userState
 	// forbidden are the "owner/repo" whose alert listings answer 403, as
 	// GitHub does when the credential lacks security_events or Advanced
 	// Security is off.
@@ -79,29 +82,37 @@ type Server struct {
 	Now func() time.Time
 }
 
-func newState() (*Server, *http.ServeMux) {
+func newState() (*Server, http.Handler) {
 	s := &Server{
 		issues:    make(map[int]*Issue),
 		comments:  make(map[int][]comment),
 		dismissed: make(map[int]string),
 		forbidden: make(map[string]bool),
 		secrets:   secretState{resolved: make(map[int]string)},
+		user:      newUserState(),
 		pulls:     make(map[int]*pull),
 		git:       newGitData(),
 		next:      100,
 		Now:       time.Now,
 	}
-	mux := http.NewServeMux()
-	s.routes(mux)
-	return s, mux
+	api := http.NewServeMux()
+	s.routes(api)
+	// go-github appends /api/v3 for a non-api.github.com base URL; the
+	// OAuth endpoints live on the web root, as on GitHub Enterprise.
+	root := http.NewServeMux()
+	root.Handle("/api/v3/", http.StripPrefix("/api/v3", api))
+	s.webRoutes(root)
+	root.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, fmt.Sprintf("fakegithub: unhandled %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+	})
+	return s, root
 }
 
 // New starts the fake on an ephemeral localhost listener. The returned URL is
 // what an Integration/Forge baseURL should point at.
 func New() *Server {
-	s, mux := newState()
-	// go-github appends /api/v3 for a non-api.github.com base URL.
-	s.Server = httptest.NewServer(http.StripPrefix("/api/v3", mux))
+	s, handler := newState()
+	s.Server = httptest.NewServer(handler)
 	s.externalURL = s.URL
 	return s
 }
@@ -111,9 +122,9 @@ func New() *Server {
 // externalURL is the address clients will reach that server at. The embedded
 // httptest.Server stays nil: Close and URL are not available in this mode.
 func NewStandalone(externalURL string) (*Server, http.Handler) {
-	s, mux := newState()
+	s, handler := newState()
 	s.externalURL = externalURL
-	return s, http.StripPrefix("/api/v3", mux)
+	return s, handler
 }
 
 // Issues returns a snapshot of every issue, ordered by number.
@@ -199,6 +210,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /search/issues", s.searchIssues)
 	s.gitRoutes(mux)
 	s.secretRoutes(mux)
+	s.userRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("fakegithub: unhandled %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 	})
@@ -552,10 +564,6 @@ func (s *Server) addAssignees(w http.ResponseWriter, r *http.Request) {
 		is.Assignees = append(is.Assignees, user{Login: login})
 	}
 	writeJSON(w, is)
-}
-
-func (s *Server) getRepo(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, map[string]any{"default_branch": "main"})
 }
 
 var labelQualifier = regexp.MustCompile(`label:"([^"]+)"`)

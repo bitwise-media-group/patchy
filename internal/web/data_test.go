@@ -131,7 +131,7 @@ func testServer(t *testing.T, objs ...client.Object) *Server {
 	c := fake.NewClientBuilder().
 		WithScheme(kube.Scheme()).
 		WithObjects(objs...).
-		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.FindingRollup{}).
+		WithStatusSubresource(&v1alpha1.Finding{}, &v1alpha1.FindingRollup{}, &v1alpha1.BackfillRequest{}).
 		WithIndex(&v1alpha1.Investigation{}, RunFindingIndex, RunFindingIndexer).
 		WithIndex(&v1alpha1.Remediation{}, RunFindingIndex, RunFindingIndexer).
 		Build()

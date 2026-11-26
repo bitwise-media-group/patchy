@@ -18,7 +18,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1alpha1 "github.com/bitwise-media-group/patchy/api/v1alpha1"
@@ -86,17 +85,20 @@ type RedeliveryStatus struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// BackfillStatus mirrors status.backfill plus the pending-request echo the
-// trigger button renders.
+// BackfillStatus is the Integration's latest BackfillRequest, as the
+// trigger button renders it.
 type BackfillStatus struct {
+	// Request names the BackfillRequest; Phase is its phase.
+	Request   string `json:"request,omitempty"`
+	Phase     string `json:"phase,omitempty"`
 	LastRunAt string `json:"lastRunAt,omitempty"`
 	Listed    int32  `json:"listed,omitempty"`
 	Ingested  int32  `json:"ingested,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 	Error     string `json:"error,omitempty"`
-	// RequestedBy/RequestedAt echo spec.backfill; Pending marks a request
-	// the controller has not attempted yet. A failed attempt clears it so
-	// the trigger re-enables for a corrected request.
+	// RequestedBy/RequestedAt describe the request; Pending marks one the
+	// controller has not attempted yet. A failed attempt clears it so the
+	// trigger re-enables for a corrected request.
 	RequestedBy string `json:"requestedBy,omitempty"`
 	RequestedAt string `json:"requestedAt,omitempty"`
 	Pending     bool   `json:"pending,omitempty"`
@@ -178,8 +180,15 @@ func (s *Server) buildConfigDataset(ctx context.Context) (*ConfigDataset, error)
 		return nil, fmt.Errorf("list integrations: %w", err)
 	}
 	sort.Slice(integs.Items, func(a, b int) bool { return integs.Items[a].Name < integs.Items[b].Name })
+	reqs, err := s.listBackfillRequests(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i := range integs.Items {
-		ds.Integrations = append(ds.Integrations, projectIntegrationConfig(&integs.Items[i]))
+		integ := &integs.Items[i]
+		ic := projectIntegrationConfig(integ)
+		ic.Backfill = wireBackfill(latestBackfill(reqs, integ.Name))
+		ds.Integrations = append(ds.Integrations, ic)
 	}
 	ds.Enhancers = deriveEnhancers(integs.Items)
 	return ds, nil
@@ -228,40 +237,33 @@ func projectIntegrationConfig(integ *v1alpha1.Integration) IntegrationConfig {
 			Error:       red.Error,
 		}
 	}
-	out.Backfill = wireBackfill(integ)
 	return out
 }
 
-// wireBackfill folds status.backfill and the spec.backfill echo into one
-// wire block; nil when neither exists.
-func wireBackfill(integ *v1alpha1.Integration) *BackfillStatus {
-	st, req := integ.Status.Backfill, integ.Spec.Backfill
-	if st == nil && req == nil {
+// wireBackfill projects the Integration's latest backfill request onto the
+// configuration view's block; nil when it has none.
+func wireBackfill(b *v1alpha1.BackfillRequest) *BackfillStatus {
+	if b == nil {
 		return nil
 	}
-	out := &BackfillStatus{}
-	var echoed, attempted *metav1.Time
-	if st != nil {
-		out.LastRunAt = stampPtr(st.LastRunAt)
-		out.Listed = st.Listed
-		out.Ingested = st.Ingested
-		out.Truncated = st.Truncated
-		out.Error = st.Error
-		echoed = st.BackfilledAt
-		attempted = st.AttemptedAt
+	st := &b.Status
+	phase := backfillPhase(b)
+	return &BackfillStatus{
+		Request:     b.Name,
+		Phase:       string(phase),
+		LastRunAt:   stampPtr(st.LastAttemptAt),
+		Listed:      st.Listed,
+		Ingested:    st.Ingested,
+		Truncated:   st.Truncated,
+		Error:       st.Error,
+		RequestedBy: b.Spec.RequestedBy,
+		RequestedAt: stamp(b.CreationTimestamp),
+		// Pending disables the trigger, so it clears once the controller has
+		// attempted the request even when the walk failed: a failure like a
+		// bad repository filter needs a corrected request, not a locked
+		// button.
+		Pending: phase == v1alpha1.BackfillPending && st.Attempts == 0,
 	}
-	if req != nil {
-		out.RequestedBy = req.By
-		out.RequestedAt = stamp(req.At)
-		// Pending disables the trigger, so it must clear once the controller
-		// has attempted the request even when the walk failed (the controller
-		// keeps retrying, but a failure like a bad repository filter needs a
-		// corrected request, not a locked button). The backfilledAt echo alone
-		// would pin a failed request pending forever.
-		out.Pending = (echoed == nil || echoed.Time.Before(req.At.Time)) &&
-			(attempted == nil || attempted.Time.Before(req.At.Time))
-	}
-	return out
 }
 
 // backfillSupported is integrationcap.BackfillSupported, shared with the
@@ -385,9 +387,9 @@ const (
 	maxBackfillEntryLength = 200
 )
 
-// handleBackfill stamps spec.backfill on one Integration for an identity
-// granted the backfill verb; the integration-controller performs the walk
-// on its next reconcile (the status server holds no forge credential).
+// handleBackfill creates a BackfillRequest on one Integration for an
+// identity granted the backfill verb; the integration-controller walks it
+// (the status server holds no forge credential).
 func (s *Server) handleBackfill(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	id, ok := s.authorizeBackfill(w, r)
@@ -405,42 +407,25 @@ func (s *Server) handleBackfill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.stampBackfill(r.Context(), name, func(cur *v1alpha1.Integration) error {
-		cur.Spec.Backfill = &v1alpha1.BackfillRequest{
-			By:           id.Username,
-			At:           metav1.NewTime(s.now()),
-			Repositories: body.Repositories,
-		}
-		return nil
+	bfr, err := s.createBackfill(r.Context(), newBackfill{
+		integration: name, repos: body.Repositories, by: id.Username, via: v1alpha1.BackfillViaGrant,
 	})
 	if err != nil {
 		s.writeBackfillError(w, r, name, err)
 		return
 	}
 	s.log.LogAttrs(r.Context(), slog.LevelInfo, "backfill requested",
-		slog.String("integration", name), slog.String("user", id.Username),
+		slog.String("integration", name), slog.String("request", bfr.Name), slog.String("user", id.Username),
 		slog.Int("repositories", len(body.Repositories)))
-	writeJSON(w, map[string]any{})
+	writeJSON(w, map[string]any{"request": bfr.Name})
 }
 
 // authorizeBackfill identifies the caller and checks the backfill grant,
 // writing the failure response itself. ok is false when the request has
 // already been answered.
 func (s *Server) authorizeBackfill(w http.ResponseWriter, r *http.Request) (*auth.Identity, bool) {
-	id, err := s.auth.Identify(w, r)
-	if err != nil {
-		s.log.LogAttrs(r.Context(), slog.LevelError, "identify failed", slog.Any("error", err))
-		http.Error(w, "authentication failed", http.StatusInternalServerError)
-		return nil, false
-	}
-	if id == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return nil, false
-	}
-	grants, err := s.granter.Grants(r.Context(), *id)
-	if err != nil {
-		s.log.LogAttrs(r.Context(), slog.LevelError, "grants failed", slog.Any("error", err))
-		http.Error(w, "authorization failed", http.StatusInternalServerError)
+	id, grants, ok := s.identifyGrants(w, r)
+	if !ok {
 		return nil, false
 	}
 	if !grants.AllowsIntegration(authz.VerbBackfill) {
@@ -451,39 +436,7 @@ func (s *Server) authorizeBackfill(w http.ResponseWriter, r *http.Request) (*aut
 	return id, true
 }
 
-// errBackfillUnchanged tells stampBackfill that apply found nothing to
-// write: the request already covers what was asked.
-var errBackfillUnchanged = errors.New("backfill request unchanged")
-
-// stampBackfill applies one change to the named Integration's spec.backfill
-// under conflict retry, after the checks every backfill path shares: the
-// Integration exists, is not suspended, and supports backfill. apply returns
-// errBackfillUnchanged to skip the write, or a *statusError to answer with.
-func (s *Server) stampBackfill(ctx context.Context, name string, apply func(*v1alpha1.Integration) error) error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var cur v1alpha1.Integration
-		if err := s.client.Get(ctx, client.ObjectKey{Namespace: s.namespace, Name: name}, &cur); err != nil {
-			return err
-		}
-		if cur.Spec.Suspend {
-			return &statusError{code: http.StatusConflict, msg: "Integration is suspended."}
-		}
-		if !backfillSupported(&cur) {
-			return &statusError{code: http.StatusConflict,
-				msg: fmt.Sprintf("Integration %q does not support backfill.", name)}
-		}
-		if err := apply(&cur); err != nil {
-			return err
-		}
-		return s.client.Update(ctx, &cur)
-	})
-	if errors.Is(err, errBackfillUnchanged) {
-		return nil
-	}
-	return err
-}
-
-// writeBackfillError answers a failed stampBackfill.
+// writeBackfillError answers a failed createBackfill.
 func (s *Server) writeBackfillError(w http.ResponseWriter, r *http.Request, name string, err error) {
 	var se *statusError
 	if errors.As(err, &se) {

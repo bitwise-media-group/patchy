@@ -65,6 +65,12 @@ type Config struct {
 	Anonymous *AnonymousConfig `yaml:"anonymous"`
 	// OIDC configures the SSO provider of mode oidc.
 	OIDC *OIDCConfig `yaml:"oidc"`
+	// LinkKeyFile is a file of random bytes that keys the sealed "Connect
+	// GitHub" link cookies in modes anonymous and none, which have no client
+	// secret to derive a key from. Without it, GitHub linking is off in
+	// those modes. Mode oidc derives the key from the client secret and
+	// ignores this.
+	LinkKeyFile string `yaml:"linkKeyFile"`
 }
 
 // AnonymousConfig is the fixed identity every request resolves to in mode
@@ -196,6 +202,42 @@ func (c *Config) applyDefaults() {
 	if cl.DisplayName == "" {
 		cl.DisplayName = "name"
 	}
+}
+
+// linkKeyInfo is the HKDF label of the GitHub link cookie key, distinct from
+// the session key's so the two can never open each other's blobs.
+const linkKeyInfo = "patchy-github-link"
+
+// minLinkKey is the shortest linkKeyFile accepted.
+const minLinkKey = 32
+
+// LinkKey derives the key that seals the GitHub link cookies: from the OIDC
+// client secret in mode oidc, from linkKeyFile otherwise. A nil key (with no
+// error) means GitHub linking is off: no configuration, or a mode without a
+// key source.
+func LinkKey(cfg *Config) ([]byte, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	if cfg.Mode == ModeOIDC && cfg.OIDC != nil {
+		secret, err := cfg.OIDC.clientSecret()
+		if err != nil {
+			return nil, err
+		}
+		return sealKey(secret, linkKeyInfo)
+	}
+	if cfg.LinkKeyFile == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(cfg.LinkKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("linkKeyFile: %w", err)
+	}
+	material := strings.TrimSpace(string(raw))
+	if len(material) < minLinkKey {
+		return nil, fmt.Errorf("linkKeyFile %s holds %d bytes, want at least %d", cfg.LinkKeyFile, len(material), minLinkKey)
+	}
+	return sealKey(material, linkKeyInfo)
 }
 
 // clientSecret resolves the inline or file-based client secret.

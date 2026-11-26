@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -107,12 +108,30 @@ func (a *oidcAuthenticator) oauth2Config(r *http.Request) *oauth2.Config {
 }
 
 // redirectURL is the configured override or the request-derived callback.
-// Deriving trusts X-Forwarded-Proto/-Host, which the deployment docs call
-// out as requiring a trusted fronting proxy.
 func (a *oidcAuthenticator) redirectURL(r *http.Request) string {
 	if a.oc.RedirectURL != "" {
 		return a.oc.RedirectURL
 	}
+	return requestBaseURL(r) + "/oauth2/callback"
+}
+
+// BaseURL is the status page's public origin (scheme://host) for building
+// OAuth callback URLs: the origin of the configured OIDC redirectURL when
+// one is set, otherwise derived from the request. Deriving trusts
+// X-Forwarded-Proto/-Host, which the deployment docs call out as requiring a
+// trusted fronting proxy.
+func BaseURL(cfg *Config, r *http.Request) string {
+	if cfg != nil && cfg.OIDC != nil && cfg.OIDC.RedirectURL != "" {
+		if u, err := url.Parse(cfg.OIDC.RedirectURL); err == nil && u.Scheme != "" && u.Host != "" {
+			return u.Scheme + "://" + u.Host
+		}
+	}
+	return requestBaseURL(r)
+}
+
+// requestBaseURL derives scheme://host from the request and its forwarded
+// headers.
+func requestBaseURL(r *http.Request) string {
 	scheme := r.Header.Get("X-Forwarded-Proto")
 	if scheme == "" {
 		scheme = "http"
@@ -124,7 +143,7 @@ func (a *oidcAuthenticator) redirectURL(r *http.Request) string {
 	if host == "" {
 		host = r.Host
 	}
-	return scheme + "://" + host + "/oauth2/callback"
+	return scheme + "://" + host
 }
 
 // handleAuthorize starts one authorization round trip: PKCE verifier, CSRF

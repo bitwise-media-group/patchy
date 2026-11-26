@@ -4,9 +4,9 @@
 package action_test
 
 import (
-	"time"
-
+	"strings"
 	"testing"
+	"time"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,7 +19,7 @@ import (
 )
 
 // The integrations policy's own envtest proof: the request stamps
-// (spec.backfill, spec.replay, spec.reset) each need their own custom verb
+// (spec.replay, spec.reset) each need their own custom verb
 // on integrations, while plain update keeps working for everything else in
 // IntegrationSpec. This differs from the findings policy on purpose:
 // IntegrationSpec is operator configuration.
@@ -96,18 +96,18 @@ func (e *policyEnv) waitForIntegrationPolicy(t *testing.T) {
 		if err := probe.Get(t.Context(), key, &integ); err != nil {
 			t.Fatalf("get probe integration: %v", err)
 		}
-		integ.Spec.Backfill = &v1alpha1.BackfillRequest{By: "probe", At: metav1.Now()}
+		integ.Spec.Replay = &v1alpha1.ActionRequest{By: "probe", At: metav1.Now()}
 		if err := probe.Update(t.Context(), &integ); err != nil {
 			return // the policy is live
 		}
 		// The write went through: undo it and retry.
-		integ.Spec.Backfill = nil
+		integ.Spec.Replay = nil
 		if err := e.admin.Update(t.Context(), &integ); err != nil {
 			t.Fatalf("reset probe integration: %v", err)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatal("integrations admission policy never took effect: a user with no verbs could stamp spec.backfill")
+	t.Fatal("integrations admission policy never took effect: a user with no verbs could stamp spec.replay")
 }
 
 func getIntegration(t *testing.T, c client.Client, name string) *v1alpha1.Integration {
@@ -118,13 +118,6 @@ func getIntegration(t *testing.T, c client.Client, name string) *v1alpha1.Integr
 		t.Fatalf("get integration %s: %v", name, err)
 	}
 	return &integ
-}
-
-func backfillRequest() *v1alpha1.BackfillRequest {
-	return &v1alpha1.BackfillRequest{
-		By: "someone@acme.test",
-		At: metav1.NewTime(time.Now().UTC().Truncate(time.Second)),
-	}
 }
 
 // TestIntegrationPolicyEnforcesVerbPerField: one verb moves exactly its
@@ -141,12 +134,6 @@ func TestIntegrationPolicyEnforcesVerbPerField(t *testing.T) {
 		mutate    func(*v1alpha1.Integration)
 		wantAllow bool
 	}{
-		{
-			name:      "backfill verb may set spec.backfill",
-			granted:   []string{action.VerbBackfill},
-			mutate:    func(i *v1alpha1.Integration) { i.Spec.Backfill = backfillRequest() },
-			wantAllow: true,
-		},
 		{
 			name:      "backfill verb may not replay",
 			granted:   []string{action.VerbBackfill},
@@ -166,9 +153,9 @@ func TestIntegrationPolicyEnforcesVerbPerField(t *testing.T) {
 			wantAllow: true,
 		},
 		{
-			name:      "replay verb may not backfill",
+			name:      "replay verb may not reset",
 			granted:   []string{action.VerbReplay},
-			mutate:    func(i *v1alpha1.Integration) { i.Spec.Backfill = backfillRequest() },
+			mutate:    func(i *v1alpha1.Integration) { i.Spec.Reset = request() },
 			wantAllow: false,
 		},
 		{
@@ -195,7 +182,7 @@ func TestIntegrationPolicyEnforcesVerbPerField(t *testing.T) {
 		{
 			name:      "an unchanged stamped request passes without the verb",
 			granted:   nil,
-			seed:      func(i *v1alpha1.Integration) { i.Spec.Backfill = backfillRequest() },
+			seed:      func(i *v1alpha1.Integration) { i.Spec.Reset = request() },
 			mutate:    func(i *v1alpha1.Integration) { i.Spec.Suspend = true },
 			wantAllow: true,
 		},
@@ -236,12 +223,12 @@ func TestIntegrationPolicyCoversCreate(t *testing.T) {
 			Provider:  v1alpha1.IntegrationProviderGitHub,
 			SecretRef: &v1alpha1.LocalSecretReference{Name: "creds"},
 			GitHub:    &v1alpha1.GitHubIntegration{},
-			Backfill:  backfillRequest(),
+			Replay:    request(),
 		},
 	}
 	err := user.Create(t.Context(), integ)
 	if err == nil {
-		t.Fatal("created an integration with a pre-set backfill request; recreate laundering is open")
+		t.Fatal("created an integration with a pre-set replay request; recreate laundering is open")
 	}
 	if !apierrors.IsForbidden(err) && !apierrors.IsInvalid(err) {
 		t.Errorf("create failed for the wrong reason: %v", err)
@@ -258,8 +245,147 @@ func TestIntegrationPolicyExemptsTheStatusServer(t *testing.T) {
 
 	c := env.integrationUserClient(t, "system:serviceaccount:patchy:patchy-status-server")
 	integ := getIntegration(t, c, "integ-sa-target")
-	integ.Spec.Backfill = backfillRequest()
+	integ.Spec.Replay = request()
 	if err := c.Update(t.Context(), integ); err != nil {
-		t.Fatalf("status-server was blocked from stamping spec.backfill: %v", err)
+		t.Fatalf("status-server was blocked from stamping spec.replay: %v", err)
+	}
+}
+
+// The BackfillRequest policy's envtest proof.
+
+// backfillUserClient impersonates a user who may create and update
+// BackfillRequests, granted exactly the given custom verbs on integrations.
+func (e *policyEnv) backfillUserClient(t *testing.T, username string, verbs ...string) client.Client {
+	t.Helper()
+	ctx := t.Context()
+	safe := "bfr-" + strings.NewReplacer("@", "-", ".", "-", ":", "-").Replace(username)
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{Name: "role-" + safe, Namespace: policyNamespace},
+		Rules: []rbacv1.PolicyRule{
+			{APIGroups: []string{v1alpha1.GroupVersion.Group}, Resources: []string{"backfillrequests"},
+				Verbs: []string{"get", "list", "create", "update"}},
+			{APIGroups: []string{v1alpha1.GroupVersion.Group}, Resources: []string{"integrations"},
+				Verbs: append([]string{"get"}, verbs...)},
+		},
+	}
+	if err := e.admin.Create(ctx, role); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("create role: %v", err)
+	}
+	binding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "bind-" + safe, Namespace: policyNamespace},
+		RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: role.Name},
+		Subjects:   []rbacv1.Subject{{Kind: "User", APIGroup: rbacv1.GroupName, Name: username}},
+	}
+	if err := e.admin.Create(ctx, binding); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("create rolebinding: %v", err)
+	}
+	cfg := rest.CopyConfig(e.cfg)
+	cfg.Impersonate = rest.ImpersonationConfig{UserName: username}
+	c, err := client.New(cfg, client.Options{Scheme: e.admin.Scheme()})
+	if err != nil {
+		t.Fatalf("build user client: %v", err)
+	}
+	return c
+}
+
+func newBackfillRequest(name, by string, via v1alpha1.BackfillVia) *v1alpha1.BackfillRequest {
+	return &v1alpha1.BackfillRequest{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policyNamespace},
+		Spec: v1alpha1.BackfillRequestSpec{
+			IntegrationRef: v1alpha1.LocalObjectReference{Name: "gh"},
+			RequestedBy:    by,
+			Repositories:   []string{"acme/shop"},
+			Via:            via,
+		},
+	}
+}
+
+// waitForBackfillPolicy probes until the backfill request policy denies a
+// verbless direct request.
+func (e *policyEnv) waitForBackfillPolicy(t *testing.T) {
+	t.Helper()
+	probe := e.backfillUserClient(t, "bfr-probe@acme.test")
+	deadline := time.Now().Add(30 * time.Second)
+	for i := 0; time.Now().Before(deadline); i++ {
+		b := newBackfillRequest("bfr-probe-"+string(rune('a'+i%26))+strings.Repeat("x", i/26), "bfr-probe@acme.test", "")
+		if err := probe.Create(t.Context(), b); err != nil {
+			return
+		}
+		_ = e.admin.Delete(t.Context(), b)
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatal("backfill request admission policy never took effect")
+}
+
+func TestBackfillRequestPolicy(t *testing.T) {
+	env := startPolicyEnv(t)
+	env.waitForBackfillPolicy(t)
+
+	cases := []struct {
+		name      string
+		user      string
+		granted   []string
+		build     func(user string) *v1alpha1.BackfillRequest
+		wantAllow bool
+	}{
+		{"backfill verb runs a request", "op@acme.test", []string{action.VerbBackfill},
+			func(u string) *v1alpha1.BackfillRequest { return newBackfillRequest("p-direct", u, "") }, true},
+		{"no verb: a direct request is denied", "dev@acme.test", nil,
+			func(u string) *v1alpha1.BackfillRequest { return newBackfillRequest("p-denied", u, "") }, false},
+		{"no verb: a requested backfill is allowed", "dev2@acme.test", nil,
+			func(u string) *v1alpha1.BackfillRequest {
+				return newBackfillRequest("p-requested", u, v1alpha1.BackfillViaRequested)
+			}, true},
+		{"requestedBy must be the creator", "dev3@acme.test", nil,
+			func(string) *v1alpha1.BackfillRequest {
+				return newBackfillRequest("p-forged", "someone-else@acme.test", v1alpha1.BackfillViaRequested)
+			}, false},
+		{"a maintained request is status-server only", "op2@acme.test", []string{action.VerbBackfill},
+			func(u string) *v1alpha1.BackfillRequest {
+				return newBackfillRequest("p-maintained", u, v1alpha1.BackfillViaMaintained)
+			}, false},
+		{"a scoped grant does not authorize a direct request", "maint@acme.test", []string{action.VerbBackfillMaintained},
+			func(u string) *v1alpha1.BackfillRequest { return newBackfillRequest("p-scoped", u, "") }, false},
+		{"self-approval at creation needs the verb", "dev4@acme.test", nil,
+			func(u string) *v1alpha1.BackfillRequest {
+				b := newBackfillRequest("p-selfapprove", u, v1alpha1.BackfillViaRequested)
+				b.Spec.Decision = &v1alpha1.BackfillDecision{Verdict: v1alpha1.BackfillApproved, By: u, At: metav1.Now()}
+				return b
+			}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := env.backfillUserClient(t, tc.user, tc.granted...)
+			err := c.Create(t.Context(), tc.build(tc.user))
+			switch {
+			case tc.wantAllow && err != nil:
+				t.Errorf("create rejected but should be allowed: %v", err)
+			case !tc.wantAllow && err == nil:
+				t.Error("create accepted; the admission policy did not deny it")
+			case !tc.wantAllow && !apierrors.IsForbidden(err) && !apierrors.IsInvalid(err):
+				t.Errorf("create failed for the wrong reason: %v", err)
+			}
+		})
+	}
+
+	// Deciding needs the backfill verb.
+	asker := env.backfillUserClient(t, "asker@acme.test")
+	asked := newBackfillRequest("p-decide", "asker@acme.test", v1alpha1.BackfillViaRequested)
+	if err := asker.Create(t.Context(), asked); err != nil {
+		t.Fatalf("file request: %v", err)
+	}
+	decide := func(c client.Client) error {
+		var cur v1alpha1.BackfillRequest
+		if err := c.Get(t.Context(), client.ObjectKeyFromObject(asked), &cur); err != nil {
+			return err
+		}
+		cur.Spec.Decision = &v1alpha1.BackfillDecision{Verdict: v1alpha1.BackfillApproved, By: "x", At: metav1.Now()}
+		return c.Update(t.Context(), &cur)
+	}
+	if err := decide(asker); err == nil {
+		t.Error("the requester approved their own request without the backfill verb")
+	}
+	if err := decide(env.backfillUserClient(t, "ops@acme.test", action.VerbBackfill)); err != nil {
+		t.Errorf("an operator could not decide: %v", err)
 	}
 }

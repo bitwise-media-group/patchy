@@ -55,6 +55,58 @@ var AdminVerbs = []string{VerbReplay, VerbReset}
 // SubjectAccessReviews and the server-side enforcement in agreement.
 var IntegrationVerbs = []string{VerbBackfill, VerbReplay, VerbReset}
 
+// The maintainer verbs. Each stands in for a base verb, scoped to the
+// repositories where the caller's linked GitHub identity is admin or
+// maintain. Only the status server can honour them, because only it can
+// present the GitHub link. A direct API write still needs the base verb, so a
+// scoped grant on its own permits nothing outside the status page.
+const (
+	// VerbBackfillMaintained is backfill (on integrations), for maintained
+	// repositories only.
+	VerbBackfillMaintained = "backfill-maintained"
+	// VerbApproveMaintained is approve (on findings), for findings on
+	// maintained repositories only.
+	VerbApproveMaintained = "approve-maintained"
+	// VerbExpediteMaintained is expedite (on findings), for findings on
+	// maintained repositories only.
+	VerbExpediteMaintained = "expedite-maintained"
+)
+
+// Resources the custom verbs are checked on.
+const (
+	ResourceFindings     = "findings"
+	ResourceIntegrations = "integrations"
+)
+
+// MaintainedVerb maps one scoped verb onto the base verb it stands in for.
+// The state-machine checks stay with the base verb: Apply and Available run
+// with Base; the scoped verb only changes who may act.
+type MaintainedVerb struct {
+	// Verb is the scoped RBAC verb.
+	Verb string
+	// Base is the verb it stands in for.
+	Base string
+	// Resource is where the scoped verb is granted.
+	Resource string
+}
+
+// MaintainedVerbs lists the scoped verbs in the order clients present them.
+var MaintainedVerbs = []MaintainedVerb{
+	{Verb: VerbBackfillMaintained, Base: VerbBackfill, Resource: ResourceIntegrations},
+	{Verb: VerbApproveMaintained, Base: VerbApprove, Resource: ResourceFindings},
+	{Verb: VerbExpediteMaintained, Base: VerbExpedite, Resource: ResourceFindings},
+}
+
+// MaintainedFor returns the scoped verb standing in for base, if any.
+func MaintainedFor(base string) (MaintainedVerb, bool) {
+	for _, m := range MaintainedVerbs {
+		if m.Base == base {
+			return m, true
+		}
+	}
+	return MaintainedVerb{}, false
+}
+
 // Errors Apply returns. Callers map them onto their own vocabulary: the status
 // server turns ErrUnavailable into a 403 and ErrUnknownVerb into a 404; the CLI
 // turns them into exit codes.

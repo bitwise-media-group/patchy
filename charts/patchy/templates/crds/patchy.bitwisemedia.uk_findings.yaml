@@ -257,6 +257,7 @@ spec:
                 properties:
                   name:
                     description: Name of the referent.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
@@ -374,6 +375,7 @@ spec:
                 properties:
                   name:
                     description: Name of the referent.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:
@@ -535,6 +537,7 @@ spec:
                 properties:
                   name:
                     description: Name of the referent.
+                    maxLength: 253
                     minLength: 1
                     type: string
                 required:

@@ -27,9 +27,11 @@
 # Ingests scanner webhooks into Findings (create/fold/duplicate-merge; it is
 # the only controller that deletes duplicate Findings). Projects Findings to
 # tracking issues (reads the children's reports). Applies human signals
-# (approve/close/PR-merge) to Finding spec + status. Answers the status
-# server's repository-access check (reads Forges; the TokenReview grant is a
-# ClusterRole at the end of this file).
+# (approve/close/PR-merge) to Finding spec + status. Walks BackfillRequests
+# (the single writer of their status) and deletes them once their TTL has
+# passed; it never creates one. Answers the status server's repository-access
+# check and its GitHub-user endpoints (reads Forges; the TokenReview grant is
+# a ClusterRole at the end of this file).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -54,6 +56,15 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations]
       verbs: [get, list, watch, deletecollection]
+    # The backfill walker. No create (people file requests, through the
+    # status page or the CLI) and no update on the spec (spec.decision is an
+    # operator's). delete is the TTL expiry of finished and undecided ones.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [get, list, watch, delete]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests/status]
+      verbs: [get, update, patch]
     # Read-only: the repository-access check reports whether a Forge covers
     # a repository and can push to it.
     - apiGroups: [patchy.bitwisemedia.uk]
@@ -353,10 +364,11 @@ subjects:
 # ---- status-server ----------------------------------------------------------
 # The status page backend. It reads Findings/FindingRollups for the
 # projection and writes SPEC only: spec.approval, spec.retry, spec.expedite
-# and spec.suspend on Findings, and spec.backfill, spec.replay and spec.reset
-# on Integrations. It has no */status access. The status server never moves a phase (each edge
-# in the transition table keeps a single writer), and RBAC enforces that at
-# the API layer. The delete/deletecollection verbs support the
+# and spec.suspend on Findings, and spec.replay and spec.reset on
+# Integrations. It also files BackfillRequests and records an operator's
+# spec.decision on one. It has no */status access. The status server never
+# moves a phase (each edge in the transition table keeps a single writer),
+# and RBAC enforces that at the API layer. The delete/deletecollection verbs support the
 # access-review-gated reset action (demo tooling). Reset wipes the pipeline
 # state and keeps the configuration (Integrations, Forges). No leases (no
 # reconcilers, no leader election), no secrets (the auth config is a mounted
@@ -382,11 +394,19 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write path for the replay and backfill actions (spec.replay,
-    # spec.backfill). The cached client's informer needs list/watch.
+    # Spec-only write path for the replay and reset actions (spec.replay,
+    # spec.reset). The cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
+    # The backfill paths: create files a request (every path, after the
+    # server's own access reviews and, for a maintained one, the GitHub role
+    # check), update records an operator's spec.decision. list/watch feed the
+    # repositories page, the cooldown and the approval queue. No delete: the
+    # integration-controller expires them.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [get, list, watch, create, update]
     # Read-only: the configuration view projects the Forges alongside the
     # Integrations.
     - apiGroups: [patchy.bitwisemedia.uk]
@@ -459,10 +479,11 @@ subjects:
 # SubjectAccessReview is a cluster-scoped, create-only API, so a namespaced
 # Role cannot grant it. The status server uses it to answer "may user U
 # <verb> <resource> in patchy?" for the signed-in user. That covers the
-# custom verbs on findings (approve, retry, expedite, suspend, resume) and on
-# integrations (backfill, replay, reset), and the native get that gates
-# viewing (see rbac.users.example.yaml for the grant grammar). Review-only: this grants no power to act, only to
-# ask.
+# custom verbs on findings (approve, retry, expedite, suspend, resume, and
+# the scoped approve-maintained and expedite-maintained) and on integrations
+# (backfill, backfill-maintained, replay, reset), and the native get that
+# gates viewing (see rbac.users.example.yaml for the grant grammar).
+# Review-only: this grants no power to act, only to ask.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -678,8 +699,8 @@ subjects:
 # ---- integration-controller: TokenReview ------------------------------------
 # TokenReview is cluster-scoped and create-only, so a namespaced Role cannot
 # grant it. The integration-controller uses it on its in-cluster
-# repository-access endpoint (:9792) to check the status server's projected
-# ServiceAccount token. Review-only: it can ask "whose token is this?" and
+# repository-access and GitHub-user endpoints (:9792) to check the status
+# server's projected ServiceAccount token. Review-only: it can ask "whose token is this?" and
 # nothing else.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

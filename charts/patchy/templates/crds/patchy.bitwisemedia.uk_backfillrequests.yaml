@@ -1,0 +1,259 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+{{- if .Values.crds.install }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: backfillrequests.patchy.bitwisemedia.uk
+spec:
+  group: patchy.bitwisemedia.uk
+  names:
+    categories:
+    - patchy
+    kind: BackfillRequest
+    listKind: BackfillRequestList
+    plural: backfillrequests
+    shortNames:
+    - bfr
+    singular: backfillrequest
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.integrationRef.name
+      name: Integration
+      type: string
+    - jsonPath: .spec.requestedBy
+      name: By
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.ingested
+      name: Ingested
+      priority: 1
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          BackfillRequest asks one Integration for one bounded walk of the
+          provider's open alerts, ingesting the ones that predate webhook coverage.
+          These are alerts raised before the App was installed on (or associated
+          with) their repository, which no replay of the delivery log can surface.
+          Ingestion is idempotent, so re-listing alerts that already have findings
+          is safe.
+
+          One object per request, created by the status page or the CLI and walked
+          by the integration-controller one at a time. A request filed by someone
+          without a backfill grant waits in AwaitingApproval for an operator's
+          decision. The creation
+          timestamp is the request time. Finished requests expire on a TTL; until
+          then they are the record the status page's one-repository backfill
+          cooldown reads.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              BackfillRequestSpec is one request for a bounded list-alerts walk. Every
+              field but decision is immutable, and decision may be set only once.
+            properties:
+              decision:
+                description: Decision is an operator's verdict on a requested backfill.
+                properties:
+                  at:
+                    description: At is when the decision was made.
+                    format: date-time
+                    type: string
+                  by:
+                    description: By is the deciding identity.
+                    maxLength: 256
+                    minLength: 1
+                    type: string
+                  reason:
+                    description: Reason is an optional note shown to the requester.
+                    maxLength: 500
+                    type: string
+                  verdict:
+                    description: Verdict is Approved or Denied.
+                    enum:
+                    - Approved
+                    - Denied
+                    type: string
+                required:
+                - at
+                - by
+                - verdict
+                type: object
+                x-kubernetes-validations:
+                - message: spec.decision may be set only once
+                  rule: self == oldSelf
+              github:
+                description: GitHub is the linked GitHub identity of a maintained
+                  request.
+                properties:
+                  login:
+                    description: Login is the GitHub login.
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                  role:
+                    description: |-
+                      Role is the requester's role on the repository when the request was
+                      authorized (admin or maintain).
+                    maxLength: 32
+                    type: string
+                required:
+                - login
+                - role
+                type: object
+                x-kubernetes-validations:
+                - message: the request is immutable; create a new BackfillRequest
+                  rule: self == oldSelf
+              integrationRef:
+                description: |-
+                  IntegrationRef names the Integration whose credential walks the
+                  provider's open alerts.
+                properties:
+                  name:
+                    description: Name of the referent.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+                x-kubernetes-validations:
+                - message: the request is immutable; create a new BackfillRequest
+                  rule: self == oldSelf
+              repositories:
+                description: |-
+                  Repositories narrows the walk to repositories matching any entry: an
+                  exact "owner/name", or an "owner/" prefix covering the whole owner.
+                  Empty means the credential's full scope. A truncated walk is re-run
+                  with a narrower prefix rather than paging on.
+                items:
+                  maxLength: 200
+                  minLength: 1
+                  type: string
+                maxItems: 50
+                type: array
+                x-kubernetes-validations:
+                - message: the request is immutable; create a new BackfillRequest
+                  rule: self == oldSelf
+              requestedBy:
+                description: |-
+                  RequestedBy is the requesting identity, recorded for audit. The
+                  admission policy requires it to match the creating user, except for
+                  the status server, which records the signed-in user it acted for.
+                maxLength: 256
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: the request is immutable; create a new BackfillRequest
+                  rule: self == oldSelf
+              via:
+                description: |-
+                  Via records which grant authorized the request; empty means the
+                  backfill grant.
+                enum:
+                - backfill
+                - maintained
+                - requested
+                type: string
+                x-kubernetes-validations:
+                - message: the request is immutable; create a new BackfillRequest
+                  rule: self == oldSelf
+            required:
+            - integrationRef
+            - requestedBy
+            type: object
+            x-kubernetes-validations:
+            - message: the request is immutable; create a new BackfillRequest
+              rule: has(self.repositories) == has(oldSelf.repositories) && has(self.via)
+                == has(oldSelf.via) && has(self.github) == has(oldSelf.github)
+            - message: spec.decision may be set only once
+              rule: '!has(oldSelf.decision) || has(self.decision)'
+            - message: only a requested backfill takes a decision
+              rule: '!has(self.decision) || (has(self.via) && self.via == "requested")'
+          status:
+            description: BackfillRequestStatus is the outcome of the request's walk.
+            properties:
+              attempts:
+                description: Attempts counts the walks tried, failed ones included.
+                format: int32
+                type: integer
+              completedAt:
+                description: |-
+                  CompletedAt is when the request reached Complete or Failed; the TTL
+                  counts from here.
+                format: date-time
+                type: string
+              error:
+                description: |-
+                  Error carries the last failure: why a pending walk will be retried,
+                  why the request failed, or the last alert that would not ingest.
+                type: string
+              ingested:
+                description: |-
+                  Ingested counts the alerts folded into findings; the rest were
+                  filtered out by the repository prefixes or failed individually (see
+                  error).
+                format: int32
+                type: integer
+              lastAttemptAt:
+                description: LastAttemptAt is when the last walk started.
+                format: date-time
+                type: string
+              listed:
+                description: Listed counts the open alerts the walk saw.
+                format: int32
+                type: integer
+              phase:
+                description: Phase is the request's lifecycle position.
+                enum:
+                - AwaitingApproval
+                - Pending
+                - Complete
+                - Failed
+                - Denied
+                type: string
+              truncated:
+                description: |-
+                  Truncated marks a walk that hit the page budget before exhausting the
+                  estate; request again with a narrower repository prefix to cover the
+                  rest.
+                type: boolean
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

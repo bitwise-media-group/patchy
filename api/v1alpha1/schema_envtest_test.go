@@ -292,6 +292,107 @@ func TestSchemaValidation(t *testing.T) {
 	t.Run("evaluation unit spec is immutable and its failure reason is an enum", func(t *testing.T) {
 		testEvaluationUnitSchema(ctx, t, c)
 	})
+
+	t.Run("backfill request is immutable and its decision is one-time", func(t *testing.T) {
+		testBackfillRequestSchema(ctx, t, c)
+	})
+
+	t.Run("github user authorization takes a client ID", func(t *testing.T) {
+		testUserAuthorizationSchema(ctx, t, c)
+	})
+}
+
+// testBackfillRequestSchema exercises the BackfillRequest CEL rules: the
+// request fields are immutable, the decision may be set once, and only a
+// requested backfill takes one.
+func testBackfillRequestSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	req := func(name string, via patchyv1.BackfillVia) *patchyv1.BackfillRequest {
+		return &patchyv1.BackfillRequest{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: patchyv1.BackfillRequestSpec{
+				IntegrationRef: patchyv1.LocalObjectReference{Name: "gh"},
+				RequestedBy:    "dev@example.com",
+				Repositories:   []string{"acme/shop"},
+				Via:            via,
+			},
+		}
+	}
+	decision := func(v patchyv1.BackfillVerdict) *patchyv1.BackfillDecision {
+		return &patchyv1.BackfillDecision{Verdict: v, By: "ops@example.com", At: metav1.Now()}
+	}
+
+	asked := req("bfr-requested", patchyv1.BackfillViaRequested)
+	if err := c.Create(ctx, asked); err != nil {
+		t.Fatalf("Create(requested backfill) = %v, want nil", err)
+	}
+	asked.Spec.Repositories = []string{"acme/other"}
+	if err := c.Update(ctx, asked); err == nil {
+		t.Error("Update(repositories) = nil, want immutability rejection")
+	}
+	if err := c.Get(ctx, client.ObjectKeyFromObject(asked), asked); err != nil {
+		t.Fatal(err)
+	}
+	asked.Spec.Decision = decision(patchyv1.BackfillApproved)
+	if err := c.Update(ctx, asked); err != nil {
+		t.Fatalf("Update(first decision) = %v, want nil", err)
+	}
+	asked.Spec.Decision = decision(patchyv1.BackfillDeniedVerdict)
+	if err := c.Update(ctx, asked); err == nil {
+		t.Error("Update(second decision) = nil, want one-time rejection")
+	}
+
+	direct := req("bfr-direct", "")
+	direct.Spec.Decision = decision(patchyv1.BackfillApproved)
+	if err := c.Create(ctx, direct); err == nil {
+		t.Error("Create(decision on a direct backfill) = nil, want rejection")
+	}
+	badVia := req("bfr-bad-via", "sideways")
+	if err := c.Create(ctx, badVia); err == nil {
+		t.Error("Create(via sideways) = nil, want enum rejection")
+	}
+	tooMany := req("bfr-too-many", "")
+	tooMany.Spec.Repositories = make([]string, 51)
+	for i := range tooMany.Spec.Repositories {
+		tooMany.Spec.Repositories[i] = "acme/r"
+	}
+	if err := c.Create(ctx, tooMany); err == nil {
+		t.Error("Create(51 repositories) = nil, want MaxItems rejection")
+	}
+	noRequester := req("bfr-anon", "")
+	noRequester.Spec.RequestedBy = ""
+	if err := c.Create(ctx, noRequester); err == nil {
+		t.Error("Create(no requester) = nil, want MinLength rejection")
+	}
+}
+
+// testUserAuthorizationSchema checks the clientID bounds on
+// spec.github.userAuthorization. Whether the credential is an App (a PAT
+// cannot do user authorization) lives in the Secret, which CEL cannot see;
+// the integration-controller reports that on UserAuthorizationReady.
+func testUserAuthorizationSchema(ctx context.Context, t *testing.T, c client.Client) {
+	t.Helper()
+	integ := func(name, clientID string) *patchyv1.Integration {
+		return &patchyv1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: patchyv1.IntegrationSpec{
+				Provider:  patchyv1.IntegrationProviderGitHub,
+				SecretRef: &patchyv1.LocalSecretReference{Name: "s"},
+				GitHub: &patchyv1.GitHubIntegration{
+					UserAuthorization: &patchyv1.GitHubUserAuthorization{ClientID: clientID},
+				},
+			},
+		}
+	}
+	if err := c.Create(ctx, integ("ua-ok", "Iv23liABC.def_1")); err != nil {
+		t.Fatalf("Create(valid clientID) = %v, want nil", err)
+	}
+	if err := c.Create(ctx, integ("ua-empty", "")); err == nil {
+		t.Error("Create(empty clientID) = nil, want MinLength rejection")
+	}
+	if err := c.Create(ctx, integ("ua-space", "Iv1 abc")); err == nil {
+		t.Error("Create(clientID with a space) = nil, want pattern rejection")
+	}
 }
 
 // evalUnitPlan is a minimal valid UnitPlan for schema tests.

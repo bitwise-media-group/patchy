@@ -163,6 +163,7 @@ func NewRoot(opts *Options) *cobra.Command {
 		newBuildCmd(opts),
 	)
 	root.AddCommand(newActionCmds(opts)...)
+	root.AddCommand(newDenyCmd(opts))
 	return root
 }
 

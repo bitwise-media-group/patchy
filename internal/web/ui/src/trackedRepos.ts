@@ -2,9 +2,10 @@
 // kept in this browser's localStorage. Nothing about it reaches the cluster;
 // export and import move it between browsers.
 //
-// Every entry records where it came from (`source`). v1 has only manual
-// entries; a later "Connect GitHub" discovery source would add entries with
-// source "github" without changing the stored shape.
+// Every entry records where it came from (`source`): typed or imported from
+// a file ("manual", stored as absent), or imported from the repositories a
+// connected GitHub account maintains ("github"). Refreshing from GitHub only
+// ever removes github entries; manual ones are the user's to remove.
 //
 // Storage can be missing or throw (private windows, blocked site data), so
 // every access is guarded: the page then works for the visit and says the
@@ -106,13 +107,72 @@ export function save(repos: TrackedRepo[], store: KeyValueStore | null = default
 
 export type AddResult = { repos: TrackedRepo[]; error?: string };
 
+// sameRepo compares names the way GitHub does: case-insensitively.
+function sameRepo(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+// tracks reports whether the list holds name, in any case.
+export function tracks(repos: TrackedRepo[], name: string): boolean {
+  return repos.some((r) => sameRepo(r.name, name));
+}
+
 // add appends one repository, refusing duplicates, bad names and a full list.
-export function add(repos: TrackedRepo[], input: string, now = new Date()): AddResult {
+export function add(
+  repos: TrackedRepo[],
+  input: string,
+  now = new Date(),
+  source: TrackedSource = "manual",
+): AddResult {
   const name = normalizeRepoName(input);
   if (!name) return { repos, error: `“${input.trim()}” is not an owner/name repository.` };
-  if (repos.some((r) => r.name === name)) return { repos, error: `${name} is already on your list.` };
+  if (tracks(repos, name)) return { repos, error: `${name} is already on your list.` };
   if (repos.length >= MAX_TRACKED) return { repos, error: `Your list is full (${MAX_TRACKED} repositories).` };
-  return { repos: [...repos, { name, addedAt: now.toISOString() }] };
+  const entry: TrackedRepo = { name, addedAt: now.toISOString(), ...(source === "github" ? { source } : {}) };
+  return { repos: [...repos, entry] };
+}
+
+// room is how many more repositories the list takes.
+export function room(repos: TrackedRepo[]): number {
+  return Math.max(0, MAX_TRACKED - repos.length);
+}
+
+// importGitHub adds repositories picked from GitHub, tagged source
+// "github", in order until the list is full. A repository already on the
+// list keeps its entry (and its source) untouched.
+export function importGitHub(repos: TrackedRepo[], names: string[], now = new Date()): ImportResult {
+  let out = repos;
+  let added = 0;
+  let skipped = 0;
+  for (const name of names) {
+    const res = add(out, name, now, "github");
+    if (res.error) {
+      skipped++;
+    } else {
+      out = res.repos;
+      added++;
+    }
+  }
+  return { repos: out, added, skipped };
+}
+
+export interface RefreshResult {
+  repos: TrackedRepo[];
+  removed: string[];
+}
+
+// refreshGitHub drops the github entries the user no longer maintains, by
+// the fresh lists from every connected Integration. Manual entries stay,
+// maintained or not.
+export function refreshGitHub(repos: TrackedRepo[], maintained: Iterable<string>): RefreshResult {
+  const keep = new Set([...maintained].map((n) => n.toLowerCase()));
+  const removed: string[] = [];
+  const out = repos.filter((r) => {
+    if (r.source !== "github" || keep.has(r.name.toLowerCase())) return true;
+    removed.push(r.name);
+    return false;
+  });
+  return { repos: removed.length ? out : repos, removed };
 }
 
 export function remove(repos: TrackedRepo[], name: string): TrackedRepo[] {

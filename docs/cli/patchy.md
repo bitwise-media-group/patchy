@@ -27,12 +27,13 @@ Run `patchy can-i` to see your grants.
 
 ### SEE ALSO
 
-* [patchy approve](patchy_approve.md)	 - Approve a finding, releasing a hold or reviving a handed-off finding
+* [patchy approve](patchy_approve.md)	 - Approve a finding, or a backfill request awaiting an operator
 * [patchy backfill](patchy_backfill.md)	 - Backfill an integration's pre-existing open alerts into findings
 * [patchy browse](patchy_browse.md)	 - Browse to a resource's page in a browser
 * [patchy build](patchy_build.md)	 - Build, scan, publish and sign first-party images and Flux manifests
 * [patchy can-i](patchy_can-i.md)	 - Show which actions your RBAC allows
 * [patchy completion](patchy_completion.md)	 - Generate the autocompletion script for the specified shell
+* [patchy deny](patchy_deny.md)	 - Deny a backfill request that is awaiting an operator
 * [patchy describe](patchy_describe.md)	 - Show the full detail of one resource
 * [patchy dev](patchy_dev.md)	 - Local test harnesses for generic-integration authors
 * [patchy expedite](patchy_expedite.md)	 - Expedite a finding past the accumulation window and the queue

@@ -4,24 +4,28 @@ Backfill an integration's pre-existing open alerts into findings
 
 ### Synopsis
 
-Request a one-shot backfill of open alerts on an integration. The
-integration-controller lists the provider's open alerts and ingests the ones
-that predate webhook coverage. These are alerts raised before the GitHub App
-was installed on (or associated with) their repository, so no replay of the
-delivery log can surface them. Ingestion is idempotent: an alert that already
-has a finding merges into it.
+File a one-shot backfill of open alerts on an integration. The command creates
+a BackfillRequest. The integration-controller walks the provider's open alerts
+and ingests the ones that predate webhook coverage. These are alerts raised
+before the GitHub App was installed on (or associated with) their repository,
+so no replay of the delivery log can surface them. Ingestion is idempotent: an
+alert that already has a finding merges into it.
 
 --repo narrows the walk. An "owner/" prefix covers a whole account. An
 "owner/name" entry covers one repository and, because it is a prefix, any name
 that starts with it. With App credentials the filter skips whole installations.
 With a PAT every entry must be an exact owner/name, because a PAT cannot
-discover repositories. If status.backfill reports the walk as truncated, it hit
-the page budget: re-run with a narrower prefix to reach the rest.
+discover repositories. If the request reports the walk as truncated, it hit
+the page budget: file another with a narrower prefix to reach the rest.
 
-The command writes only spec.backfill. A controller sees the change and runs
-the walk. Your RBAC decides whether the write is allowed. The CLI checks the
-'backfill' verb on integrations before writing, and the cluster's admission
-policy enforces it for every client.
+A request that runs at once needs the 'backfill' verb on integrations. The CLI
+checks it before writing, and the cluster's admission policy enforces it for
+every client. Without the verb, pass --request: the request then waits in
+AwaitingApproval until an operator approves it (`patchy approve
+backfillrequest <name>`) or denies it (`patchy deny backfillrequest <name>`).
+
+Watch a request with `patchy get backfillrequests` or `patchy describe
+backfillrequest <name>`.
 
 ```
 patchy backfill <integration> [flags]
@@ -33,13 +37,15 @@ patchy backfill <integration> [flags]
   patchy backfill gh
   patchy backfill gh --repo acme/
   patchy backfill gh --repo acme/shop --repo acme/billing
+  patchy backfill gh --repo acme/shop --request
 ```
 
 ### Options
 
 ```
-  -h, --help[=true|false]   help for backfill
-      --repo stringArray    repository filter: an "owner/" prefix or an exact "owner/name" (repeatable; empty = full scope)
+  -h, --help[=true|false]      help for backfill
+      --repo stringArray       repository filter: an "owner/" prefix or an exact "owner/name" (repeatable; empty = full scope)
+      --request[=true|false]   ask an operator to approve the backfill instead of running it at once (needs no backfill verb)
 ```
 
 ### Options inherited from parent commands

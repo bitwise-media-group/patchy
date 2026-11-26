@@ -46,18 +46,23 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 			"(default: Google, the only correct value in production; overridable for e2e)")
 	_ = f.MarkHidden("google-oidc-issuer")
 	f.String("internal-addr", "",
-		"listen address of the in-cluster repository-access endpoint the status server calls (empty disables it)")
+		"listen address of the in-cluster repository-access and GitHub-user endpoints the status server calls "+
+			"(empty disables them)")
 	f.String("status-server-service-account", "patchy-status-server",
-		"ServiceAccount (in --namespace) whose projected token the repository-access endpoint accepts")
+		"ServiceAccount (in --namespace) whose projected token the internal endpoints accept")
+	f.Duration("backfill-request-ttl", integration.DefaultBackfillTTL,
+		"how long a finished or undecided BackfillRequest is kept; must outlast the status server's "+
+			"--repository-backfill-cooldown")
 	return cmd
 }
 
 // internalServer builds the in-cluster listener for the repository-access
-// endpoint, or nil when --internal-addr is empty. It is kept off the
-// internet-facing webhook listener: only the status server calls it, with a
-// projected ServiceAccount token reviewed by the API server.
+// and GitHub-user endpoints, or nil when --internal-addr is empty. It is
+// kept off the internet-facing webhook listener: only the status server
+// calls it, with a projected ServiceAccount token reviewed by the API
+// server.
 func internalServer(
-	opts *cli.Options, namespace string, access *integration.RepositoryAccess,
+	opts *cli.Options, namespace string, access *integration.RepositoryAccess, users *integration.GitHubUser,
 ) (*http.Server, error) {
 	addr := opts.String("internal-addr")
 	if addr == "" {
@@ -71,13 +76,17 @@ func internalServer(
 	if err != nil {
 		return nil, fmt.Errorf("kubernetes clientset: %w", err)
 	}
-	access.Auth = tokenauth.New(cs, tokenauth.Config{
+	callers := tokenauth.New(cs, tokenauth.Config{
 		Audience: repoaccess.Audience,
 		Subjects: []string{tokenauth.ServiceAccount(namespace, opts.String("status-server-service-account"))},
 	})
+	access.Auth, users.Auth = callers, callers
+	mux := http.NewServeMux()
+	mux.Handle(repoaccess.Path, access.Handler())
+	users.Register(mux)
 	return &http.Server{
 		Addr:              addr,
-		Handler:           access.Handler(),
+		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}, nil
 }
@@ -146,9 +155,16 @@ func serve(ctx context.Context, opts *cli.Options) error {
 
 	ic := &integration.IntegrationReconciler{
 		Client: mgr.GetClient(), Creds: creds, Log: log,
-		ResetDedup: srv.ResetDedup, Ingest: ingestor,
+		ResetDedup: srv.ResetDedup,
 	}
 	if err := ic.SetupWithManager(mgr); err != nil {
+		return err
+	}
+	bf := &integration.BackfillReconciler{
+		Client: mgr.GetClient(), Creds: creds, Ingest: ingestor, Log: log,
+		TTL: opts.Duration("backfill-request-ttl"),
+	}
+	if err := bf.SetupWithManager(mgr); err != nil {
 		return err
 	}
 	fp := &integration.FindingReconciler{
@@ -166,7 +182,14 @@ func serve(ctx context.Context, opts *cli.Options) error {
 		Namespace: namespace,
 		Log:       log,
 	}
-	internal, err := internalServer(opts, namespace, access)
+	users := &integration.GitHubUser{
+		Reader:    mgr.GetClient(),
+		Creds:     creds,
+		Access:    access,
+		Namespace: namespace,
+		Log:       log,
+	}
+	internal, err := internalServer(opts, namespace, access, users)
 	if err != nil {
 		return err
 	}

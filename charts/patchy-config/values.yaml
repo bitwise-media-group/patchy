@@ -27,13 +27,14 @@ commonAnnotations: {}
 # `mise run codegen`), so a misspelled or wrongly typed field fails the
 # install instead of failing at the API server. You create the referenced
 # Secrets separately (see deploy/kustomize/base/secrets.example.yaml; keys:
-# appID + privateKey, or token, plus webhookSecret for Integrations).
+# appID + privateKey, or token, plus webhookSecret for Integrations, plus
+# clientSecret for a github Integration with userAuthorization).
 integrations: []
 # - name: github
 #   spec:
 #       provider: github
 #       secretRef:
-#           name: patchy-github     # appID+privateKey (or token) + webhookSecret
+#           name: patchy-github     # appID+privateKey (or token) + webhookSecret (+ clientSecret)
 #       interval: 10m               # credential revalidation
 #       github:
 #           # baseURL: https://ghes.example.com/api/v3   # GHES only
@@ -53,6 +54,12 @@ integrations: []
 #           #     enabled: true       # confident ignore resolves the alert, a
 #           # cleanup PR only ever after /approve; subscribe the App to the
 #           # secret_scanning_alert event (Secret scanning alerts: read & write)
+#           # userAuthorization:      # the status page's "Connect GitHub" link:
+#           #     clientID: Iv23liEXAMPLE   # the App's client ID (not secret);
+#           # the App's OAuth client secret goes in the credential Secret
+#           # under clientSecret. Needs App credentials (not a PAT), the
+#           # callback https://<status host>/oauth2/github/<this name>/callback
+#           # on the App, and "Expire user authorization tokens" on.
 #
 # Security Command Center has no webhook. A Pub/Sub push subscription forwards
 # each notification to /google-cloud/webhooks, authenticated by the OIDC token

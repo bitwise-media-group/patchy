@@ -19,7 +19,6 @@ import (
 	authnv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -66,9 +65,9 @@ type repositoryAccessPayload struct {
 // real binaries: the status server asks the integration-controller's
 // internal endpoint, authenticated by a real projected-style token that the
 // envtest API server reviews, whether patchy can read a never-seen
-// repository's alerts; a one-repository backfill is stamped on the
-// Integration that can; its alerts become findings; and the gate then
-// refuses a second backfill.
+// repository's alerts; a one-repository BackfillRequest is created on the
+// Integration that can; its alerts become findings; and the cooldown then
+// refuses a second backfill of the same repository.
 func TestRepositoriesPage(t *testing.T) {
 	cl := startCluster(t)
 	gh := fakegithub.New()
@@ -103,6 +102,9 @@ func startRepositoriesStack(t *testing.T, cl *cluster) string {
 		"--internal-addr", strings.TrimPrefix(internal, "http://"),
 		"--status-server-service-account", "patchy-status-server")
 	waitListening(t, internal+"/")
+	// A backfill request filed before the Integration is Ready is held for
+	// minutes; the page's backfill below needs it Ready.
+	waitIntegrationReady(t, cl, "github")
 
 	// Only the status server's ServiceAccount, with the right audience, may
 	// call the internal endpoint.
@@ -163,24 +165,25 @@ func repositoriesCheckUnseen(t *testing.T, base string) {
 	}
 }
 
-// repositoriesCheckBackfill backfills the readable repository, waits for its
-// alert to become a finding, and checks the gate then closes.
+// repositoriesCheckBackfill backfills the readable repository, waits for
+// its alert to become a finding, and checks the cooldown then refuses
+// another backfill of it.
 func repositoriesCheckBackfill(t *testing.T, cl *cluster, base string) {
 	t.Helper()
 	ctx := context.Background()
 	if code, body := postBackfillRepo(t, base, "acme/locked"); code != http.StatusConflict {
 		t.Errorf("backfill acme/locked = %d (%s), want 409", code, body)
 	}
-	if code, body := postBackfillRepo(t, base, "acme/fresh"); code != http.StatusOK ||
-		!strings.Contains(body, `"outcome":"requested"`) {
-		t.Fatalf("backfill acme/fresh = %d (%s), want 200 requested", code, body)
+	code, res := postBackfillJSON(t, base, map[string]any{"repository": "acme/fresh"})
+	if code != http.StatusOK || res.Outcome != "requested" || res.Integration != "github" || res.Request == "" {
+		t.Fatalf("backfill acme/fresh = %d %+v, want 200 requested on github", code, res)
 	}
-	var integ v1alpha1.Integration
-	if err := cl.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: "github"}, &integ); err != nil {
-		t.Fatal(err)
-	}
-	if req := integ.Spec.Backfill; req == nil || !slices.Equal(req.Repositories, []string{"acme/fresh"}) {
-		t.Fatalf("spec.backfill = %+v, want repositories [acme/fresh]", integ.Spec.Backfill)
+	// The page created a BackfillRequest on the granted path (mode none
+	// holds every grant), naming exactly the repository.
+	bfr := getBackfillRequest(t, cl, res.Request)
+	if !slices.Equal(bfr.Spec.Repositories, []string{"acme/fresh"}) || bfr.Spec.Via != "" ||
+		bfr.Spec.IntegrationRef.Name != "github" || bfr.Spec.RequestedBy == "" {
+		t.Fatalf("backfill request spec = %+v, want acme/fresh on github by the grant", bfr.Spec)
 	}
 
 	// The controller walks the request: the never-delivered alert becomes a
@@ -195,10 +198,14 @@ func repositoriesCheckBackfill(t *testing.T, cl *cluster, base string) {
 		list.Items[0].Spec.Repository == nil || list.Items[0].Spec.Repository.Name != "acme/fresh" {
 		t.Fatalf("findings = %+v (err %v), want one in acme/fresh", list.Items, err)
 	}
+	if st := waitBackfillPhase(t, cl, res.Request, v1alpha1.BackfillComplete); st.Ingested != 1 {
+		t.Errorf("backfill request status = %+v, want 1 ingested", st)
+	}
 
-	// The gate now refuses another backfill, and the access check skips it.
-	if code, body := postBackfillRepo(t, base, "acme/fresh"); code != http.StatusConflict {
-		t.Errorf("second backfill of acme/fresh = %d (%s), want 409", code, body)
+	// A known repository may be backfilled again, but not inside the
+	// cooldown after a walk that named it.
+	if code, body := postBackfillRepo(t, base, "acme/fresh"); code != http.StatusTooManyRequests {
+		t.Errorf("second backfill of acme/fresh = %d (%s), want 429 inside the cooldown", code, body)
 	}
 	var access repositoryAccessPayload
 	getJSON(t, base+"/api/repositories/access?repo=acme%2Ffresh", &access)
@@ -292,10 +299,55 @@ func getJSON(t *testing.T, u string, v any) {
 
 func postBackfillRepo(t *testing.T, base, repo string) (int, string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"repository": repo})
-	resp, err := http.Post(base+"/api/repositories/backfill", "application/json", bytes.NewReader(body))
+	return postJSON(t, http.DefaultClient, base+"/api/repositories/backfill", map[string]any{"repository": repo})
+}
+
+// repositoryBackfillResult mirrors POST /api/repositories/backfill's
+// answer.
+type repositoryBackfillResult struct {
+	Integration string `json:"integration"`
+	Request     string `json:"request"`
+	Outcome     string `json:"outcome"`
+}
+
+// postBackfillJSON posts a one-repository backfill with the default client
+// and decodes a 200 answer.
+func postBackfillJSON(t *testing.T, base string, body map[string]any) (int, repositoryBackfillResult) {
+	t.Helper()
+	return postBackfillAs(t, http.DefaultClient, base, body)
+}
+
+// postBackfillAs posts a one-repository backfill with c (its cookie jar
+// carries any GitHub link) and decodes a 200 answer.
+func postBackfillAs(
+	t *testing.T, c *http.Client, base string, body map[string]any,
+) (int, repositoryBackfillResult) {
+	t.Helper()
+	code, raw := postJSON(t, c, base+"/api/repositories/backfill", body)
+	var res repositoryBackfillResult
+	if code == http.StatusOK {
+		if err := json.Unmarshal([]byte(raw), &res); err != nil {
+			t.Fatalf("decode backfill answer %q: %v", raw, err)
+		}
+	}
+	return code, res
+}
+
+// postJSON posts body as JSON with c and returns the status and trimmed
+// response body.
+func postJSON(t *testing.T, c *http.Client, u string, body any) (int, string) {
+	t.Helper()
+	var rd io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rd = bytes.NewReader(raw)
+	}
+	resp, err := c.Post(u, "application/json", rd)
 	if err != nil {
-		t.Fatalf("POST backfill %s: %v", repo, err)
+		t.Fatalf("POST %s: %v", u, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(resp.Body)

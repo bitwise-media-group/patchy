@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { AdminVerb, DatasetHeader } from "../types";
 import type { DataMode } from "../api";
 import { readProvider, signOut } from "../auth";
+import { githubHint } from "../repositories";
 import { PERSONAS, type Persona } from "../mock/personas";
 import { hrefForConfig, hrefForList, hrefForMetrics, hrefForRepositories, type Route } from "../router";
 import { Icon } from "./icons";
@@ -48,17 +49,20 @@ const NAV_LINK =
 const MENU_ITEM =
   "ps-menu-item";
 
-// AccountActions: the namespace-wide demo tools (replay and reset, rendered
-// only when the server granted the verb) and sign-out. Reset arms on the
-// first click and deletes on the second. Shared by the desktop dropdown
-// (as menu items) and the compact menu (as plain buttons).
+// AccountActions: the "Connect GitHub" hint, the namespace-wide demo tools
+// (replay and reset, rendered only when the server granted the verb) and
+// sign-out. Reset arms on the first click and deletes on the second. Shared
+// by the desktop dropdown (as menu items) and the compact menu (as plain
+// buttons).
 function AccountActions({
+  connectHint,
   adminActions,
   adminBusy,
   onAdmin,
   onDone,
   menu,
 }: {
+  connectHint: boolean;
   adminActions: AdminVerb[];
   adminBusy: AdminVerb | null;
   onAdmin: (verb: AdminVerb) => void;
@@ -74,6 +78,18 @@ function AccountActions({
   };
   return (
     <>
+      {connectHint ? (
+        <>
+          <a class={`${MENU_ITEM} no-underline`} role={role} href={hrefForRepositories()} onClick={onDone}>
+            <Icon name="github" size={15} class="flex-none text-muted" />
+            <span>
+              Connect GitHub
+              <span class="block text-[12px] font-normal text-muted">to act on the repositories you maintain</span>
+            </span>
+          </a>
+          <div class="mx-1 my-1 h-px bg-line" role="separator" />
+        </>
+      ) : null}
       {adminActions.includes("replay") ? (
         <button type="button" class={MENU_ITEM} role={role} disabled={adminBusy !== null} onClick={() => run("replay")}>
           <Icon name="rotateCcw" size={15} class="flex-none text-muted" />
@@ -103,11 +119,13 @@ function AccountActions({
 
 function UserMenu({
   name,
+  connectHint,
   adminActions,
   adminBusy,
   onAdmin,
 }: {
   name: string;
+  connectHint: boolean;
   adminActions: AdminVerb[];
   adminBusy: AdminVerb | null;
   onAdmin: (verb: AdminVerb) => void;
@@ -141,11 +159,24 @@ function UserMenu({
         onClick={() => setOpen((o) => !o)}
       >
         <span class="max-w-[180px] truncate">{name}</span>
+        {connectHint ? (
+          <>
+            <span class="size-1.5 rounded-full bg-amber" aria-hidden="true" />
+            <span class="sr-only">, connect GitHub</span>
+          </>
+        ) : null}
         <Icon name="chevronDown" size={12} class={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
         <div class="ps-menu min-w-[220px]" role="menu">
-          <AccountActions adminActions={adminActions} adminBusy={adminBusy} onAdmin={onAdmin} onDone={() => setOpen(false)} menu />
+          <AccountActions
+            connectHint={connectHint}
+            adminActions={adminActions}
+            adminBusy={adminBusy}
+            onAdmin={onAdmin}
+            onDone={() => setOpen(false)}
+            menu
+          />
         </div>
       ) : null}
     </div>
@@ -228,6 +259,7 @@ export function TopBar({
   const signedIn = Boolean(dataset?.user?.loggedIn || (mode === "live" && readProvider()?.authenticated));
   const userName = dataset?.user?.loggedIn ? dataset.user.name : "account";
   const adminActions = dataset?.user?.adminActions ?? [];
+  const connectHint = githubHint(dataset?.user);
 
   return (
     <header class="sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--patchy-bg)_86%,transparent)] backdrop-blur-xl">
@@ -260,7 +292,15 @@ export function TopBar({
         </div>
         <div class="ml-auto flex items-center gap-3 max-md:hidden">
           {mode === "demo" ? <PersonaSwitcher persona={persona} onChange={onPersonaChange} /> : null}
-          {signedIn ? <UserMenu name={userName} adminActions={adminActions} adminBusy={adminBusy} onAdmin={onAdmin} /> : null}
+          {signedIn ? (
+            <UserMenu
+              name={userName}
+              connectHint={connectHint}
+              adminActions={adminActions}
+              adminBusy={adminBusy}
+              onAdmin={onAdmin}
+            />
+          ) : null}
           <ThemeToggle mode={themeMode} onToggle={onToggleTheme} />
         </div>
         <button
@@ -313,7 +353,14 @@ export function TopBar({
                   <p class="m-0 px-2.5 pb-1 text-[13px] text-muted">
                     Signed in as <span class="font-semibold text-fg">{userName}</span>
                   </p>
-                  <AccountActions adminActions={adminActions} adminBusy={adminBusy} onAdmin={onAdmin} onDone={() => setMenuOpen(false)} menu={false} />
+                  <AccountActions
+                    connectHint={connectHint}
+                    adminActions={adminActions}
+                    adminBusy={adminBusy}
+                    onAdmin={onAdmin}
+                    onDone={() => setMenuOpen(false)}
+                    menu={false}
+                  />
                 </>
               ) : null}
               <button type="button" class={MENU_ITEM} onClick={onToggleTheme}>

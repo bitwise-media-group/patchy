@@ -110,7 +110,9 @@ data:
 #   * approve records spec.approval;
 #   * retry/expedite record spec.retry / spec.expedite;
 #   * suspend/resume toggle spec.suspend;
-#   * replay sets Integration spec.replay.
+#   * replay and reset set Integration spec.replay / spec.reset;
+#   * backfill creates a BackfillRequest, and an operator's approve or deny
+#     records its spec.decision.
 #
 # NO */status, because the status server never moves a phase. No leases
 # either (no reconcilers, no leader election). The delete/deletecollection
@@ -136,11 +138,18 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [investigations, remediations, repositories]
       verbs: [get, list, watch, delete, deletecollection]
-    # Spec-only write access for the replay and backfill actions (spec.replay,
-    # spec.backfill). The cached client's informer needs list/watch.
+    # Spec-only write access for the replay and reset actions (spec.replay,
+    # spec.reset). The cached client's informer needs list/watch.
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, watch, update, patch]
+    # The backfill paths: create files a request, update records an
+    # operator's spec.decision, list/watch feed the repositories page, the
+    # cooldown and the approval queue. No delete: the integration-controller
+    # expires them.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [get, list, watch, create, update]
     # Read-only: the configuration view projects the Forges alongside the
     # Integrations.
     - apiGroups: [patchy.bitwisemedia.uk]
@@ -251,6 +260,12 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings, findingrollups]
       verbs: [get, list]
+    # Optional: file a backfill request for an operator from the CLI
+    # (`patchy backfill --request`; the admission policy keeps it waiting).
+    # The status page's request button needs no grant beyond get on findings.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -265,6 +280,9 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
       verbs: [approve]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -279,9 +297,13 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [findings]
       verbs: [approve, retry, expedite, suspend, resume]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list]
 ---
-# Operator, plus the configuration view (native get on integrations), the
-# backfill trigger, and the user menu's demo tooling: replay the webhook
+# Operator, plus the configuration view (native get on integrations),
+# backfill (running requests at once and deciding other people's), and the
+# user menu's demo tooling: replay the webhook
 # delivery log, and reset (delete) all pipeline state. Grant replay/reset
 # sparingly. Migration note: replay/reset moved from findings to
 # integrations. That is the resource they act on, and the one the
@@ -302,6 +324,37 @@ rules:
     - apiGroups: [patchy.bitwisemedia.uk]
       resources: [integrations]
       verbs: [get, list, backfill, replay, reset]
+    # The CLI's backfill paths: `patchy backfill` creates a request, `patchy
+    # approve|deny backfillrequest` updates its decision. The admission
+    # policy checks the backfill verb above for every write.
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [create, get, list, watch, update]
+---
+# A repository maintainer: viewer, plus backfill, approve and expedite on
+# the repositories where the user's linked GitHub identity ("Connect GitHub"
+# on the status page) is admin or maintain, checked live on every action.
+# Only the status page honours the scoped verbs; the CLI and the admission
+# policy do not. Bind it to a broad SSO group (a dex groups claim value).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: {{ include "patchy.fullname" . }}-maintainer
+    labels:
+        {{- include "patchy.labels" (dict "root" . "name" $name) | nindent 8 }}
+rules:
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings, findingrollups]
+      verbs: [get]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [findings]
+      verbs: [approve-maintained, expedite-maintained]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [integrations]
+      verbs: [backfill-maintained]
+    - apiGroups: [patchy.bitwisemedia.uk]
+      resources: [backfillrequests]
+      verbs: [get, list, watch]
 {{- end }}
 ---
 apiVersion: apps/v1

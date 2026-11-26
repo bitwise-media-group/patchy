@@ -103,9 +103,11 @@ func TestGetAllTables(t *testing.T) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
 	}
-	// The five kinds with nothing in them must not print a heading. Otherwise
-	// an empty namespace would print seven headings and no rows.
-	for _, absent := range []string{"Investigations", "Remediations", "Finding rollups", "Repositories", "Integrations"} {
+	// The six kinds with nothing in them must not print a heading. Otherwise
+	// an empty namespace would print eight headings and no rows.
+	for _, absent := range []string{
+		"Investigations", "Remediations", "Finding rollups", "Repositories", "Integrations", "Backfill requests",
+	} {
 		if strings.Contains(got, absent) {
 			t.Errorf("empty kind %q was printed:\n%s", absent, got)
 		}

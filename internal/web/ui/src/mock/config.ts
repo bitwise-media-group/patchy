@@ -40,6 +40,8 @@ const config: ConfigDataset = {
         redelivered: 2,
       },
       backfill: {
+        request: "backfill-5tz8r",
+        phase: "Complete",
         lastRunAt: "2026-07-20T16:02:00Z",
         listed: 214,
         ingested: 214,

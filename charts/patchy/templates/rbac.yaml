@@ -26,8 +26,10 @@
 {{- /*
 Turns scanner webhooks into Findings (create/fold/duplicate-merge; it is the
 only controller that deletes duplicate Findings). It also projects Findings
-to tracking issues (reading the children's reports), and applies human
-signals (approve/close/PR-merge) to Finding spec + status.
+to tracking issues (reading the children's reports), applies human signals
+(approve/close/PR-merge) to Finding spec + status, and walks BackfillRequests
+(the single writer of their status; delete is their TTL expiry, and it never
+creates one).
 */ -}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [findings]
@@ -44,6 +46,12 @@ signals (approve/close/PR-merge) to Finding spec + status.
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [investigations, remediations]
   verbs: [get, list, watch, deletecollection]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [backfillrequests]
+  verbs: [get, list, watch, delete]
+- apiGroups: [patchy.bitwisemedia.uk]
+  resources: [backfillrequests/status]
+  verbs: [get, update, patch]
 {{- /* read-only: the repository-access check reports Forge coverage */}}
 - apiGroups: [patchy.bitwisemedia.uk]
   resources: [forges]
@@ -239,8 +247,9 @@ subjects:
 ---
 # ---- integration-controller: TokenReview ------------------------------------
 # TokenReview is cluster-scoped, so the one grant needs a ClusterRole. The
-# integration-controller uses it on its in-cluster repository-access endpoint
-# (:9792) to check the status server's projected ServiceAccount token.
+# integration-controller uses it on its in-cluster repository-access and
+# GitHub-user endpoints (:9792) to check the status server's projected
+# ServiceAccount token.
 # Review-only: it may ask "whose token is this?" and nothing else. Rendered
 # only with the status server, its one caller.
 apiVersion: rbac.authorization.k8s.io/v1

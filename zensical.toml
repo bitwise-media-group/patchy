@@ -26,6 +26,7 @@ nav = [
   # the current page is frozen into <version>.md and listed here.
   { "What's new" = [
     "whats-new/index.md",
+    { "0.15.0" = "whats-new/0.15.0.md" },
   ] },
   { "Getting started" = [
     { "Overview" = "getting-started/index.md" },

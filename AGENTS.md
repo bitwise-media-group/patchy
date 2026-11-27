@@ -141,6 +141,11 @@ charts/             Helm rendering of the same stack, pushed to ghcr OCI on rele
                     charts/patchy-config (the Integration and Forge CRs). That is a separate chart
                     because helm validates CRs against CRDs that must already exist. release-please
                     stamps both Chart.yaml versions. Lint and render with `mise run helm-lint`.
+patchy.yaml         `patchy build`'s config for patchy's own EDGE builds. On every push to main that cuts
+                    no release, release.yaml's edge jobs publish the images (built from dist/images/,
+                    which `mise run images-context` cross-compiles) and both charts to ghcr as
+                    <next version>-edge.<UTC timestamp>.g<commit> (images with a v), through
+                    github-workflows' patchy-publish action. Releases stay goreleaser's, not promoted.
 e2e/                A SEPARATE Go module. envtest provides the CRDs, the real binaries run against it,
                     fakegithub (an in-memory API) stands in at the network edge, and recorded webhook
                     fixtures plus the replay tool drive it (`make e2e`). fakeoidc (a Google issuer)

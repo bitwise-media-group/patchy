@@ -15,6 +15,12 @@
 # version. The checkout below is at that tag when called from the release
 # pipeline, and at the chosen ref for a manual dispatch.
 #
+# The edge job (release.yaml) calls it too, on a push that cut no release,
+# with `version` set to the edge build it has just published the images of
+# (<next version>-edge.<UTC timestamp>.g<commit>): that overrides both the
+# chart version and appVersion, so the chart's default image tag,
+# v<appVersion>, names those images.
+#
 # Each pushed chart gets a keyless cosign signature and the same GitHub
 # build-provenance attestation as the binaries and images. Verify with:
 #   gh attestation verify --owner bitwise-media-group \
@@ -34,6 +40,13 @@ on:
                 description: >-
                     Git ref to publish the chart from (the release tag). Empty checks out the ref the run was
                     triggered on.
+                required: false
+                default: ""
+                type: string
+            version:
+                description: >-
+                    Chart version and appVersion to package instead of Chart.yaml's, for an edge build
+                    (<next version>-edge.<UTC timestamp>.g<commit>). Empty keeps Chart.yaml's.
                 required: false
                 default: ""
                 type: string
@@ -76,10 +89,13 @@ jobs:
               id: push
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  VERSION: ${{ inputs.version }}
               run: |
                   set -euo pipefail
                   helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin <<<"${GITHUB_TOKEN}"
-                  helm package "charts/${{ matrix.chart }}" --destination dist/
+                  version=()
+                  if [ -n "${VERSION}" ]; then version=(--version "${VERSION}" --app-version "${VERSION}"); fi
+                  helm package "charts/${{ matrix.chart }}" --destination dist/ "${version[@]}"
                   out="$(helm push "dist/${{ matrix.chart }}"-*.tgz "oci://ghcr.io/${GITHUB_REPOSITORY}/charts" 2>&1)"
                   echo "${out}"
                   digest="$(sed -n 's/^Digest: //p' <<<"${out}")"

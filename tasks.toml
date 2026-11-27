@@ -165,6 +165,16 @@ description = "build all patchy binaries into bin/"
 dir = "{{cwd}}"
 run = [{ task = "ui" }, "./hack/build.sh"]
 
+# The build context patchy.yaml's image entries build from: the image
+# binaries cross-compiled for linux/amd64 and linux/arm64 into dist/images/.
+# The release workflow's edge job runs it through patchy-publish's prepare
+# step (CHANNEL=edge stamps the edge version); locally, follow it with
+# `patchy build --all --dry-run` to build and scan the images.
+[images-context]
+description = "cross-compile the image binaries into dist/images/ for patchy build"
+dir = "{{config_root}}"
+run = [{ task = "ui" }, "./hack/images-context.sh"]
+
 # Canned status-page data for dev: apply the demo Findings/FindingRollups
 # and seed their statuses (a subresource `kubectl apply -k` cannot write).
 # The data is inert: every finding is suspended, with no trackingRef and

@@ -36,6 +36,23 @@ helm install patchy-config oci://ghcr.io/bitwise-media-group/patchy/charts/patch
 The chart requires Kubernetes ≥ 1.34 (the oldest line not yet end-of-life). It references the
 [two Secrets](../getting-started/install.md#create-the-secrets) but never creates them.
 
+## Edge builds
+
+Every push to `main` that cuts no release is published too, as an edge build of the next release: both charts at
+`<next version>-edge.<UTC timestamp>.g<commit>`, and every image at the same tag with a `v`. Edge builds are how patchy
+is tried out before a release. Tags never move, and a version range only matches an edge build when it allows
+pre-releases (`<1.0.0-0 >=0.15.0-0`), so a cluster on a plain range (`<1.0.0 >=0.15.0`) never picks one up. With Flux,
+put the pre-release range in the `OCIRepository` (or input provider) semver filter to follow the newest build of either
+kind: `0.15.0` < `0.16.0-edge.*` < `0.16.0`.
+
+Releases and edge builds are signed by different workflows, so trust both when verifying images. The charts are signed
+by `helm.yaml` either way, which matches `^https://github\.com/bitwise-media-group/patchy/`.
+
+| Artifact      | Signed by                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| release image | `https://github.com/bitwise-media-group/github-workflows/…` (the shared release workflow)      |
+| edge image    | `https://github.com/bitwise-media-group/patchy/.github/workflows/release.yaml@refs/heads/main` |
+
 ## Human access: the admission policy
 
 Findings carry five custom RBAC verbs: `approve`, `retry`, `expedite`, `suspend` and `resume`. They let a grant say

@@ -18,6 +18,13 @@
 # than on `release: published` because goreleaser publishes the
 # release with GITHUB_TOKEN, and GITHUB_TOKEN-driven events start no workflows.
 #
+# When a push cut no release, the edge jobs publish it instead, as an
+# immutable edge build on ghcr next to the releases: the images
+# v<next version>-edge.<UTC timestamp>.g<commit> (patchy.yaml), then both
+# charts at the same version without the v. A cluster that burns patchy in
+# before a release follows them with a pre-release range; a plain range
+# never matches a pre-release, so nothing downstream moves.
+#
 # app-client-id/app-private-key author the release-please PR as the "FF Merge" App
 # instead of the GITHUB_TOKEN. A GITHUB_TOKEN-authored push fires no workflow_run,
 # so a release PR opened that way never triggers the auto-merge in merge.yaml;
@@ -131,3 +138,70 @@ jobs:
             pull-requests: read
         secrets:
             FF_MERGE_PRIVATE_KEY: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
+
+    # The edge build of a push that cut no release: patchy's images
+    # (patchy.yaml), through the org's patchy-publish action, which resolves
+    # the next version from the release PR, runs the images-context task to
+    # cross-compile the binaries the Dockerfiles copy in, then builds, scans
+    # (grype) and pushes them to ghcr and signs them. A composite action keeps
+    # this job's identity, so they are signed as
+    # .../patchy/.github/workflows/release.yaml@refs/heads/main, not as the
+    # shared workflow that signs releases; a cluster following edge trusts
+    # both (SIGNED_IDENTITY_PATCHY_IMAGES). Releases stay goreleaser's: they
+    # are rebuilt, not promoted from edge.
+    edge:
+        needs: release
+        if: ${{ !needs.release.outputs.release_created }}
+        runs-on: ubuntu-latest
+        # one edge build at a time, in push order, so a newer build never
+        # lands before an older one
+        concurrency:
+            group: patchy-edge
+            cancel-in-progress: false
+        permissions:
+            # check out the source to build
+            contents: read
+            # push the images to ghcr
+            packages: write
+            # keyless signing rides the job's OIDC token
+            id-token: write
+        outputs:
+            version: ${{ steps.edge.outputs.version }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  submodules: true # the toolchain at .mise/ pins patchy, cosign and grype
+
+            - id: publish
+              uses: bitwise-media-group/github-workflows/.github/actions/patchy-publish@8227860743622e23d8ed2bc059841bedac2e668f # v8.5.0
+              with:
+                  mode: edge
+                  github-registry: ghcr.io/${{ github.repository }}
+                  prepare: mise run images-context
+
+            - id: edge
+              env:
+                  VERSION: ${{ steps.publish.outputs.version }}
+                  TIMESTAMP: ${{ steps.publish.outputs.timestamp }}
+              run: echo "version=${VERSION}-edge.${TIMESTAMP}.g${GITHUB_SHA::7}" >>"${GITHUB_OUTPUT}"
+
+    # Both charts at the edge build's version, once its images are on ghcr:
+    # the chart's appVersion is the same version, so its default image tag
+    # (v<appVersion>) names the images the edge job has just pushed.
+    edge-charts:
+        needs: edge
+        uses: ./.github/workflows/helm.yaml # zizmor: ignore[self-repository] -- actionlint 1.7.12 (also in lint) rejects the $/ form
+        # ceiling for helm.yaml's publish job
+        permissions:
+            contents: read
+            # helm push to ghcr (also pushes the cosign signature artifact)
+            packages: write
+            # keyless signing: the cosign chart signature and the provenance attestation
+            id-token: write
+            # github build-provenance attestation
+            attestations: write
+            # artifact storage record for the attestation
+            artifact-metadata: write
+        with:
+            version: ${{ needs.edge.outputs.version }}

@@ -1,0 +1,92 @@
+# Copyright 2026 Bitwise Media Group Ltd.
+# SPDX-License-Identifier: MIT
+
+# patchy's own build configuration: `patchy build` publishes its container
+# images as EDGE builds on every push to main that cuts no release (the edge
+# job in .github/workflows/release.yaml, through the patchy-publish action of
+# bitwise-media-group/github-workflows). Releases are not built here:
+# goreleaser builds, signs and publishes vX.Y.Z (.goreleaser.yaml).
+#
+# Only the build and scan blocks live here. The registry (ghcr, next to the
+# releases) and the keyless signing config are written by the action as a
+# lower config layer, so `patchy build --all --dry-run` needs neither.
+#
+# The images are goreleaser's (dockers_v2), built from the same Dockerfile.*:
+# the Dockerfiles copy in a binary compiled outside docker, from
+# $TARGETPLATFORM/<binary> in the build context. `mise run images-context`
+# (hack/images-context.sh) cross-compiles them into dist/images/, stamped with
+# the version the image is tagged with; the action runs it as its prepare
+# step.
+
+scan:
+  scanners:
+    grype:
+      enabled: true
+  failOn: [CRITICAL, HIGH]
+  ignoreUnfixed: true
+  allowlist:
+    # an accepted finding expires within this horizon, so it is reviewed
+    # again instead of accepted forever
+    maxDays: 90
+    newDays: 90
+
+build:
+  architectures: [amd64, arm64]
+  # Every tag is immutable. An edge build is
+  #   v<next version>-edge.<UTC yyyymmddhhmmss>.g<short commit>
+  # the next version being the open release pull request's, so
+  # v0.15.0 < v0.16.0-edge.* < v0.16.0. The edge job publishes both charts at
+  # the same version without the v (chart, appVersion and the chart's default
+  # image tag, v<appVersion>, move together), and a cluster follows edge with
+  # a pre-release range such as "<1.0.0-0 >=0.14.0-0".
+  tags:
+    - "v${VERSION}-edge.${PATCHY_TIMESTAMP}.g${GIT_COMMIT:0:7}"
+  images:
+    - name: source-controller
+      repository: source-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: source-controller }
+    - name: context-controller
+      repository: context-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: context-controller }
+    - name: investigation-controller
+      repository: investigation-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: investigation-controller }
+    - name: remediation-controller
+      repository: remediation-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: remediation-controller }
+    - name: integration-controller
+      repository: integration-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: integration-controller }
+    - name: evaluation-controller
+      repository: evaluation-controller
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: evaluation-controller }
+    - name: egress-broker
+      repository: egress-broker
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: egress-broker }
+    - name: status-server
+      repository: status-server
+      dockerfile: Dockerfile.controller
+      context: dist/images
+      args: { TARGET: status-server }
+    - name: claude-agent-runner
+      repository: claude-agent-runner
+      dockerfile: Dockerfile.claude-agent-runner
+      context: dist/images
+    - name: codex-agent-runner
+      repository: codex-agent-runner
+      dockerfile: Dockerfile.codex-agent-runner
+      context: dist/images

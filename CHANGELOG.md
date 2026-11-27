@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.0](https://github.com/bitwise-media-group/patchy/compare/v0.15.0...v0.16.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Integration spec.backfill and status.backfill are removed. Create a BackfillRequest instead (`patchy backfill <integration>` does). Apply the new BackfillRequest CRD and the patchy-backfill-requests admission policy, grant the integration-controller get/list/watch/delete on backfillrequests and update on backfillrequests/status, the status server get/list/watch/create/update on backfillrequests, and CLI users create (and get/list) on backfillrequests. LocalObjectReference names are now limited to 253 characters.
+
+### Features
+
+* backfill requests, and Connect GitHub for maintainers ([d0e652f](https://github.com/bitwise-media-group/patchy/commit/d0e652f8e9fbf854e13641e48705e86d6e69405c))
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.5.0 ([#730](https://github.com/bitwise-media-group/patchy/issues/730)) ([3fce156](https://github.com/bitwise-media-group/patchy/commit/3fce156dccd7124e2e7b8103d562ef4801058750))
+* **deps:** update dependency jdx/mise to v2026.11.13 ([#725](https://github.com/bitwise-media-group/patchy/issues/725)) ([5f3b0ee](https://github.com/bitwise-media-group/patchy/commit/5f3b0ee612c6f79a816c0d0443d8caf08b4df2fa))
+* **deps:** update dependency jdx/mise to v2026.11.14 ([#728](https://github.com/bitwise-media-group/patchy/issues/728)) ([df392c8](https://github.com/bitwise-media-group/patchy/commit/df392c8e85b861f28bba3fa9d1cee82b7f122ff3))
+* **web:** check the Connect GitHub redirect back is local ([e3e9503](https://github.com/bitwise-media-group/patchy/commit/e3e95038e254bec0f947b3a82c1a9f115e2c51b2))
+
 ## [0.15.0](https://github.com/bitwise-media-group/patchy/compare/v0.14.1...v0.15.0) (2026-11-25)
 
 

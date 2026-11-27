@@ -38,6 +38,12 @@ type App struct {
 	Account string
 	// InstallationID is that installation's ID (default 1).
 	InstallationID int64
+	// CallbackURLs are the App's registered callback URLs. Like GitHub,
+	// authorize redirects only to one of them, so a redirect_uri patchy
+	// gets wrong fails here as it would there. Matching is exact (GitHub
+	// also admits a subdirectory of one). AddCallbackURL adds one later,
+	// for a server whose address is known only once it is listening.
+	CallbackURLs []string
 }
 
 // Repository roles a user may hold, highest first.
@@ -103,6 +109,26 @@ func (s *Server) RegisterApp(app App) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.user.app = &app
+}
+
+// AddCallbackURL registers one more callback URL on the App.
+func (s *Server) AddCallbackURL(u string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.user.app != nil {
+		s.user.app.CallbackURLs = append(s.user.app.CallbackURLs, u)
+	}
+}
+
+// callbackURL returns the registered callback URL that redirectURI names,
+// or "" when it names none.
+func (a *App) callbackURL(redirectURI string) string {
+	for _, u := range a.CallbackURLs {
+		if u == redirectURI {
+			return u
+		}
+	}
+	return ""
 }
 
 // userLocked returns (creating) the user record for login. Callers hold
@@ -507,9 +533,17 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fakegithub: patchy must send an S256 PKCE challenge", http.StatusBadRequest)
 		return
 	}
-	redirect, err := url.Parse(q.Get("redirect_uri"))
-	if err != nil || redirect.Scheme == "" || redirect.Host == "" {
-		http.Error(w, "fakegithub: redirect_uri must be absolute", http.StatusBadRequest)
+	// The redirect goes to the registered URL, never to the request's own
+	// value: an authorize endpoint that redirects anywhere it is told is an
+	// open redirect.
+	registered := app.callbackURL(q.Get("redirect_uri"))
+	if registered == "" {
+		http.Error(w, "fakegithub: redirect_uri is not one of the App's callback URLs", http.StatusBadRequest)
+		return
+	}
+	redirect, err := url.Parse(registered)
+	if err != nil {
+		http.Error(w, "fakegithub: bad callback URL: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	login := q.Get("login")

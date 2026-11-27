@@ -21,7 +21,10 @@ func newTestApp(t *testing.T) *Server {
 	t.Helper()
 	s := New()
 	t.Cleanup(s.Close)
-	s.RegisterApp(App{ID: 7, ClientID: testClientID, ClientSecret: testSecret, Account: "acme"})
+	s.RegisterApp(App{
+		ID: 7, ClientID: testClientID, ClientSecret: testSecret, Account: "acme",
+		CallbackURLs: []string{"http://patchy.test/cb"},
+	})
 	return s
 }
 
@@ -49,6 +52,34 @@ func code(t *testing.T, s *Server) string {
 		t.Fatalf("authorize redirect = %s", loc)
 	}
 	return loc.Query().Get("code")
+}
+
+// TestAuthorizeCallbackURLs: like GitHub, authorize redirects only to a
+// registered callback URL, and AddCallbackURL registers one later.
+func TestAuthorizeCallbackURLs(t *testing.T) {
+	s := newTestApp(t)
+	authorize := func(redirect string) int {
+		t.Helper()
+		q := url.Values{
+			"client_id": {testClientID}, "redirect_uri": {redirect}, "state": {"st"},
+			"code_challenge": {pkceChallenge(testVerifier)}, "code_challenge_method": {"S256"}, "login": {"octo"},
+		}
+		resp, err := noRedirect.Get(s.URL + "/login/oauth/authorize?" + q.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	for _, redirect := range []string{"http://evil.test/cb", "http://patchy.test/cb/../x", "/cb", ""} {
+		if got := authorize(redirect); got != http.StatusBadRequest {
+			t.Errorf("authorize(%q) = %d, want 400", redirect, got)
+		}
+	}
+	s.AddCallbackURL("http://late.test/cb")
+	if got := authorize("http://late.test/cb"); got != http.StatusFound {
+		t.Errorf("authorize to an added callback = %d, want 302", got)
+	}
 }
 
 type tokenAnswer struct {

@@ -84,6 +84,9 @@ func TestGitHubMaintainer(t *testing.T) {
 
 	grantRoles(t, cl)
 	st := startMaintainerStack(t, cl)
+	// The App's callback, registered on the fake as it would be on GitHub,
+	// once the maintainer's status server has an address.
+	gh.AddCallbackURL(st.maintainer + "/oauth2/github/" + appIntegration + "/callback")
 
 	maintainer := cookieClient(t)
 	connectGitHub(t, maintainer, st.maintainer, gh.URL)

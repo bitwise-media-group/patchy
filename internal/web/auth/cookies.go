@@ -160,3 +160,10 @@ func SetJSONCookie(w http.ResponseWriter, name string, v any, maxAge time.Durati
 // SafePath guards a post-flow redirect against open redirects: only
 // same-origin absolute paths survive.
 func SafePath(p string) string { return safePath(p) }
+
+// IsLocalURL reports whether p is safe to redirect to: an absolute path on
+// this origin. It must start with one slash; "//host" and "/\\host" are
+// read by browsers as another host.
+func IsLocalURL(p string) bool {
+	return strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") && !strings.HasPrefix(p, "/\\")
+}

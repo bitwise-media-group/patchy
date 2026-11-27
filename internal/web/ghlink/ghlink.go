@@ -269,7 +269,7 @@ func (l *Linker) handleCallback(w http.ResponseWriter, r *http.Request) {
 	auth.ClearCookie(w, CookieError, l.cfg.Secure)
 	l.cfg.Log.LogAttrs(r.Context(), slog.LevelInfo, "github account connected",
 		slog.String("integration", name), slog.String("user", id.Username), slog.String("github.login", res.Login))
-	http.Redirect(w, r, st.OriginalPath, http.StatusSeeOther)
+	redirectLocal(w, r, st.OriginalPath)
 }
 
 func (l *Linker) handleDisconnect(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +283,19 @@ func (l *Linker) fail(w http.ResponseWriter, r *http.Request, back, msg string, 
 	l.cfg.Log.LogAttrs(r.Context(), slog.LevelWarn, "github connect failed",
 		slog.String("integration", r.PathValue("integration")), slog.String("reason", msg), slog.Any("error", err))
 	_ = auth.SetJSONCookie(w, CookieError, msg, time.Minute, l.cfg.Secure)
-	http.Redirect(w, r, back, http.StatusSeeOther)
+	redirectLocal(w, r, back)
+}
+
+// redirectLocal sends the browser back to p, a path on the status page.
+// p comes from the sealed state, which authorize already cleaned with
+// SafePath; it is checked again here so the redirect never rests on the
+// seal alone.
+func redirectLocal(w http.ResponseWriter, r *http.Request, p string) {
+	if auth.IsLocalURL(p) {
+		http.Redirect(w, r, p, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // write seals and stores a link cookie for the rest of its lifetime.

@@ -347,8 +347,7 @@ func (a *oidcAuthenticator) fail(w http.ResponseWriter, r *http.Request, msg str
 // safePath guards the post-login redirect against open redirects: only
 // same-origin absolute paths survive.
 func safePath(p string) string {
-	if p == "" || !strings.HasPrefix(p, "/") ||
-		strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+	if !IsLocalURL(p) {
 		return "/"
 	}
 	return p

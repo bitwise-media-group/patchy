@@ -363,3 +363,22 @@ func TestNewOff(t *testing.T) {
 		t.Error("nil linker returned a link")
 	}
 }
+
+// TestRedirectLocal: the redirect back never leaves the status page, even
+// for a path that somehow got past authorize's SafePath.
+func TestRedirectLocal(t *testing.T) {
+	for in, want := range map[string]string{
+		"/#/repositories": "/#/repositories",
+		"/a/b?c=d":        "/a/b?c=d",
+		"//evil.test/x":   "/",
+		"/\\evil.test":    "/",
+		"https://evil":    "/",
+		"":                "/",
+	} {
+		w := httptest.NewRecorder()
+		redirectLocal(w, httptest.NewRequest(http.MethodGet, "/oauth2/github/gh/callback", nil), in)
+		if got := w.Header().Get("Location"); got != want || w.Code != http.StatusSeeOther {
+			t.Errorf("redirectLocal(%q) = %d %q, want 303 %q", in, w.Code, got, want)
+		}
+	}
+}

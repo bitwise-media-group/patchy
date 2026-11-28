@@ -84,7 +84,10 @@ jobs:
                   VERSION: ${{ inputs.version }}
               run: |
                   set -euo pipefail
-                  branch="whats-new/freeze-v${VERSION}"
+                  # bot/** is one of the prefixes the org's public-fork-only
+                  # ruleset lets the upstream repo create; any other branch
+                  # name is refused (HTTP 422, "Reference update failed").
+                  branch="bot/whats-new-freeze-v${VERSION}"
                   head=$(git rev-parse HEAD)
 
                   # (Re)point the branch at main's head; a rerun replaces the

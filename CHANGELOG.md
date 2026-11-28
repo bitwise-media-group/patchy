@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.1](https://github.com/bitwise-media-group/patchy/compare/v0.16.0...v0.16.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/aws/smithy-go to v1.28.10 ([#731](https://github.com/bitwise-media-group/patchy/issues/731)) ([69146d6](https://github.com/bitwise-media-group/patchy/commit/69146d6fb35cac0d38934b95bf1391ba4d7c1594))
+* **deps:** update sigstore/cosign-installer action to v4.1.4 ([#733](https://github.com/bitwise-media-group/patchy/issues/733)) ([d536f46](https://github.com/bitwise-media-group/patchy/commit/d536f4687846377910c872de704459859266f6a5))
+
 ## [0.16.0](https://github.com/bitwise-media-group/patchy/compare/v0.15.0...v0.16.0) (2026-11-27)
 
 

@@ -1,6 +1,6 @@
 ---
-version: 0.16.0 # x-release-please-version
-title: "What's new in Patchy 0.16.0" # x-release-please-version
+version: 0.16.1 # x-release-please-version
+title: "What's new in Patchy 0.16.1" # x-release-please-version
 # Shot into docs/assets/images/whats-new/<version>/ by the release PR's
 # workflow (release-screenshots.yaml, running internal/web/ui/screenshot.ts):
 # name, the demo route to load, and optionally text to type into the
